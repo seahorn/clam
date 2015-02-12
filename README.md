@@ -19,9 +19,6 @@ bitbucket password. To create your own RSA ID follow this link:
 https://bitbucket.org/samirmenon/scl-manips-group/wiki/install/ssh_access.wiki 
 `
 
-To ask for permissions contact Jorge Navas.
-
-
 # Installation #
 
 `
@@ -34,7 +31,9 @@ mkdir build && cd build  && cmake -G Ninja ../
 
 - `llvmpp file.bc -o file.pp.bc` (optional)
 
-- `llvmikos file.pp.bc -ikos-domain=ZONES -ikos-answer`
+- `llvmpp file.bc -ikos-inline-all -o file.pp.bc` (for fully inlining)
+
+- `llvmikos file.pp.bc -ikos-domain=ZONES -ikos-live -ikos-answer`
 
 
 #People#
