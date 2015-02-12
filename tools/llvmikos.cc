@@ -21,6 +21,13 @@
 
 #include "include/LlvmIkos.hh"
 
+#include <include/Transforms/LowerGvInitializers.hh>
+#include <include/Transforms/NameValues.hh>
+#include <include/Transforms/MarkInternalInline.hh>
+#include <include/Transforms/LowerCstExpr.hh>
+#include <include/Transforms/LowerSelect.hh>
+#include <include/Transforms/RemoveUnreachableBlocksPass.hh>
+
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
               llvm::cl::Required, llvm::cl::value_desc("filename"));
@@ -41,9 +48,29 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::desc("data layout string to use if not specified by module"),
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
+static llvm::cl::opt<llvm_ikos::IkosDomain>
+Domain("ikos-dom",
+       llvm::cl::desc ("Ikos abstract domain used to infer invariants"),
+       llvm::cl::values (
+           clEnumVal (llvm_ikos::IkosDomain::INTERVALS, 
+                      "Classical interval domain (default)"),
+           clEnumVal (llvm_ikos::IkosDomain::REDUCED_INTERVALS_CONGRUENCES, 
+                      "Reduced product of intervals with congruences"),
+           clEnumVal (llvm_ikos::IkosDomain::ZONES , 
+                      "Difference-Bounds Matrix (or Zones) domain"),
+           clEnumVal (llvm_ikos::IkosDomain::OCTAGONS, 
+                      "Octagon domain"),
+           clEnumValEnd),
+       llvm::cl::init (llvm_ikos::IkosDomain::INTERVALS));
+
 static llvm::cl::opt<bool>
-PrintAnswer ("ikos-print-answer", llvm::cl::desc ("Print invariants"),
-           llvm::cl::init (false));
+RunLive("ikos-live", 
+        llvm::cl::desc("Run Ikos with live ranges"),
+        llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+PrintAnswer ("ikos-answer", llvm::cl::desc ("Print invariants"),
+             llvm::cl::init (false));
 
 // removes extension from filename if there is one
 std::string getFileName(const std::string &str) {
@@ -57,7 +84,7 @@ std::string getFileName(const std::string &str) {
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;  // calls llvm_shutdown() on exit
   llvm::cl::ParseCommandLineOptions(argc, argv,
-                                    "LlvmIkos-- Abstract Interpretation-based Analysis of LLVM bitcode\n");
+                                    "LlvmIkos-- Abstract Interpretation-based Analyzer of LLVM bitcode\n");
 
   llvm::sys::PrintStackTraceOnErrorSignal();
   llvm::PrettyStackTraceProgram PSTP(argc, argv);
@@ -118,12 +145,22 @@ int main(int argc, char **argv) {
     dl = new llvm::DataLayout(moduleDataLayout);
   if (dl) pass_manager.add(dl);
 
-  // TODO: here the smallest number of passes needed to run
   // -- SSA
   pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
+  // -- ensure one single exit point per function
+  pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
+  // -- remove unreachable blocks 
+  pass_manager.add (new llvm_ikos::RemoveUnreachableBlocksPass ());
+  // -- remove switch constructions
+  pass_manager.add (llvm::createLowerSwitchPass());
+  // -- lower constant expressions to instructions
+  pass_manager.add (new llvm_ikos::LowerCstExprPass ());   
+  pass_manager.add (llvm::createDeadCodeEliminationPass());
+  // -- must be the last ones:
+  pass_manager.add (new llvm_ikos::LowerSelect ());   
+  pass_manager.add (new llvm_ikos::NameValues ()); 
 
-  //llvm::OwningPtr<llvm_ikos::LlvmIkos> llvmIkos (new llvm_ikos::LlvmIkos ());
-  llvm_ikos::LlvmIkos *llvmIkos = new llvm_ikos::LlvmIkos ();
+  llvm_ikos::LlvmIkos *llvmIkos = new llvm_ikos::LlvmIkos (Domain, RunLive);
   pass_manager.add (llvmIkos);
  
   if (!AsmOutputFilename.empty ()) 

@@ -40,29 +40,6 @@
 
 using namespace llvm;
 
-namespace 
-{enum IkosDomain { INTERVALS, CONGRUENCES, REDUCED_INTERVALS_CONGRUENCES, ZONES, OCTAGONS};}
-
-static llvm::cl::opt<enum IkosDomain>
-Domain("ikos-dom",
-          llvm::cl::desc ("Ikos abstract domain used to infer invariants"),
-          cl::values (
-              clEnumVal (INTERVALS   , "Classical integer interval domain (default)"),
-              clEnumVal (REDUCED_INTERVALS_CONGRUENCES , "Reduced product of intervals with congruences"),
-              clEnumVal (ZONES       , "Difference-Bounds Matrix (or Zones) domain"),
-              clEnumVal (OCTAGONS    , "Octagon domain"),
-              clEnumValEnd),
-          cl::init (INTERVALS));
-
-static llvm::cl::opt<bool>
-RunLive("ikos-live", 
-        llvm::cl::desc("Run Ikos with live ranges"),
-        cl::init (false));
-
-static llvm::RegisterPass<llvm_ikos::LlvmIkos> 
-X ("ikos", "Invariant generation using IKOS", true, false);
-
-
 namespace domain_impl
 {
   using namespace cfg_impl;
@@ -80,13 +57,10 @@ namespace domain_impl
 namespace llvm_ikos
 {
 
-
   using namespace analyzer;
   using namespace domain_impl;
 
   char LlvmIkos::ID = 0;
-
-  LlvmIkos::LlvmIkos () : llvm::ModulePass (ID), m_is_enabled(true)  {}
 
   bool LlvmIkos::runOnModule (llvm::Module &M)
   {
@@ -108,7 +82,7 @@ namespace llvm_ikos
     //LOG ("ikos-cfg", errs () << cfg << "\n");    
 
     bool change=false;
-    switch(Domain)
+    switch (m_absdom)
     {
       case INTERVALS: 
         change = runOnCfg<interval_domain_t> (cfg, F, vfac); break;
@@ -128,7 +102,7 @@ namespace llvm_ikos
   bool LlvmIkos::runOnCfg (cfg_t& cfg, llvm::Function &F, VariableFactory &vfac)
   {
     FwdAnalyzer< basic_block_label_t, varname_t, cfg_t, VariableFactory, AbsDomain > 
-        analyzer (cfg, vfac, RunLive);
+        analyzer (cfg, vfac, m_runlive);
 
     analyzer.Run (AbsDomain::top());
 

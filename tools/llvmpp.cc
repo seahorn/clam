@@ -19,13 +19,14 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Analysis/Verifier.h"
 
-// #include <include/LowerGvInitializers.hh>
-// #include <include/MarkInternalInline.hh>
-// #include <include/NameValues.hh>
-// #include <include/LowerCstExpr.hh>
-// #include <include/LowerSelect.hh>
-// #include <include/RemoveUnreachableBlocksPass.hh>
-// #include <include/MarkNoReturnFunctions.hh>
+#include <include/LlvmIkos.hh>
+#include <include/Transforms/IkosIndVarSimplify.hh>
+#include <include/Transforms/LowerGvInitializers.hh>
+#include <include/Transforms/NameValues.hh>
+#include <include/Transforms/MarkInternalInline.hh>
+#include <include/Transforms/LowerCstExpr.hh>
+#include <include/Transforms/LowerSelect.hh>
+#include <include/Transforms/RemoveUnreachableBlocksPass.hh>
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
@@ -151,82 +152,66 @@ int main(int argc, char **argv) {
     dl = new llvm::DataLayout(moduleDataLayout);
   if (dl) pass_manager.add(dl);
 
-  if (PPLevel == simple)
-  {
-    // -- SSA
-    pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
-  }
-  else
-  {
-    // -- turn all functions internal so that we can apply some global
-    // -- optimizations inline them if requested
-    pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
-    pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global  
-    //pass_manager.add (new ikos_cc::RemoveUnreachableBlocksPass ());
-    // -- global optimizations
-    pass_manager.add (llvm::createGlobalOptimizerPass());
+  // -- turn all functions internal so that we can apply some global
+  // -- optimizations inline them if requested
+  pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
+  pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global  
+  pass_manager.add (new llvm_ikos::RemoveUnreachableBlocksPass ());
+  // -- global optimizations
+  pass_manager.add (llvm::createGlobalOptimizerPass());
   
-    // -- SSA
-    pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
-    // -- cleanup after SSA
-    //pass_manager.add (llvm::createInstructionCombiningPass ()); // bad for static analysis
-    pass_manager.add (llvm::createCFGSimplificationPass ());
+  // -- SSA
+  pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
+  // -- cleanup after SSA
+  //pass_manager.add (llvm::createInstructionCombiningPass ()); // bad for static analysis
+  pass_manager.add (llvm::createCFGSimplificationPass ());
+  
+  
+  // -- break aggregates
+  pass_manager.add (llvm::createScalarReplAggregatesPass (SROA_Threshold,
+                                                          true,
+                                                          SROA_StructMemThreshold,
+                                                          SROA_ArrayElementThreshold,
+                                                          SROA_ScalarLoadThreshold));
+  // -- global value numbering and redundant load elimination
+  pass_manager.add (llvm::createGVNPass());
+  
+  // -- cleanup after break aggregates
+  //pass_manager.add (llvm::createInstructionCombiningPass ());
+  pass_manager.add (llvm::createCFGSimplificationPass ());
+  
+  // -- lower invoke's
+  pass_manager.add(llvm::createLowerInvokePass());
+  // cleanup after lowering invoke's
+  pass_manager.add (llvm::createCFGSimplificationPass ());  
+  
+  if (InlineAll)
+  {
+    pass_manager.add (new llvm_ikos::MarkInternalInline ());   
+    pass_manager.add (llvm::createAlwaysInlinerPass ());
+    pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global
+  }
+  
+  pass_manager.add (new llvm_ikos::RemoveUnreachableBlocksPass ());
+  pass_manager.add(llvm::createDeadInstEliminationPass());
     
+  // canonical form for loops
+  pass_manager.add (llvm::createLoopSimplifyPass());
+  pass_manager.add (llvm::createCFGSimplificationPass ());  // cleanup unnecessary blocks 
+  // loop-closed SSA 
+  pass_manager.add (llvm::createLCSSAPass());
+  // induction variable
+  // pass_manager.add (new llvm_ikos::IkosIndVarSimplify ());
+  // trivial invariants outside loops 
+  pass_manager.add (llvm::createBasicAliasAnalysisPass());
+  pass_manager.add (llvm::createLICMPass()); //LICM needs alias analysis
+  pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
+  // dead loop elimination
+  pass_manager.add (llvm::createLoopDeletionPass());
+  pass_manager.add (llvm::createCFGSimplificationPass ()); // cleanup unnecessary blocks 
   
-    // -- break aggregates
-    pass_manager.add (llvm::createScalarReplAggregatesPass (SROA_Threshold,
-                                                            true,
-                                                            SROA_StructMemThreshold,
-                                                            SROA_ArrayElementThreshold,
-                                                            SROA_ScalarLoadThreshold));
-    // -- global value numbering and redundant load elimination
-    pass_manager.add (llvm::createGVNPass());
-
-    // -- cleanup after break aggregates
-    //pass_manager.add (llvm::createInstructionCombiningPass ());
-    pass_manager.add (llvm::createCFGSimplificationPass ());
-
-    // -- lower invoke's
-    pass_manager.add(llvm::createLowerInvokePass());
-    // cleanup after lowering invoke's
-    pass_manager.add (llvm::createCFGSimplificationPass ());  
-
-    if (InlineAll)
-    {
-      // pass_manager.add (new ikos_cc::MarkInternalInline ());   
-      pass_manager.add (llvm::createAlwaysInlinerPass ());
-      pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global
-    }
-  
-    //pass_manager.add (new ikos_cc::RemoveUnreachableBlocksPass ());
-    pass_manager.add(llvm::createDeadInstEliminationPass());
-
-    ////
-    // TODO: apply induction variable analysis
-    ////
-
-    // canonical form for loops
-    pass_manager.add (llvm::createLoopSimplifyPass());
-    pass_manager.add (llvm::createCFGSimplificationPass ());  // cleanup unnecessary blocks 
-    // loop-closed SSA 
-    pass_manager.add (llvm::createLCSSAPass());
-    // trivial invariants outside loops 
-    pass_manager.add (llvm::createBasicAliasAnalysisPass());
-    pass_manager.add (llvm::createLICMPass()); //LICM needs alias analysis
-    pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
-    // dead loop elimination
-    pass_manager.add (llvm::createLoopDeletionPass());
-    pass_manager.add (llvm::createCFGSimplificationPass ()); // cleanup unnecessary blocks 
-
-    // -- lower initializers of global variables
-    // pass_manager.add (new ikos_cc::LowerGvInitializers ());   
-
-  }
-
-  ////
-  // -- Here passes needed for correctness and/or avoid crashing the
-  // -- static analyzer
-  ////
+  // -- lower initializers of global variables
+  pass_manager.add (new llvm_ikos::LowerGvInitializers ());   
 
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
@@ -237,18 +222,18 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createGlobalDCEPass ()); 
   pass_manager.add (llvm::createDeadCodeEliminationPass());
   // -- remove unreachable blocks also dead cycles
-  //pass_manager.add (new ikos_cc::RemoveUnreachableBlocksPass ());
+  pass_manager.add (new llvm_ikos::RemoveUnreachableBlocksPass ());
 
   // -- remove switch constructions
   pass_manager.add (llvm::createLowerSwitchPass());
   
   // -- lower constant expressions to instructions
-  //pass_manager.add (new ikos_cc::LowerCstExprPass ());   
+  pass_manager.add (new llvm_ikos::LowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
   // -- must be the last ones:
-  //pass_manager.add (new ikos_cc::LowerSelect ());   
-  //pass_manager.add (new ikos_cc::NameValues ()); 
+  pass_manager.add (new llvm_ikos::LowerSelect ());   
+  pass_manager.add (new llvm_ikos::NameValues ()); 
 
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (&asmOutput->os ()));

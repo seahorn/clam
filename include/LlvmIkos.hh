@@ -19,22 +19,16 @@ namespace llvm_ikos
   using namespace llvm;
   using namespace cfg_impl;
 
+  enum IkosDomain { INTERVALS, CONGRUENCES, REDUCED_INTERVALS_CONGRUENCES, ZONES, OCTAGONS};
+
   class LlvmIkos : public llvm::ModulePass
   {
     typedef llvm::DenseMap< const llvm::BasicBlock *, ZLinearConstraintSystem > invariants_map_t;
 
     bool             m_is_enabled;
     invariants_map_t m_inv_map;
-
-    ZLinearConstraint mkTRUE() const 
-    {
-      return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (1));
-    }
-
-    ZLinearConstraint mkFALSE() const 
-    {
-      return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (0));
-    }
+    IkosDomain       m_absdom;
+    bool             m_runlive;
 
    public:
 
@@ -43,7 +37,9 @@ namespace llvm_ikos
 
     static char ID;        
     
-    LlvmIkos();
+    LlvmIkos (IkosDomain absdom, bool runLive) : 
+        llvm::ModulePass (ID), m_is_enabled(true), 
+        m_absdom (absdom), m_runlive(runLive)  {}
 
     ~LlvmIkos (){ m_inv_map.clear(); }
 
@@ -91,6 +87,16 @@ namespace llvm_ikos
     }
 
    private:
+
+    ZLinearConstraint mkTRUE() const 
+    {
+      return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (1));
+    }
+
+    ZLinearConstraint mkFALSE() const 
+    {
+      return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (0));
+    }
 
     template<typename AbsDomain> 
     bool runOnCfg (cfg_t& cfg, llvm::Function &F, VariableFactory &vfac);
