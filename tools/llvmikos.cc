@@ -48,20 +48,21 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::desc("data layout string to use if not specified by module"),
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
-static llvm::cl::opt<llvm_ikos::IkosDomain>
+enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS };
+static llvm::cl::opt<IkosDomain>
 Domain("ikos-dom",
        llvm::cl::desc ("Ikos abstract domain used to infer invariants"),
        llvm::cl::values (
-           clEnumVal (llvm_ikos::IkosDomain::INTERVALS, 
+           clEnumVal (INTERVALS, 
                       "Classical interval domain (default)"),
-           clEnumVal (llvm_ikos::IkosDomain::REDUCED_INTERVALS_CONGRUENCES, 
+           clEnumVal (INTERVALS_CONGRUENCES, 
                       "Reduced product of intervals with congruences"),
-           clEnumVal (llvm_ikos::IkosDomain::ZONES , 
+           clEnumVal (ZONES , 
                       "Difference-Bounds Matrix (or Zones) domain"),
-           clEnumVal (llvm_ikos::IkosDomain::OCTAGONS, 
+           clEnumVal (OCTAGONS, 
                       "Octagon domain"),
            clEnumValEnd),
-       llvm::cl::init (llvm_ikos::IkosDomain::INTERVALS));
+       llvm::cl::init (INTERVALS));
 
 static llvm::cl::opt<bool>
 RunLive("ikos-live", 
@@ -71,6 +72,16 @@ RunLive("ikos-live",
 static llvm::cl::opt<bool>
 PrintAnswer ("ikos-answer", llvm::cl::desc ("Print invariants"),
              llvm::cl::init (false));
+
+llvm_ikos::IkosDomain Convert (IkosDomain abs)
+{
+  if (abs == INTERVALS) return llvm_ikos::IkosDomain::INTERVALS;
+  else if (abs == INTERVALS_CONGRUENCES)
+    return llvm_ikos::IkosDomain::INTERVALS_CONGRUENCES;
+  else if (abs == ZONES)     return llvm_ikos::IkosDomain::ZONES; 
+  else if (abs == OCTAGONS)  return llvm_ikos::IkosDomain::OCTAGONS;
+  assert(false && "unsupported abstract domain"); 
+}
 
 // removes extension from filename if there is one
 std::string getFileName(const std::string &str) {
@@ -160,7 +171,7 @@ int main(int argc, char **argv) {
   pass_manager.add (new llvm_ikos::LowerSelect ());   
   pass_manager.add (new llvm_ikos::NameValues ()); 
 
-  llvm_ikos::LlvmIkos *llvmIkos = new llvm_ikos::LlvmIkos (Domain, RunLive);
+  llvm_ikos::LlvmIkos *llvmIkos = new llvm_ikos::LlvmIkos (Convert (Domain), RunLive);
   pass_manager.add (llvmIkos);
  
   if (!AsmOutputFilename.empty ()) 

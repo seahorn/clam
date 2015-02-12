@@ -255,13 +255,31 @@ namespace llvm_ikos
           m_bb.add (lhs, *op1, *op2);
           break;
         case BinaryOperator::Sub:
-          m_bb.sub (lhs, *op1, *op2);
+            if ((*op1).is_constant())            
+            { // cfg does not support subtraction of a constant by a
+              // variable because the ikos api for abstract domains
+              // does not support it.
+              m_bb.assign (lhs, ZLinearExpression ((*op1).constant ()));
+              m_bb.sub (lhs, ZLinearExpression (lhs), *op2);
+            }
+            else
+              m_bb.sub (lhs, *op1, *op2);
           break;
         case BinaryOperator::Mul:
           m_bb.mul (lhs, *op1, *op2);
           break;
         case BinaryOperator::SDiv:
-          m_bb.div (lhs, *op1, *op2);
+          {
+            if ((*op1).is_constant())            
+            { // cfg does not support division of a constant by a
+              // variable because the ikos api for abstract domains
+              // does not support it.
+              m_bb.assign (lhs, ZLinearExpression ((*op1).constant ()));
+              m_bb.div (lhs, ZLinearExpression (lhs), *op2);
+            }
+            else
+              m_bb.div (lhs, *op1, *op2);
+          }
           break;
         case BinaryOperator::Shl:
           if ((*op2).is_constant())

@@ -1,17 +1,3 @@
-// #include "avy/AvyDebug.h"
-// #include "seahorn/SymStore.hh"
-// #include "seahorn/SymExec.hh"
-// #include "seahorn/Support/CFG.hh"
-// #include "seahorn/LiveSymbols.hh"
-// #include "seahorn/Ikos/Ikos.hh"
-// #include "seahorn/Ikos/Ikos_Common.hh"
-// #include "seahorn/Ikos/Ikos_Analyzer.hh"
-// #include "seahorn/Ikos/Ikos_Domains.hh"
-// #include "seahorn/Ikos/Ikos_Transformations.hh"
-// #include "seahorn/BoostLlvmGraphTraits.hh"
-
-// #include "seahorn/HornifyFunction.hh"
-
 #include "llvm/Pass.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
@@ -24,13 +10,10 @@
 
 #include "include/CfgBuilder.hh"
 #include "include/LlvmIkos.hh"
-
-//#include "ufo/Passes/NameValues.hpp"
+#include "include/Support/AbstractDomains.hh"
 
 #include "boost/range.hpp"
 #include "boost/scoped_ptr.hpp"
-
-//#include "ufo/Stats.hh"
 
 #include <ikos_analysis/FwdAnalyzer.hpp>
 #include <ikos_domains/intervals.hpp>                      
@@ -52,7 +35,6 @@ namespace domain_impl
   typedef octagon< z_number, varname_t >                     octagon_domain_t;
 
 } // end namespace
-
 
 namespace llvm_ikos
 {
@@ -79,21 +61,23 @@ namespace llvm_ikos
 
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
     cfg_t cfg = CfgBuilder (F, vfac)();
+    errs () << cfg << "\n";
     //LOG ("ikos-cfg", errs () << cfg << "\n");    
 
     bool change=false;
     switch (m_absdom)
     {
       case INTERVALS: 
-        change = runOnCfg<interval_domain_t> (cfg, F, vfac); break;
-      case REDUCED_INTERVALS_CONGRUENCES: 
-        change = runOnCfg<interval_congruence_domain_t> (cfg, F, vfac); break;
+        change = runOnCfg <interval_domain_t> (cfg, F, vfac); break;
+      case INTERVALS_CONGRUENCES: 
+        change = runOnCfg <interval_congruence_domain_t> (cfg, F, vfac); break;
       case ZONES: 
-        change = runOnCfg<dbm_domain_t> (cfg, F, vfac); break;
+        change = runOnCfg <dbm_domain_t> (cfg, F, vfac); break;
       case OCTAGONS: 
-        change = runOnCfg<octagon_domain_t> (cfg, F, vfac); break;
+        change = runOnCfg <octagon_domain_t> (cfg, F, vfac); break;
       default: assert(false && "Unsupported abstract domain");
     }
+
     // LOG ("ikos-verbose", errs () << "Ikos is done!\n");
     return change;
   }
@@ -124,4 +108,21 @@ namespace llvm_ikos
     return false;
   }
 
+  void LlvmIkos::dump (llvm::Module &M) const
+  {
+    for (auto &F : M)
+    {
+      if (F.isDeclaration () || F.empty ()) continue;
+      
+        errs () << "\nFunction " << F.getName () << "\n";
+        for (auto &B : F)
+        {
+          const llvm::BasicBlock * BB = &B;
+          errs () << "\t" << BB->getName () << ": ";
+          auto inv = this->operator[] (BB);
+          errs () << inv << "\n";
+        }
+        errs () <<  "\n";
+    }
+  }
 }

@@ -19,7 +19,7 @@ namespace llvm_ikos
   using namespace llvm;
   using namespace cfg_impl;
 
-  enum IkosDomain { INTERVALS, CONGRUENCES, REDUCED_INTERVALS_CONGRUENCES, ZONES, OCTAGONS};
+  enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS};
 
   class LlvmIkos : public llvm::ModulePass
   {
@@ -69,22 +69,7 @@ namespace llvm_ikos
     bool IsEnabled() const 
     { return m_is_enabled; }
 
-    void dump (llvm::Module &M) const
-    {
-      for (auto &F : M)
-      {
-        if (F.isDeclaration () || F.empty ()) continue;
-
-        errs () << "\nFunction " << F.getName () << "\n";
-        for (auto &B : F)
-        {
-          const llvm::BasicBlock * BB = &B;
-          errs () << "\t" << BB->getName () << ": ";
-          auto inv = this->operator[] (BB);
-          std::cout  << inv << "\n";
-        }
-      }
-    }
+    void dump (llvm::Module &M) const;
 
    private:
 

@@ -23,6 +23,7 @@ namespace cfg
   {
     namespace indexed_string_impl 
     {
+      // To print variable names
       template<> inline std::string get_str(const llvm::Value *v) 
       {return v->getName().str();}
     } 
@@ -33,6 +34,11 @@ namespace cfg_impl
 {
   using namespace cfg;
 
+  // To print basic block labels
+  template<> inline std::string get_label_str(llvm::BasicBlock *B) 
+  { return B->getName (); }
+
+  // Variable factory from llvm::Value's
   class LlvmVariableFactory : public boost::noncopyable  
   {
     typedef var_factory_impl::VariableFactory< const llvm::Value* > LlvmVariableFactory_t;
@@ -51,7 +57,6 @@ namespace cfg_impl
     }
   }; 
 
-  // A variable factory based on llvm values
   typedef LlvmVariableFactory VariableFactory;
   typedef typename VariableFactory::varname_t varname_t;
 
@@ -66,6 +71,15 @@ namespace cfg_impl
 
 } // end namespace cfg_impl
 
+namespace{
+  llvm::raw_ostream& operator<< (llvm::raw_ostream& o, cfg_impl::cfg_t cfg)
+  {
+    std::ostringstream s;
+    s << cfg;
+    o << s.str ();
+    return o;
+  }
+}
 
 namespace llvm_ikos
 {

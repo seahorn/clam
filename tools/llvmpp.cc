@@ -69,16 +69,6 @@ SROA_ScalarLoadThreshold ("sroa-scalar-load",
                           llvm::cl::desc ("Scalar load threshold for ScalarReplAggregates"),
                           llvm::cl::init (-1));
 
-enum PPLevel { simple, full };
-static llvm::cl::opt<PPLevel> 
-PPLevel("pp-level", 
-        llvm::cl::desc("Choose preprocessing level:"),
-        llvm::cl::values(
-            clEnumVal(simple  , "Only passes required for analysis correctness"),
-            clEnumVal(full    , "Enable all optimizations"),
-            clEnumValEnd),
-        llvm::cl::init(full));
-
 // removes extension from filename if there is one
 std::string getFileName(const std::string &str) {
   std::string filename = str;
@@ -91,7 +81,7 @@ std::string getFileName(const std::string &str) {
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;  // calls llvm_shutdown() on exit
   llvm::cl::ParseCommandLineOptions(argc, argv,
-                                    "PP-- LLVM bitcode Pre-Processor for Static Analysis\n");
+                                    "llvmpp-- LLVM bitcode Pre-Processor for static analysis\n");
 
   llvm::sys::PrintStackTraceOnErrorSignal();
   llvm::PrettyStackTraceProgram PSTP(argc, argv);
