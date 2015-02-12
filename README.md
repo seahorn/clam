@@ -12,7 +12,7 @@ developed at NASA Ames) from LLVM-based languages.
 
 - This projects uses another project Ikos-core which is currently
 private. Although this will change soon, for being able to download
-ikos-core you need (a) give permissions, and (b) to generate a RSA ID
+ikos-core you need to (a) be given permissions, and (b)  generate a RSA ID
 in order to use ssh with bitbucket without being prompting with your
 bitbucket password. To create your own RSA ID follow this link:
 `
@@ -34,11 +34,11 @@ mkdir build && cd build  && cmake -G Ninja ../
 
 - `llvmpp file.bc -o file.pp.bc` (optional)
 
-- `llvmikos file.pp.bc -ikos-domain=ZONES` -ikos-answer
+- `llvmikos file.pp.bc -ikos-domain=ZONES -ikos-answer`
 
 
 #People#
 
-* [Arie Gurfinkel](arieg.bitbucket.org)
 * [Jorge Navas](http://ti.arc.nasa.gov/profile/jorge/)
+* [Arie Gurfinkel](arieg.bitbucket.org)
 * [Temesghen Kahsai](http://www.lememta.info/)
