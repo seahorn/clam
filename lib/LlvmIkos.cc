@@ -8,8 +8,8 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 
-#include "include/CfgBuilder.hh"
-#include "include/LlvmIkos.hh"
+#include "include/ikos/CfgBuilder.hh"
+#include "include/ikos/LlvmIkos.hh"
 #include "include/Support/AbstractDomains.hh"
 
 #include "boost/range.hpp"
@@ -42,13 +42,19 @@ namespace llvm_ikos
   using namespace analyzer;
   using namespace domain_impl;
 
-  char LlvmIkos::ID = 0;
+  LlvmIkos::LlvmIkos (IkosDomain absdom, bool runLive) : 
+      llvm::ModulePass (ID), m_absdom (absdom), m_runlive(runLive)  
+  { }
 
   bool LlvmIkos::runOnModule (llvm::Module &M)
   {
     //LOG ( "ikos-verbose" , errs () << "IKOS: Processing a module\n");
+
     bool change=false;
-    for (auto &f : M) { change |= runOnFunction (f); }
+
+    for (auto &f : M) 
+    {change |= runOnFunction (f); }
+
     return change;
   }
 
@@ -68,13 +74,17 @@ namespace llvm_ikos
     switch (m_absdom)
     {
       case INTERVALS: 
-        change = runOnCfg <interval_domain_t> (cfg, F, vfac); break;
+        change = runOnCfg <interval_domain_t> (cfg, F, vfac); 
+        break;
       case INTERVALS_CONGRUENCES: 
-        change = runOnCfg <interval_congruence_domain_t> (cfg, F, vfac); break;
+        change = runOnCfg <interval_congruence_domain_t> (cfg, F, vfac); 
+        break;
       case ZONES: 
-        change = runOnCfg <dbm_domain_t> (cfg, F, vfac); break;
+        change = runOnCfg <dbm_domain_t> (cfg, F, vfac); 
+        break;
       case OCTAGONS: 
-        change = runOnCfg <octagon_domain_t> (cfg, F, vfac); break;
+        change = runOnCfg <octagon_domain_t> (cfg, F, vfac); 
+        break;
       default: assert(false && "Unsupported abstract domain");
     }
 
@@ -102,7 +112,6 @@ namespace llvm_ikos
       //  m_inv_map.insert (make_pair (BB, mkFALSE ()));
       else
         m_inv_map.insert (make_pair (BB, mkTRUE ()));
-
     }
 
     return false;
@@ -125,4 +134,17 @@ namespace llvm_ikos
         errs () <<  "\n";
     }
   }
+} // end namespace llvm_ikos
+
+
+char llvm_ikos::LlvmIkos::ID = 0;
+
+static llvm::RegisterPass<llvm_ikos::LlvmIkos> 
+X ("llvm-ikos",
+   "Infer invariants using Ikos", false, true);
+
+ModulePass * llvm_ikos::createLlvmIkosPass (IkosDomain absdomain, bool runLive)
+{
+  return new llvm_ikos::LlvmIkos (absdomain, runLive);
 }
+

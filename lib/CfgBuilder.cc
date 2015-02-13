@@ -1,7 +1,7 @@
 
 /* Translate a LLVM function to a custom CFG. */
 
-#include "include/CfgBuilder.hh"
+#include "include/ikos/CfgBuilder.hh"
 #include "include/Support/CFG.hh"
 #include "include/Support/bignums.hh"
 

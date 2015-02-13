@@ -11,7 +11,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
 #include "boost/optional.hpp"
-#include "include/CfgBuilder.hh"
+#include "include/ikos/CfgBuilder.hh"
 
 namespace llvm_ikos
 {
@@ -25,7 +25,6 @@ namespace llvm_ikos
   {
     typedef llvm::DenseMap< const llvm::BasicBlock *, ZLinearConstraintSystem > invariants_map_t;
 
-    bool             m_is_enabled;
     invariants_map_t m_inv_map;
     IkosDomain       m_absdom;
     bool             m_runlive;
@@ -37,13 +36,14 @@ namespace llvm_ikos
 
     static char ID;        
     
-    LlvmIkos (IkosDomain absdom, bool runLive) : 
-        llvm::ModulePass (ID), m_is_enabled(true), 
-        m_absdom (absdom), m_runlive(runLive)  {}
+    LlvmIkos (IkosDomain absdom = INTERVALS, bool runLive = false);
 
     ~LlvmIkos (){ m_inv_map.clear(); }
 
-    virtual void getAnalysisUsage (llvm::AnalysisUsage &AU){ }
+    virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const 
+    {
+      AU.setPreservesCFG();
+    }
 
     virtual bool runOnModule (llvm::Module& M);
 
@@ -66,9 +66,6 @@ namespace llvm_ikos
       else return it->second;        
     }
 
-    bool IsEnabled() const 
-    { return m_is_enabled; }
-
     void dump (llvm::Module &M) const;
 
    private:
@@ -87,6 +84,9 @@ namespace llvm_ikos
     bool runOnCfg (cfg_t& cfg, llvm::Function &F, VariableFactory &vfac);
 
   };
-}
+
+  ModulePass * createLlvmIkosPass (IkosDomain absdomain, bool runLive);
+
+} // end namespace llvm_ikos
 
 #endif

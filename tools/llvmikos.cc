@@ -19,7 +19,7 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Analysis/Verifier.h"
 
-#include "include/LlvmIkos.hh"
+#include "include/ikos/LlvmIkos.hh"
 
 #include <include/Transforms/LowerGvInitializers.hh>
 #include <include/Transforms/NameValues.hh>
@@ -78,8 +78,8 @@ llvm_ikos::IkosDomain Convert (IkosDomain abs)
   if (abs == INTERVALS) return llvm_ikos::IkosDomain::INTERVALS;
   else if (abs == INTERVALS_CONGRUENCES)
     return llvm_ikos::IkosDomain::INTERVALS_CONGRUENCES;
-  else if (abs == ZONES)     return llvm_ikos::IkosDomain::ZONES; 
-  else if (abs == OCTAGONS)  return llvm_ikos::IkosDomain::OCTAGONS;
+  else if (abs == ZONES) return llvm_ikos::IkosDomain::ZONES; 
+  else if (abs == OCTAGONS) return llvm_ikos::IkosDomain::OCTAGONS;
   assert(false && "unsupported abstract domain"); 
 }
 

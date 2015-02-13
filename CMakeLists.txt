@@ -33,7 +33,7 @@ endif ()
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
 
-set (IKOS_TAG "newcfg" CACHE STRING "Ikos git tag to use")
+set (IKOS_TAG "master" CACHE STRING "Ikos git tag to use")
 
 ExternalProject_Add(ikos
   GIT_REPOSITORY https://bitbucket.org/jorgenavas/ikos-core.git

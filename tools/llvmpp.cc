@@ -19,7 +19,6 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Analysis/Verifier.h"
 
-#include <include/LlvmIkos.hh>
 #include <include/Transforms/IkosIndVarSimplify.hh>
 #include <include/Transforms/LowerGvInitializers.hh>
 #include <include/Transforms/NameValues.hh>
