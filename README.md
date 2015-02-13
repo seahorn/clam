@@ -35,6 +35,7 @@ We are using currently `LLVM 3.2` so the version of `clang`must be compatible wi
 Note that we can also use `gcc` together with `DragonEgg`.
 
 Then, we can optionally run the preprocessor on the generated bitecode:
+
 - `llvmpp file.bc -o file.pp.bc` 
 
 The preprocessor can also inline all functions to provide context-sensitivity:
