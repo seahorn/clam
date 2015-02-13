@@ -138,3 +138,7 @@ endif ()
 add_subdirectory(lib)
 add_subdirectory(tools)
 
+install(DIRECTORY include/ikos
+  DESTINATION include/llvm_ikos
+  )
+

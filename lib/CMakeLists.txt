@@ -1,6 +1,4 @@
-add_llvm_library (LlvmIkosPasses
-  CfgBuilder.cc
-  LlvmIkos.cc
+add_llvm_library (LlvmPasses
   IkosIndVarSimplify.cc
   LowerCstExpr.cc
   LowerGvInitializers.cc
@@ -10,5 +8,14 @@ add_llvm_library (LlvmIkosPasses
   MarkInternalInline.cc
   )
 
+target_link_libraries (LlvmPasses)
+
+add_library (LlvmIkosPasses SHARED
+  CfgBuilder.cc
+  LlvmIkos.cc
+  )
+
 target_link_libraries (LlvmIkosPasses dbm z)
+
+install(TARGETS LlvmIkosPasses LIBRARY DESTINATION lib)
 

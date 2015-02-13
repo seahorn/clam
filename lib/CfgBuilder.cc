@@ -2,8 +2,8 @@
 /* Translate a LLVM function to a custom CFG. */
 
 #include "include/ikos/CfgBuilder.hh"
-#include "include/Support/CFG.hh"
-#include "include/Support/bignums.hh"
+#include "include/ikos/Support/CFG.hh"
+#include "include/ikos/Support/bignums.hh"
 
 #include "llvm/InstVisitor.h"
 #include "llvm/Support/Debug.h"

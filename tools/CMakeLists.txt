@@ -2,7 +2,6 @@ add_definitions(-D__STDC_CONSTANT_MACROS)
 add_definitions(-D__STDC_LIMIT_MACROS)
 
 set (USED_LIBS 
-  LlvmIkosPasses
   ${Boost_SYSTEM_LIBRARY}
   ${GMPXX_LIB}
   ${GMP_LIB}
@@ -11,13 +10,13 @@ set (USED_LIBS
 set(LLVM_LINK_COMPONENTS irreader bitwriter ipo scalaropts instrumentation core)
 
 add_executable(llvmpp llvmpp.cc)
-target_link_libraries (llvmpp ${USED_LIBS})
+target_link_libraries (llvmpp LlvmPasses ${USED_LIBS})
 llvm_config (llvmpp ${LLVM_LINK_COMPONENTS})
 link_system_libs (llvmpp)
 install(TARGETS llvmpp RUNTIME DESTINATION bin)
 
 add_executable(llvmikos llvmikos.cc)
-target_link_libraries (llvmikos ${USED_LIBS})
+target_link_libraries (llvmikos LlvmIkosPasses LlvmPasses ${USED_LIBS})
 llvm_config (llvmikos ${LLVM_LINK_COMPONENTS})
 link_system_libs (llvmikos)
 install(TARGETS llvmikos RUNTIME DESTINATION bin)

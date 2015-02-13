@@ -10,7 +10,7 @@
 
 #include "include/ikos/CfgBuilder.hh"
 #include "include/ikos/LlvmIkos.hh"
-#include "include/Support/AbstractDomains.hh"
+#include "include/ikos/Support/AbstractDomains.hh"
 
 #include "boost/range.hpp"
 #include "boost/scoped_ptr.hpp"
