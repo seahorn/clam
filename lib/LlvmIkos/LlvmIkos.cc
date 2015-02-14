@@ -8,9 +8,9 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 
-#include "include/ikos/CfgBuilder.hh"
-#include "include/ikos/LlvmIkos.hh"
-#include "include/ikos/Support/AbstractDomains.hh"
+#include "ikos/CfgBuilder.hh"
+#include "ikos/LlvmIkos.hh"
+#include "ikos/Support/AbstractDomains.hh"
 
 #include "boost/range.hpp"
 #include "boost/scoped_ptr.hpp"

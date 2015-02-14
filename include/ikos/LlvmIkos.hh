@@ -11,7 +11,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
 #include "boost/optional.hpp"
-#include "include/ikos/CfgBuilder.hh"
+#include "ikos/CfgBuilder.hh"
 
 namespace llvm_ikos
 {
