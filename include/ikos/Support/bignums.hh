@@ -8,7 +8,7 @@ namespace llvm_ikos
 {
   using namespace ikos;
 
-  std::string toStr (z_number n)
+  inline std::string toStr (z_number n)
   {
     std::ostringstream s;
     s << n;
