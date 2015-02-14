@@ -3,7 +3,7 @@ add_library (LlvmIkosPasses STATIC
   LlvmIkos.cc
   )
 
-target_link_libraries (LlvmIkosPasses dbm z)
+target_link_libraries (LlvmIkosPasses ${IKOS_DBM_LIB} z)
 
 install(TARGETS LlvmIkosPasses ARCHIVE DESTINATION lib)
 
