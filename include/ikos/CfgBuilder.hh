@@ -72,7 +72,7 @@ namespace cfg_impl
 } // end namespace cfg_impl
 
 namespace{
-  llvm::raw_ostream& operator<< (llvm::raw_ostream& o, cfg_impl::cfg_t cfg)
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, cfg_impl::cfg_t cfg)
   {
     std::ostringstream s;
     s << cfg;
