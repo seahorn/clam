@@ -14,8 +14,8 @@ namespace
   using namespace std;
 
   template <typename Number, typename VariableName>
-  llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                 ikos::linear_expression<Number,VariableName>& e)
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        ikos::linear_expression<Number,VariableName>& e)
   {
     ostringstream s;
     s << e;
@@ -25,8 +25,8 @@ namespace
 
 
   template <typename Number, typename VariableName>
-  llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                 ikos::linear_constraint<Number,VariableName>& cst)
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        ikos::linear_constraint<Number,VariableName>& cst)
   {
     ostringstream s;
     s << cst;
@@ -35,8 +35,8 @@ namespace
   }
 
   template <typename Number, typename VariableName>
-  llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                 ikos::linear_constraint_system<Number,VariableName>& csts)
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        ikos::linear_constraint_system<Number,VariableName>& csts)
   {
     ostringstream s;
     s << csts;
@@ -45,8 +45,8 @@ namespace
   }
 
   template <typename Number, typename VariableName>
-  llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                 ikos::interval_domain<Number,VariableName>& inv)
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        ikos::interval_domain<Number,VariableName>& inv)
   {
     ostringstream s;
     s << inv;
@@ -55,8 +55,8 @@ namespace
   }
 
   template <typename Number, typename VariableName>
-  llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                 ikos::interval_congruence_domain<Number,VariableName>& inv)
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        ikos::interval_congruence_domain<Number,VariableName>& inv)
   {
     ostringstream s;
     s << inv;
@@ -65,7 +65,7 @@ namespace
   }
 
   template <typename Number, typename VariableName>
-  llvm::raw_ostream& operator<< (llvm::raw_ostream& o, ikos::DBM<Number,VariableName>& inv)
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, ikos::DBM<Number,VariableName>& inv)
   {
     ostringstream s;
     s << inv;
@@ -74,7 +74,7 @@ namespace
   }
 
   template <typename Number, typename VariableName>
-  llvm::raw_ostream& operator<< (llvm::raw_ostream& o, ikos::octagon<Number,VariableName>& inv)
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, ikos::octagon<Number,VariableName>& inv)
   {
     ostringstream s;
     s << inv;
