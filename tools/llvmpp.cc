@@ -19,13 +19,13 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Analysis/Verifier.h"
 
-#include <include/Transforms/IkosIndVarSimplify.hh>
-#include <include/Transforms/LowerGvInitializers.hh>
-#include <include/Transforms/NameValues.hh>
-#include <include/Transforms/MarkInternalInline.hh>
-#include <include/Transforms/LowerCstExpr.hh>
-#include <include/Transforms/LowerSelect.hh>
-#include <include/Transforms/RemoveUnreachableBlocksPass.hh>
+#include <Transforms/IkosIndVarSimplify.hh>
+#include <Transforms/LowerGvInitializers.hh>
+#include <Transforms/NameValues.hh>
+#include <Transforms/MarkInternalInline.hh>
+#include <Transforms/LowerCstExpr.hh>
+#include <Transforms/LowerSelect.hh>
+#include <Transforms/RemoveUnreachableBlocksPass.hh>
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),

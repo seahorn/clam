@@ -1,4 +1,4 @@
-#include "include/Transforms/IkosIndVarSimplify.hh"
+#include "Transforms/IkosIndVarSimplify.hh"
 
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/DenseMap.h"
