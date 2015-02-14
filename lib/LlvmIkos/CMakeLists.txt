@@ -1,10 +1,10 @@
-add_library (LlvmIkosPasses SHARED
+add_library (LlvmIkosPasses STATIC
   CfgBuilder.cc
   LlvmIkos.cc
   )
 
 target_link_libraries (LlvmIkosPasses dbm z)
 
-install(TARGETS LlvmIkosPasses LIBRARY DESTINATION lib)
+install(TARGETS LlvmIkosPasses ARCHIVE DESTINATION lib)
 
 
