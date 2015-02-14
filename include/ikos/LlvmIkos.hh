@@ -14,13 +14,14 @@
 
 #include "ikos/CfgBuilder.hh"
 
+namespace
+{enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS};}
+
 namespace llvm_ikos
 {
 
   using namespace llvm;
   using namespace cfg_impl;
-
-  enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS};
 
   class LlvmIkos : public llvm::ModulePass
   {
