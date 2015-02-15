@@ -67,7 +67,7 @@ namespace llvm_ikos
 
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
     cfg_t cfg = CfgBuilder (F, vfac)();
-    errs () << cfg << "\n";
+    // errs () << cfg << "\n";
     //LOG ("ikos-cfg", errs () << cfg << "\n");    
 
     bool change=false;
