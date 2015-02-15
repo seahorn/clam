@@ -43,6 +43,8 @@ namespace llvm_ikos
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const 
     {AU.setPreservesAll ();}
 
+    virtual void releaseMemory () {m_inv_map.clear ();}
+    
     virtual bool runOnModule (llvm::Module& M);
 
     virtual bool runOnFunction (llvm::Function &F);
