@@ -68,10 +68,6 @@ RunLive("ikos-live",
         llvm::cl::desc("Run Ikos with live ranges"),
         llvm::cl::init (false));
 
-static llvm::cl::opt<bool>
-PrintAnswer ("ikos-answer", llvm::cl::desc ("Print invariants"),
-             llvm::cl::init (false));
-
 // removes extension from filename if there is one
 std::string getFileName(const std::string &str) {
   std::string filename = str;
@@ -160,8 +156,7 @@ int main(int argc, char **argv) {
   pass_manager.add (new llvm_ikos::LowerSelect ());   
   pass_manager.add (new llvm_ikos::NameValues ()); 
 
-  llvm_ikos::LlvmIkos *llvmIkos = new llvm_ikos::LlvmIkos (Domain, RunLive);
-  pass_manager.add (llvmIkos);
+  pass_manager.add (new llvm_ikos::LlvmIkos (Domain, RunLive));
  
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (&asmOutput->os ()));
@@ -176,7 +171,6 @@ int main(int argc, char **argv) {
   
   pass_manager.run(*module.get());
 
-  if (PrintAnswer) llvmIkos->dump (*module.get ());
   if (!AsmOutputFilename.empty ()) asmOutput->keep ();
   if (!OutputFilename.empty ()) output->keep();
 

@@ -23,6 +23,10 @@
 
 using namespace llvm;
 
+static llvm::cl::opt<bool>
+PrintAnswer ("ikos-answer", llvm::cl::desc ("Print Ikos invariants"),
+             llvm::cl::init (false));
+
 namespace domain_impl
 {
   using namespace cfg_impl;
@@ -46,13 +50,12 @@ namespace llvm_ikos
 
   bool LlvmIkos::runOnModule (llvm::Module &M)
   {
-    //LOG ( "ikos-verbose" , errs () << "IKOS: Processing a module\n");
-
     bool change=false;
 
     for (auto &f : M) 
     {change |= runOnFunction (f); }
 
+    if (PrintAnswer) dump (M);
     return change;
   }
 
@@ -97,6 +100,7 @@ namespace llvm_ikos
 
     analyzer.Run (AbsDomain::top());
 
+    
     //LOG ("ikos-verbose", errs () << analyzer << "\n");
     for (auto &B : F)
     {
@@ -105,15 +109,13 @@ namespace llvm_ikos
       const llvm::BasicBlock *BB = &B;
       if (csts)
         m_inv_map.insert (make_pair (BB, *csts));
-      //else
-      //  m_inv_map.insert (make_pair (BB, mkFALSE ()));
       else
         m_inv_map.insert (make_pair (BB, mkTRUE ()));
     }
-
     return false;
   }
 
+  // Write to standard output the invariants 
   void LlvmIkos::dump (llvm::Module &M) const
   {
     for (auto &F : M)

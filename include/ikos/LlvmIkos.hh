@@ -62,13 +62,8 @@ namespace llvm_ikos
     ZLinearConstraintSystem operator[] (const llvm::BasicBlock *BB) const
     {
       const_iterator it = m_inv_map.find (BB);
-      if (it == m_inv_map.end())
-      { 
-        ZLinearConstraintSystem tt;
-        tt += mkTRUE ();
-        return tt;
-      }
-      else return it->second;        
+      assert (it != m_inv_map.end ());
+      return it->second;
     }
 
     void dump (llvm::Module &M) const;
@@ -76,14 +71,10 @@ namespace llvm_ikos
    private:
 
     ZLinearConstraint mkTRUE() const 
-    {
-      return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (1));
-    }
+    { return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (1)); }
 
     ZLinearConstraint mkFALSE() const 
-    {
-      return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (0));
-    }
+    { return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (0)); }
 
     template<typename AbsDomain> 
     bool runOnCfg (cfg_t& cfg, llvm::Function &F, VariableFactory &vfac);
