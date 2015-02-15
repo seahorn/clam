@@ -1,10 +1,10 @@
-# Llvm-Ikos #
+# Ikos-llvm#
 
-Llvm-Ikos is a simple and customizable static analyzer that computes inductive invariants
+Ikos-llvm is a static analyzer that computes inductive invariants
 using Ikos (a library of abstract domains and fixpoint algorithms
 developed at NASA Ames) from LLVM-based languages.
 
-Llvm-Ikos provides two standalone tools: `llvmpp` and `llvmikos`:
+Ikos-llvm provides two standalone tools: `llvmpp` and `llvmikos`:
 
 - `llvmpp`: is a LLVM bytecode preprocessor that applies optimizations to make easier
 the task of static analysis. 
