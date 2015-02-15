@@ -41,9 +41,7 @@ namespace llvm_ikos
     ~LlvmIkos (){ m_inv_map.clear(); }
 
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const 
-    {
-      AU.setPreservesCFG();
-    }
+    {AU.setPreservesAll ();}
 
     virtual bool runOnModule (llvm::Module& M);
 
