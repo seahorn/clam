@@ -2,24 +2,26 @@
 #define __LLVM_IKOS_HPP_
 
 /* 
- * Compute invariants for each basic block using a numerical abstract
- * domain.
+ * Infer invariants using Ikos.
  */
 
 #include "llvm/Pass.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
+
 #include "boost/optional.hpp"
+
 #include "ikos/CfgBuilder.hh"
+
+namespace
+{enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS};}
 
 namespace llvm_ikos
 {
 
   using namespace llvm;
   using namespace cfg_impl;
-
-  enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS};
 
   class LlvmIkos : public llvm::ModulePass
   {
@@ -36,9 +38,12 @@ namespace llvm_ikos
 
     static char ID;        
     
-    LlvmIkos (IkosDomain absdom = INTERVALS, bool runLive = false);
+    LlvmIkos (IkosDomain absdom = INTERVALS, bool runLive = false):
+        llvm::ModulePass (ID), m_absdom (absdom), m_runlive(runLive)  
+    { }
 
-    ~LlvmIkos (){ m_inv_map.clear(); }
+    ~LlvmIkos ()
+    { m_inv_map.clear(); }
 
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const 
     {AU.setPreservesAll ();}
@@ -84,8 +89,6 @@ namespace llvm_ikos
     bool runOnCfg (cfg_t& cfg, llvm::Function &F, VariableFactory &vfac);
 
   };
-
-  ModulePass * createLlvmIkosPass (IkosDomain absdomain, bool runLive);
 
 } // end namespace llvm_ikos
 

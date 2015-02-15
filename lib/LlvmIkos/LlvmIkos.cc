@@ -42,9 +42,7 @@ namespace llvm_ikos
   using namespace analyzer;
   using namespace domain_impl;
 
-  LlvmIkos::LlvmIkos (IkosDomain absdom, bool runLive) : 
-      llvm::ModulePass (ID), m_absdom (absdom), m_runlive(runLive)  
-  { }
+  char llvm_ikos::LlvmIkos::ID = 0;
 
   bool LlvmIkos::runOnModule (llvm::Module &M)
   {
@@ -67,7 +65,6 @@ namespace llvm_ikos
 
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
     cfg_t cfg = CfgBuilder (F, vfac)();
-    // errs () << cfg << "\n";
     //LOG ("ikos-cfg", errs () << cfg << "\n");    
 
     bool change=false;
@@ -137,14 +134,10 @@ namespace llvm_ikos
 } // end namespace llvm_ikos
 
 
-char llvm_ikos::LlvmIkos::ID = 0;
+
 
 static llvm::RegisterPass<llvm_ikos::LlvmIkos> 
 X ("llvm-ikos",
-   "Infer invariants using Ikos", false, true);
+   "Infer invariants using Ikos", false, false);
 
-ModulePass * llvm_ikos::createLlvmIkosPass (IkosDomain absdomain, bool runLive)
-{
-  return new llvm_ikos::LlvmIkos (absdomain, runLive);
-}
 
