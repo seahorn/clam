@@ -48,20 +48,20 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::desc("data layout string to use if not specified by module"),
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
-static llvm::cl::opt<IkosDomain>
+static llvm::cl::opt<llvm_ikos::IkosDomain>
 Domain("ikos-dom",
        llvm::cl::desc ("Ikos abstract domain used to infer invariants"),
        llvm::cl::values (
-           clEnumVal (INTERVALS, 
+           clEnumVal (llvm_ikos::INTERVALS, 
                       "Classical interval domain (default)"),
-           clEnumVal (INTERVALS_CONGRUENCES, 
+           clEnumVal (llvm_ikos::INTERVALS_CONGRUENCES, 
                       "Reduced product of intervals with congruences"),
-           clEnumVal (ZONES , 
+           clEnumVal (llvm_ikos::ZONES , 
                       "Difference-Bounds Matrix (or Zones) domain"),
-           clEnumVal (OCTAGONS, 
+           clEnumVal (llvm_ikos::OCTAGONS, 
                       "Octagon domain"),
            clEnumValEnd),
-       llvm::cl::init (INTERVALS));
+       llvm::cl::init (llvm_ikos::INTERVALS));
 
 static llvm::cl::opt<bool>
 RunLive("ikos-live", 
