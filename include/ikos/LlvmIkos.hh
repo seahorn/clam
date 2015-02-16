@@ -38,8 +38,7 @@ namespace llvm_ikos
 
     static char ID;        
     
-    LlvmIkos (IkosDomain absdom = INTERVALS, bool runLive = false):
-        llvm::ModulePass (ID), m_absdom (absdom), m_runlive(runLive)  
+    LlvmIkos (): llvm::ModulePass (ID), m_absdom (INTERVALS), m_runlive(false)  
     { }
 
     ~LlvmIkos ()

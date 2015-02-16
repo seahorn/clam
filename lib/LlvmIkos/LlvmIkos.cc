@@ -27,6 +27,27 @@ static llvm::cl::opt<bool>
 PrintAnswer ("ikos-answer", llvm::cl::desc ("Print Ikos invariants"),
              llvm::cl::init (false));
 
+using namespace llvm_ikos;
+static llvm::cl::opt<IkosDomain>
+Domain("ikos-dom",
+       llvm::cl::desc ("Ikos abstract domain used to infer invariants"),
+       llvm::cl::values 
+       (clEnumValN (INTERVALS, "int",
+                    "Classical interval domain (default)"),
+        clEnumValN (INTERVALS_CONGRUENCES, "cong",
+                    "Reduced product of intervals with congruences"),
+        clEnumValN (ZONES , "zones",
+                    "Difference-Bounds Matrix (or Zones) domain"),
+        clEnumValN (OCTAGONS, "oct",
+                   "Octagon domain"),
+        clEnumValEnd),
+       llvm::cl::init (INTERVALS));
+
+static llvm::cl::opt<bool>
+RunLive("ikos-live", 
+        llvm::cl::desc("Run Ikos with live ranges"),
+        llvm::cl::init (false));
+
 namespace domain_impl
 {
   using namespace cfg_impl;
@@ -50,6 +71,10 @@ namespace llvm_ikos
 
   bool LlvmIkos::runOnModule (llvm::Module &M)
   {
+    // -- initialize from cli options
+    m_absdom = Domain;
+    m_runlive = RunLive;
+    
     bool change=false;
 
     for (auto &f : M) 

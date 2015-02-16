@@ -49,25 +49,6 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
 using namespace llvm_ikos;
-static llvm::cl::opt<IkosDomain>
-Domain("ikos-dom",
-       llvm::cl::desc ("Ikos abstract domain used to infer invariants"),
-       llvm::cl::values (
-           clEnumVal (INTERVALS, 
-                      "Classical interval domain (default)"),
-           clEnumVal (INTERVALS_CONGRUENCES, 
-                      "Reduced product of intervals with congruences"),
-           clEnumVal (ZONES , 
-                      "Difference-Bounds Matrix (or Zones) domain"),
-           clEnumVal (OCTAGONS, 
-                      "Octagon domain"),
-           clEnumValEnd),
-       llvm::cl::init (INTERVALS));
-
-static llvm::cl::opt<bool>
-RunLive("ikos-live", 
-        llvm::cl::desc("Run Ikos with live ranges"),
-        llvm::cl::init (false));
 
 // removes extension from filename if there is one
 std::string getFileName(const std::string &str) {
@@ -157,7 +138,7 @@ int main(int argc, char **argv) {
   pass_manager.add (new llvm_ikos::LowerSelect ());   
   pass_manager.add (new llvm_ikos::NameValues ()); 
 
-  pass_manager.add (new llvm_ikos::LlvmIkos (Domain, RunLive));
+  pass_manager.add (new llvm_ikos::LlvmIkos ());
  
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (&asmOutput->os ()));
