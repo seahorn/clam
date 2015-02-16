@@ -112,7 +112,7 @@ namespace llvm_ikos
         m_func (func), 
         m_vfac (vfac), 
         m_id (0),
-        m_cfg (&m_func.getEntryBlock (), NULL) 
+        m_cfg (&m_func.getEntryBlock ()) 
     { }
     
     cfg_t & operator()()
