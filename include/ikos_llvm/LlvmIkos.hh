@@ -12,7 +12,7 @@
 
 #include "boost/optional.hpp"
 
-#include "ikos/CfgBuilder.hh"
+#include <ikos_llvm/CfgBuilder.hh>
 
 namespace llvm_ikos
 {enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS};}

@@ -2,7 +2,7 @@
 #define __BIGNUMS_HH_
 
 /// Extra support for bignums
-#include <ikos_domains/bignums.hpp>
+#include <ikos/common/bignums.hpp>
 
 namespace llvm_ikos
 {

@@ -19,7 +19,7 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Analysis/Verifier.h"
 
-#include "ikos/LlvmIkos.hh"
+#include "ikos_llvm/LlvmIkos.hh"
 
 #include <Transforms/LowerGvInitializers.hh>
 #include <Transforms/NameValues.hh>

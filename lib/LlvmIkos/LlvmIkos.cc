@@ -8,18 +8,18 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 
-#include "ikos/CfgBuilder.hh"
-#include "ikos/LlvmIkos.hh"
-#include "ikos/Support/AbstractDomains.hh"
+#include "ikos_llvm/CfgBuilder.hh"
+#include "ikos_llvm/LlvmIkos.hh"
+#include "ikos_llvm/Support/AbstractDomains.hh"
 
 #include "boost/range.hpp"
 #include "boost/scoped_ptr.hpp"
 
-#include <ikos_analysis/FwdAnalyzer.hpp>
-#include <ikos_domains/intervals.hpp>                      
-#include <ikos_domains/intervals_congruences.hpp>                      
-#include <ikos_domains/octagons.hpp>                      
-#include <ikos_domains/dbm.hpp>                      
+#include <ikos/analysis/FwdAnalyzer.hpp>
+#include <ikos/domains/intervals.hpp>                      
+#include <ikos/domains/intervals_congruences.hpp>                      
+#include <ikos/domains/octagons.hpp>                      
+#include <ikos/domains/dbm.hpp>                      
 
 using namespace llvm;
 

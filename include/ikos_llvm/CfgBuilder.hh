@@ -10,9 +10,9 @@
 
 //#include "avy/AvyDebug.h"
 
-#include <ikos_cfg/Cfg.hpp>
-#include <ikos_cfg/VarFactory.hpp>
-#include <ikos_domains/bignums.hpp>
+#include <ikos/cfg/Cfg.hpp>
+#include <ikos/cfg/VarFactory.hpp>
+#include <ikos/common/bignums.hpp>
 
 #include <boost/optional.hpp>
 #include <boost/noncopyable.hpp>
