@@ -93,6 +93,7 @@ namespace llvm_ikos
 
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
     cfg_t cfg = CfgBuilder (F, vfac)();
+    //errs () << cfg << "\n";
     //LOG ("ikos-cfg", errs () << cfg << "\n");    
 
     bool change=false;
@@ -130,12 +131,16 @@ namespace llvm_ikos
     for (auto &B : F)
     {
       AbsDomain inv = analyzer [&B];
-      boost::optional<ZLinearConstraintSystem> csts = inv.to_linear_constraint_system ();
       const llvm::BasicBlock *BB = &B;
-      if (csts)
-        m_inv_map.insert (make_pair (BB, *csts));
+      if (inv.is_bottom ())
+        m_inv_map.insert (make_pair (BB, mkFALSE ()));
+      else if (inv.is_top ())
+        m_inv_map.insert (make_pair (BB, mkTRUE ()));        
       else
-        m_inv_map.insert (make_pair (BB, mkTRUE ()));
+      {
+        ZLinearConstraintSystem csts = inv.to_linear_constraint_system ();
+        m_inv_map.insert (make_pair (BB, csts));
+      }
     }
     return false;
   }
