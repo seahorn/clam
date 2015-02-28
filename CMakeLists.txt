@@ -6,6 +6,13 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
     "In-source builds are not allowed. Please clean your source tree and try again.")
 endif()
 
+# determine if this is top-level or embedded project
+if (PROJECT_NAME STREQUAL CMAKE_MODULE_PATH)
+  set (TopLevel TRUE)
+else()
+  set (TopLevel FALSE)
+endif()
+
 # put static libraries first
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
@@ -13,7 +20,7 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 #option (LLVMIKOS_STATIC_EXE "Static executable." OFF)
-if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
+if (TopLevel)
   set (CUSTOM_BOOST_ROOT "" CACHE PATH "Path to custom boost installation.")
   if (CUSTOM_BOOST_ROOT)
     set (BOOST_ROOT ${CUSTOM_BOOST_ROOT})
@@ -55,14 +62,17 @@ if (NOT IKOS_FOUND)
   message(WARNING "No ikos found. Run \n\tcmake --build . --target ikos-core && cmake ${CMAKE_SOURCE_DIR}")
   return()
 else()
-  set (IKOS_FOUND ${IKOS_FOUND} PARENT_SCOPE)
-  set (IKOS_INCLUDE_DIR ${IKOS_INCLUDE_DIR} PARENT_SCOPE)
+  if (NOT TopLevel)
+    # propagate variables to the caller
+    set (IKOS_FOUND ${IKOS_FOUND} PARENT_SCOPE)
+    set (IKOS_INCLUDE_DIR ${IKOS_INCLUDE_DIR} PARENT_SCOPE)
+  endif()
 endif()  
 
 include_directories (${IKOS_INCLUDE_DIR})
 set_target_properties(ikos-core PROPERTIES EXCLUDE_FROM_ALL ON)
 
-if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
+if (TopLevel)
   # if top-level, ofer to build llvm
   ExternalProject_Add (llvm
     SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_342/final/
@@ -136,7 +146,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
   add_definitions( -Wno-unused-local-typedefs)
 endif ()
 
-if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
+if (TopLevel)
   add_subdirectory(lib)
   add_subdirectory(tools)
 endif()
