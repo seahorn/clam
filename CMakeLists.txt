@@ -1,4 +1,4 @@
-project(LlvmIkos)
+project(IkosLlvm)
 cmake_minimum_required(VERSION 2.8.11)
 
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
@@ -6,40 +6,38 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
     "In-source builds are not allowed. Please clean your source tree and try again.")
 endif()
 
+# put static libraries first
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
 # Add path for custom modules
-set(CMAKE_MODULE_PATH
-  ${CMAKE_MODULE_PATH}
-  "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
-  )
+list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 #option (LLVMIKOS_STATIC_EXE "Static executable." OFF)
+if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
+  set (CUSTOM_BOOST_ROOT "" CACHE PATH "Path to custom boost installation.")
+  if (CUSTOM_BOOST_ROOT)
+    set (BOOST_ROOT ${CUSTOM_BOOST_ROOT})
+    set (Boost_NO_SYSTEM_PATHS "ON")
+  endif()
 
-set (CUSTOM_BOOST_ROOT "" CACHE PATH "Path to custom boost installation.")
-if (CUSTOM_BOOST_ROOT)
-  set (BOOST_ROOT ${CUSTOM_BOOST_ROOT})
-  set (Boost_NO_SYSTEM_PATHS "ON")
-endif()
+  # put static libraries first
+  #set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
-# put static libraries first
-#set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-
-set (Boost_USE_STATIC_LIBS ON)
-find_package (Boost 1.55 REQUIRED COMPONENTS system unit_test_framework)
-IF (Boost_FOUND)
-  include_directories (${Boost_INCLUDE_DIRS})
+  set (Boost_USE_STATIC_LIBS ON)
+  find_package (Boost 1.55 REQUIRED COMPONENTS system unit_test_framework)
+  IF (Boost_FOUND)
+    include_directories (${Boost_INCLUDE_DIRS})
+  endif ()
 endif ()
 
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
 
-set (IKOS_TAG "master" CACHE STRING "Ikos git tag to use")
-
-ExternalProject_Add(ikos
+ExternalProject_Add(ikos-core
   GIT_REPOSITORY https://bitbucket.org/jorgenavas/ikos-core.git
   GIT_TAG ${IKOS_TAG}
-  SOURCE_DIR ${LlvmIkos_SOURCE_DIR}/ext/ikos
-  INSTALL_DIR ${LlvmIkos_BINARY_DIR}/run
+  PREFIX ${CMAKE_BINARY_DIR}/ikos-core
+  INSTALL_DIR ${CMAKE_BINARY_DIR}/run
   CMAKE_ARGS
   -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
   -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
@@ -51,99 +49,97 @@ ExternalProject_Add(ikos
 
 find_package (IKOS)
 if (NOT IKOS_FOUND)
-  ExternalProject_Get_Property (ikos INSTALL_DIR)
-  set (IKOS_ROOT ${INSTALL_DIR} CACHE FILEPATH "Forced location of ikos" FORCE)
-  message(WARNING "No ikos found. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
+  ExternalProject_Get_Property (ikos-core INSTALL_DIR)
+  set (IKOS_ROOT ${INSTALL_DIR} CACHE FILEPATH "Forced location of ikos-core" FORCE)
+  message(WARNING "No ikos found. Run \n\tcmake --build . --target ikos-core && cmake ${CMAKE_SOURCE_DIR}")
   return()
 else()
-  set_target_properties(ikos PROPERTIES EXCLUDE_FROM_ALL ON)
+  set (IKOS_FOUND ${IKOS_FOUND} PARENT_SCOPE)
+endif()  
+
+include_directories (${IKOS_INCLUDE_DIR})
+set_target_properties(ikos-core PROPERTIES EXCLUDE_FROM_ALL ON)
+
+if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
+  # if top-level, ofer to build llvm
+  ExternalProject_Add (llvm
+    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_342/final/
+    SOURCE_DIR ${IkosLlvm_SOURCE_DIR}/ext/llvm
+    INSTALL_DIR ${IkosLlvm_BINARY_DIR}/run
+    CMAKE_ARGS
+    -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+    -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+    -DLLVM_TARGETS_TO_BUILD:STRING=X86 -DLLVM_BUILD_POLLY:BOOL=OFF
+    -DLLVM_ENABLE_PEDANTIC=OFF 
+    -DLLVM_ENABLE_PIC=OFF -DLLVM_REQUIRES_RTTI:BOOL=TRUE
+    LOG_CONFIGURE 1
+    LOG_BUILD 1
+    LOG_INSTALL 1)
+
+  find_package (LLVM)
+  if (NOT LLVM_FOUND)
+    ExternalProject_Get_Property (llvm INSTALL_DIR)
+    set (LLVM_ROOT ${INSTALL_DIR})
+    set (LLVM_CONFIG_EXECUTABLE ${LLVM_ROOT}/bin/llvm-config CACHE FILEPATH
+      "Forced location of llvm-config" FORCE)
+    message (WARNING "No llvm found. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
+    return()
+  else()
+    set_target_properties(llvm PROPERTIES EXCLUDE_FROM_ALL ON)
+  endif()
+  
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
+
+  set(LLVM_REQUIRES_RTTI TRUE)
+  set(LLVM_REQUIRES_EH TRUE)
+  include_directories(${LLVM_INCLUDE_DIR})
+  link_directories(${LLVM_LIBRARY_DIR})
+
+  #We incorporate the CMake features provided by LLVM:
+  set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${LLVM_ROOT}/share/llvm/cmake")
+  include(LLVMConfig)
+  include(AddLLVM)
+  add_definitions(${LLVM_DEFINITIONS})
+  include_directories(${LLVM_INCLUDE_DIRS})
+  link_directories(${LLVM_LIBRARY_DIRS})
+
+
+  find_library(RT_LIB NAMES rt)
+  if (NOT RT_LIB)
+    set(RT_LIB "")
+  endif()
+  mark_as_advanced(RT_LIB)
+
+  find_package(Curses)
+
+  find_package(Gmp REQUIRED)
+  if (GMP_FOUND)
+    include_directories (${GMP_INCLUDE_DIR})
+    include_directories (${GMPXX_INCLUDE_DIR})
+  else()
+    set(GMP_LIB "")
+    set(GMPXX_LIB "")
+  endif()
 endif()
 
-include_directories(${IKOS_INCLUDE_DIR})
-
-ExternalProject_Add (llvm
-  SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_342/final/
-  SOURCE_DIR ${LlvmIkos_SOURCE_DIR}/ext/llvm
-  INSTALL_DIR ${LlvmIkos_BINARY_DIR}/run
-  CMAKE_ARGS
-  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-  -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
-  -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
-  -DLLVM_TARGETS_TO_BUILD:STRING=X86 -DLLVM_BUILD_POLLY:BOOL=OFF
-  -DLLVM_ENABLE_PEDANTIC=OFF 
-  -DLLVM_ENABLE_PIC=OFF -DLLVM_REQUIRES_RTTI:BOOL=TRUE
-  LOG_CONFIGURE 1
-  LOG_BUILD 1
-  LOG_INSTALL 1)
-
-find_package (LLVM)
-if (NOT LLVM_FOUND)
-  ExternalProject_Get_Property (llvm INSTALL_DIR)
-  set (LLVM_ROOT ${INSTALL_DIR})
-  set (LLVM_CONFIG_EXECUTABLE ${LLVM_ROOT}/bin/llvm-config CACHE FILEPATH
-    "Forced location of llvm-config" FORCE)
-  message (WARNING "No llvm found. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
-  return()
-else()
-  set_target_properties(llvm PROPERTIES EXCLUDE_FROM_ALL ON)
-endif()
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
-
-set(LLVM_REQUIRES_RTTI TRUE)
-set(LLVM_REQUIRES_EH TRUE)
-include_directories(${LLVM_INCLUDE_DIR})
-link_directories(${LLVM_LIBRARY_DIR})
-
-#We incorporate the CMake features provided by LLVM:
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${LLVM_ROOT}/share/llvm/cmake")
-include(LLVMConfig)
-include(AddLLVM)
-add_definitions(${LLVM_DEFINITIONS})
-include_directories(${LLVM_INCLUDE_DIRS})
-link_directories(${LLVM_LIBRARY_DIRS})
-
-
-find_library(RT_LIB NAMES rt)
-if (NOT RT_LIB)
-  set(RT_LIB "")
-endif()
-mark_as_advanced(RT_LIB)
-
-find_package(Curses)
-
-find_package(Gmp REQUIRED)
-if (GMP_FOUND)
-  include_directories (${GMP_INCLUDE_DIR})
-  include_directories (${GMPXX_INCLUDE_DIR})
-else()
-  set(GMP_LIB "")
-  set(GMPXX_LIB "")
-endif()
-
-find_package(OpenMP)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-
-
-include_directories(${LlvmIkos_SOURCE_DIR}/include)
-include_directories(${CMAKE_BINARY_DIR}/include)
+include_directories(${IkosLlvm_SOURCE_DIR}/include)
 
 add_definitions(-std=c++11)
 add_definitions(-Wno-redeclared-class-member -Wno-sometimes-uninitialized)
 add_definitions(-Wno-covered-switch-default)
 
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-add_definitions( -Wno-unused-local-typedefs)
+  add_definitions( -Wno-unused-local-typedefs)
 endif ()
 
-add_subdirectory(lib)
-add_subdirectory(tools)
+if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
+  add_subdirectory(lib)
+  add_subdirectory(tools)
+endif()
 
 configure_file( include/ikos_llvm/config.h.cmake
                 ${CMAKE_BINARY_DIR}/include/ikos_llvm/config.h )
 
-install(DIRECTORY include/ikos_llvm
-  DESTINATION include/ikos_llvm
-  )
-
+install(DIRECTORY include/ikos_llvm DESTINATION include/ikos_llvm)
