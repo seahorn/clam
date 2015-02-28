@@ -148,6 +148,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
 endif ()
 
 if (TopLevel)
+  include_directories (${CMAKE_BINARY_DIR}/include)
   add_subdirectory(lib)
   add_subdirectory(tools)
 endif()
