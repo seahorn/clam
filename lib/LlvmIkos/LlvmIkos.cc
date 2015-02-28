@@ -8,6 +8,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 
+#include "ikos_llvm/config.h"
 #include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/LlvmIkos.hh"
 #include "ikos_llvm/Support/AbstractDomains.hh"
@@ -69,7 +70,7 @@ namespace domain_impl
   template<typename AbsDomain>
   ikos::linear_constraint_system<z_number, varname_t> toLinCst (AbsDomain inv)
   {
-#if IKOS_MAJOR_VERSION >= 2
+#if IKOS_MINOR_VERSION >= 2
     return inv.to_linear_constraint_system ();
 #else
     return intervals_traits::to_linear_constraint_system (inv);
