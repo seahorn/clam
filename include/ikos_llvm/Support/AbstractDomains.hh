@@ -4,7 +4,6 @@
 /// IO support for abstract domains
 #include <ikos/linear_constraints.hpp>                      
 #include <ikos/intervals.hpp>                      
-#include <ikos_llvm/config.h>
 
 #if IKOS_MINOR_VERSION >= 2
 #include <ikos/domains/intervals_congruences.hpp>                      

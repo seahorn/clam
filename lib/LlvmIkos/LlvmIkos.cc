@@ -8,7 +8,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 
-#include "ikos_llvm/config.h"
 #include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/LlvmIkos.hh"
 #include "ikos_llvm/Support/AbstractDomains.hh"
@@ -22,6 +21,8 @@
 #include <ikos/domains/intervals_congruences.hpp>                      
 #include <ikos/domains/octagons.hpp>                      
 #include <ikos/domains/dbm.hpp>
+#else 
+#include <ikos/intervals_traits.hpp>
 #endif 
 using namespace llvm;
 
@@ -36,12 +37,14 @@ Domain("ikos-dom",
        llvm::cl::values 
        (clEnumValN (INTERVALS, "int",
                     "Classical interval domain (default)"),
+#if IKOS_MINOR_VERSION >= 2
         clEnumValN (INTERVALS_CONGRUENCES, "cong",
                     "Reduced product of intervals with congruences"),
         clEnumValN (ZONES , "zones",
                     "Difference-Bounds Matrix (or Zones) domain"),
         clEnumValN (OCTAGONS, "oct",
                    "Octagon domain"),
+#endif 
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
 
@@ -62,6 +65,16 @@ namespace domain_impl
   typedef DBM< z_number, varname_t >                         dbm_domain_t;
   typedef octagon< z_number, varname_t >                     octagon_domain_t;
 #endif
+
+  template<typename AbsDomain>
+  ikos::linear_constraint_system<z_number, varname_t> toLinCst (AbsDomain inv)
+  {
+#if IKOS_MAJOR_VERSION >= 2
+    return inv.to_linear_constraint_system ();
+#else
+    return intervals_traits::to_linear_constraint_system (inv);
+#endif       
+  }
 
 } // end namespace
 
@@ -97,7 +110,6 @@ namespace llvm_ikos
 
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
     cfg_t cfg = CfgBuilder (F, vfac)();
-    //errs () << cfg << "\n";
     //LOG ("ikos-cfg", errs () << cfg << "\n");    
 
     bool change=false;
@@ -119,7 +131,6 @@ namespace llvm_ikos
 #endif
       default: assert(false && "Unsupported abstract domain");
     }
-
     // LOG ("ikos-verbose", errs () << "Ikos is done!\n");
     return change;
   }
@@ -131,9 +142,6 @@ namespace llvm_ikos
         analyzer (cfg, vfac, m_runlive);
 
     analyzer.Run (AbsDomain::top());
-
-    
-    //LOG ("ikos-verbose", errs () << analyzer << "\n");
     for (auto &B : F)
     {
       AbsDomain inv = analyzer [&B];
@@ -143,10 +151,7 @@ namespace llvm_ikos
       else if (inv.is_top ())
         m_inv_map.insert (make_pair (BB, mkTRUE ()));        
       else
-      {
-        ZLinearConstraintSystem csts = inv.to_linear_constraint_system ();
-        m_inv_map.insert (make_pair (BB, csts));
-      }
+        m_inv_map.insert (make_pair (BB, toLinCst (inv)));
     }
     return false;
   }
