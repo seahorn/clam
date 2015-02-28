@@ -7,11 +7,12 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
 endif()
 
 # determine if this is top-level or embedded project
-if (PROJECT_NAME STREQUAL CMAKE_MODULE_PATH)
+if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
   set (TopLevel TRUE)
 else()
   set (TopLevel FALSE)
 endif()
+
 
 # put static libraries first
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
