@@ -18,6 +18,7 @@ if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
   if (CUSTOM_BOOST_ROOT)
     set (BOOST_ROOT ${CUSTOM_BOOST_ROOT})
     set (Boost_NO_SYSTEM_PATHS "ON")
+    
   endif()
 
   # put static libraries first
@@ -55,6 +56,7 @@ if (NOT IKOS_FOUND)
   return()
 else()
   set (IKOS_FOUND ${IKOS_FOUND} PARENT_SCOPE)
+  set (IKOS_INCLUDE_DIR ${IKOS_INCLUDE_DIR} PARENT_SCOPE)
 endif()  
 
 include_directories (${IKOS_INCLUDE_DIR})
