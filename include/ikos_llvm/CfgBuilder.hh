@@ -12,7 +12,7 @@
 
 #include <ikos/cfg/Cfg.hpp>
 #include <ikos/cfg/VarFactory.hpp>
-#include <ikos/common/bignums.hpp>
+#include <ikos/bignums.hpp>
 
 #include <boost/optional.hpp>
 #include <boost/noncopyable.hpp>

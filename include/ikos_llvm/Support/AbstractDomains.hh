@@ -2,13 +2,19 @@
 #define __ABSTRACT_DOMAINS_HH_
 
 /// IO support for abstract domains
-#include <ikos/algorithms/linear_constraints.hpp>                      
-#include <ikos/domains/intervals.hpp>                      
+#include <ikos/linear_constraints.hpp>                      
+#include <ikos/intervals.hpp>                      
+#include <ikos_llvm/config.h>
+
+#if IKOS_MINOR_VERSION >= 2
 #include <ikos/domains/intervals_congruences.hpp>                      
 #include <ikos/domains/octagons.hpp>                      
 #include <ikos/domains/dbm.hpp>                      
+#endif 
 
-namespace
+namespace llvm {}
+
+namespace llvm
 {
 
   using namespace std;
@@ -53,7 +59,8 @@ namespace
     o << s.str ();
     return o;
   }
-
+  
+#if IKOS_MINOR_VERSION >= 2
   template <typename Number, typename VariableName>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         ikos::interval_congruence_domain<Number,VariableName>& inv)
@@ -81,6 +88,7 @@ namespace
     o << s.str ();
     return o;
   }
+#endif
 
 } // end namespace
 

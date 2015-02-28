@@ -8,6 +8,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 
+#include "ikos_llvm/config.h"
 #include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/LlvmIkos.hh"
 #include "ikos_llvm/Support/AbstractDomains.hh"
@@ -16,11 +17,12 @@
 #include "boost/scoped_ptr.hpp"
 
 #include <ikos/analysis/FwdAnalyzer.hpp>
-#include <ikos/domains/intervals.hpp>                      
+#include <ikos/intervals.hpp>                      
+#if IKOS_MINOR_VERSION >= 2
 #include <ikos/domains/intervals_congruences.hpp>                      
 #include <ikos/domains/octagons.hpp>                      
-#include <ikos/domains/dbm.hpp>                      
-
+#include <ikos/domains/dbm.hpp>
+#endif 
 using namespace llvm;
 
 static llvm::cl::opt<bool>
@@ -55,9 +57,11 @@ namespace domain_impl
 
   // Numerical domains
   typedef interval_domain< z_number, varname_t >             interval_domain_t;
+#if IKOS_MINOR_VERSION >= 2
   typedef interval_congruence_domain< z_number, varname_t >  interval_congruence_domain_t;
   typedef DBM< z_number, varname_t >                         dbm_domain_t;
   typedef octagon< z_number, varname_t >                     octagon_domain_t;
+#endif
 
 } // end namespace
 
@@ -102,6 +106,7 @@ namespace llvm_ikos
       case INTERVALS: 
         change = runOnCfg <interval_domain_t> (cfg, F, vfac); 
         break;
+#if IKOS_MAJOR_VERSION >= 2
       case INTERVALS_CONGRUENCES: 
         change = runOnCfg <interval_congruence_domain_t> (cfg, F, vfac); 
         break;
@@ -111,6 +116,7 @@ namespace llvm_ikos
       case OCTAGONS: 
         change = runOnCfg <octagon_domain_t> (cfg, F, vfac); 
         break;
+#endif
       default: assert(false && "Unsupported abstract domain");
     }
 

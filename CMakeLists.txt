@@ -127,6 +127,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 
 
 include_directories(${LlvmIkos_SOURCE_DIR}/include)
+include_directories(${CMAKE_BINARY_DIR}/include)
 
 add_definitions(-std=c++11)
 add_definitions(-Wno-redeclared-class-member -Wno-sometimes-uninitialized)
@@ -139,7 +140,10 @@ endif ()
 add_subdirectory(lib)
 add_subdirectory(tools)
 
-install(DIRECTORY include/ikos
-  DESTINATION include/llvm_ikos
+configure_file( include/ikos_llvm/config.h.cmake
+                ${CMAKE_BINARY_DIR}/include/ikos_llvm/config.h )
+
+install(DIRECTORY include/ikos_llvm
+  DESTINATION include/ikos_llvm
   )
 
