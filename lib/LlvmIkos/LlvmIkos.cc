@@ -119,7 +119,7 @@ namespace llvm_ikos
       case INTERVALS: 
         change = runOnCfg <interval_domain_t> (cfg, F, vfac); 
         break;
-#if IKOS_MAJOR_VERSION >= 2
+#if IKOS_MINOR_VERSION >= 2
       case INTERVALS_CONGRUENCES: 
         change = runOnCfg <interval_congruence_domain_t> (cfg, F, vfac); 
         break;
