@@ -42,9 +42,12 @@ endif ()
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
 
+set (IKOS_CORE_TAG "master" CACHE STRING "ikos-core tag to use")
+set (IKOS_CORE_REPO "https://bitbucket.org/jorgenavas/ikos-core.git"
+  CACHE STRING "ikos-core repository")
 ExternalProject_Add(ikos-core
-  GIT_REPOSITORY https://bitbucket.org/jorgenavas/ikos-core.git
-  GIT_TAG ${IKOS_TAG}
+  GIT_REPOSITORY ${IKOS_CORE_REPO}
+  GIT_TAG ${IKOS_CORE_TAG}
   PREFIX ${CMAKE_BINARY_DIR}/ikos-core
   INSTALL_DIR ${CMAKE_BINARY_DIR}/run
   CMAKE_ARGS
