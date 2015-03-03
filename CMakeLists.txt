@@ -79,26 +79,26 @@ set_target_properties(ikos-core PROPERTIES EXCLUDE_FROM_ALL ON)
 if (TopLevel)
   # if top-level, ofer to build llvm
   ExternalProject_Add (llvm
-    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_342/final/
-    SOURCE_DIR ${IkosLlvm_SOURCE_DIR}/ext/llvm
-    INSTALL_DIR ${IkosLlvm_BINARY_DIR}/run
+    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_360/final/
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/llvm
+    INSTALL_DIR ${CMAKE_BINARY_DIR}/run
     CMAKE_ARGS
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
     -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
-    -DLLVM_TARGETS_TO_BUILD:STRING=X86 -DLLVM_BUILD_POLLY:BOOL=OFF
+    -DLLVM_TARGETS_TO_BUILD:STRING=X86 -DWITH_POLY:BOOL=OFF
     -DLLVM_ENABLE_PEDANTIC=OFF 
-    -DLLVM_ENABLE_PIC=OFF -DLLVM_REQUIRES_RTTI:BOOL=TRUE
+    -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=TRUE
     LOG_CONFIGURE 1
     LOG_BUILD 1
     LOG_INSTALL 1)
 
-  find_package (LLVM 3.6.0 REQUIRED CONFIG NO_DEFAULT_PATH)
+  find_package (LLVM 3.6.0 CONFIG NO_DEFAULT_PATH)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})
-    set (LLVM_CONFIG_EXECUTABLE ${LLVM_ROOT}/bin/llvm-config CACHE FILEPATH
-      "Forced location of llvm-config" FORCE)
+    set (LLVM_DIR ${LLVM_ROOT}/share/llvm/cmake CACHE PATH
+      "Forced location of LLVM cmake config" FORCE)
     message (WARNING "No llvm found. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
     return()
   else()
