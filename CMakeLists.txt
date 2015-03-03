@@ -93,7 +93,7 @@ if (TopLevel)
     LOG_BUILD 1
     LOG_INSTALL 1)
 
-  find_package (LLVM)
+  find_package (LLVM 3.6.0 REQUIRED CONFIG NO_DEFAULT_PATH)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})
@@ -105,22 +105,22 @@ if (TopLevel)
     set_target_properties(llvm PROPERTIES EXCLUDE_FROM_ALL ON)
   endif()
   
+  message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+  message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+  
+  # We incorporate the CMake features provided by LLVM:
+  list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+  include(AddLLVM)
+
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
 
   set(LLVM_REQUIRES_RTTI TRUE)
   set(LLVM_REQUIRES_EH TRUE)
-  include_directories(${LLVM_INCLUDE_DIR})
-  link_directories(${LLVM_LIBRARY_DIR})
-
-  #We incorporate the CMake features provided by LLVM:
-  set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${LLVM_ROOT}/share/llvm/cmake")
-  include(LLVMConfig)
-  include(AddLLVM)
-  add_definitions(${LLVM_DEFINITIONS})
+  
   include_directories(${LLVM_INCLUDE_DIRS})
   link_directories(${LLVM_LIBRARY_DIRS})
-
+  add_definitions(${LLVM_DEFINITIONS})
 
   find_library(RT_LIB NAMES rt)
   if (NOT RT_LIB)

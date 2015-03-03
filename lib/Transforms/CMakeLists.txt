@@ -1,4 +1,4 @@
-add_llvm_library (LlvmPasses
+add_library(LlvmPasses STATIC
   IkosIndVarSimplify.cc
   LowerCstExpr.cc
   LowerGvInitializers.cc

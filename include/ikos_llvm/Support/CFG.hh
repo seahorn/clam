@@ -5,7 +5,7 @@
 #include "boost/range/iterator_range.hpp"
 #include "boost/iterator/indirect_iterator.hpp"
 
-#include "llvm/Support/CFG.h"
+#include "llvm/IR/CFG.h"
 
 namespace llvm_ikos
 {

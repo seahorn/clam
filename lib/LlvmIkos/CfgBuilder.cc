@@ -1,7 +1,7 @@
 
 /* Translate a LLVM function to a custom CFG. */
 
-#include "llvm/InstVisitor.h"
+#include "llvm/IR/InstVisitor.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/APInt.h"
 

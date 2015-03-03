@@ -1,3 +1,4 @@
+#define DEBUG_TYPE "lower-selects"
 #include "Transforms/LowerSelect.hh"
 #include <vector>
 
