@@ -15,7 +15,7 @@
 #include <ikos_llvm/CfgBuilder.hh>
 
 namespace llvm_ikos
-{enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS};}
+{enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS, TERMS};}
 
 namespace llvm_ikos
 {

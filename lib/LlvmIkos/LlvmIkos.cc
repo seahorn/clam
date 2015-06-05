@@ -22,6 +22,8 @@
 #include <ikos/domains/intervals_congruences.hpp>                      
 #include <ikos/domains/octagons.hpp>                      
 #include <ikos/domains/dbm.hpp>
+#include <ikos/domains/term/term_util.hpp>
+#include <ikos/domains/term_equiv.hpp>
 #else 
 #include <ikos/intervals_traits.hpp>
 #endif 
@@ -45,6 +47,8 @@ Domain("ikos-dom",
                     "Difference-Bounds Matrix (or Zones) domain"),
         clEnumValN (OCTAGONS, "oct",
                    "Octagon domain"),
+        clEnumValN (TERMS, "term",
+                    "Term-enriched interval domain."),
 #endif 
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
@@ -65,6 +69,10 @@ namespace domain_impl
   typedef interval_congruence_domain< z_number, varname_t >  interval_congruence_domain_t;
   typedef DBM< z_number, varname_t >                         dbm_domain_t;
   typedef octagon< z_number, varname_t >                     octagon_domain_t;
+  //  typedef ikos::term::TDomInfo<z_number, varname_t, interval_domain_t> idom_info;
+  typedef interval_domain< z_number, ikos::term::StrVarAlloc_col::varname_t > str_interval_dom_t;
+  typedef ikos::term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
+  typedef anti_unif<idom_info>::anti_unif_t term_domain_t;
 #endif
 
   template<typename AbsDomain>
@@ -128,6 +136,9 @@ namespace llvm_ikos
         break;
       case OCTAGONS: 
         change = runOnCfg <octagon_domain_t> (cfg, F, vfac); 
+        break;
+      case TERMS:
+        change = runOnCfg <term_domain_t> (cfg, F, vfac);
         break;
 #endif
       default: assert(false && "Unsupported abstract domain");
