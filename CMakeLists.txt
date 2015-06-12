@@ -42,10 +42,9 @@ endif ()
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
 
-set (IKOS_CORE_TAG "origin/unification"  
-     CACHE STRING "ikos-core tag to use")
-set (IKOS_CORE_REPO "git@bitbucket.org:jorgenavas/ikos-core.git"
-    CACHE STRING "ikos-core repository")
+set (IKOS_CORE_TAG "origin/master" CACHE STRING "ikos-core tag to use")
+set (IKOS_CORE_REPO "https://github.com/seahorn/ikos-core.git"
+  CACHE STRING "ikos-core repository")
 ExternalProject_Add(ikos-core
   GIT_REPOSITORY ${IKOS_CORE_REPO}
   GIT_TAG ${IKOS_CORE_TAG}
