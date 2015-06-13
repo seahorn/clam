@@ -42,25 +42,46 @@ endif ()
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
 
-set (IKOS_CORE_TAG "origin/master" CACHE STRING "ikos-core tag to use")
-set (IKOS_CORE_REPO "https://github.com/seahorn/ikos-core.git"
-  CACHE STRING "ikos-core repository")
-ExternalProject_Add(ikos-core
-  GIT_REPOSITORY ${IKOS_CORE_REPO}
-  GIT_TAG ${IKOS_CORE_TAG}
-  PREFIX ${CMAKE_BINARY_DIR}/ikos-core
-  INSTALL_DIR ${CMAKE_BINARY_DIR}/run
-  CMAKE_ARGS
-  -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-  -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
-  -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
-  TEST_AFTER_INSTALL 1
-  TEST_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
-  LOG_DOWNLOAD 1
-  LOG_CONFIGURE 1
-  LOG_BUILD 1
-  LOG_INSTALL 1)
+find_package (Git)
 
+if (GIT_FOUND)
+  if (TopLevel)
+    set (DSA_SEAHORN_REPO "https://github.com/seahorn/dsa-seahorn"
+      CACHE STRING "dsa-seahorn repo")
+    add_custom_target (dsa-seahorn-git
+      ${GIT_EXECUTABLE} clone ${DSA_SEAHORN_REPO} ${CMAKE_SOURCE_DIR}/dsa-seahorn)
+    add_custom_target (extra DEPENDS dsa-seahorn-git)
+  endif ()
+else ()
+  if (TopLevel)
+    message (STATUS "Could not find git. Not adding 'extra' target.")
+  endif ()
+endif ()
+
+if (GIT_FOUND)
+  set (IKOS_CORE_TAG "origin/master" CACHE STRING "ikos-core tag to use")
+  #set (IKOS_CORE_REPO "https://github.com/seahorn/ikos-core.git"
+  set (IKOS_CORE_REPO "git@bitbucket.org:jorgenavas/ikos-core.git"
+    CACHE STRING "ikos-core repository")
+  ExternalProject_Add(ikos-core
+    GIT_REPOSITORY ${IKOS_CORE_REPO}
+    GIT_TAG ${IKOS_CORE_TAG}
+    PREFIX ${CMAKE_BINARY_DIR}/ikos-core
+    INSTALL_DIR ${CMAKE_BINARY_DIR}/run
+    CMAKE_ARGS
+    -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+    -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+    TEST_AFTER_INSTALL 1
+    TEST_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
+    LOG_DOWNLOAD 1
+    LOG_CONFIGURE 1
+    LOG_BUILD 1
+    LOG_INSTALL 1)
+else ()
+    message (STATUS "Could not find git. Not downloading ikos-core")
+endif()
+  
 find_package (IKOS)
 if (NOT IKOS_FOUND)
   ExternalProject_Get_Property (ikos-core INSTALL_DIR)
@@ -79,7 +100,7 @@ include_directories (${IKOS_INCLUDE_DIR})
 set_target_properties(ikos-core PROPERTIES EXCLUDE_FROM_ALL ON)
 
 if (TopLevel)
-  # if top-level, ofer to build llvm
+  # if top-level, offer to build llvm
   ExternalProject_Add (llvm
     SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_360/final/
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/llvm
@@ -142,8 +163,6 @@ if (TopLevel)
   endif()
 endif()
 
-include_directories(${IkosLlvm_SOURCE_DIR}/include)
-
 add_definitions(-std=c++11)
 add_definitions(-Wno-redeclared-class-member -Wno-sometimes-uninitialized)
 add_definitions(-Wno-covered-switch-default)
@@ -151,6 +170,22 @@ add_definitions(-Wno-covered-switch-default)
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
   add_definitions( -Wno-unused-local-typedefs)
 endif ()
+
+if (TopLevel)
+  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/dsa-seahorn AND
+      EXISTS ${CMAKE_SOURCE_DIR}/dsa-seahorn/lib/DSA/Steensgaard.cpp)
+    include_directories (AFTER dsa-seahorn/include)
+    add_subdirectory (dsa-seahorn/lib/AssistDS)
+    add_subdirectory (dsa-seahorn/lib/DSA)
+    set (DSA_LIBS DSA AssistDS)
+    set (HAVE_DSA TRUE)
+  else()
+    message (WARNING "No DSA found in ${CMAKE_SOURCE_DIR}/dsa-seahorn")
+    set (DSA_LIBS "")
+  endif()
+endif ()
+
+include_directories(${IkosLlvm_SOURCE_DIR}/include)
 
 if (TopLevel)
   include_directories (${CMAKE_BINARY_DIR}/include)

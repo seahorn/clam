@@ -6,8 +6,13 @@ add_library(LlvmPasses STATIC
   NameValues.cc
   RemoveUnreachableBlocksPass.cc
   MarkInternalInline.cc
+  ShadowMemDsa.cc
   )
 
-target_link_libraries (LlvmPasses)
+if (HAVE_DSA)
+  target_link_libraries (LlvmPasses ${DSA_LIBS})
+else ()
+  target_link_libraries (LlvmPasses)
+endif ()
 
 

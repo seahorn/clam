@@ -29,6 +29,7 @@
 #include <Transforms/LowerCstExpr.hh>
 #include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
+#include <Transforms/ShadowMemDsa.hh>
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
@@ -143,6 +144,10 @@ int main(int argc, char **argv) {
   // -- lower constant expressions to instructions
   pass_manager.add (new llvm_ikos::LowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
+
+  // -- add mem dsa instrumentation
+  pass_manager.add (new llvm_ikos::ShadowMemDsa ());
+
   // -- must be the last ones:
   pass_manager.add (new llvm_ikos::LowerSelect ());   
   pass_manager.add (new llvm_ikos::NameValues ()); 

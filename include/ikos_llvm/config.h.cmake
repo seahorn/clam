@@ -10,4 +10,7 @@
 /** Minor version of IKOS library */
 #cmakedefine IKOS_MINOR_VERSION ${IKOS_MINOR_VERSION}
 
+/** Define whether DSA library is available */
+#cmakedefine HAVE_DSA ${HAVE_DSA}
+
 #endif
