@@ -13,9 +13,6 @@
 #include "ikos_llvm/LlvmIkos.hh"
 #include "ikos_llvm/Support/AbstractDomains.hh"
 
-#include "boost/range.hpp"
-#include "boost/scoped_ptr.hpp"
-
 #include <ikos/analysis/FwdAnalyzer.hpp>
 #include <ikos/intervals.hpp>                      
 #if IKOS_MINOR_VERSION >= 2
@@ -24,6 +21,7 @@
 #include <ikos/domains/dbm.hpp>
 #include <ikos/domains/term/term_util.hpp>
 #include <ikos/domains/term_equiv.hpp>
+#include <ikos/domains/array_smashing.hpp>
 #else 
 #include <ikos/intervals_traits.hpp>
 #endif 
@@ -58,6 +56,17 @@ RunLive("ikos-live",
         llvm::cl::desc("Run Ikos with live ranges"),
         llvm::cl::init (false));
 
+#if IKOS_MINOR_VERSION >= 2
+static llvm::cl::opt<enum TrackedPrecision>
+TrackedLevel("ikos-track-lvl",
+   llvm::cl::desc ("Track level for Cfg construction"),
+   cl::values (clEnumValN (REG, "reg", "Primitive registers only"),
+               clEnumValN (PTR, "ptr", "REG + pointers"),
+               clEnumValN (MEM, "mem", "PTR + memory content"),
+               clEnumValEnd),
+   cl::init (TrackedPrecision::REG));
+#endif 
+
 namespace domain_impl
 {
   using namespace cfg_impl;
@@ -66,13 +75,13 @@ namespace domain_impl
   // Numerical domains
   typedef interval_domain< z_number, varname_t >             interval_domain_t;
 #if IKOS_MINOR_VERSION >= 2
-  typedef interval_congruence_domain< z_number, varname_t >  interval_congruence_domain_t;
-  typedef DBM< z_number, varname_t >                         dbm_domain_t;
-  typedef octagon< z_number, varname_t >                     octagon_domain_t;
-  //  typedef ikos::term::TDomInfo<z_number, varname_t, interval_domain_t> idom_info;
+  typedef interval_congruence_domain< z_number, varname_t > congruence_domain_t;
+  typedef DBM< z_number, varname_t > dbm_domain_t;
+  typedef octagon< z_number, varname_t > octagon_domain_t;
+  //typedef ikos::term::TDomInfo<z_number, varname_t, interval_domain_t> idom_info;
   typedef interval_domain< z_number, ikos::term::StrVarAlloc_col::varname_t > str_interval_dom_t;
   typedef ikos::term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
-  typedef anti_unif<idom_info>::anti_unif_t term_domain_t;
+  typedef anti_unif<idom_info>::anti_unif_t term_domain_t;  
 #endif
 
   template<typename AbsDomain>
@@ -118,27 +127,49 @@ namespace llvm_ikos
     VariableFactory vfac; 
 
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
+#if IKOS_MINOR_VERSION >= 2
+    cfg_t cfg = CfgBuilder (F, vfac, TrackedLevel)();
+#else
     cfg_t cfg = CfgBuilder (F, vfac)();
-    //LOG ("ikos-cfg", errs () << cfg << "\n");    
+#endif 
+    //LOG ("ikos-cfg", errs () << cfg << "\n");  
+    errs () << cfg << "\n";
 
     bool change=false;
     switch (m_absdom)
     {
-      case INTERVALS: 
-        change = runOnCfg <interval_domain_t> (cfg, F, vfac); 
+      case INTERVALS:  
+#if IKOS_MINOR_VERSION >= 2
+          change = (TrackedLevel >= MEM ? 
+                    runOnCfg <array_smashing<interval_domain_t,z_number,varname_t> > 
+                    (cfg, F, vfac) : 
+                    runOnCfg <interval_domain_t> (cfg, F, vfac)) ; 
+#else
+          change = runOnCfg <interval_domain_t> (cfg, F, vfac); 
+#endif 
         break;
 #if IKOS_MINOR_VERSION >= 2
       case INTERVALS_CONGRUENCES: 
-        change = runOnCfg <interval_congruence_domain_t> (cfg, F, vfac); 
+         change = (TrackedLevel >= MEM ? 
+                  runOnCfg <array_smashing<congruence_domain_t,z_number,varname_t> > 
+                  (cfg, F, vfac) : 
+                  runOnCfg <congruence_domain_t> (cfg, F, vfac)) ; 
         break;
       case ZONES: 
-        change = runOnCfg <dbm_domain_t> (cfg, F, vfac); 
+         change = (TrackedLevel >= MEM ? 
+                  runOnCfg <array_smashing<dbm_domain_t,z_number,varname_t> > 
+                  (cfg, F, vfac) : 
+                  runOnCfg <dbm_domain_t> (cfg, F, vfac)) ; 
         break;
       case OCTAGONS: 
-        change = runOnCfg <octagon_domain_t> (cfg, F, vfac); 
+        change = (TrackedLevel >= MEM ? 
+                  runOnCfg <array_smashing<octagon_domain_t,z_number,varname_t> > 
+                  (cfg, F, vfac) : 
+                  runOnCfg <octagon_domain_t> (cfg, F, vfac)) ; 
         break;
       case TERMS:
-        change = runOnCfg <term_domain_t> (cfg, F, vfac);
+        // TODO: array smashing with term_domain_t
+        change = runOnCfg <term_domain_t> (cfg, F, vfac); 
         break;
 #endif
       default: assert(false && "Unsupported abstract domain");
@@ -186,6 +217,12 @@ namespace llvm_ikos
         errs () <<  "\n";
     }
   }
+
+  void LlvmIkos::getAnalysisUsage (llvm::AnalysisUsage &AU) const
+  {
+    AU.setPreservesAll ();
+  } 
+
 } // end namespace llvm_ikos
 
 

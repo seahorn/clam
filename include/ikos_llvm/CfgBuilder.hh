@@ -105,14 +105,17 @@ namespace llvm_ikos
     unsigned          m_id;
     cfg_t             m_cfg;
     llvm_bb_map_t     m_bb_map;
-    
+    TrackedPrecision  m_track_level;
+
    public:
     
-    CfgBuilder(Function &func, VariableFactory &vfac): 
+    CfgBuilder (Function &func, VariableFactory &vfac, 
+                TrackedPrecision trackLev = REG): 
         m_func (func), 
         m_vfac (vfac), 
         m_id (0),
-        m_cfg (&m_func.getEntryBlock ()) 
+        m_cfg (&m_func.getEntryBlock (), trackLev),
+        m_track_level (trackLev)
     { }
     
     cfg_t & operator()()

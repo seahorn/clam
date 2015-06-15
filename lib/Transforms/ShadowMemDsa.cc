@@ -14,6 +14,12 @@
 
 #include "dsa/Steensgaard.hh"
 
+/*
+   This version is the same than the one used in Seahorn except that
+   shadow.mem.store has an extra argument that indicates if the node
+   is a singleton or not.
+ */
+
 namespace llvm_ikos
 {
   using namespace llvm;
@@ -76,8 +82,6 @@ namespace llvm_ikos
     set_union (reach, outReach);
   }
   
-  
-  
   AllocaInst* ShadowMemDsa::allocaForNode (const DSNode *n)
   {
     auto it = m_shadows.find (n);
@@ -119,6 +123,7 @@ namespace llvm_ikos
                                           Type::getInt32Ty (ctx),
                                           Type::getInt32Ty (ctx),
                                           Type::getInt32Ty (ctx),
+                                          Type::getInt1Ty (ctx), /*isSingleton*/
                                           (Type*) 0);
       
     m_memShadowInitFn = M.getOrInsertFunction ("shadow.mem.init",
@@ -220,9 +225,10 @@ namespace llvm_ikos
           if (!n) continue;
           B.SetInsertPoint (&inst);
           AllocaInst *v = allocaForNode (n);
-          B.CreateStore (B.CreateCall2 (m_memStoreFn, 
+          B.CreateStore (B.CreateCall3 (m_memStoreFn, 
                                         B.getInt32 (getId (n)),
-                                        B.CreateLoad (v)), v);           
+                                        B.CreateLoad (v),
+                                        B.getInt1 (n->getUniqueScalar ())), v);           
         }
         else if (CallInst *call = dyn_cast<CallInst> (&inst))
         {

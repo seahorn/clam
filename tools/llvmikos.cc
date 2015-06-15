@@ -147,6 +147,8 @@ int main(int argc, char **argv) {
 
   // -- add mem dsa instrumentation
   pass_manager.add (new llvm_ikos::ShadowMemDsa ());
+  // lowers shadow.mem variables created by ShadowMemDsa pass
+  pass_manager.add (llvm::createPromoteMemoryToRegisterPass ());
 
   // -- must be the last ones:
   pass_manager.add (new llvm_ikos::LowerSelect ());   
