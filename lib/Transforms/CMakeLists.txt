@@ -6,7 +6,6 @@ add_library(LlvmPasses STATIC
   NameValues.cc
   RemoveUnreachableBlocksPass.cc
   MarkInternalInline.cc
-  ShadowMemDsa.cc
   )
 
 if (HAVE_DSA)

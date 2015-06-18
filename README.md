@@ -1,4 +1,4 @@
-# Ikos-llvm#
+#Ikos-llvm#
 
 Ikos-llvm is a static analyzer that computes inductive invariants
 using Ikos (a library of abstract domains and fixpoint algorithms
@@ -15,15 +15,20 @@ to make easier the task of static analysis.
 The use of `llvmpp` is optional but highly recommended with large
 programs.
 
-# Prerequisites #
+#Prerequisites#
 
 - The C++ compiler must support c++11
 
 - Boost and gmp
 
-# Installation #
+#Compilation#
 
-The compilation steps are:
+First, if you want `Ikos-llvm` to reason about pointers and arrays you
+need to download the following package at the root directory:
+
+* [dsa-seahorn](https://github.com/seahorn/dsa-seahorn): ``` git clone https://github.com/seahorn/dsa-seahorn.git ```
+
+Then, the compilation steps are:
 
 1. ```mkdir build ; cd build```
 2. ```cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=my_install_dir ../```
@@ -31,7 +36,7 @@ The compilation steps are:
 This will install in `my_install_dir/bin` two executables: `llvmikos`
 and `llvmpp`.
 
-# Usage #
+#Usage#
 
 First, we need to compile a program into `LLVM` bitecode.
  

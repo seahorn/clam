@@ -11,6 +11,7 @@
 #include "ikos_llvm/config.h"
 #include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/LlvmIkos.hh"
+#include "ikos_llvm/MemAnalysis.hh"
 #include "ikos_llvm/Support/AbstractDomains.hh"
 
 #include <ikos/analysis/FwdAnalyzer.hpp>
@@ -25,6 +26,11 @@
 #else 
 #include <ikos/intervals_traits.hpp>
 #endif 
+
+#ifdef HAVE_DSA
+#include "dsa/Steensgaard.hh"
+#endif 
+
 using namespace llvm;
 
 static llvm::cl::opt<bool>
@@ -128,7 +134,13 @@ namespace llvm_ikos
 
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
 #if IKOS_MINOR_VERSION >= 2
-    cfg_t cfg = CfgBuilder (F, vfac, TrackedLevel)();
+    MemAnalysis mem (&F);
+#ifdef HAVE_DSA
+    mem = MemAnalysis (&F, 
+                       &getAnalysis<SteensgaardDataStructures> (),
+                       TrackedLevel);
+#endif 
+    cfg_t cfg = CfgBuilder (F, vfac, &mem)();
 #else
     cfg_t cfg = CfgBuilder (F, vfac)();
 #endif 
@@ -221,6 +233,11 @@ namespace llvm_ikos
   void LlvmIkos::getAnalysisUsage (llvm::AnalysisUsage &AU) const
   {
     AU.setPreservesAll ();
+#ifdef HAVE_DSA
+    AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
+    AU.addRequired<llvm::DataLayoutPass>();
+    AU.addRequired<llvm::UnifyFunctionExitNodes> ();
+#endif 
   } 
 
 } // end namespace llvm_ikos

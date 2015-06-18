@@ -25,7 +25,8 @@ namespace llvm_ikos
 
   class LlvmIkos : public llvm::ModulePass
   {
-    typedef llvm::DenseMap< const llvm::BasicBlock *, ZLinearConstraintSystem > invariants_map_t;
+    typedef llvm::DenseMap< const llvm::BasicBlock *, 
+                            ZLinCstSystem > invariants_map_t;
 
     invariants_map_t m_inv_map;
     IkosDomain       m_absdom;
@@ -38,7 +39,8 @@ namespace llvm_ikos
 
     static char ID;        
     
-    LlvmIkos (): llvm::ModulePass (ID), m_absdom (INTERVALS), m_runlive(false)  
+    LlvmIkos (): llvm::ModulePass (ID), 
+                 m_absdom (INTERVALS), m_runlive(false)  
     { }
 
     ~LlvmIkos ()
@@ -57,7 +59,7 @@ namespace llvm_ikos
     const_iterator begin () const { return m_inv_map.begin(); }
     const_iterator end ()   const { return m_inv_map.end();   }
 
-    ZLinearConstraintSystem operator[] (const llvm::BasicBlock *BB) const
+    ZLinCstSystem operator[] (const llvm::BasicBlock *BB) const
     {
       const_iterator it = m_inv_map.find (BB);
       assert (it != m_inv_map.end ());
@@ -68,11 +70,11 @@ namespace llvm_ikos
 
    private:
 
-    ZLinearConstraint mkTRUE() const 
-    { return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (1)); }
+    ZLinCst mkTRUE() const 
+    { return ZLinCst ( ZLinExp (1) == ZLinExp (1)); }
 
-    ZLinearConstraint mkFALSE() const 
-    { return ZLinearConstraint ( ZLinearExpression (1) == ZLinearExpression (0)); }
+    ZLinCst mkFALSE() const 
+    { return ZLinCst ( ZLinExp (1) == ZLinExp (0)); }
 
     template<typename AbsDomain> 
     bool runOnCfg (cfg_t& cfg, llvm::Function &F, VariableFactory &vfac);

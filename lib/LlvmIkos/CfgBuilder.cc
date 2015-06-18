@@ -7,15 +7,25 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/Pass.h"
 
-#include <queue>
 #include <boost/lexical_cast.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+#include <boost/range/iterator_range.hpp>
 
 #include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/Support/CFG.hh"
 #include "ikos_llvm/Support/bignums.hh"
 
-//TODO: Translation of pointer arithmetic
-//TODO: Translation of calls
+//TODO: 
+// * Translation of pointer arithmetic.
+// * Translation of calls/returns:
+//   1) for each function consider the in/out nodes so we can compute
+//     summaries.
+//   2) for each call site identify modified nodes by the function
+//
+// WARNING:
+//   Unless the whole program is inlined the results with MEM are
+//   unsound since we do not consider the effect of functions on the
+//   global states. This will be solved when step 2) is done.
 
 namespace llvm_ikos
 {
@@ -48,55 +58,17 @@ namespace llvm_ikos
 
     /// -- variable factory
     VariableFactory& m_vfac;
-    /// -- current read memory
-    Value* m_inMem;
-    /// -- current write memory
-    Value* m_outMem;
-    /// -- if m_inMem is a singleton
-    bool   is_inMem_singleton;
-    /// -- level of precision of the Cfg
-    TrackedPrecision m_track_level;
+    MemAnalysis* m_mem;
 
-    SymExecBase (VariableFactory &vfac, TrackedPrecision level): 
-        m_vfac (vfac), m_inMem (0), m_outMem (0), is_inMem_singleton (false), 
-        m_track_level (level) { }
-
-    bool isShadowMem (const Value &V)
-    {
-      // work list
-      std::queue<const Value*> wl;
-      
-      wl.push (&V);
-      while (!wl.empty ())
-      {
-        const Value *val = wl.front ();
-        wl.pop ();
-        
-        if (const CallInst *ci = dyn_cast<const CallInst> (val))
-        {
-          if (const Function *fn = ci->getCalledFunction ())
-          return fn->getName ().startswith ("shadow.mem.");
-          return false;
-        }   
-        else if (const PHINode *phi = dyn_cast<const PHINode> (val))
-        {
-          for (unsigned i = 0; i < phi->getNumIncomingValues (); ++i)
-            wl.push (phi->getIncomingValue (i));
-        }
-        else return false;
-      }
-      assert (0);
-      return false;
-    }
+    SymExecBase (VariableFactory &vfac, MemAnalysis* mem): 
+        m_vfac (vfac), m_mem (mem)
+    { }
 
     bool isTracked (const llvm::Value &v)
     {
-      // -- shadow values represent memory regions
-      // -- only track them when memory is tracked
-      if (isShadowMem (v)) return m_track_level >= MEM;
-
       // -- a pointer
-      if (v.getType ()->isPointerTy ()) return m_track_level >= PTR;
+      if (v.getType ()->isPointerTy ()) 
+        return (m_mem->getTrackLevel () >= PTR); 
 
       // -- always track integer registers
       return v.getType ()->isIntegerTy ();
@@ -107,11 +79,16 @@ namespace llvm_ikos
       assert (isTracked (v));
       return m_vfac [v];
     }
+
+    varname_t symVar (int v)
+    {
+      return m_vfac.get (v);
+    }
   
-    boost::optional<ZLinearExpression> lookup (const Value &v)
+    boost::optional<ZLinExp> lookup (const Value &v)
     {
       if (isa<ConstantPointerNull> (&v) || isa<const UndefValue> (&v))
-        return boost::optional<ZLinearExpression>();
+        return boost::optional<ZLinExp>();
       
       if (const ConstantInt *c = dyn_cast<const ConstantInt> (&v))
       {
@@ -121,14 +98,14 @@ namespace llvm_ikos
                   << " too big for int64_t.\n";
         }
         else
-          return boost::optional<ZLinearExpression>
-              (ZLinearExpression (c->getValue ().getSExtValue ()));
+          return boost::optional<ZLinExp>
+              (ZLinExp (c->getValue ().getSExtValue ()));
       }
 
       if (isTracked(v))
-        return boost::optional<ZLinearExpression>(ZLinearExpression (symVar (v)));
+        return boost::optional<ZLinExp>(ZLinExp (symVar (v)));
       
-      return boost::optional<ZLinearExpression>();
+      return boost::optional<ZLinExp>();
     }
     
     bool isLogicalOp(const Instruction &I) const 
@@ -148,7 +125,7 @@ namespace llvm_ikos
       }
     }
 
-    boost::optional<ZLinearConstraint> 
+    boost::optional<ZLinCst> 
     gen_assertion (CmpInst &I, bool is_negated)
     {
       
@@ -157,10 +134,10 @@ namespace llvm_ikos
       const Value& v0 = *I.getOperand (0);
       const Value& v1 = *I.getOperand (1);
 
-      boost::optional<ZLinearExpression> op1 = lookup (v0);
-      boost::optional<ZLinearExpression> op2 = lookup (v1);
+      boost::optional<ZLinExp> op1 = lookup (v0);
+      boost::optional<ZLinExp> op2 = lookup (v1);
       
-      ZLinearConstraint res;
+      ZLinCst res;
       
       if (op1 && op2) 
       {
@@ -168,32 +145,32 @@ namespace llvm_ikos
         {
           case CmpInst::ICMP_EQ:
             ( (!is_negated) ? 
-              res = ZLinearConstraint (*op1 == *op2) : 
-              res = ZLinearConstraint (*op1 != *op2));
+              res = ZLinCst (*op1 == *op2) : 
+              res = ZLinCst (*op1 != *op2));
             break;
           case CmpInst::ICMP_NE:
             ( (!is_negated) ? 
-              res = ZLinearConstraint (*op1 != *op2) : 
-              res = ZLinearConstraint (*op1 == *op2));
+              res = ZLinCst (*op1 != *op2) : 
+              res = ZLinCst (*op1 == *op2));
             break;
           case CmpInst::ICMP_ULT:
           case CmpInst::ICMP_SLT:
             ( (!is_negated) ? 
-              res = ZLinearConstraint (*op1 <= *op2 - 1) : 
-              res = ZLinearConstraint (*op1 >= *op2));
+              res = ZLinCst (*op1 <= *op2 - 1) : 
+              res = ZLinCst (*op1 >= *op2));
             break; 
           case CmpInst::ICMP_ULE:
           case CmpInst::ICMP_SLE:
             ( (!is_negated) ? 
-              res = ZLinearConstraint (*op1 <= *op2) : 
-              res = ZLinearConstraint (*op1 >= *op2 + 1));
+              res = ZLinCst (*op1 <= *op2) : 
+              res = ZLinCst (*op1 >= *op2 + 1));
             break;
           default:  assert (false);
         }
-        return boost::optional<ZLinearConstraint> (res);
+        return boost::optional<ZLinCst> (res);
       }
       else
-        return boost::optional<ZLinearConstraint> ();
+        return boost::optional<ZLinCst> ();
     }
   };
 
@@ -201,8 +178,8 @@ namespace llvm_ikos
   {
     basic_block_t& m_bb;
     
-    SymExecVisitor (VariableFactory& vfac, basic_block_t & bb, TrackedPrecision level): 
-        SymExecBase (vfac, level), m_bb(bb)  {  }
+    SymExecVisitor (VariableFactory& vfac, basic_block_t & bb, MemAnalysis* mem): 
+        SymExecBase (vfac, mem), m_bb (bb)  {  }
         
     /// skip PHI nodes
     void visitPHINode (PHINode &I) {}
@@ -286,8 +263,8 @@ namespace llvm_ikos
       const Value& v1 = *i.getOperand(0);
       const Value& v2 = *i.getOperand(1);
       
-      boost::optional<ZLinearExpression> op1 = lookup (v1);
-      boost::optional<ZLinearExpression> op2 = lookup (v2);
+      boost::optional<ZLinExp> op1 = lookup (v1);
+      boost::optional<ZLinExp> op2 = lookup (v2);
       
       if (!(op1 && op2)) return;
       
@@ -301,8 +278,8 @@ namespace llvm_ikos
             { // cfg does not support subtraction of a constant by a
               // variable because the ikos api for abstract domains
               // does not support it.
-              m_bb.assign (lhs, ZLinearExpression ((*op1).constant ()));
-              m_bb.sub (lhs, ZLinearExpression (lhs), *op2);
+              m_bb.assign (lhs, ZLinExp ((*op1).constant ()));
+              m_bb.sub (lhs, ZLinExp (lhs), *op2);
             }
             else
               m_bb.sub (lhs, *op1, *op2);
@@ -316,8 +293,8 @@ namespace llvm_ikos
             { // cfg does not support division of a constant by a
               // variable because the ikos api for abstract domains
               // does not support it.
-              m_bb.assign (lhs, ZLinearExpression ((*op1).constant ()));
-              m_bb.div (lhs, ZLinearExpression (lhs), *op2);
+              m_bb.assign (lhs, ZLinExp ((*op1).constant ()));
+              m_bb.div (lhs, ZLinExp (lhs), *op2);
             }
             else
               m_bb.div (lhs, *op1, *op2);
@@ -332,7 +309,7 @@ namespace llvm_ikos
             unsigned factor = 1;
             for (unsigned i = 0; i < (unsigned) shift; i++) 
               factor *= 2;
-            m_bb.mul (lhs, *op1, ZLinearExpression (factor));            
+            m_bb.mul (lhs, *op1, ZLinExp (factor));            
           }
           break;
         default:
@@ -357,7 +334,7 @@ namespace llvm_ikos
       varname_t dst = symVar (I);
       const Value& v = *I.getOperand (0); // the value to be casted
 
-      boost::optional<ZLinearExpression> src = lookup (v);
+      boost::optional<ZLinExp> src = lookup (v);
 
       if (src)
         m_bb.assign(dst, *src);
@@ -365,8 +342,8 @@ namespace llvm_ikos
       {
         if (v.getType ()->isIntegerTy (1))
         {
-          m_bb.assume ( ZLinearExpression (dst) >= ZLinearExpression (0) );
-          m_bb.assume ( ZLinearExpression (dst) <= ZLinearExpression (1) );
+          m_bb.assume ( ZLinExp (dst) >= ZLinExp (0) );
+          m_bb.assume ( ZLinExp (dst) <= ZLinExp (1) );
         }
         else m_bb.havoc(dst);
       }
@@ -375,108 +352,112 @@ namespace llvm_ikos
     void visitLoadInst (LoadInst &I)
     {
       if (!isTracked (I)) return;
-
-      if (!m_inMem) return;
+      
+      int arr_idx = m_mem->getNodeId (I.getPointerOperand ());
+                                      
+      if (arr_idx < 0) return;
 
       varname_t lhs = symVar (I);
-      boost::optional<ZLinearExpression> idx = lookup (*I.getPointerOperand ());
+      boost::optional<ZLinExp> idx = lookup (*I.getPointerOperand ());
       if (!idx) return ;
 
-      m_bb.array_load (lhs, symVar (*m_inMem), *idx);
-
-      m_inMem = NULL;
-      is_inMem_singleton = false;
+      m_bb.array_load (lhs, symVar (arr_idx), *idx);
     }
     
     void visitStoreInst (StoreInst &I)
     {
-      if (!m_inMem || !m_outMem || !isTracked (*I.getOperand (0))) return;
+      if (!isTracked (*I.getOperand (0))) return;
 
-      boost::optional<ZLinearExpression> idx = lookup (*I.getPointerOperand ());
+     
+      boost::optional<ZLinExp> idx = lookup (*I.getPointerOperand ());
       if (!idx) return;
 
-      boost::optional<ZLinearExpression> val = lookup (*I.getOperand (0));
-      assert (val);
+      boost::optional<ZLinExp> val = lookup (*I.getOperand (0));
+      if (!val) return;
 
-      m_bb.array_store (symVar (*m_outMem), symVar (*m_inMem), *idx, *val, 
-                        is_inMem_singleton);      
-      
-      m_inMem = NULL;
-      is_inMem_singleton = false;
-      m_outMem = NULL;
+      int arr_idx = m_mem->getNodeId (I.getOperand (1)); 
+                                      
+      if (arr_idx < 0) return;
+
+      // FIXME
+      // This will ignore all the non-integer fields.
+      // Maybe more appropriate is to create a different array for
+      // each non-integer field.
+      if (I.getOperand (0)->getType ()->isIntegerTy ())
+        m_bb.array_store (symVar (arr_idx), *idx, *val, m_mem->isSingleton (arr_idx)); 
     }
 
     void visitCallInst (CallInst &I) 
     {
-      CallSite CS (&I);
-      const Function *fn = CS.getCalledFunction ();
-      if (!fn) {
-        // Use DSA to handle better
-        return;      
-      }
+      // CallSite CS (&I);
+      // const Function *fn = CS.getCalledFunction ();
+      // if (!fn) {
+      //   // Use DSA to handle better
+      //   return;      
+      // }
       
-      const Function &F = *fn;
-      const Function &PF = *I.getParent ()->getParent ();
+      // const Function &F = *fn;
+      // const Function &PF = *I.getParent ()->getParent ();
 
-      if (F.getName ().startswith ("shadow.mem") && isTracked (I))
-      {
-        if (F.getName ().equals ("shadow.mem.init"))
-        { 
-          m_bb.array_init (symVar (I));
-        }
-        else if (PF.getName ().equals ("main") && 
-                 F.getName ().equals ("shadow.mem.arg.init"))
-        {
-          m_bb.array_init (symVar (I));
-        }
-        else if (F.getName ().equals ("shadow.mem.load"))
-        { 
-          m_inMem = CS.getArgument (1);
-        }
-        else if (F.getName ().equals ("shadow.mem.store"))
-        {
-          m_inMem = CS.getArgument (1);
-          m_outMem = &I;
-          is_inMem_singleton = false;
-          if (const ConstantInt *c = dyn_cast<const ConstantInt> (CS.getArgument (2)))
-          {
-            if (c->getType ()->isIntegerTy (1))
-            {
-              is_inMem_singleton = c->isOne ();
-            }
-          }
-        }
-        else if (F.getName ().equals ("shadow.mem.arg.ref"))
-        {// TODO: read-only array by the function
-          //m_fparams.push_back (m_s.read (symb (*CS.getArgument (1))));
-        }
-        else if (F.getName ().equals ("shadow.mem.arg.mod"))
-        {
-          //m_fparams.push_back (m_s.read (symb (*CS.getArgument (1))));
-          //m_fparams.push_back (m_s.havoc (symb (I)));
-          m_bb.havoc (symVar (I));
-        }
-        else if (F.getName ().equals ("shadow.mem.arg.new"))
-        {// TODO: new array created by the function
-          //m_fparams.push_back (m_s.havoc (symb (I)));
-        }
-        else if (!PF.getName ().equals ("main") && 
-                 F.getName ().equals ("shadow.mem.in"))
-        {// TODO: input array variables
-          //m_s.read (symb (*CS.getArgument (1)));
-        }
-        else if (!PF.getName ().equals ("main") &&
-                 F.getName ().equals ("shadow.mem.out"))
-        {// TODO: output array variables
-          //m_s.read (symb (*CS.getArgument (1)));
-        }
-        else if (!PF.getName ().equals ("main") && 
-                 F.getName ().equals ("shadow.mem.arg.init"))
-        {
-          // regions initialized in main are global. 
-          // do nothing 
-        }
-      }
+      // if (F.getName ().startswith ("shadow.mem") && isTracked (I))
+      // {
+      //   if (F.getName ().equals ("shadow.mem.init"))
+      //   { 
+      //     m_bb.array_init (symVar (I));
+      //   }
+      //   else if (PF.getName ().equals ("main") && 
+      //            F.getName ().equals ("shadow.mem.arg.init"))
+      //   {
+      //     m_bb.array_init (symVar (I));
+      //   }
+      //   else if (F.getName ().equals ("shadow.mem.load"))
+      //   { 
+      //     m_inMem = CS.getArgument (1);
+      //   }
+      //   else if (F.getName ().equals ("shadow.mem.store"))
+      //   {
+      //     m_inMem = CS.getArgument (1);
+      //     m_outMem = &I;
+      //     is_inMem_singleton = false;
+      //     if (const ConstantInt *c = dyn_cast<const ConstantInt> (CS.getArgument (2)))
+      //     {
+      //       if (c->getType ()->isIntegerTy (1))
+      //       {
+      //         is_inMem_singleton = c->isOne ();
+      //       }
+      //     }
+      //   }
+      //   else if (F.getName ().equals ("shadow.mem.arg.ref"))
+      //   {// TODO: read-only array by the function
+      //     //m_fparams.push_back (m_s.read (symb (*CS.getArgument (1))));
+      //   }
+      //   else if (F.getName ().equals ("shadow.mem.arg.mod"))
+      //   {
+      //     //m_fparams.push_back (m_s.read (symb (*CS.getArgument (1))));
+      //     //m_fparams.push_back (m_s.havoc (symb (I)));
+      //     m_bb.havoc (symVar (I));
+      //   }
+      //   else if (F.getName ().equals ("shadow.mem.arg.new"))
+      //   {// TODO: new array created by the function
+      //     //m_fparams.push_back (m_s.havoc (symb (I)));
+      //   }
+      //   else if (!PF.getName ().equals ("main") && 
+      //            F.getName ().equals ("shadow.mem.in"))
+      //   {// TODO: input array variables
+      //     //m_s.read (symb (*CS.getArgument (1)));
+      //   }
+      //   else if (!PF.getName ().equals ("main") &&
+      //            F.getName ().equals ("shadow.mem.out"))
+      //   {// TODO: output array variables
+      //     //m_s.read (symb (*CS.getArgument (1)));
+      //   }
+      //   else if (!PF.getName ().equals ("main") && 
+      //            F.getName ().equals ("shadow.mem.arg.init"))
+      //   {
+      //     // regions initialized in main are global. 
+      //     // do nothing 
+      //   }
+      // }
     }
 
     /// base case. if all else fails.
@@ -499,8 +480,8 @@ namespace llvm_ikos
     const llvm::BasicBlock& m_inc_BB; 
     
     SymExecPhiVisitor (VariableFactory& vfac, basic_block_t& bb, 
-                       const llvm::BasicBlock& inc_BB, TrackedPrecision level): 
-        SymExecBase (vfac,level), m_bb (bb), m_inc_BB (inc_BB)   {}
+                       const llvm::BasicBlock& inc_BB, MemAnalysis* mem): 
+        SymExecBase (vfac, mem), m_bb (bb), m_inc_BB (inc_BB)   {}
     
     void visitPHINode (PHINode &I) 
     {
@@ -512,7 +493,7 @@ namespace llvm_ikos
       if (LHS == &v) return;
       
       varname_t lhs = symVar(I);
-      boost::optional<ZLinearExpression> rhs = lookup(v);
+      boost::optional<ZLinExp> rhs = lookup(v);
       if (rhs) m_bb.assign(lhs, *rhs);
       else     m_bb.havoc(lhs);
     }
@@ -525,22 +506,22 @@ namespace llvm_ikos
     bool           m_is_negated;
     
     SymExecCmpInstVisitor (VariableFactory& vfac, basic_block_t& bb, 
-                           bool is_negated, TrackedPrecision level):
-        SymExecBase (vfac,level), m_bb (bb), m_is_negated (is_negated)   {}
+                           bool is_negated, MemAnalysis* mem):
+        SymExecBase (vfac, mem), m_bb (bb), m_is_negated (is_negated)   {}
     
     void visitCmpInst (CmpInst &I) 
     {
       
-      boost::optional<ZLinearConstraint> cst = gen_assertion (I, m_is_negated);
+      boost::optional<ZLinCst> cst = gen_assertion (I, m_is_negated);
       if (cst) m_bb.assume(*cst);
       
       if (isTracked (I))
       {
         varname_t lhs = symVar (I);
         if (m_is_negated)
-          m_bb.assign (lhs, ZLinearExpression (0));
+          m_bb.assign (lhs, ZLinExp (0));
         else
-          m_bb.assign (lhs, ZLinearExpression (1));
+          m_bb.assign (lhs, ZLinExp (1));
       }
     }
   };
@@ -553,8 +534,8 @@ namespace llvm_ikos
     unsigned id;
     
     SymExecITEVisitor (VariableFactory& vfac, CfgBuilder& builder, 
-                       basic_block_t& bb, TrackedPrecision level):
-        SymExecBase (vfac, level), m_builder (builder), m_bb (bb), id (0)   
+                       basic_block_t& bb, MemAnalysis* mem):
+        SymExecBase (vfac, mem), m_builder (builder), m_bb (bb), id (0)   
     { }
     
     void visitCmpInst (CmpInst &I) { }
@@ -567,8 +548,8 @@ namespace llvm_ikos
       varname_t lhs = symVar(I);
       
       const Value& cond = *I.getCondition ();
-      boost::optional<ZLinearExpression> op0 = lookup (*I.getTrueValue ());
-      boost::optional<ZLinearExpression> op1 = lookup (*I.getFalseValue ());
+      boost::optional<ZLinExp> op0 = lookup (*I.getTrueValue ());
+      boost::optional<ZLinExp> op1 = lookup (*I.getFalseValue ());
       
       if (!(op0 && op1)) return;
       
@@ -680,7 +661,7 @@ namespace llvm_ikos
         }
         else 
         {
-          SymExecCmpInstVisitor v (m_vfac, bb, br->getSuccessor (1) == &dst, m_track_level);
+          SymExecCmpInstVisitor v (m_vfac, bb, br->getSuccessor (1) == &dst, m_mem);
           if (llvm::Instruction *I = 
               dyn_cast<llvm::Instruction> (& const_cast<llvm::Value&>(c)))
             v.visit (I); 
@@ -712,7 +693,7 @@ namespace llvm_ikos
         assert (BB);
         basic_block_t& bb = *BB;
         rets.push_back (&bb);
-        SymExecVisitor v (m_vfac, *BB, m_track_level);
+        SymExecVisitor v (m_vfac, *BB, m_mem);
         v.visit (B);
       }
       else
@@ -723,7 +704,7 @@ namespace llvm_ikos
         // build an initial CFG block from bb but ignoring for now
         // branches, ite instructions and phi-nodes
         {
-          SymExecVisitor v (m_vfac, *BB, m_track_level);
+          SymExecVisitor v (m_vfac, *BB, m_mem);
           v.visit (B);
         }
         
@@ -736,13 +717,13 @@ namespace llvm_ikos
           // phi nodes in dst are translated into assignments in the
           // predecessor
           {            
-            SymExecPhiVisitor v (m_vfac, (mid_bb ? *mid_bb : *BB), B, m_track_level);
+            SymExecPhiVisitor v (m_vfac, (mid_bb ? *mid_bb : *BB), B, m_mem);
             v.visit (const_cast<llvm::BasicBlock &>(*dst));
           }
         }
         
         {
-          SymExecITEVisitor v (m_vfac, *this, *BB, m_track_level);
+          SymExecITEVisitor v (m_vfac, *this, *BB, m_mem);
           v.visit (B);
         }
       }
@@ -762,6 +743,26 @@ namespace llvm_ikos
       for(unsigned int i=0; i<rets.size (); i++)
         *(rets [i]) >> unified_ret;
       m_cfg.set_exit (unified_ret.label ());
+    }
+
+    if (m_mem->getTrackLevel () >= MEM)
+    {
+      // initialize memory allocations
+      basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+      for (auto node_id : boost::make_iterator_range (m_mem->begin (), 
+                                                      m_mem->end ()))
+      {
+        if (!m_mem->isReachable (node_id))
+        {// does not escape the function
+          entry.set_insert_point_front ();
+          entry.array_init (m_vfac.get (node_id));
+        }
+        else
+        { // does escape the function
+          entry.set_insert_point_front ();
+          entry.array_init (m_vfac.get (node_id));
+        }
+      }
     }
 
     // Important to keep small the cfg

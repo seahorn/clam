@@ -3,6 +3,9 @@
 
 /* Build a CFG from a LLVM function */
 
+#include <boost/optional.hpp>
+#include <boost/noncopyable.hpp>
+
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Constants.h"
@@ -14,8 +17,7 @@
 #include <ikos/cfg/VarFactory.hpp>
 #include <ikos/bignums.hpp>
 
-#include <boost/optional.hpp>
-#include <boost/noncopyable.hpp>
+#include "ikos_llvm/MemAnalysis.hh"
 
 namespace cfg
 {
@@ -49,7 +51,13 @@ namespace cfg_impl
     typedef LlvmVariableFactory_t::variable_t varname_t;
     
     LlvmVariableFactory(): m_factory (new LlvmVariableFactory_t()){ }
-    
+  
+    // to generate varname_t without having a Value
+    varname_t get (int k)  
+    {
+      return m_factory->get (k);
+    }
+
     varname_t operator[](const llvm::Value &v)
     {
       const llvm::Value *V = &v;
@@ -59,16 +67,17 @@ namespace cfg_impl
 
   typedef LlvmVariableFactory VariableFactory;
   typedef typename VariableFactory::varname_t varname_t;
-
   // CFG
   typedef ikos::variable< ikos::z_number, varname_t > z_var;
-  typedef llvm::BasicBlock*                           basic_block_label_t;
-  typedef Cfg< basic_block_label_t, varname_t>        cfg_t;
-  typedef cfg_t::BasicBlock_t                         basic_block_t;
-  typedef typename cfg_t::BasicBlock_t::ZLinearExpression ZLinearExpression;
-  typedef typename cfg_t::BasicBlock_t::ZLinearConstraint ZLinearConstraint;
-  typedef ikos::linear_constraint_system<ikos::z_number, varname_t> ZLinearConstraintSystem;
-
+  typedef llvm::BasicBlock* basic_block_label_t;
+  typedef Cfg< basic_block_label_t, varname_t> cfg_t;
+  typedef cfg_t::BasicBlock_t basic_block_t;
+  typedef typename cfg_t::BasicBlock_t::ZLinearExpression ZLinExp;
+  typedef typename cfg_t::BasicBlock_t::ZLinearConstraint ZLinCst;
+  typedef ikos::linear_constraint_system<ikos::z_number, varname_t> ZLinCstSystem;
+  // for compatibility with seahorn
+  typedef ZLinCst ZLinearConstraint;
+  typedef ZLinCstSystem ZLinearConstraintSystem;
 } // end namespace cfg_impl
 
 namespace{
@@ -105,17 +114,16 @@ namespace llvm_ikos
     unsigned          m_id;
     cfg_t             m_cfg;
     llvm_bb_map_t     m_bb_map;
-    TrackedPrecision  m_track_level;
+    MemAnalysis*      m_mem;
 
    public:
     
-    CfgBuilder (Function &func, VariableFactory &vfac, 
-                TrackedPrecision trackLev = REG): 
+    CfgBuilder (Function &func, VariableFactory &vfac, MemAnalysis* mem): 
         m_func (func), 
         m_vfac (vfac), 
         m_id (0),
-        m_cfg (&m_func.getEntryBlock (), trackLev),
-        m_track_level (trackLev)
+        m_cfg (&m_func.getEntryBlock (), (mem->getTrackLevel ())),
+        m_mem (mem)
     { }
     
     cfg_t & operator()()
