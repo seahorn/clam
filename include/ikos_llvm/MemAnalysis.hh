@@ -184,15 +184,18 @@ namespace llvm_ikos
     llvm::Function* m_f;
     TrackedPrecision m_tracklev;
     vector<unsigned> m_node_ids;
+    
    public:
+    typedef typename vector<unsigned>::iterator iterator;
+
     MemAnalysis (llvm::Function *f): m_f (f), m_tracklev (REG) { }
     TrackedPrecision getTrackLevel () const { return m_tracklev; }
     iterator begin () { return m_node_ids.begin(); }       
     iterator end () { return m_node_ids.end (); }      
     // These methods will be never called anyway
-    int getNodeId (Value* ptr) { return -1; }
-    bool isSingleton (int node_id) { return false; }
-    bool isReachable (int node_id) { return false; }     
+    int getNodeId (llvm::Value* /*ptr*/) { return -1; }
+    bool isSingleton (int /*node_id*/) { return false; }
+    bool isReachable (int /*node_id*/) { return false; }     
   }; 
 } // end namespace
 #endif 
