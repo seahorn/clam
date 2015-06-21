@@ -51,6 +51,12 @@ namespace cfg_impl
     typedef LlvmVariableFactory_t::variable_t varname_t;
     
     LlvmVariableFactory(): m_factory (new LlvmVariableFactory_t()){ }
+
+    // to generate fresh varname_t without having a Value
+    varname_t get ()  
+    {
+      return m_factory->get ();
+    }
   
     // to generate varname_t without having a Value
     varname_t get (int k)  
@@ -115,10 +121,12 @@ namespace llvm_ikos
     cfg_t             m_cfg;
     llvm_bb_map_t     m_bb_map;
     MemAnalysis*      m_mem;
+    bool              m_is_inter_proc;
 
    public:
     
-    CfgBuilder (Function &func, VariableFactory &vfac, MemAnalysis* mem);
+    CfgBuilder (Function &func, VariableFactory &vfac, MemAnalysis* mem, 
+                bool isInterProc);
     
     cfg_t & operator()()
     { 

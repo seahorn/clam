@@ -181,10 +181,13 @@ namespace llvm_ikos
       public SymExecBase
   {
     basic_block_t& m_bb;
-    
+    bool m_is_inter_proc;
+
     SymExecVisitor (VariableFactory& vfac, basic_block_t & bb,
-                    MemAnalysis* mem): 
-        SymExecBase (vfac, mem), m_bb (bb)  {  }
+                    MemAnalysis* mem, bool isInterProc): 
+        SymExecBase (vfac, mem), m_bb (bb), 
+        m_is_inter_proc (isInterProc)  
+    { }
         
     /// skip PHI nodes
     void visitPHINode (PHINode &I) {}
@@ -395,14 +398,31 @@ namespace llvm_ikos
                           m_mem->isSingleton (arr_idx)); 
     }
 
-    Value& normalizePar (Value& actual)
+    pair<varname_t, VariableType> normalizePar (Value& V)
     {
-      // TODO: normalize if it is a constant
-      return actual;
+      if (Constant *cst = dyn_cast< Constant> (&V))
+      { 
+        varname_t v = m_vfac.get ();
+        if (ConstantInt * intCst = dyn_cast<ConstantInt> (cst))
+        {
+          auto e = lookup (*intCst);
+          if (e)
+          {
+            m_bb.assign (v, *e);
+            return make_pair (v, INT_TYPE);
+          }
+        }
+        m_bb.havoc (v);
+        return make_pair (v, UNK_TYPE);
+      }
+      else
+        return make_pair (m_vfac [V], getType (V.getType ()));
     }
 
     void visitReturnInst (ReturnInst &I)
     {
+      if (!m_is_inter_proc) return;
+
       // -- skip return argument of main
       if (I.getParent ()->getParent ()->getName ().equals ("main")) 
         return;
@@ -427,13 +447,22 @@ namespace llvm_ikos
       // -- skip if intrinsic
       if (callee->isIntrinsic ()) return;
 
+      if (!m_is_inter_proc && m_mem->getTrackLevel () >= MEM)
+      {// -- havoc all modified nodes by the callee
+        for (auto a : m_mem->getReadModArrays (I).second)
+          m_bb.havoc (symVar (a));
+
+        return;
+      }
+
+
+      // -- add the callsite
       vector<pair<varname_t,VariableType> > actuals;
       for (auto &a : boost::make_iterator_range (CS.arg_begin(),
                                                  CS.arg_end()))
       { 
         Value *v = a.get();
-        actuals.push_back (make_pair (m_vfac [normalizePar (*v)], 
-                                      getType (v->getType ())));
+        actuals.push_back (normalizePar (*v));
       }
 
       set<int> mods;
@@ -455,9 +484,9 @@ namespace llvm_ikos
       else
         m_bb.callsite (m_vfac [*callee], actuals);
 
+      // -- and havoc all modified nodes by the callee
       if (m_mem->getTrackLevel () >= MEM)
       {
-        // -- havoc all modified nodes by the callee
         for (auto a : mods)
           m_bb.havoc (symVar (a));
       }
@@ -593,12 +622,13 @@ namespace llvm_ikos
   };
 
   CfgBuilder::CfgBuilder (Function &func, VariableFactory &vfac, 
-                          MemAnalysis* mem): 
+                          MemAnalysis* mem, bool isInterProc): 
         m_func (func), 
         m_vfac (vfac), 
         m_id (0),
         m_cfg (&m_func.getEntryBlock (), (mem->getTrackLevel ())),
-        m_mem (mem) { }    
+        m_mem (mem),
+        m_is_inter_proc (isInterProc) { }    
 
   CfgBuilder::opt_basic_block_t 
   CfgBuilder::lookup (const llvm::BasicBlock &B)  
@@ -721,7 +751,7 @@ namespace llvm_ikos
         assert (BB);
         basic_block_t& bb = *BB;
         rets.push_back (&bb);
-        SymExecVisitor v (m_vfac, *BB, m_mem);
+        SymExecVisitor v (m_vfac, *BB, m_mem, m_is_inter_proc);
         v.visit (B);
       }
       else
@@ -732,7 +762,7 @@ namespace llvm_ikos
         // -- build an initial CFG block from bb but ignoring for now
         //    branches, ite instructions and phi-nodes
         {
-          SymExecVisitor v (m_vfac, *BB, m_mem);
+          SymExecVisitor v (m_vfac, *BB, m_mem, m_is_inter_proc);
           v.visit (B);
         }
         
@@ -796,28 +826,31 @@ namespace llvm_ikos
       }
     }
 
-    // -- add function declaration
-    if (!m_func.isVarArg ())
+    if (m_is_inter_proc)
     {
-      vector<pair<varname_t,VariableType> > params;
-      for (llvm::Value &arg : boost::make_iterator_range (m_func.arg_begin (),
-                                                          m_func.arg_end ()))
-        params.push_back (make_pair (m_vfac [arg], getType (arg.getType ())));
-
-      // -- add array formal parameters 
-      if (m_mem->getTrackLevel () >= MEM && 
-          (!m_func.getName ().equals ("main")))
+      // -- add function declaration
+      if (!m_func.isVarArg ())
       {
-        auto p = m_mem->getInOutArrays (m_func);
-        auto in = p.first; auto out = p.second;
-        set<int> all;      
-        boost::set_union(in, out, std::inserter (all, all.end()));
-        for (auto a: all)
-          params.push_back (make_pair (m_vfac.get (a), ARR_TYPE));
+        vector<pair<varname_t,VariableType> > params;
+        for (llvm::Value &arg : boost::make_iterator_range (m_func.arg_begin (),
+                                                            m_func.arg_end ()))
+        params.push_back (make_pair (m_vfac [arg], getType (arg.getType ())));
+        
+        // -- add array formal parameters 
+        if (m_mem->getTrackLevel () >= MEM && 
+            (!m_func.getName ().equals ("main")))
+        {
+          auto p = m_mem->getInOutArrays (m_func);
+          auto in = p.first; auto out = p.second;
+          set<int> all;      
+          boost::set_union(in, out, std::inserter (all, all.end()));
+          for (auto a: all)
+            params.push_back (make_pair (m_vfac.get (a), ARR_TYPE));
+        }
+        FunctionDecl<varname_t> decl (getType (m_func.getReturnType ()), 
+                                      m_vfac[m_func], params);
+        m_cfg.set_func_decl (decl);
       }
-      FunctionDecl<varname_t> decl (getType (m_func.getReturnType ()), 
-                                    m_vfac[m_func], params);
-      m_cfg.set_func_decl (decl);
     }
 
     // Important to keep small the cfg

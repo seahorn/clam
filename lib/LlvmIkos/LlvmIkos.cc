@@ -62,12 +62,17 @@ RunLive("ikos-live",
 
 static llvm::cl::opt<enum TrackedPrecision>
 TrackedLevel("ikos-track-lvl",
-   llvm::cl::desc ("Track level for Cfg construction"),
+   llvm::cl::desc ("Track level for Cfg and abstract domains"),
    cl::values (clEnumValN (REG, "reg", "Primitive registers only"),
                clEnumValN (PTR, "ptr", "REG + pointers"),
                clEnumValN (MEM, "mem", "PTR + memory content"),
                clEnumValEnd),
    cl::init (TrackedPrecision::REG));
+
+static llvm::cl::opt<bool>
+InterProc ("ikos-inter-proc",
+             cl::desc ("Build inter-procedural Cfg"), 
+             cl::init (false));
 
 namespace domain_impl
 {
@@ -134,7 +139,7 @@ namespace llvm_ikos
     VariableFactory vfac; 
 
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
-    cfg_t cfg = CfgBuilder (F, vfac, &m_mem)();
+    cfg_t cfg = CfgBuilder (F, vfac, &m_mem, InterProc)();
     //LOG ("ikos-cfg", errs () << cfg << "\n");  
     errs () << cfg << "\n";
 
