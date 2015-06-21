@@ -13,6 +13,7 @@
 #include "boost/optional.hpp"
 
 #include <ikos_llvm/CfgBuilder.hh>
+#include "ikos_llvm/MemAnalysis.hh"
 
 namespace llvm_ikos
 {enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS, TERMS};}
@@ -31,6 +32,7 @@ namespace llvm_ikos
     invariants_map_t m_inv_map;
     IkosDomain       m_absdom;
     bool             m_runlive;
+    MemAnalysis      m_mem;    
 
    public:
 

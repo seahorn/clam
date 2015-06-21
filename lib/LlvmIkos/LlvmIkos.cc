@@ -9,9 +9,7 @@
 #include "llvm/Support/Debug.h"
 
 #include "ikos_llvm/config.h"
-#include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/LlvmIkos.hh"
-#include "ikos_llvm/MemAnalysis.hh"
 #include "ikos_llvm/Support/AbstractDomains.hh"
 
 #include <ikos/analysis/FwdAnalyzer.hpp>
@@ -62,7 +60,6 @@ RunLive("ikos-live",
         llvm::cl::desc("Run Ikos with live ranges"),
         llvm::cl::init (false));
 
-#if IKOS_MINOR_VERSION >= 2
 static llvm::cl::opt<enum TrackedPrecision>
 TrackedLevel("ikos-track-lvl",
    llvm::cl::desc ("Track level for Cfg construction"),
@@ -71,7 +68,6 @@ TrackedLevel("ikos-track-lvl",
                clEnumValN (MEM, "mem", "PTR + memory content"),
                clEnumValEnd),
    cl::init (TrackedPrecision::REG));
-#endif 
 
 namespace domain_impl
 {
@@ -115,7 +111,12 @@ namespace llvm_ikos
     // -- initialize from cli options
     m_absdom = Domain;
     m_runlive = RunLive;
-    
+
+#ifdef HAVE_DSA
+    m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (),
+                         TrackedLevel);
+#endif     
+
     bool change=false;
 
     for (auto &f : M) 
@@ -133,17 +134,7 @@ namespace llvm_ikos
     VariableFactory vfac; 
 
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
-#if IKOS_MINOR_VERSION >= 2
-    MemAnalysis mem (&F);
-#ifdef HAVE_DSA
-    mem = MemAnalysis (&F, 
-                       &getAnalysis<SteensgaardDataStructures> (),
-                       TrackedLevel);
-#endif 
-    cfg_t cfg = CfgBuilder (F, vfac, &mem)();
-#else
-    cfg_t cfg = CfgBuilder (F, vfac)();
-#endif 
+    cfg_t cfg = CfgBuilder (F, vfac, &m_mem)();
     //LOG ("ikos-cfg", errs () << cfg << "\n");  
     errs () << cfg << "\n";
 

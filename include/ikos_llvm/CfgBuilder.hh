@@ -118,13 +118,7 @@ namespace llvm_ikos
 
    public:
     
-    CfgBuilder (Function &func, VariableFactory &vfac, MemAnalysis* mem): 
-        m_func (func), 
-        m_vfac (vfac), 
-        m_id (0),
-        m_cfg (&m_func.getEntryBlock (), (mem->getTrackLevel ())),
-        m_mem (mem)
-    { }
+    CfgBuilder (Function &func, VariableFactory &vfac, MemAnalysis* mem);
     
     cfg_t & operator()()
     { 

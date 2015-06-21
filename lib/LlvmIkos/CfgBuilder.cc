@@ -15,17 +15,7 @@
 #include "ikos_llvm/Support/CFG.hh"
 #include "ikos_llvm/Support/bignums.hh"
 
-//TODO: 
-// * Translation of pointer arithmetic.
-// * Translation of calls/returns:
-//   1) for each function consider the in/out nodes so we can compute
-//     summaries.
-//   2) for each call site identify modified nodes by the function
-//
-// WARNING:
-//   Unless the whole program is inlined the results with MEM are
-//   unsound since we do not consider the effect of functions on the
-//   global states. This will be solved when step 2) is done.
+//TODO: translation of pointer arithmetic.
 
 namespace llvm_ikos
 {
@@ -49,9 +39,20 @@ namespace llvm_ikos
     
     // TODO: Check if this is true for all platforms.
     mpz_class res;
-    mpz_import(res.get_mpz_t (), numWords, 1, sizeof (uint64_t), 0, 0, rawdata);
+    mpz_import(res.get_mpz_t (), numWords, 1, 
+               sizeof (uint64_t), 0, 0, rawdata);
     
     return v.isNegative () ? mpz_class(-res) : res;
+  }
+
+  VariableType getType (Type * ty)
+  {
+    if (ty->isIntegerTy ())
+      return INT_TYPE;
+    else if (ty->isPointerTy ())
+      return PTR_TYPE;
+    else
+      return UNK_TYPE;
   }
 
   struct SymExecBase {
@@ -87,7 +88,8 @@ namespace llvm_ikos
   
     boost::optional<ZLinExp> lookup (const Value &v)
     {
-      if (isa<ConstantPointerNull> (&v) || isa<const UndefValue> (&v))
+      if (isa<ConstantPointerNull> (&v) || 
+          isa<const UndefValue> (&v))
         return boost::optional<ZLinExp>();
       
       if (const ConstantInt *c = dyn_cast<const ConstantInt> (&v))
@@ -174,11 +176,14 @@ namespace llvm_ikos
     }
   };
 
-  struct SymExecVisitor : public InstVisitor<SymExecVisitor>, SymExecBase
+  struct SymExecVisitor : 
+      public InstVisitor<SymExecVisitor>, 
+      public SymExecBase
   {
     basic_block_t& m_bb;
     
-    SymExecVisitor (VariableFactory& vfac, basic_block_t & bb, MemAnalysis* mem): 
+    SymExecVisitor (VariableFactory& vfac, basic_block_t & bb,
+                    MemAnalysis* mem): 
         SymExecBase (vfac, mem), m_bb (bb)  {  }
         
     /// skip PHI nodes
@@ -195,27 +200,27 @@ namespace llvm_ikos
 
       if (const Value *cond = dyn_cast<const Value> (&I))
       {
-        Value::const_use_iterator it = cond->use_begin(), et = cond->use_end();
-        for (; it!=et ; ++it)
+        for (auto &use: boost::make_iterator_range (cond->use_begin (),
+                                                    cond->use_end ()))
         {
-          const Instruction * User = dyn_cast<Instruction>(*it);
+          const Instruction * User = dyn_cast<Instruction>(&use);
           
           if (const BranchInst *br = dyn_cast<const BranchInst> (User))
           { 
-            // Comparison can be used as a "filter". We skip it here because
-            // it will treated by SymExecCmpInstVisitor.
+            // -- comparison can be used as a "filter". We skip it
+            //    here because it will treated by SymExecCmpInstVisitor.
             if (br->isConditional () && br->getCondition() == cond) 
               continue;
           }    
           
           if (isa<const SelectInst> (User) ) 
-          { // This case is (partially) covered by SymExecITEVisitor
+          { // -- this case is (partially) covered by SymExecITEVisitor
             continue;
           }
           
           if (isa<const CastInst> (User) || isLogicalOp (*User)) 
           {
-            // abstraction: source of imprecision
+            // -- abstraction: source of imprecision
           }
           covered = false;
           break;
@@ -353,7 +358,8 @@ namespace llvm_ikos
     {
       if (!isTracked (I)) return;
       
-      int arr_idx = m_mem->getNodeId (I.getPointerOperand ());
+      int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), 
+                                       I.getPointerOperand ());
                                       
       if (arr_idx < 0) return;
 
@@ -375,7 +381,8 @@ namespace llvm_ikos
       boost::optional<ZLinExp> val = lookup (*I.getOperand (0));
       if (!val) return;
 
-      int arr_idx = m_mem->getNodeId (I.getOperand (1)); 
+      int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()),
+                                       I.getOperand (1)); 
                                       
       if (arr_idx < 0) return;
 
@@ -384,80 +391,77 @@ namespace llvm_ikos
       // Maybe more appropriate is to create a different array for
       // each non-integer field.
       if (I.getOperand (0)->getType ()->isIntegerTy ())
-        m_bb.array_store (symVar (arr_idx), *idx, *val, m_mem->isSingleton (arr_idx)); 
+        m_bb.array_store (symVar (arr_idx), *idx, *val, 
+                          m_mem->isSingleton (arr_idx)); 
     }
 
+    Value& normalizePar (Value& actual)
+    {
+      // TODO: normalize if it is a constant
+      return actual;
+    }
+
+    void visitReturnInst (ReturnInst &I)
+    {
+      // -- skip return argument of main
+      if (I.getParent ()->getParent ()->getName ().equals ("main")) 
+        return;
+      
+      if (I.getNumOperands () > 0)
+      {
+        m_bb.ret (m_vfac [*(I.getOperand (0))], 
+                  getType ((*I.getOperand (0)).getType ()));
+        
+      }
+    }
+    
     void visitCallInst (CallInst &I) 
     {
-      // CallSite CS (&I);
-      // const Function *fn = CS.getCalledFunction ();
-      // if (!fn) {
-      //   // Use DSA to handle better
-      //   return;      
-      // }
-      
-      // const Function &F = *fn;
-      // const Function &PF = *I.getParent ()->getParent ();
+      CallSite CS (&I);
 
-      // if (F.getName ().startswith ("shadow.mem") && isTracked (I))
-      // {
-      //   if (F.getName ().equals ("shadow.mem.init"))
-      //   { 
-      //     m_bb.array_init (symVar (I));
-      //   }
-      //   else if (PF.getName ().equals ("main") && 
-      //            F.getName ().equals ("shadow.mem.arg.init"))
-      //   {
-      //     m_bb.array_init (symVar (I));
-      //   }
-      //   else if (F.getName ().equals ("shadow.mem.load"))
-      //   { 
-      //     m_inMem = CS.getArgument (1);
-      //   }
-      //   else if (F.getName ().equals ("shadow.mem.store"))
-      //   {
-      //     m_inMem = CS.getArgument (1);
-      //     m_outMem = &I;
-      //     is_inMem_singleton = false;
-      //     if (const ConstantInt *c = dyn_cast<const ConstantInt> (CS.getArgument (2)))
-      //     {
-      //       if (c->getType ()->isIntegerTy (1))
-      //       {
-      //         is_inMem_singleton = c->isOne ();
-      //       }
-      //     }
-      //   }
-      //   else if (F.getName ().equals ("shadow.mem.arg.ref"))
-      //   {// TODO: read-only array by the function
-      //     //m_fparams.push_back (m_s.read (symb (*CS.getArgument (1))));
-      //   }
-      //   else if (F.getName ().equals ("shadow.mem.arg.mod"))
-      //   {
-      //     //m_fparams.push_back (m_s.read (symb (*CS.getArgument (1))));
-      //     //m_fparams.push_back (m_s.havoc (symb (I)));
-      //     m_bb.havoc (symVar (I));
-      //   }
-      //   else if (F.getName ().equals ("shadow.mem.arg.new"))
-      //   {// TODO: new array created by the function
-      //     //m_fparams.push_back (m_s.havoc (symb (I)));
-      //   }
-      //   else if (!PF.getName ().equals ("main") && 
-      //            F.getName ().equals ("shadow.mem.in"))
-      //   {// TODO: input array variables
-      //     //m_s.read (symb (*CS.getArgument (1)));
-      //   }
-      //   else if (!PF.getName ().equals ("main") &&
-      //            F.getName ().equals ("shadow.mem.out"))
-      //   {// TODO: output array variables
-      //     //m_s.read (symb (*CS.getArgument (1)));
-      //   }
-      //   else if (!PF.getName ().equals ("main") && 
-      //            F.getName ().equals ("shadow.mem.arg.init"))
-      //   {
-      //     // regions initialized in main are global. 
-      //     // do nothing 
-      //   }
-      // }
+      Function * callee = CS.getCalledFunction ();
+
+      // -- if no direct do nothing for now
+      if (!callee) return;
+
+      // -- skip if intrinsic
+      if (callee->isIntrinsic ()) return;
+
+      vector<pair<varname_t,VariableType> > actuals;
+      for (auto &a : boost::make_iterator_range (CS.arg_begin(),
+                                                 CS.arg_end()))
+      { 
+        Value *v = a.get();
+        actuals.push_back (make_pair (m_vfac [normalizePar (*v)], 
+                                      getType (v->getType ())));
+      }
+
+      set<int> mods;
+      if (m_mem->getTrackLevel () >= MEM)
+      {
+        // -- add the array actual parameters
+        auto p = m_mem->getReadModArrays (I);
+        auto reads = p.first;
+        mods = p.second;
+        set<int> all;      
+        boost::set_union(reads, mods, std::inserter (all, all.end()));
+        for (auto a : all)
+          actuals.push_back (make_pair (symVar (a), ARR_TYPE));
+      }
+
+      if (getType (I.getType ()) != UNK_TYPE)
+        m_bb.callsite (make_pair (m_vfac [I], getType (I.getType ())), 
+                       m_vfac [*callee], actuals);
+      else
+        m_bb.callsite (m_vfac [*callee], actuals);
+
+      if (m_mem->getTrackLevel () >= MEM)
+      {
+        // -- havoc all modified nodes by the callee
+        for (auto a : mods)
+          m_bb.havoc (symVar (a));
+      }
+
     }
 
     /// base case. if all else fails.
@@ -472,16 +476,21 @@ namespace llvm_ikos
     
   };
 
-  struct SymExecPhiVisitor : public InstVisitor<SymExecPhiVisitor>, SymExecBase
+  struct SymExecPhiVisitor : 
+      public InstVisitor<SymExecPhiVisitor>, 
+      public SymExecBase
   {
     // block where assignment/havoc will be inserted
     basic_block_t&    m_bb; 
     // incoming block of the PHI instruction
     const llvm::BasicBlock& m_inc_BB; 
     
-    SymExecPhiVisitor (VariableFactory& vfac, basic_block_t& bb, 
-                       const llvm::BasicBlock& inc_BB, MemAnalysis* mem): 
-        SymExecBase (vfac, mem), m_bb (bb), m_inc_BB (inc_BB)   {}
+    SymExecPhiVisitor (VariableFactory& vfac, 
+                       basic_block_t& bb, 
+                       const llvm::BasicBlock& inc_BB, 
+                       MemAnalysis* mem): 
+        SymExecBase (vfac, mem), m_bb (bb), m_inc_BB (inc_BB)  
+    { }
     
     void visitPHINode (PHINode &I) 
     {
@@ -500,14 +509,20 @@ namespace llvm_ikos
   };
 
 
-  struct SymExecCmpInstVisitor : public InstVisitor<SymExecCmpInstVisitor>, SymExecBase
+  struct SymExecCmpInstVisitor : 
+      public InstVisitor<SymExecCmpInstVisitor>, 
+      public SymExecBase
   {
     basic_block_t& m_bb;
     bool           m_is_negated;
     
-    SymExecCmpInstVisitor (VariableFactory& vfac, basic_block_t& bb, 
-                           bool is_negated, MemAnalysis* mem):
-        SymExecBase (vfac, mem), m_bb (bb), m_is_negated (is_negated)   {}
+    SymExecCmpInstVisitor (VariableFactory& vfac, 
+                           basic_block_t& bb, 
+                           bool is_negated, 
+                           MemAnalysis* mem):
+        SymExecBase (vfac, mem), m_bb (bb), 
+        m_is_negated (is_negated)   
+    { }
     
     void visitCmpInst (CmpInst &I) 
     {
@@ -526,16 +541,21 @@ namespace llvm_ikos
     }
   };
   
-  struct SymExecITEVisitor : public InstVisitor<SymExecITEVisitor>, SymExecBase
+  struct SymExecITEVisitor : 
+      public InstVisitor<SymExecITEVisitor>, 
+      public SymExecBase
   {
     
     CfgBuilder&    m_builder;
     basic_block_t& m_bb;
     unsigned id;
     
-    SymExecITEVisitor (VariableFactory& vfac, CfgBuilder& builder, 
-                       basic_block_t& bb, MemAnalysis* mem):
-        SymExecBase (vfac, mem), m_builder (builder), m_bb (bb), id (0)   
+    SymExecITEVisitor (VariableFactory& vfac, 
+                       CfgBuilder& builder, 
+                       basic_block_t& bb, 
+                       MemAnalysis* mem):
+        SymExecBase (vfac, mem), m_builder (builder), 
+        m_bb (bb), id (0)   
     { }
     
     void visitCmpInst (CmpInst &I) { }
@@ -571,8 +591,17 @@ namespace llvm_ikos
       m_bb.havoc(lhs);
     }
   };
-  
-  CfgBuilder::opt_basic_block_t CfgBuilder::lookup (const llvm::BasicBlock &B)  
+
+  CfgBuilder::CfgBuilder (Function &func, VariableFactory &vfac, 
+                          MemAnalysis* mem): 
+        m_func (func), 
+        m_vfac (vfac), 
+        m_id (0),
+        m_cfg (&m_func.getEntryBlock (), (mem->getTrackLevel ())),
+        m_mem (mem) { }    
+
+  CfgBuilder::opt_basic_block_t 
+  CfgBuilder::lookup (const llvm::BasicBlock &B)  
   {
     llvm::BasicBlock* BB = const_cast<llvm::BasicBlock*> (&B);
     llvm_bb_map_t::iterator it = m_bb_map.find (BB);
@@ -606,10 +635,9 @@ namespace llvm_ikos
   //   return new_bb;
   // }
 
-
-   basic_block_t& CfgBuilder::add_block_in_between (basic_block_t &src, 
-                                                    basic_block_t &dst,
-                                                    basic_block_label_t bb_id)
+  basic_block_t& CfgBuilder::add_block_in_between (basic_block_t &src, 
+                                                   basic_block_t &dst,
+                                                   basic_block_label_t bb_id)
   {
 
     assert (m_bb_map.find(bb_id) == m_bb_map.end()); 
@@ -633,11 +661,11 @@ namespace llvm_ikos
     *SS >> *DD;
   }  
 
-  // return the new block inserted between src and dest if any
-  CfgBuilder::opt_basic_block_t 
-  CfgBuilder::execBr (llvm::BasicBlock &src, const llvm::BasicBlock &dst)
+  //! return the new block inserted between src and dest if any
+  CfgBuilder::opt_basic_block_t CfgBuilder::execBr (llvm::BasicBlock &src, 
+                                                    const llvm::BasicBlock &dst)
   {
-    // the branch condition
+    // -- the branch condition
     if (const BranchInst *br = dyn_cast<const BranchInst> (src.getTerminator ()))
     {
       if (br->isConditional ())
@@ -646,7 +674,7 @@ namespace llvm_ikos
         opt_basic_block_t Dst = lookup(dst);
         assert (Src && Dst);
 
-        // Dummy BasicBlock 
+        // -- dummy BasicBlock 
         basic_block_label_t bb_id = llvm::BasicBlock::Create(m_func.getContext (),
                                                              create_bb_name ());
         
@@ -701,8 +729,8 @@ namespace llvm_ikos
         opt_basic_block_t BB = lookup (B);
         assert (BB);
 
-        // build an initial CFG block from bb but ignoring for now
-        // branches, ite instructions and phi-nodes
+        // -- build an initial CFG block from bb but ignoring for now
+        //    branches, ite instructions and phi-nodes
         {
           SymExecVisitor v (m_vfac, *BB, m_mem);
           v.visit (B);
@@ -710,18 +738,17 @@ namespace llvm_ikos
         
         for (const llvm::BasicBlock *dst : succs (*bb))
         {
-          // move branch condition in bb to a new block inserted
-          // between bb and dst
+          // -- move branch condition in bb to a new block inserted
+          //    between bb and dst
           opt_basic_block_t mid_bb = execBr (B, *dst);
 
-          // phi nodes in dst are translated into assignments in the
-          // predecessor
+          // -- phi nodes in dst are translated into assignments in
+          //    the predecessor
           {            
             SymExecPhiVisitor v (m_vfac, (mid_bb ? *mid_bb : *BB), B, m_mem);
             v.visit (const_cast<llvm::BasicBlock &>(*dst));
           }
         }
-        
         {
           SymExecITEVisitor v (m_vfac, *this, *BB, m_mem);
           v.visit (B);
@@ -729,14 +756,15 @@ namespace llvm_ikos
       }
     }
     
-    // unify multiple return blocks
+    // -- unify multiple return blocks
 
     if (rets.size () == 1) m_cfg.set_exit (rets [0]->label ());
     else if (rets.size () > 1)
     {
-      // Dummy BasicBlock 
-      basic_block_label_t unified_ret_id = llvm::BasicBlock::Create(m_func.getContext (),
-                                                                    create_bb_name ());
+      // -- insert dummy BasicBlock 
+      basic_block_label_t unified_ret_id = 
+          llvm::BasicBlock::Create(m_func.getContext (),
+                                   create_bb_name ());
 
       basic_block_t &unified_ret = m_cfg.insert (unified_ret_id);
 
@@ -745,24 +773,51 @@ namespace llvm_ikos
       m_cfg.set_exit (unified_ret.label ());
     }
 
+    // -- allocate the arrays
     if (m_mem->getTrackLevel () >= MEM)
     {
-      // initialize memory allocations
       basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
-      for (auto node_id : boost::make_iterator_range (m_mem->begin (), 
-                                                      m_mem->end ()))
+      for (auto node_id : m_mem->getAllocArrays (m_func))
       {
-        if (!m_mem->isReachable (node_id))
-        {// does not escape the function
+        entry.set_insert_point_front ();
+        entry.array_init (m_vfac.get (node_id));
+      }
+      if (m_func.getName ().equals ("main"))
+      {
+        auto p = m_mem->getInOutArrays (m_func);
+        auto in = p.first; auto out = p.second;
+        set<int> all;      
+        boost::set_union(in, out, std::inserter (all, all.end()));
+        for (auto a: all)
+        {
           entry.set_insert_point_front ();
-          entry.array_init (m_vfac.get (node_id));
-        }
-        else
-        { // does escape the function
-          entry.set_insert_point_front ();
-          entry.array_init (m_vfac.get (node_id));
+          entry.array_init (m_vfac.get (a));
         }
       }
+    }
+
+    // -- add function declaration
+    if (!m_func.isVarArg ())
+    {
+      vector<pair<varname_t,VariableType> > params;
+      for (llvm::Value &arg : boost::make_iterator_range (m_func.arg_begin (),
+                                                          m_func.arg_end ()))
+        params.push_back (make_pair (m_vfac [arg], getType (arg.getType ())));
+
+      // -- add array formal parameters 
+      if (m_mem->getTrackLevel () >= MEM && 
+          (!m_func.getName ().equals ("main")))
+      {
+        auto p = m_mem->getInOutArrays (m_func);
+        auto in = p.first; auto out = p.second;
+        set<int> all;      
+        boost::set_union(in, out, std::inserter (all, all.end()));
+        for (auto a: all)
+          params.push_back (make_pair (m_vfac.get (a), ARR_TYPE));
+      }
+      FunctionDecl<varname_t> decl (getType (m_func.getReturnType ()), 
+                                    m_vfac[m_func], params);
+      m_cfg.set_func_decl (decl);
     }
 
     // Important to keep small the cfg

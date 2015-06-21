@@ -23,18 +23,28 @@ namespace llvm_ikos
 
   class MemAnalysis
   {
+    /* 
+     *  The goal of the memory analysis is to split the whole heap into
+     *  disjoint arrays (i.e., contiguous sequence of bytes)
+     */
 
-    Function* m_f;
+   public:
+    typedef int array_id_t; // if < 0 then error
+
+   private:
+
     DataStructures*  m_dsa;
     TrackedPrecision m_tracklev;
     
+    /// map from DSNode to ids
     DenseMap<const DSNode*, unsigned> m_node_ids;
     boost::unordered_map<unsigned, const DSNode*> m_rev_node_ids;
 
     /// reach - all reachable nodes from this function
     std::set<const DSNode*> m_reach;
-    /// outReach - subset of reach that is only reachable from the return node
-    std::set<const DSNode*> m_out_reach;
+    /// outReach - subset of reach that is only reachable from the
+    ///            return node
+    std::set<const DSNode*> m_retReach;
 
     template<typename First, typename Second>
     struct getSecond : public std::unary_function<pair<First,Second>, Second>
@@ -44,10 +54,10 @@ namespace llvm_ikos
     }; 
 
    typedef boost::transform_iterator< getSecond<const DSNode*,unsigned>, 
-                                      typename DenseMap<const DSNode*, unsigned>::iterator > iterator;
+                                      typename DenseMap<const DSNode*, 
+                                                        unsigned>::iterator > iterator;
 
-
-    unsigned getId (const DSNode *n)
+    array_id_t getId (const DSNode *n)
     {
       auto it = m_node_ids.find (n);
       if (it != m_node_ids.end ()) return it->second;
@@ -114,88 +124,202 @@ namespace llvm_ikos
       set_difference (outReach, reach);
       set_union (reach, outReach);
     }
-    
-   public:
-    
-    MemAnalysis (Function *f): 
-        m_f (f), m_dsa (0), m_tracklev (REG) { }
 
-    MemAnalysis (Function *f, DataStructures * dsa, 
-                 TrackedPrecision tracklev): 
-        m_f (f), m_dsa (dsa), m_tracklev (tracklev) { 
-      DSGraph *cdsg = m_dsa->getDSGraph (*m_f);
-      if (!cdsg)
+    template <typename Set1, typename Set2>
+    void argReachableNodes (Function&f, Set1 &reach, Set2 &outReach)
+    {
+      DSGraph *cdsg = m_dsa->getDSGraph (f);
+      if (cdsg)
       {
-        DSCallSite CCS = cdsg->getCallSiteForArguments (*m_f);
-        argReachableNodes (CCS, *cdsg, m_reach, m_out_reach);
+        DSCallSite CCS = cdsg->getCallSiteForArguments (f);
+        argReachableNodes (CCS, *cdsg, reach, outReach);
       }
     }
 
-    TrackedPrecision getTrackLevel () const { return m_tracklev; }
-
     //! return begin iterator to node id's
     iterator begin () {       
-        return boost::make_transform_iterator (m_node_ids.begin (), 
-                                               getSecond<const DSNode*,unsigned> ());
+        return boost::make_transform_iterator 
+            (m_node_ids.begin (), 
+             getSecond<const DSNode*,unsigned> ());
     }
 
     //! return end iterator to node id's
     iterator end () {       
-        return boost::make_transform_iterator (m_node_ids.end (), 
-                                               getSecond<const DSNode*,unsigned> ());
+        return boost::make_transform_iterator 
+            (m_node_ids.end (), 
+             getSecond<const DSNode*,unsigned> ());
     }
+
     
-    //! Return -1 if no node associated with ptr is found
-    int getNodeId (Value* ptr) 
+   public:
+    
+    MemAnalysis ():  m_dsa (0), m_tracklev (REG) { }
+
+    MemAnalysis (DataStructures * dsa, 
+                 TrackedPrecision tracklev): 
+        m_dsa (dsa), m_tracklev (tracklev) { }
+   
+    TrackedPrecision getTrackLevel () const { return m_tracklev; }
+    
+    //! return < 0 if no array associated with ptr is found
+    array_id_t getArrayId (Function& f, Value* ptr) 
     {
-      DSGraph* dsg = m_dsa->getDSGraph (*m_f);
+      if (!m_dsa) return -1;
+
+      DSGraph* dsg = m_dsa->getDSGraph (f);
       if (!dsg) return -1;
 
       DSGraph* gDsg = dsg->getGlobalsGraph ();
-
       DSNode* n = dsg->getNodeForValue (ptr).getNode ();
       if (!n) n = gDsg->getNodeForValue (ptr).getNode ();
-      
+
       if (!n) return -1;
-      else return getId (n); 
+
+      return getId (n); 
     }
 
-    bool isSingleton (int node_id)
+    //! return true if the array corresponds to a single memory cell.
+    bool isSingleton (array_id_t array_id)
     {
-      auto it = m_rev_node_ids.find (node_id);
-      if (it != m_rev_node_ids.end ()) return false;
+      auto it = m_rev_node_ids.find (array_id);
+      if (it == m_rev_node_ids.end ()) return false;
 
       return it->second->getUniqueScalar ();
     }
 
-    bool isReachable (int node_id) 
-    {      
-      return m_reach.count (m_rev_node_ids[node_id]) > 0;
+    //! return all the arrays that must be allocated at the
+    //! beginning of the function.
+    set<array_id_t> getAllocArrays (Function& f)
+    {
+      std::set<const DSNode*> reach, retReach;
+      argReachableNodes (f, reach, retReach);
+      
+      set<array_id_t> inits;
+      for (auto node_id : boost::make_iterator_range (begin (), end ()))
+      {
+        if (reach.count (m_rev_node_ids [node_id]) <= 0)
+        { // -- does not escape the function
+          inits.insert (node_id);
+        }
+      }
+      for (const DSNode* n : reach)
+      {
+        if (!n->isReadNode () && !n->isModifiedNode ()) 
+          continue;
+
+        if (n->isModifiedNode () &&retReach.count (n))
+            inits.insert (getId (n));
+      }
+      return inits;
+    }
+    
+
+    //! return all the in/out arrays for the function
+    pair<set<array_id_t>,set<array_id_t> > getInOutArrays (Function& f)
+    {
+      std::set<const DSNode*> reach, retReach;
+      argReachableNodes (f, reach, retReach);
+
+      set<array_id_t> in, out;
+      for (const DSNode* n : reach)
+      {
+        // n is read and is not only return-node reachable (for
+        // return-only reachable nodes, there is no initial value
+        // because they are created within this function)
+        if ((n->isReadNode () || n->isModifiedNode ()) 
+            && retReach.count (n) <= 0)
+          in.insert (getId (n));
+      
+        if (n->isModifiedNode ())
+          out.insert (getId (n));
+      }
+      return make_pair (in,out);
     }
 
+    //! return the set of read-only and read/write arrays by the call
+    pair<set<array_id_t>,set<array_id_t> >
+    getReadModArrays (CallInst& I)
+    {
+      set<array_id_t> reads_only;
+      set<array_id_t> read_writes;
+
+      /// ignore inline assembly
+      if (I.isInlineAsm ()) return make_pair (reads_only, read_writes);
+      
+      DSGraph *dsg = m_dsa->getDSGraph (*(I.getParent ()->getParent ()));
+      DSCallSite CS = dsg->getDSCallSiteForCallSite (CallSite (&I));
+      
+      // TODO: resolve the indirect call
+      if (!CS.isDirectCall ()) 
+        return make_pair (reads_only, read_writes); 
+      
+      if (!m_dsa->hasDSGraph (*CS.getCalleeFunc ())) 
+        return make_pair (reads_only, read_writes);
+          
+      const Function &CF = *CS.getCalleeFunc ();
+      DSGraph *cdsg = m_dsa->getDSGraph (CF);
+      if (!cdsg) 
+        return make_pair (reads_only, read_writes);
+      
+      // -- compute callee nodes reachable from arguments and returns
+      DSCallSite CCS = cdsg->getCallSiteForArguments (CF);
+      std::set<const DSNode*> reach;
+      std::set<const DSNode*> retReach;
+      argReachableNodes (CCS, *cdsg, reach, retReach);
+      DSGraph::NodeMapTy nodeMap;
+      dsg->computeCalleeCallerMapping (CS, CF, *cdsg, nodeMap);
+      
+      /// classify nodes as mod, ref, new, based on whether the remote
+      /// node reads, writes, or creates the corresponding node.
+      for (const DSNode* n : reach)
+      {
+        // skip nodes that are not read/written by the callee
+        if (!n->isReadNode () && !n->isModifiedNode ()) 
+          continue;
+
+        // -- read only node
+        if (n->isReadNode () && !n->isModifiedNode ())
+          reads_only.insert (getId (n)); 
+
+        // -- read/write or new node
+        else if (n->isModifiedNode ())
+        {
+          if (retReach.count (n) <= 0)
+            read_writes.insert (getId (n));          
+          // -- n is new node iff it is reachable only from the return
+          // node. We ignore the new nodes
+        }
+      }
+      // -- add the node of the lhs of the call site
+      int ret = getArrayId (*(I.getParent ()->getParent ()), &I);
+      if (ret >=0) read_writes.insert (ret);
+
+      return make_pair (reads_only, read_writes);
+    }
+    
   }; 
+
 } // end namespace
 #else
 namespace llvm_ikos
 {
   using namespace cfg;
-  class MemAnalysis
+  struct MemAnalysis
   {
-    llvm::Function* m_f;
     TrackedPrecision m_tracklev;
-    vector<unsigned> m_node_ids;
-    
-   public:
-    typedef typename vector<unsigned>::iterator iterator;
-
-    MemAnalysis (llvm::Function *f): m_f (f), m_tracklev (REG) { }
+    MemAnalysis (): m_tracklev (REG) { }
     TrackedPrecision getTrackLevel () const { return m_tracklev; }
-    iterator begin () { return m_node_ids.begin(); }       
-    iterator end () { return m_node_ids.end (); }      
-    // These methods will be never called anyway
-    int getNodeId (llvm::Value* /*ptr*/) { return -1; }
-    bool isSingleton (int /*node_id*/) { return false; }
-    bool isReachable (int /*node_id*/) { return false; }     
+    int getArrayId (Function&, Value*) { return -1; }
+    bool isSingleton (int) { return false; }
+    set<int> getAllocArrays (Function&) { 
+      return set<int> ();  
+    }
+    pair<set<int>,set<int> > getInOutArrays (Function&) {  
+      return make_pair<set<int>,set<int> > (); 
+    } 
+    pair<set<int>,set<int> > getReadModArrays (CallInst&) {  
+      return make_pair<set<int>,set<int> > (); 
+    } 
   }; 
 } // end namespace
 #endif 
