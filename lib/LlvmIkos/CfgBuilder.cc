@@ -10,6 +10,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/range/iterator_range.hpp>
+#include "boost/range/algorithm/set_algorithm.hpp"
 
 #include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/Support/CFG.hh"

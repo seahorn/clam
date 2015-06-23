@@ -309,16 +309,16 @@ namespace llvm_ikos
     TrackedPrecision m_tracklev;
     MemAnalysis (): m_tracklev (REG) { }
     TrackedPrecision getTrackLevel () const { return m_tracklev; }
-    int getArrayId (Function&, Value*) { return -1; }
+    int getArrayId (llvm::Function&, llvm::Value*) { return -1; }
     bool isSingleton (int) { return false; }
-    set<int> getAllocArrays (Function&) { 
+    set<int> getAllocArrays (llvm::Function&) { 
       return set<int> ();  
     }
-    pair<set<int>,set<int> > getInOutArrays (Function&) {  
-      return make_pair<set<int>,set<int> > (); 
+    pair<set<int>,set<int> > getInOutArrays (llvm::Function&) {  
+      return make_pair (set<int> (), set<int> ()); 
     } 
-    pair<set<int>,set<int> > getReadModArrays (CallInst&) {  
-      return make_pair<set<int>,set<int> > (); 
+    pair<set<int>,set<int> > getReadModArrays (llvm::CallInst&) {  
+      return make_pair (set<int> (), set<int> ()); 
     } 
   }; 
 } // end namespace
