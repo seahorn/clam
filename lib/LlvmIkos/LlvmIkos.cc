@@ -141,7 +141,7 @@ namespace llvm_ikos
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
     cfg_t cfg = CfgBuilder (F, vfac, &m_mem, InterProc)();
     //LOG ("ikos-cfg", errs () << cfg << "\n");  
-    errs () << cfg << "\n";
+    //errs () << cfg << "\n";
 
     bool change=false;
     switch (m_absdom)
@@ -176,8 +176,10 @@ namespace llvm_ikos
                   runOnCfg <octagon_domain_t> (cfg, F, vfac)) ; 
         break;
       case TERMS:
-        // TODO: array smashing with term_domain_t
-        change = runOnCfg <term_domain_t> (cfg, F, vfac); 
+        change = (TrackedLevel >= MEM ? 
+                  runOnCfg <array_smashing<term_domain_t,z_number,varname_t> > 
+                  (cfg, F, vfac) : 
+                  runOnCfg <term_domain_t> (cfg, F, vfac)) ; 
         break;
 #endif
       default: assert(false && "Unsupported abstract domain");

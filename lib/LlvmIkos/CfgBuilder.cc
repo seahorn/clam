@@ -447,48 +447,50 @@ namespace llvm_ikos
       // -- skip if intrinsic
       if (callee->isIntrinsic ()) return;
 
-      if (!m_is_inter_proc && m_mem->getTrackLevel () >= MEM)
+      if (!m_is_inter_proc && 
+          m_mem->getTrackLevel () >= MEM)
       {// -- havoc all modified nodes by the callee
         for (auto a : m_mem->getReadModArrays (I).second)
           m_bb.havoc (symVar (a));
-
         return;
       }
 
-
-      // -- add the callsite
-      vector<pair<varname_t,VariableType> > actuals;
-      for (auto &a : boost::make_iterator_range (CS.arg_begin(),
-                                                 CS.arg_end()))
-      { 
-        Value *v = a.get();
-        actuals.push_back (normalizePar (*v));
-      }
-
-      set<int> mods;
-      if (m_mem->getTrackLevel () >= MEM)
+      if (m_is_inter_proc)
       {
-        // -- add the array actual parameters
-        auto p = m_mem->getReadModArrays (I);
-        auto reads = p.first;
-        mods = p.second;
-        set<int> all;      
-        boost::set_union(reads, mods, std::inserter (all, all.end()));
-        for (auto a : all)
-          actuals.push_back (make_pair (symVar (a), ARR_TYPE));
-      }
-
-      if (getType (I.getType ()) != UNK_TYPE)
-        m_bb.callsite (make_pair (m_vfac [I], getType (I.getType ())), 
-                       m_vfac [*callee], actuals);
-      else
-        m_bb.callsite (m_vfac [*callee], actuals);
-
-      // -- and havoc all modified nodes by the callee
-      if (m_mem->getTrackLevel () >= MEM)
-      {
-        for (auto a : mods)
-          m_bb.havoc (symVar (a));
+        // -- add the callsite
+        vector<pair<varname_t,VariableType> > actuals;
+        for (auto &a : boost::make_iterator_range (CS.arg_begin(),
+                                                   CS.arg_end()))
+        { 
+          Value *v = a.get();
+          actuals.push_back (normalizePar (*v));
+        }
+        
+        set<int> mods;
+        if (m_mem->getTrackLevel () >= MEM)
+        {
+          // -- add the array actual parameters
+          auto p = m_mem->getReadModArrays (I);
+          auto reads = p.first;
+          mods = p.second;
+          set<int> all;      
+          boost::set_union(reads, mods, std::inserter (all, all.end()));
+          for (auto a : all)
+            actuals.push_back (make_pair (symVar (a), ARR_TYPE));
+        }
+        
+        if (getType (I.getType ()) != UNK_TYPE)
+          m_bb.callsite (make_pair (m_vfac [I], getType (I.getType ())), 
+                         m_vfac [*callee], actuals);
+        else
+          m_bb.callsite (m_vfac [*callee], actuals);
+        
+        // -- and havoc all modified nodes by the callee
+        if (m_mem->getTrackLevel () >= MEM)
+        {
+          for (auto a : mods)
+            m_bb.havoc (symVar (a));
+        }
       }
 
     }
@@ -563,9 +565,9 @@ namespace llvm_ikos
       {
         varname_t lhs = symVar (I);
         if (m_is_negated)
-          m_bb.assign (lhs, ZLinExp (0));
+          m_bb.assume (ZLinExp (lhs) == ZLinExp (0));
         else
-          m_bb.assign (lhs, ZLinExp (1));
+          m_bb.assume (ZLinExp (lhs) == ZLinExp (1));
       }
     }
   };
