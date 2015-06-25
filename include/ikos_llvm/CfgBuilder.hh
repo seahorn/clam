@@ -49,8 +49,14 @@ namespace cfg_impl
    public: 
     
     typedef LlvmVariableFactory_t::variable_t varname_t;
+    typedef LlvmVariableFactory_t::const_var_range const_var_range;
     
     LlvmVariableFactory(): m_factory (new LlvmVariableFactory_t()){ }
+
+    const_var_range get_shadow_vars () const 
+    {
+      return m_factory->get_shadow_vars ();
+    }
 
     // to generate fresh varname_t without having a Value
     varname_t get ()  

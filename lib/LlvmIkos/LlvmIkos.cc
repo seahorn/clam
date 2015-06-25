@@ -74,6 +74,12 @@ InterProc ("ikos-inter-proc",
              cl::desc ("Build inter-procedural Cfg"), 
              cl::init (false));
 
+static llvm::cl::opt<bool>
+KeepShadowVars ("keep-shadows",
+                cl::desc ("Keep shadow vars in the invariants"), 
+                cl::init (false),
+                cl::Hidden);
+
 namespace domain_impl
 {
   using namespace cfg_impl;
@@ -141,7 +147,6 @@ namespace llvm_ikos
     //LOG ("ikos-cfg", errs () << "Cfg: \n");    
     cfg_t cfg = CfgBuilder (F, vfac, &m_mem, InterProc)();
     //LOG ("ikos-cfg", errs () << cfg << "\n");  
-    //errs () << cfg << "\n";
 
     bool change=false;
     switch (m_absdom)
@@ -198,6 +203,12 @@ namespace llvm_ikos
     for (auto &B : F)
     {
       AbsDomain inv = analyzer [&B];
+      if (!KeepShadowVars)
+      {
+        auto shadows = vfac.get_shadow_vars ();
+        for (auto v : shadows)
+          inv -= v;
+      }
       const llvm::BasicBlock *BB = &B;
       if (inv.is_bottom ())
         m_inv_map.insert (make_pair (BB, mkFALSE ()));
