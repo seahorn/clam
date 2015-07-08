@@ -87,11 +87,11 @@ namespace llvm_ikos
       return m_vfac.get (v);
     }
   
-    boost::optional<ZLinExp> lookup (const Value &v)
+    boost::optional<z_lin_exp_t> lookup (const Value &v)
     {
       if (isa<ConstantPointerNull> (&v) || 
           isa<const UndefValue> (&v))
-        return boost::optional<ZLinExp>();
+        return boost::optional<z_lin_exp_t>();
       
       if (const ConstantInt *c = dyn_cast<const ConstantInt> (&v))
       {
@@ -101,14 +101,14 @@ namespace llvm_ikos
                   << " too big for int64_t.\n";
         }
         else
-          return boost::optional<ZLinExp>
-              (ZLinExp (c->getValue ().getSExtValue ()));
+          return boost::optional<z_lin_exp_t>
+              (z_lin_exp_t (c->getValue ().getSExtValue ()));
       }
 
       if (isTracked(v))
-        return boost::optional<ZLinExp>(ZLinExp (symVar (v)));
+        return boost::optional<z_lin_exp_t>(z_lin_exp_t (symVar (v)));
       
-      return boost::optional<ZLinExp>();
+      return boost::optional<z_lin_exp_t>();
     }
     
     bool isLogicalOp(const Instruction &I) const 
@@ -128,7 +128,7 @@ namespace llvm_ikos
       }
     }
 
-    boost::optional<ZLinCst> 
+    boost::optional<z_lin_cst_t> 
     gen_assertion (CmpInst &I, bool is_negated)
     {
       
@@ -137,10 +137,10 @@ namespace llvm_ikos
       const Value& v0 = *I.getOperand (0);
       const Value& v1 = *I.getOperand (1);
 
-      boost::optional<ZLinExp> op1 = lookup (v0);
-      boost::optional<ZLinExp> op2 = lookup (v1);
+      boost::optional<z_lin_exp_t> op1 = lookup (v0);
+      boost::optional<z_lin_exp_t> op2 = lookup (v1);
       
-      ZLinCst res;
+      z_lin_cst_t res;
       
       if (op1 && op2) 
       {
@@ -148,32 +148,32 @@ namespace llvm_ikos
         {
           case CmpInst::ICMP_EQ:
             ( (!is_negated) ? 
-              res = ZLinCst (*op1 == *op2) : 
-              res = ZLinCst (*op1 != *op2));
+              res = z_lin_cst_t (*op1 == *op2) : 
+              res = z_lin_cst_t (*op1 != *op2));
             break;
           case CmpInst::ICMP_NE:
             ( (!is_negated) ? 
-              res = ZLinCst (*op1 != *op2) : 
-              res = ZLinCst (*op1 == *op2));
+              res = z_lin_cst_t (*op1 != *op2) : 
+              res = z_lin_cst_t (*op1 == *op2));
             break;
           case CmpInst::ICMP_ULT:
           case CmpInst::ICMP_SLT:
             ( (!is_negated) ? 
-              res = ZLinCst (*op1 <= *op2 - 1) : 
-              res = ZLinCst (*op1 >= *op2));
+              res = z_lin_cst_t (*op1 <= *op2 - 1) : 
+              res = z_lin_cst_t (*op1 >= *op2));
             break; 
           case CmpInst::ICMP_ULE:
           case CmpInst::ICMP_SLE:
             ( (!is_negated) ? 
-              res = ZLinCst (*op1 <= *op2) : 
-              res = ZLinCst (*op1 >= *op2 + 1));
+              res = z_lin_cst_t (*op1 <= *op2) : 
+              res = z_lin_cst_t (*op1 >= *op2 + 1));
             break;
           default:  assert (false);
         }
-        return boost::optional<ZLinCst> (res);
+        return boost::optional<z_lin_cst_t> (res);
       }
       else
-        return boost::optional<ZLinCst> ();
+        return boost::optional<z_lin_cst_t> ();
     }
   };
 
@@ -272,8 +272,8 @@ namespace llvm_ikos
       const Value& v1 = *i.getOperand(0);
       const Value& v2 = *i.getOperand(1);
       
-      boost::optional<ZLinExp> op1 = lookup (v1);
-      boost::optional<ZLinExp> op2 = lookup (v2);
+      boost::optional<z_lin_exp_t> op1 = lookup (v1);
+      boost::optional<z_lin_exp_t> op2 = lookup (v2);
       
       if (!(op1 && op2)) return;
       
@@ -287,8 +287,8 @@ namespace llvm_ikos
             { // cfg does not support subtraction of a constant by a
               // variable because the ikos api for abstract domains
               // does not support it.
-              m_bb.assign (lhs, ZLinExp ((*op1).constant ()));
-              m_bb.sub (lhs, ZLinExp (lhs), *op2);
+              m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
+              m_bb.sub (lhs, z_lin_exp_t (lhs), *op2);
             }
             else
               m_bb.sub (lhs, *op1, *op2);
@@ -302,8 +302,8 @@ namespace llvm_ikos
             { // cfg does not support division of a constant by a
               // variable because the ikos api for abstract domains
               // does not support it.
-              m_bb.assign (lhs, ZLinExp ((*op1).constant ()));
-              m_bb.div (lhs, ZLinExp (lhs), *op2);
+              m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
+              m_bb.div (lhs, z_lin_exp_t (lhs), *op2);
             }
             else
               m_bb.div (lhs, *op1, *op2);
@@ -318,7 +318,7 @@ namespace llvm_ikos
             unsigned factor = 1;
             for (unsigned i = 0; i < (unsigned) shift; i++) 
               factor *= 2;
-            m_bb.mul (lhs, *op1, ZLinExp (factor));            
+            m_bb.mul (lhs, *op1, z_lin_exp_t (factor));            
           }
           break;
         default:
@@ -343,7 +343,7 @@ namespace llvm_ikos
       varname_t dst = symVar (I);
       const Value& v = *I.getOperand (0); // the value to be casted
 
-      boost::optional<ZLinExp> src = lookup (v);
+      boost::optional<z_lin_exp_t> src = lookup (v);
 
       if (src)
         m_bb.assign(dst, *src);
@@ -351,8 +351,8 @@ namespace llvm_ikos
       {
         if (v.getType ()->isIntegerTy (1))
         {
-          m_bb.assume ( ZLinExp (dst) >= ZLinExp (0) );
-          m_bb.assume ( ZLinExp (dst) <= ZLinExp (1) );
+          m_bb.assume ( z_lin_exp_t (dst) >= z_lin_exp_t (0) );
+          m_bb.assume ( z_lin_exp_t (dst) <= z_lin_exp_t (1) );
         }
         else m_bb.havoc(dst);
       }
@@ -368,7 +368,7 @@ namespace llvm_ikos
       if (arr_idx < 0) return;
 
       varname_t lhs = symVar (I);
-      boost::optional<ZLinExp> idx = lookup (*I.getPointerOperand ());
+      boost::optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
       if (!idx) return ;
 
       m_bb.array_load (lhs, symVar (arr_idx), *idx);
@@ -379,10 +379,10 @@ namespace llvm_ikos
       if (!isTracked (*I.getOperand (0))) return;
 
      
-      boost::optional<ZLinExp> idx = lookup (*I.getPointerOperand ());
+      boost::optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
       if (!idx) return;
 
-      boost::optional<ZLinExp> val = lookup (*I.getOperand (0));
+      boost::optional<z_lin_exp_t> val = lookup (*I.getOperand (0));
       if (!val) return;
 
       int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()),
@@ -534,7 +534,7 @@ namespace llvm_ikos
       if (LHS == &v) return;
       
       varname_t lhs = symVar(I);
-      boost::optional<ZLinExp> rhs = lookup(v);
+      boost::optional<z_lin_exp_t> rhs = lookup(v);
       if (rhs) m_bb.assign(lhs, *rhs);
       else     m_bb.havoc(lhs);
     }
@@ -559,16 +559,16 @@ namespace llvm_ikos
     void visitCmpInst (CmpInst &I) 
     {
       
-      boost::optional<ZLinCst> cst = gen_assertion (I, m_is_negated);
+      boost::optional<z_lin_cst_t> cst = gen_assertion (I, m_is_negated);
       if (cst) m_bb.assume(*cst);
       
       if (isTracked (I))
       {
         varname_t lhs = symVar (I);
         if (m_is_negated)
-          m_bb.assume (ZLinExp (lhs) == ZLinExp (0));
+          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
         else
-          m_bb.assume (ZLinExp (lhs) == ZLinExp (1));
+          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
       }
     }
   };
@@ -600,8 +600,8 @@ namespace llvm_ikos
       varname_t lhs = symVar(I);
       
       const Value& cond = *I.getCondition ();
-      boost::optional<ZLinExp> op0 = lookup (*I.getTrueValue ());
-      boost::optional<ZLinExp> op1 = lookup (*I.getFalseValue ());
+      boost::optional<z_lin_exp_t> op0 = lookup (*I.getTrueValue ());
+      boost::optional<z_lin_exp_t> op1 = lookup (*I.getFalseValue ());
       
       if (!(op0 && op1)) return;
       
