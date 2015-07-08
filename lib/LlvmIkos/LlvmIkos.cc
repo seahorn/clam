@@ -196,8 +196,7 @@ namespace llvm_ikos
   template<typename AbsDomain>
   bool LlvmIkos::runOnCfg (cfg_t& cfg, llvm::Function &F, VariableFactory &vfac)
   {
-    FwdAnalyzer< basic_block_label_t, varname_t, cfg_t, VariableFactory, AbsDomain > 
-        analyzer (cfg, vfac, m_runlive);
+    typename NumFwdAnalyzer<cfg_t,AbsDomain>::type analyzer (cfg, m_runlive);
 
     analyzer.Run (AbsDomain::top());
     for (auto &B : F)

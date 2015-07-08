@@ -27,7 +27,7 @@ namespace llvm_ikos
   class LlvmIkos : public llvm::ModulePass
   {
     typedef llvm::DenseMap< const llvm::BasicBlock *, 
-                            ZLinCstSystem > invariants_map_t;
+                            z_lin_cst_sys_t > invariants_map_t;
 
     invariants_map_t m_inv_map;
     IkosDomain       m_absdom;
@@ -61,7 +61,7 @@ namespace llvm_ikos
     const_iterator begin () const { return m_inv_map.begin(); }
     const_iterator end ()   const { return m_inv_map.end();   }
 
-    ZLinCstSystem operator[] (const llvm::BasicBlock *BB) const
+    z_lin_cst_sys_t operator[] (const llvm::BasicBlock *BB) const
     {
       const_iterator it = m_inv_map.find (BB);
       assert (it != m_inv_map.end ());
@@ -72,11 +72,11 @@ namespace llvm_ikos
 
    private:
 
-    ZLinCst mkTRUE() const 
-    { return ZLinCst ( ZLinExp (1) == ZLinExp (1)); }
+    z_lin_cst_t mkTRUE() const 
+    { return z_lin_cst_t ( z_lin_exp_t (1) == z_lin_exp_t (1)); }
 
-    ZLinCst mkFALSE() const 
-    { return ZLinCst ( ZLinExp (1) == ZLinExp (0)); }
+    z_lin_cst_t mkFALSE() const 
+    { return z_lin_cst_t ( z_lin_exp_t (1) == z_lin_exp_t (0)); }
 
     template<typename AbsDomain> 
     bool runOnCfg (cfg_t& cfg, llvm::Function &F, VariableFactory &vfac);

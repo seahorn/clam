@@ -83,13 +83,10 @@ namespace cfg_impl
   typedef ikos::variable< ikos::z_number, varname_t > z_var;
   typedef llvm::BasicBlock* basic_block_label_t;
   typedef Cfg< basic_block_label_t, varname_t> cfg_t;
-  typedef cfg_t::BasicBlock_t basic_block_t;
-  typedef typename cfg_t::BasicBlock_t::ZLinearExpression ZLinExp;
-  typedef typename cfg_t::BasicBlock_t::ZLinearConstraint ZLinCst;
-  typedef ikos::linear_constraint_system<ikos::z_number, varname_t> ZLinCstSystem;
-  // for compatibility with seahorn
-  typedef ZLinCst ZLinearConstraint;
-  typedef ZLinCstSystem ZLinearConstraintSystem;
+  typedef cfg_t::basic_block_t basic_block_t;
+  typedef typename cfg_t::basic_block_t::z_lin_exp_t z_lin_exp_t;
+  typedef typename cfg_t::basic_block_t::z_lin_cst_t z_lin_cst_t;
+  typedef ikos::linear_constraint_system<ikos::z_number, varname_t> z_lin_cst_sys_t;
 } // end namespace cfg_impl
 
 namespace{
