@@ -77,12 +77,12 @@ pointer addresses while the level `mem` reasons about the contents of
 pointers and arrays. If the latter is selected, `llvmikos` inserts
 `assume` instructions in the bitecode representing instantiations of
 universally quantified invariants. Although very simple this allows us
-to pass this invariants to SeaHorn.
+to pass array invariants to SeaHorn.
 
 We have an experimental option `ikos-concur` that allows us to analyze
-concurrent programs using a rely-guarantee approach. The concurrency
-model is based on threads that can only communicate via global
-variables. Currently, we apply a global fixpoint between threads where
+concurrent programs. The concurrency model is based on threads that
+can only communicate via global variables. We follow a rely-guarantee
+approach and apply a global fixpoint between threads while
 interferences are updated in a sound manner. Currently, interferences
 are abstracted in a flow-insensitive manner.
 
