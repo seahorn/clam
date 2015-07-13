@@ -1,5 +1,7 @@
 
-/* Translate a LLVM function to a custom CFG. */
+/* 
+ * Translate a LLVM function to a custom CFG understood by ikos-core.
+ */
 
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/CallSite.h"
@@ -12,6 +14,7 @@
 #include <boost/range/iterator_range.hpp>
 #include "boost/range/algorithm/set_algorithm.hpp"
 
+#include "ikos_llvm/SymEval.hh"
 #include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/Support/CFG.hh"
 #include "ikos_llvm/Support/bignums.hh"
@@ -25,27 +28,6 @@ namespace llvm_ikos
   using namespace llvm;
   using namespace std;
 
-  /** Converts v to mpz_class. Assumes that v is signed */
-  inline mpz_class toMpz (const APInt &v)
-  {
-    // Based on:
-    // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
-    // return v.getSExtValue ();
-    
-    APInt abs;
-    abs = v.isNegative () ? v.abs () : v;
-    
-    const uint64_t *rawdata = abs.getRawData ();
-    unsigned numWords = abs.getNumWords ();
-    
-    // TODO: Check if this is true for all platforms.
-    mpz_class res;
-    mpz_import(res.get_mpz_t (), numWords, 1, 
-               sizeof (uint64_t), 0, 0, rawdata);
-    
-    return v.isNegative () ? mpz_class(-res) : res;
-  }
-
   VariableType getType (Type * ty)
   {
     if (ty->isIntegerTy ())
@@ -56,139 +38,24 @@ namespace llvm_ikos
       return UNK_TYPE;
   }
 
-  struct SymExecBase {
-
-    /// -- variable factory
-    VariableFactory& m_vfac;
-    MemAnalysis* m_mem;
-
-    SymExecBase (VariableFactory &vfac, MemAnalysis* mem): 
-        m_vfac (vfac), m_mem (mem)
-    { }
-
-    bool isTracked (const llvm::Value &v)
-    {
-      // -- a pointer
-      if (v.getType ()->isPointerTy ()) 
-        return (m_mem->getTrackLevel () >= PTR); 
-
-      // -- always track integer registers
-      return v.getType ()->isIntegerTy ();
-    }
-
-    varname_t symVar (const Value &v)
-    {
-      assert (isTracked (v));
-      return m_vfac [v];
-    }
-
-    varname_t symVar (int v)
-    {
-      return m_vfac.get (v);
-    }
-  
-    boost::optional<z_lin_exp_t> lookup (const Value &v)
-    {
-      if (isa<ConstantPointerNull> (&v) || 
-          isa<const UndefValue> (&v))
-        return boost::optional<z_lin_exp_t>();
-      
-      if (const ConstantInt *c = dyn_cast<const ConstantInt> (&v))
-      {
-        if (c->getValue ().getMinSignedBits () > 64)
-        {
-          errs () << "Warning: " << toMpz (c->getValue ()).get_str ()  
-                  << " too big for int64_t.\n";
-        }
-        else
-          return boost::optional<z_lin_exp_t>
-              (z_lin_exp_t (c->getValue ().getSExtValue ()));
-      }
-
-      if (isTracked(v))
-        return boost::optional<z_lin_exp_t>(z_lin_exp_t (symVar (v)));
-      
-      return boost::optional<z_lin_exp_t>();
-    }
-    
-    bool isLogicalOp(const Instruction &I) const 
-    {
-      return (I.getOpcode() >= Instruction::And && 
-              I.getOpcode() <= Instruction::Xor);
-    }
-    
-    void normalizeCmpInst(CmpInst &I)
-    {
-      switch (I.getPredicate()){
-        case ICmpInst::ICMP_UGT:	
-        case ICmpInst::ICMP_SGT: I.swapOperands(); break; 
-        case ICmpInst::ICMP_UGE:	
-        case ICmpInst::ICMP_SGE: I.swapOperands(); break; 
-        default: ;
-      }
-    }
-
-    boost::optional<z_lin_cst_t> 
-    gen_assertion (CmpInst &I, bool is_negated)
-    {
-      
-      normalizeCmpInst(I);
-      
-      const Value& v0 = *I.getOperand (0);
-      const Value& v1 = *I.getOperand (1);
-
-      boost::optional<z_lin_exp_t> op1 = lookup (v0);
-      boost::optional<z_lin_exp_t> op2 = lookup (v1);
-      
-      z_lin_cst_t res;
-      
-      if (op1 && op2) 
-      {
-        switch (I.getPredicate ())
-        {
-          case CmpInst::ICMP_EQ:
-            ( (!is_negated) ? 
-              res = z_lin_cst_t (*op1 == *op2) : 
-              res = z_lin_cst_t (*op1 != *op2));
-            break;
-          case CmpInst::ICMP_NE:
-            ( (!is_negated) ? 
-              res = z_lin_cst_t (*op1 != *op2) : 
-              res = z_lin_cst_t (*op1 == *op2));
-            break;
-          case CmpInst::ICMP_ULT:
-          case CmpInst::ICMP_SLT:
-            ( (!is_negated) ? 
-              res = z_lin_cst_t (*op1 <= *op2 - 1) : 
-              res = z_lin_cst_t (*op1 >= *op2));
-            break; 
-          case CmpInst::ICMP_ULE:
-          case CmpInst::ICMP_SLE:
-            ( (!is_negated) ? 
-              res = z_lin_cst_t (*op1 <= *op2) : 
-              res = z_lin_cst_t (*op1 >= *op2 + 1));
-            break;
-          default:  assert (false);
-        }
-        return boost::optional<z_lin_cst_t> (res);
-      }
-      else
-        return boost::optional<z_lin_cst_t> ();
-    }
-  };
-
   struct SymExecVisitor : 
       public InstVisitor<SymExecVisitor>, 
-      public SymExecBase
+      private SymEval<VariableFactory, z_lin_exp_t>
   {
     basic_block_t& m_bb;
     bool m_is_inter_proc;
 
     SymExecVisitor (VariableFactory& vfac, basic_block_t & bb,
                     MemAnalysis* mem, bool isInterProc): 
-        SymExecBase (vfac, mem), m_bb (bb), 
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), m_bb (bb), 
         m_is_inter_proc (isInterProc)  
     { }
+
+    bool isLogicalOp(const Instruction &I) const 
+    {
+      return (I.getOpcode() >= Instruction::And && 
+              I.getOpcode() <= Instruction::Xor);
+    }
         
     /// skip PHI nodes
     void visitPHINode (PHINode &I) {}
@@ -510,7 +377,7 @@ namespace llvm_ikos
 
   struct SymExecPhiVisitor : 
       public InstVisitor<SymExecPhiVisitor>, 
-      public SymExecBase
+      private SymEval<VariableFactory, z_lin_exp_t>
   {
     // block where assignment/havoc will be inserted
     basic_block_t&    m_bb; 
@@ -521,7 +388,8 @@ namespace llvm_ikos
                        basic_block_t& bb, 
                        const llvm::BasicBlock& inc_BB, 
                        MemAnalysis* mem): 
-        SymExecBase (vfac, mem), m_bb (bb), m_inc_BB (inc_BB)  
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), 
+        m_bb (bb), m_inc_BB (inc_BB)  
     { }
     
     void visitPHINode (PHINode &I) 
@@ -543,7 +411,7 @@ namespace llvm_ikos
 
   struct SymExecCmpInstVisitor : 
       public InstVisitor<SymExecCmpInstVisitor>, 
-      public SymExecBase
+      private SymEval<VariableFactory, z_lin_exp_t>
   {
     basic_block_t& m_bb;
     bool           m_is_negated;
@@ -552,10 +420,71 @@ namespace llvm_ikos
                            basic_block_t& bb, 
                            bool is_negated, 
                            MemAnalysis* mem):
-        SymExecBase (vfac, mem), m_bb (bb), 
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), 
+        m_bb (bb), 
         m_is_negated (is_negated)   
     { }
     
+
+    void normalizeCmpInst(CmpInst &I)
+    {
+      switch (I.getPredicate()){
+        case ICmpInst::ICMP_UGT:	
+        case ICmpInst::ICMP_SGT: I.swapOperands(); break; 
+        case ICmpInst::ICMP_UGE:	
+        case ICmpInst::ICMP_SGE: I.swapOperands(); break; 
+        default: ;
+      }
+    }
+
+    boost::optional<z_lin_cst_t> 
+    gen_assertion (CmpInst &I, bool is_negated)
+    {
+      
+      normalizeCmpInst(I);
+      
+      const Value& v0 = *I.getOperand (0);
+      const Value& v1 = *I.getOperand (1);
+
+      boost::optional<z_lin_exp_t> op1 = lookup (v0);
+      boost::optional<z_lin_exp_t> op2 = lookup (v1);
+      
+      z_lin_cst_t res;
+      
+      if (op1 && op2) 
+      {
+        switch (I.getPredicate ())
+        {
+          case CmpInst::ICMP_EQ:
+            ( (!is_negated) ? 
+              res = z_lin_cst_t (*op1 == *op2) : 
+              res = z_lin_cst_t (*op1 != *op2));
+            break;
+          case CmpInst::ICMP_NE:
+            ( (!is_negated) ? 
+              res = z_lin_cst_t (*op1 != *op2) : 
+              res = z_lin_cst_t (*op1 == *op2));
+            break;
+          case CmpInst::ICMP_ULT:
+          case CmpInst::ICMP_SLT:
+            ( (!is_negated) ? 
+              res = z_lin_cst_t (*op1 <= *op2 - 1) : 
+              res = z_lin_cst_t (*op1 >= *op2));
+            break; 
+          case CmpInst::ICMP_ULE:
+          case CmpInst::ICMP_SLE:
+            ( (!is_negated) ? 
+              res = z_lin_cst_t (*op1 <= *op2) : 
+              res = z_lin_cst_t (*op1 >= *op2 + 1));
+            break;
+          default:  assert (false);
+        }
+        return boost::optional<z_lin_cst_t> (res);
+      }
+      else
+        return boost::optional<z_lin_cst_t> ();
+    }
+
     void visitCmpInst (CmpInst &I) 
     {
       
@@ -575,7 +504,7 @@ namespace llvm_ikos
   
   struct SymExecITEVisitor : 
       public InstVisitor<SymExecITEVisitor>, 
-      public SymExecBase
+      private SymEval<VariableFactory, z_lin_exp_t>
   {
     
     CfgBuilder&    m_builder;
@@ -586,7 +515,8 @@ namespace llvm_ikos
                        CfgBuilder& builder, 
                        basic_block_t& bb, 
                        MemAnalysis* mem):
-        SymExecBase (vfac, mem), m_builder (builder), 
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), 
+        m_builder (builder), 
         m_bb (bb), id (0)   
     { }
     
@@ -738,7 +668,6 @@ namespace llvm_ikos
 
   void CfgBuilder::make_cfg()
   {
-    //LOG ("ikos-verbose", errs () << "Begin building muzq CFG ... \n");
 
     for (auto &B : m_func) 
       add_block(B); 
@@ -859,7 +788,6 @@ namespace llvm_ikos
     // Important to keep small the cfg
     m_cfg.simplify ();
 
-    //LOG ("ikos-verbose", errs () << "Done muzq CFG. \n");    
     return ;
   }
 

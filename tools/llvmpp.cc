@@ -29,7 +29,6 @@
 #include <Transforms/LowerCstExpr.hh>
 #include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
-#include <Transforms/ShadowThreads.hh>
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
@@ -236,10 +235,6 @@ int main(int argc, char **argv) {
   // -- lower constant expressions to instructions
   pass_manager.add (new llvm_ikos::LowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
-
-  // -- identify threads and global shared variables
-  if (Concurrency)
-    pass_manager.add (new llvm_ikos::ShadowThreads ());
 
   // -- must be the last ones:
   pass_manager.add (new llvm_ikos::LowerSelect ());   

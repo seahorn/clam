@@ -10,13 +10,20 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
 
-#include "boost/optional.hpp"
-
 #include <ikos_llvm/CfgBuilder.hh>
 #include "ikos_llvm/MemAnalysis.hh"
 
+
 namespace llvm_ikos
-{enum IkosDomain { INTERVALS, CONGRUENCES, INTERVALS_CONGRUENCES, ZONES, OCTAGONS, TERMS};}
+{  
+   //! Base numerical domains
+   enum IkosDomain { INTERVALS, 
+                     CONGRUENCES, 
+                     INTERVALS_CONGRUENCES, 
+                     ZONES, 
+                     OCTAGONS, 
+                     TERMS};
+}
 
 namespace llvm_ikos
 {
@@ -24,6 +31,15 @@ namespace llvm_ikos
   using namespace llvm;
   using namespace cfg_impl;
 
+  /*! Compute invariants using Ikos for the whole module.
+   *
+   *  This class communicates invariants to clients by:
+   *
+   *  a) method operator[] which given a llvm basic block returns the
+   *     invariants in form of integer linear constraints
+   *
+   *  b) inserting assume instructions in the llvm bitecode. 
+   */
   class LlvmIkos : public llvm::ModulePass
   {
     typedef llvm::DenseMap< const llvm::BasicBlock *, 
@@ -56,17 +72,17 @@ namespace llvm_ikos
 
     virtual bool runOnFunction (llvm::Function &F);
 
-    iterator       begin ()       { return m_inv_map.begin(); } 
-    iterator       end ()         { return m_inv_map.end();   }
-    const_iterator begin () const { return m_inv_map.begin(); }
-    const_iterator end ()   const { return m_inv_map.end();   }
-
     z_lin_cst_sys_t operator[] (const llvm::BasicBlock *BB) const
     {
       const_iterator it = m_inv_map.find (BB);
       assert (it != m_inv_map.end ());
       return it->second;
     }
+
+    iterator       begin ()       { return m_inv_map.begin(); } 
+    iterator       end ()         { return m_inv_map.end();   }
+    const_iterator begin () const { return m_inv_map.begin(); }
+    const_iterator end ()   const { return m_inv_map.end();   }
 
     void dump (llvm::Module &M) const;
 

@@ -9,6 +9,8 @@
 
 #include "ikos_llvm/config.h"
 
+#include <ikos/cfg/Cfg.hpp>
+
 #ifdef HAVE_DSA
 #include "boost/range/algorithm/set_algorithm.hpp"
 #include "dsa/DataStructure.h"
@@ -26,6 +28,10 @@ namespace llvm_ikos
     /* 
      *  The goal of the memory analysis is to split the whole heap into
      *  disjoint arrays (i.e., contiguous sequence of bytes)
+     *
+     *  Each DSA node is translated into an array. A DSA node may not
+     *  correspond directly to a llvm Value so we map DSA node to
+     *  id's.
      */
 
    public:
@@ -53,9 +59,9 @@ namespace llvm_ikos
       Second operator () (const pair<First,Second> &p) const { return p.second; }
     }; 
 
-   typedef boost::transform_iterator< getSecond<const DSNode*,unsigned>, 
-                                      typename DenseMap<const DSNode*, 
-                                                        unsigned>::iterator > iterator;
+    typedef boost::transform_iterator< getSecond<const DSNode*,unsigned>, 
+                                       typename DenseMap<const DSNode*, 
+                                                         unsigned>::iterator > iterator;
 
     array_id_t getId (const DSNode *n)
     {

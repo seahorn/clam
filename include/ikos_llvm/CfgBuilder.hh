@@ -11,13 +11,11 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 
-//#include "avy/AvyDebug.h"
+#include "ikos_llvm/MemAnalysis.hh"
 
 #include <ikos/cfg/Cfg.hpp>
 #include <ikos/cfg/VarFactory.hpp>
 #include <ikos/bignums.hpp>
-
-#include "ikos_llvm/MemAnalysis.hh"
 
 namespace cfg
 {
@@ -87,9 +85,11 @@ namespace cfg_impl
   typedef typename cfg_t::basic_block_t::z_lin_exp_t z_lin_exp_t;
   typedef typename cfg_t::basic_block_t::z_lin_cst_t z_lin_cst_t;
   typedef ikos::linear_constraint_system<ikos::z_number, varname_t> z_lin_cst_sys_t;
+
 } // end namespace cfg_impl
 
-namespace{
+namespace
+{
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, cfg_impl::cfg_t cfg)
   {
     std::ostringstream s;

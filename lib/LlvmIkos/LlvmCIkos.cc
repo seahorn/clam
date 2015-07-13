@@ -1,0 +1,369 @@
+#include "llvm/Pass.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/InstVisitor.h"
+#include "llvm/IR/CallSite.h"
+#include "llvm/IR/CFG.h"
+#include "llvm/Analysis/CFG.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
+
+#include "ikos_llvm/config.h"
+#include "ikos_llvm/CfgBuilder.hh"
+#include "ikos_llvm/SymEval.hh"
+#include "ikos_llvm/LlvmCIkos.hh"
+#include "ikos_llvm/Support/AbstractDomains.hh"
+
+#include <ikos/cfg/ConcSys.hpp>
+#include <ikos/analysis/ConcAnalyzer.hpp>
+#include <ikos/domains/domain_traits.hpp>
+
+#ifdef HAVE_DSA
+#include "dsa/Steensgaard.hh"
+#endif 
+
+/* 
+   user-definable options in LlvmIkos.cc 
+*/
+extern llvm::cl::opt<bool> LlvmIkosPrintAns;
+extern llvm::cl::opt<llvm_ikos::IkosDomain> LlvmIkosDomain;
+extern llvm::cl::opt<bool> LlvmIkosLive;
+extern llvm::cl::opt<enum cfg::TrackedPrecision> LlvmIkosTrackLev;
+extern llvm::cl::opt<bool> LlvmIkosInterProc;
+
+using namespace llvm;
+
+namespace domain_impl
+{
+   using namespace ikos;
+   using namespace cfg_impl; 
+   // scalar versions
+   typedef interval_domain<z_number, varname_t> interval_domain_t;
+   typedef interval_congruence_domain< z_number, varname_t > ric_domain_t;
+   typedef DBM< z_number, varname_t > dbm_domain_t;
+   typedef octagon< z_number, varname_t > octagon_domain_t;
+   // array versions
+   typedef array_smashing<interval_domain_t,z_number,varname_t> arr_interval_domain_t;
+   typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
+   typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;
+   typedef array_smashing<octagon_domain_t,z_number,varname_t> arr_octagon_domain_t;
+} 
+
+namespace
+{
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        conc::ConcSys< llvm::Function*, 
+                                                       cfg_impl::cfg_t> &sys)
+  {
+    std::ostringstream s;
+    s << sys;
+    o << s.str ();
+    return o;
+  }
+}
+
+namespace conc_impl
+{
+  template<> inline std::string get_thread_id_str(llvm::Function *f) 
+  { return f->getName (); }
+}
+
+namespace llvm_ikos
+{
+  using namespace conc;
+  using namespace domain_impl;
+
+  typedef ConcSys< llvm::Function*, cfg_t> conc_sys_t;
+  typedef SymEval<VariableFactory, cfg_impl::z_lin_exp_t> sym_eval_t;
+  typedef boost::optional<cfg_impl::z_lin_exp_t> z_lin_exp_opt_t;
+
+  char llvm_ikos::LlvmCIkos::ID = 0;
+
+  struct SharedVarVisitor : 
+      public InstVisitor<SharedVarVisitor>
+  {
+    typedef DenseMap<const Value*, std::set<const Function*> > shared_var_map_t;
+    shared_var_map_t& m_shared_map;
+
+    void insertVar (std::pair< const Value*, const Function*> p)
+    {
+      auto it = m_shared_map.find (p.first);
+      if (it != m_shared_map.end ())
+      {  
+        std::set<const Function*> &threads = m_shared_map [p.first];
+        threads.insert (p.second);
+      }
+      else
+      {
+        std::set<const Function*> threads;
+        threads.insert (p.second);
+        m_shared_map.insert (std::make_pair (p.first, threads));
+      }
+    }
+
+    SharedVarVisitor (shared_var_map_t &shared_map):
+        m_shared_map (shared_map) { }              
+
+    void visitLoadInst (LoadInst &I) {
+
+       Value* ptr = I.getOperand (0);
+       if (isa<GlobalVariable> (ptr))
+       {
+         if (GlobalValue* gv = dyn_cast<GlobalValue> (ptr))
+         {
+           if (gv->isThreadLocal ()) 
+            return;
+         }
+         const Function * f = I.getParent ()->getParent ();
+         if (!f->getName ().equals ("main"))
+           insertVar (std::make_pair (ptr, f));
+       }
+    }  
+
+    void visitStoreInst (StoreInst &I) {
+
+       Value* ptr = I.getOperand (1);
+       if (isa<GlobalVariable> (ptr))
+       {
+         if (GlobalValue* gv = dyn_cast<GlobalValue> (ptr))
+         {
+           if (gv->isThreadLocal ()) 
+           return;
+         }
+         const Function * f = I.getParent ()->getParent ();
+         if (!f->getName ().equals ("main"))
+           insertVar (std::make_pair (ptr, f));
+       }
+    }
+
+    /// base case. if all else fails.
+    void visitInstruction (Instruction &I){}
+    
+  };
+
+  z_lin_exp_opt_t findInitialValue (Module &M, StringRef name, 
+                                    sym_eval_t sym_eval)    
+  {
+    GlobalVariable * gv = M.getGlobalVariable (name);
+    if (!gv || !gv->hasInitializer ()) 
+      return z_lin_exp_opt_t ();
+    
+    PointerType *ty = dyn_cast<PointerType> (gv->getType ());
+    if (!ty) 
+      return z_lin_exp_opt_t ();
+    Type *ety = ty->getElementType ();
+    // only deal with scalars for now
+    if (!ety->isIntegerTy () &&  !ety->isPointerTy ()) 
+      return z_lin_exp_opt_t ();
+    
+    return sym_eval.lookup (*(cast<const Value>(gv->getInitializer ())));
+  }
+
+  template<typename AbsDomain>
+  void analyzeConcSys (conc_sys_t& sys, VariableFactory& vfac, 
+                       Module& M, MemAnalysis& mem)
+  {
+    typedef ConcAnalyzer <llvm::Function*, cfg_t, 
+                          AbsDomain, VariableFactory> conc_analyzer_t;
+
+
+    /// --- Initialize shared global state
+    AbsDomain init_gv_inv = AbsDomain::top ();
+    sym_eval_t sym_eval (vfac, &mem);
+    for (auto p: sys)
+    {
+      // TODO: we should add only the initialization of the global
+      // variables that can be accessed by the thread and its callees.
+      for (GlobalVariable &gv : boost::make_iterator_range (M.global_begin (),
+                                                            M.global_end ()))
+      {
+        if (z_lin_exp_opt_t val = findInitialValue (M, gv.getName (), sym_eval))
+        { 
+          z_lin_exp_opt_t idx = sym_eval.lookup (gv);
+          if (!idx || !(*idx).get_variable ()) continue;
+
+          Value * gv_value = M.getNamedValue (gv.getName ());
+          assert (gv_value);
+
+          int arr_id = mem.getArrayId (*(p.first), gv_value); 
+          if (arr_id < 0) continue;
+          ikos::domain_traits::array_store (init_gv_inv,
+                                            sym_eval.symVar (arr_id), 
+                                            (*((*idx).get_variable ())).name (), 
+                                            *val, 
+                                            mem.isSingleton (arr_id));  
+        }
+      }
+    }
+
+    if (LlvmIkosPrintAns)
+    {
+      errs () << "=========================\n";
+      errs () << "Concurrent system\n";
+      errs () << "=========================\n";
+      errs () << sys << "\n";
+      errs () << "Initial global state: " << init_gv_inv << "\n";
+    }
+
+    /// --- Global fixpoint 
+    conc_analyzer_t a (sys, vfac, LlvmIkosLive, true /*keep shadows*/);
+    a.Run (init_gv_inv);
+    
+    if (LlvmIkosPrintAns)
+    {
+      errs () << "=========================\n";
+      errs () << "Invariants\n";
+      errs () << "=========================\n";
+      for (auto t : sys)
+      {
+        errs () << conc_impl::get_thread_id_str (t.first) << "\n";
+        auto &inv_map = a.getInvariants (t.first);
+        for (auto p: inv_map)
+          errs () << "\t" << cfg_impl::get_label_str (p.first) << ": " 
+                  << p.second << "\n";
+        errs () << "\n";
+      }
+    }
+  }
+
+  bool LlvmCIkos::runOnModule (llvm::Module &M)
+  {
+
+#ifdef HAVE_DSA
+    m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (), MEM);
+#endif     
+
+    /// --- Identify threads and shared global variables
+    bool change = false;
+    for (auto &f : M) 
+      change |= processFunction (f); 
+#if 0
+    // Filter out variables that are not shared by two or more threads
+    auto it = m_shared_vars.begin ();
+    for(; it != m_shared_vars.end (); ) {
+      if (it->second.size () < 2) 
+        m_shared_vars.erase(it++);     
+      else 
+        ++it;
+    }
+#endif 
+
+    conc_sys_t sys;
+    VariableFactory vfac;
+
+    /// --- Build the system with all the threads and their shared
+    /// --- variables
+    sym_eval_t sym_eval (vfac, &m_mem);
+    for (auto f : m_threads)
+    {
+      auto cfg = CfgBuilder (*f, vfac, &m_mem, LlvmIkosInterProc) ();
+                           
+      vector<varname_t> shared_vars;
+      for (auto v : m_shared_vars)
+      {
+        /// --- we must pass the array associated to the global
+        ///     variable.
+        int arr_id = m_mem.getArrayId (*f, const_cast<Value*> (v.first));
+        if (arr_id < 0) continue;
+        shared_vars.push_back (sym_eval.symVar (arr_id));
+      }
+
+      sys.add_thread (f, cfg, shared_vars.begin (), shared_vars.end ());
+    }
+
+    /// --- Analyze the concurrent system
+    switch (LlvmIkosDomain)
+    {
+      case INTERVALS_CONGRUENCES: 
+        if (LlvmIkosTrackLev >= MEM)
+          analyzeConcSys <arr_ric_domain_t> (sys, vfac, M, m_mem); 
+        else
+          analyzeConcSys <ric_domain_t> (sys, vfac, M, m_mem); 
+        break;
+      case ZONES: 
+        if (LlvmIkosTrackLev >= MEM)
+          analyzeConcSys <arr_dbm_domain_t> (sys, vfac, M, m_mem); 
+        else
+          analyzeConcSys <dbm_domain_t> (sys, vfac, M, m_mem); 
+        break;
+      case OCTAGONS:  
+        if (LlvmIkosTrackLev >= MEM)
+          analyzeConcSys <arr_octagon_domain_t> (sys, vfac, M, m_mem); 
+        else
+          analyzeConcSys <octagon_domain_t> (sys, vfac, M, m_mem); 
+        break;
+      case TERMS: /*TODO*/
+      case INTERVALS:  
+      default:
+        if (LlvmIkosTrackLev >= MEM)
+          analyzeConcSys <arr_interval_domain_t> (sys, vfac, M, m_mem); 
+        else
+          analyzeConcSys <interval_domain_t> (sys, vfac, M, m_mem); 
+    }
+    return change;
+  }
+
+  //! Identify threads and shared global variables
+  bool LlvmCIkos::processFunction (llvm::Function &F)
+  {
+    // -- skip functions without a body
+    if (F.isDeclaration () || F.empty ()) return false;
+
+    bool change = false;
+    for (llvm::BasicBlock &bb : F)
+      for (Instruction &inst : bb)
+      {
+        if (CallInst* CI = dyn_cast<CallInst> (&inst))
+        {
+          CallSite CS (&inst);
+          if (CS.getCalledFunction ()->getName ().equals ("pthread_create"))
+          {
+            if (!F.getName ().equals ("main"))
+            {
+              errs () << "WARNING: skipping a call to thread_create. "
+                      << "Only main can create threads\n";
+            }
+            else
+            {
+              if (Function* thread = dyn_cast<Function> (CS.getArgument(2)))
+                m_threads.insert (thread);
+              else 
+              {
+                errs () << "WARNING: skipping a call to thread_create. "
+                        << "Cannot determine statically the function\n";
+              }
+            }
+          }
+        }
+      }
+
+    for (llvm::BasicBlock &bb : F)
+    {
+      SharedVarVisitor v (m_shared_vars);
+      v.visit (&bb);
+    }
+      
+    return change;
+  }
+
+  void LlvmCIkos::getAnalysisUsage (llvm::AnalysisUsage &AU) const
+  {
+    AU.setPreservesAll ();
+#ifdef HAVE_DSA
+    AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
+    AU.addRequired<llvm::DataLayoutPass>();
+    AU.addRequired<llvm::UnifyFunctionExitNodes> ();
+#endif 
+  } 
+
+} // end namespace llvm_ikos
+
+
+static llvm::RegisterPass<llvm_ikos::LlvmCIkos> 
+X ("llvm-cikos",
+   "Infer invariants for concurrent programs using Ikos", 
+   false, false);
+
+

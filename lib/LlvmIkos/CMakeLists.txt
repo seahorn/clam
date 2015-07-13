@@ -1,5 +1,6 @@
 add_library (LlvmIkosPasses STATIC
   CfgBuilder.cc
+  LlvmCIkos.cc
   LlvmIkos.cc
   )
 

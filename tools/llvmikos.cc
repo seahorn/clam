@@ -22,6 +22,7 @@
 #include "llvm/IR/Verifier.h"
 
 #include "ikos_llvm/LlvmIkos.hh"
+#include "ikos_llvm/LlvmCIkos.hh"
 
 #include <Transforms/LowerGvInitializers.hh>
 #include <Transforms/NameValues.hh>
@@ -49,6 +50,10 @@ static llvm::cl::opt<std::string>
 DefaultDataLayout("default-data-layout",
                   llvm::cl::desc("data layout string to use if not specified by module"),
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
+
+static llvm::cl::opt<bool>
+Concurrency ("ikos-concur", llvm::cl::desc ("Analysis of concurrent programs"),
+           llvm::cl::init (false));
 
 using namespace llvm_ikos;
 
@@ -144,12 +149,18 @@ int main(int argc, char **argv) {
   pass_manager.add (new llvm_ikos::LowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
-  // -- must be the last ones:
+  // -- must be the last ones before running ikos:
   pass_manager.add (new llvm_ikos::LowerSelect ());   
   pass_manager.add (new llvm_ikos::NameValues ()); 
 
-  pass_manager.add (new llvm_ikos::LlvmIkos ());
- 
+  if (Concurrency)
+    pass_manager.add (new llvm_ikos::LlvmCIkos ());
+  else
+    pass_manager.add (new llvm_ikos::LlvmIkos ());
+
+  // -- simplify invariants added in the bytecode.
+  pass_manager.add (llvm::createInstructionCombiningPass ()); 
+
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (asmOutput->os ()));
       

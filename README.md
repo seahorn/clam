@@ -21,6 +21,10 @@ programs.
 
 - Boost and gmp
 
+*This branch is using a private version of `ikos-core`*. We will merge
+ the private version with the public one in github as soon as
+ possible.
+
 #Compilation#
 
 First, if you want `Ikos-llvm` to reason about pointers and arrays you
@@ -58,13 +62,35 @@ context-sensitivity:
 
 - `llvmpp file.bc -ikos-inline-all -o file.pp.bc` 
 
-Finally, we can analyze the program by choosing a particular abstract
-domain and by considering only live variables:
+We can analyze the program by choosing a particular abstract domain
+and by considering only live variables:
 
 - `llvmikos file.pp.bc -ikos-domain=ZONES -ikos-live -ikos-answer`
 
 The option `-ikos-answer` displays all the invariants inferred for
 each basic block in the `LLVM` bitecode.
+
+We also provide the option `-ikos-track-lvl` to indicate the level of
+precision. The possible values are: `reg`, `ptr`, and `mem`. The level
+`reg` reasons about integer scalars. The level `ptr` reasons about
+pointer addresses while the level `mem` reasons about the contents of
+pointers and arrays. If the latter is selected, `llvmikos` inserts
+`assume` instructions in the bitecode representing instantiations of
+universally quantified invariants. Although very simple this allows us
+to pass this invariants to SeaHorn.
+
+We have an experimental option `ikos-concur` that allows us to analyze
+concurrent programs using a rely-guarantee approach. The concurrency
+model is based on threads that can only communicate via global
+variables. Currently, we apply a global fixpoint between threads where
+interferences are updated in a sound manner. Currently, interferences
+are abstracted in a flow-insensitive manner.
+
+Finally, the option `-ikos-inter-proc` builds CFGs including
+information about function definitions and call sites. Note that it
+does not perform inter-procedural analysis by itself. In fact,
+inter-procedural analyses beyond inlining (e.g., based on summaries)
+are not currently implemented.
 
 #People#
 
