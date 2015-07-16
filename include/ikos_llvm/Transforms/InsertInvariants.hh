@@ -19,12 +19,13 @@ namespace llvm_ikos
   class InsertInvariants : public llvm::ModulePass
   {
     LlvmIkos* m_ikos;
+    Function* m_assumeFn;
 
    public:
 
     static char ID;        
     
-    InsertInvariants (): llvm::ModulePass (ID), m_ikos(0) {}
+    InsertInvariants (): llvm::ModulePass (ID), m_ikos(0), m_assumeFn (0) {}
 
     ~InsertInvariants () {} 
 

@@ -7,6 +7,7 @@
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Analysis/CallGraph.h"
 
 #include "ikos_llvm/config.h"
 #include "ikos_llvm/Transforms/InsertInvariants.hh"
@@ -178,25 +179,17 @@ namespace llvm_ikos
     AbsDomain m_inv;
     Function* m_assumeFn;
     SymEval m_eval;
+    CallGraph* m_cg;
     unsigned m_num_inserts;
 
-    CodeExpanderInvs (Module& M, AbsDomain inv, SymEval eval):
+    CodeExpanderInvs (Module& M, AbsDomain inv, SymEval eval, 
+                      Function* assumeFn, CallGraph *cg):
         m_B (IRBuilder<> (M.getContext ())), 
         m_ctx (M.getContext ()), 
-        m_inv (inv), m_assumeFn (nullptr), m_eval (eval), 
+        m_inv (inv), m_assumeFn (assumeFn), m_eval (eval),
+        m_cg (cg),
         m_num_inserts (0) 
-    { 
-      AttrBuilder B;
-      AttributeSet as = AttributeSet::get (m_ctx, 
-                                           AttributeSet::FunctionIndex,
-                                           B);
-      m_assumeFn = dyn_cast<Function>
-          (M.getOrInsertFunction ("verifier.assume", 
-                                  as,
-                                  Type::getVoidTy (m_ctx),
-                                  Type::getInt1Ty (m_ctx),
-                                  NULL));
-    }              
+    { }
     
     void visitLoadInst (LoadInst &I) 
     {
@@ -220,11 +213,17 @@ namespace llvm_ikos
 #endif 
       auto csts = toLinCst (m_inv);
 
+      errs () << "Translating " << csts << " into bytecode\n";
+
       CodeExpander g;
       Value* cond = g.gen_code (csts, m_B, m_ctx);
       if (cond)
       {
-        m_B.CreateCall (m_assumeFn, cond);
+       CallInst *ci =  m_B.CreateCall (m_assumeFn, cond);
+        if (m_cg)
+          (*m_cg)[I.getParent()->getParent()]->addCalledFunction (CallSite (ci),
+                                           (*m_cg)[ci->getCalledFunction ()]);
+
         m_num_inserts++;
       }
     }  
@@ -243,6 +242,23 @@ namespace llvm_ikos
   bool InsertInvariants::runOnModule (llvm::Module &M)
   {
     m_ikos = &getAnalysis<LlvmIkos> ();
+    
+    LLVMContext &ctx = M.getContext ();
+    AttrBuilder B;
+    AttributeSet as = AttributeSet::get (ctx, 
+                                         AttributeSet::FunctionIndex,
+                                         B);
+    m_assumeFn = dyn_cast<Function>
+                       (M.getOrInsertFunction ("verifier.assume", 
+                                               as,
+                                               Type::getVoidTy (ctx),
+                                               Type::getInt1Ty (ctx),
+                                               NULL));
+    
+
+    CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
+    if (CallGraph *cg = cgwp ? &cgwp->getCallGraph () : nullptr)
+      cg->getOrInsertFunction (m_assumeFn);
 
     bool change=false;
     for (auto &f : M) 
@@ -254,9 +270,11 @@ namespace llvm_ikos
   bool InsertInvariants::runOnFunction (llvm::Function &F)
   {
     typedef typename llvm_ikos::SymEval <VariableFactory, z_lin_exp_t> sym_eval_t;
-
     // -- skip functions without a body
     if (F.isDeclaration () || F.empty ()) return false;
+
+    CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
+    CallGraph* cg = cgwp ? &cgwp->getCallGraph () : nullptr;
 
     VariableFactory &vfac = m_ikos->getVariableFactory ();
 
@@ -277,7 +295,9 @@ namespace llvm_ikos
       CodeExpanderInvs <interval_domain_t, 
                         sym_eval_t> t (*(F.getParent ()), 
                                        inv, 
-                                       sym_eval_t (vfac, m_ikos->getTrackLevel ()));
+                                       sym_eval_t (vfac, m_ikos->getTrackLevel ()),
+                                       m_assumeFn,
+                                       cg);
       t.visit (&B);
       change |= (t.get_num_inserts () > 0);
     }
@@ -287,8 +307,9 @@ namespace llvm_ikos
 
   void InsertInvariants::getAnalysisUsage (llvm::AnalysisUsage &AU) const
   {
-    AU.setPreservesCFG ();
+    AU.setPreservesAll ();
     AU.addRequired<llvm_ikos::LlvmIkos>();
+    AU.addPreserved<llvm::CallGraphWrapperPass> ();
   } 
 
 } // end namespace llvm_ikos
