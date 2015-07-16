@@ -6,33 +6,35 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/APInt.h"
 
-#include "ikos_llvm/MemAnalysis.hh"
 #include "ikos_llvm/Support/bignums.hh"
+
+#include <ikos/cfg/Cfg.hpp>
 
 namespace llvm_ikos
 {
 
   using namespace llvm;
   using namespace std;
+  using namespace cfg;
 
   //! Map llvm values to integer linear expressions
   template<typename VariableFactory, typename ZLinExp>
   struct SymEval {
 
     VariableFactory& m_vfac;
-    MemAnalysis* m_mem;
+    TrackedPrecision m_track_lvl;
 
     typedef typename VariableFactory::varname_t varname_t;
 
-    SymEval (VariableFactory &vfac, MemAnalysis* mem): 
-        m_vfac (vfac), m_mem (mem)
+    SymEval (VariableFactory &vfac, TrackedPrecision track_lvl): 
+        m_vfac (vfac), m_track_lvl (track_lvl)
     { }
 
     bool isTracked (const llvm::Value &v)
     {
       // -- a pointer
       if (v.getType ()->isPointerTy ()) 
-        return (m_mem->getTrackLevel () >= PTR); 
+        return (m_track_lvl >= PTR); 
 
       // -- always track integer registers
       return v.getType ()->isIntegerTy ();

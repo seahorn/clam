@@ -31,24 +31,18 @@ namespace llvm_ikos
   using namespace llvm;
   using namespace cfg_impl;
 
-  /*! Compute invariants using Ikos for the whole module.
-   *
-   *  This class communicates invariants to clients by:
-   *
-   *  a) method operator[] which given a llvm basic block returns the
-   *     invariants in form of integer linear constraints
-   *
-   *  b) inserting assume instructions in the llvm bitecode. 
-   */
+  /*! Compute invariants using Ikos for the whole module. */
   class LlvmIkos : public llvm::ModulePass
   {
     typedef llvm::DenseMap< const llvm::BasicBlock *, 
                             z_lin_cst_sys_t > invariants_map_t;
 
-    invariants_map_t m_inv_map;
+    invariants_map_t m_pre_map;
+    invariants_map_t m_post_map;
     IkosDomain       m_absdom;
     bool             m_runlive;
     MemAnalysis      m_mem;    
+    VariableFactory  m_vfac;
 
    public:
 
@@ -61,28 +55,52 @@ namespace llvm_ikos
                  m_absdom (INTERVALS), m_runlive(false)  
     { }
 
-    ~LlvmIkos ()
-    { m_inv_map.clear(); }
+    ~LlvmIkos () {
+      m_pre_map.clear(); 
+      m_post_map.clear(); 
+    }
 
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const ;
 
-    virtual void releaseMemory () {m_inv_map.clear ();}
+    virtual void releaseMemory () {
+      m_pre_map.clear(); 
+      m_post_map.clear(); 
+    }
     
     virtual bool runOnModule (llvm::Module& M);
 
     virtual bool runOnFunction (llvm::Function &F);
 
-    z_lin_cst_sys_t operator[] (const llvm::BasicBlock *BB) const
+    // return invariants that hold at the entry of BB
+    z_lin_cst_sys_t getPre (const llvm::BasicBlock *BB) const
     {
-      const_iterator it = m_inv_map.find (BB);
-      assert (it != m_inv_map.end ());
+      return this->operator[] (BB);
+    }
+
+    // return invariants that hold at the exit of BB
+    z_lin_cst_sys_t getPost (const llvm::BasicBlock *BB) const
+    {
+      const_iterator it = m_post_map.find (BB);
+      assert (it != m_post_map.end ());
       return it->second;
     }
 
-    iterator       begin ()       { return m_inv_map.begin(); } 
-    iterator       end ()         { return m_inv_map.end();   }
-    const_iterator begin () const { return m_inv_map.begin(); }
-    const_iterator end ()   const { return m_inv_map.end();   }
+    // alias for getPre
+    z_lin_cst_sys_t operator[] (const llvm::BasicBlock *BB) const
+    {
+      const_iterator it = m_pre_map.find (BB);
+      assert (it != m_pre_map.end ());
+      return it->second;
+    }
+
+    TrackedPrecision getTrackLevel () const { return m_mem.getTrackLevel (); }
+
+    VariableFactory& getVariableFactory () { return m_vfac; }
+
+    iterator       begin ()       { return m_pre_map.begin(); } 
+    iterator       end ()         { return m_pre_map.end();   }
+    const_iterator begin () const { return m_pre_map.begin(); }
+    const_iterator end ()   const { return m_pre_map.end();   }
 
     void dump (llvm::Module &M) const;
 
@@ -95,7 +113,7 @@ namespace llvm_ikos
     { return z_lin_cst_t ( z_lin_exp_t (1) == z_lin_exp_t (0)); }
 
     template<typename AbsDomain> 
-    bool runOnCfg (cfg_t& cfg, llvm::Function &F, VariableFactory &vfac);
+    bool runOnCfg (cfg_t& cfg, llvm::Function &F);
 
   };
 

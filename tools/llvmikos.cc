@@ -31,6 +31,8 @@
 #include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
 
+#include <ikos_llvm/Transforms/InsertInvariants.hh>
+
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
               llvm::cl::Required, llvm::cl::value_desc("filename"));
@@ -53,6 +55,10 @@ DefaultDataLayout("default-data-layout",
 
 static llvm::cl::opt<bool>
 Concurrency ("ikos-concur", llvm::cl::desc ("Analysis of concurrent programs"),
+           llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+InsertInvs ("ikos-insert-invs", llvm::cl::desc ("Instrument code with invariants"),
            llvm::cl::init (false));
 
 using namespace llvm_ikos;
@@ -155,11 +161,14 @@ int main(int argc, char **argv) {
 
   if (Concurrency)
     pass_manager.add (new llvm_ikos::LlvmCIkos ());
-  else
+  else {
     pass_manager.add (new llvm_ikos::LlvmIkos ());
-
-  // -- simplify invariants added in the bytecode.
-  pass_manager.add (llvm::createInstructionCombiningPass ()); 
+    if (InsertInvs) {
+      pass_manager.add (new llvm_ikos::InsertInvariants ());
+      // -- simplify invariants added in the bytecode.
+      pass_manager.add (llvm::createInstructionCombiningPass ()); 
+    }
+  }
 
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (asmOutput->os ()));

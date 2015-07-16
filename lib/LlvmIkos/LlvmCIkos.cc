@@ -171,7 +171,7 @@ namespace llvm_ikos
 
     /// --- Initialize shared global state
     AbsDomain init_gv_inv = AbsDomain::top ();
-    sym_eval_t sym_eval (vfac, &mem);
+    sym_eval_t sym_eval (vfac, mem.getTrackLevel ());
     for (auto p: sys)
     {
       // TODO: we should add only the initialization of the global
@@ -255,7 +255,7 @@ namespace llvm_ikos
 
     /// --- Build the system with all the threads and their shared
     /// --- variables
-    sym_eval_t sym_eval (vfac, &m_mem);
+    sym_eval_t sym_eval (vfac, m_mem.getTrackLevel ());
     for (auto f : m_threads)
     {
       auto cfg = CfgBuilder (*f, vfac, &m_mem, LlvmIkosInterProc) ();

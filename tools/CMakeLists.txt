@@ -16,7 +16,9 @@ llvm_config (llvmpp ${LLVM_LINK_COMPONENTS})
 install(TARGETS llvmpp RUNTIME DESTINATION bin)
 
 add_executable(llvmikos llvmikos.cc)
-target_link_libraries (llvmikos LlvmIkosPasses LlvmPasses ${IKOS_DBM_LIB} ${USED_LIBS})
+target_link_libraries (llvmikos 
+  LlvmIkosAnalysis LlvmIkosInstrumentation LlvmPasses 
+  ${IKOS_DBM_LIB} ${USED_LIBS})
 llvm_config (llvmikos ${LLVM_LINK_COMPONENTS})
 install(TARGETS llvmikos RUNTIME DESTINATION bin)
 

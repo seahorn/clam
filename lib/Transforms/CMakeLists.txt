@@ -13,5 +13,3 @@ if (HAVE_DSA)
 else ()
   target_link_libraries (LlvmPasses)
 endif ()
-
-

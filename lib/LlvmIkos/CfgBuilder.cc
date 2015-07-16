@@ -43,11 +43,14 @@ namespace llvm_ikos
       private SymEval<VariableFactory, z_lin_exp_t>
   {
     basic_block_t& m_bb;
+    MemAnalysis *m_mem;
     bool m_is_inter_proc;
 
     SymExecVisitor (VariableFactory& vfac, basic_block_t & bb,
                     MemAnalysis* mem, bool isInterProc): 
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), m_bb (bb), 
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()),
+        m_bb (bb), 
+        m_mem (mem),
         m_is_inter_proc (isInterProc)  
     { }
 
@@ -383,13 +386,15 @@ namespace llvm_ikos
     basic_block_t&    m_bb; 
     // incoming block of the PHI instruction
     const llvm::BasicBlock& m_inc_BB; 
-    
+    // memory analysis
+    MemAnalysis *m_mem;
+
     SymExecPhiVisitor (VariableFactory& vfac, 
                        basic_block_t& bb, 
                        const llvm::BasicBlock& inc_BB, 
                        MemAnalysis* mem): 
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), 
-        m_bb (bb), m_inc_BB (inc_BB)  
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
+        m_bb (bb), m_inc_BB (inc_BB), m_mem (mem)
     { }
     
     void visitPHINode (PHINode &I) 
@@ -414,15 +419,17 @@ namespace llvm_ikos
       private SymEval<VariableFactory, z_lin_exp_t>
   {
     basic_block_t& m_bb;
-    bool           m_is_negated;
+    bool m_is_negated;
+    MemAnalysis *m_mem;    
     
     SymExecCmpInstVisitor (VariableFactory& vfac, 
                            basic_block_t& bb, 
                            bool is_negated, 
                            MemAnalysis* mem):
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), 
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
         m_bb (bb), 
-        m_is_negated (is_negated)   
+        m_is_negated (is_negated),
+        m_mem (mem)
     { }
     
 
@@ -507,17 +514,18 @@ namespace llvm_ikos
       private SymEval<VariableFactory, z_lin_exp_t>
   {
     
-    CfgBuilder&    m_builder;
+    CfgBuilder& m_builder;
     basic_block_t& m_bb;
     unsigned id;
+    MemAnalysis *m_mem;
     
     SymExecITEVisitor (VariableFactory& vfac, 
                        CfgBuilder& builder, 
                        basic_block_t& bb, 
                        MemAnalysis* mem):
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), 
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
         m_builder (builder), 
-        m_bb (bb), id (0)   
+        m_bb (bb), id (0), m_mem (mem)
     { }
     
     void visitCmpInst (CmpInst &I) { }
