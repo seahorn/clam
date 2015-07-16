@@ -88,7 +88,7 @@ namespace llvm_ikos
           }    
           
           if (isa<const SelectInst> (User) ) 
-          { // -- this case is (partially) covered by SymExecITEVisitor
+          { // -- this case is covered by SymExecITEVisitor
             continue;
           }
           
@@ -557,8 +557,7 @@ namespace llvm_ikos
         }
       }
       
-      // abstraction: source of imprecision
-      m_bb.havoc(lhs);
+      m_bb.select(lhs, symVar (cond),  *op0, *op1);
     }
   };
 
