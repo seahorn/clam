@@ -88,7 +88,7 @@ namespace llvm_ikos
           }    
           
           if (isa<const SelectInst> (User) ) 
-          { // -- this case is covered by SymExecITEVisitor
+          { // -- this case is covered by SymExecVisitor
             continue;
           }
           
@@ -106,10 +106,7 @@ namespace llvm_ikos
 
     /// skip BranchInst
     void visitBranchInst (BranchInst &I) {}
-    
-    /// skip SelectInst
-    void visitSelectInst(SelectInst &I) {}
-  
+      
     void visitBinaryOperator(BinaryOperator &I)
     {
       if (!isTracked (I)) return;
@@ -288,6 +285,36 @@ namespace llvm_ikos
       }
       else
         return make_pair (m_vfac [V], getType (V.getType ()));
+    }
+
+    void visitSelectInst(SelectInst &I)
+    {
+      
+      if (!isTracked (I)) return;
+      
+      varname_t lhs = symVar(I);
+      
+      const Value& cond = *I.getCondition ();
+      boost::optional<z_lin_exp_t> op0 = lookup (*I.getTrueValue ());
+      boost::optional<z_lin_exp_t> op1 = lookup (*I.getFalseValue ());
+      
+      if (!(op0 && op1)) return;
+      
+      if (const ConstantInt *ci = dyn_cast<const ConstantInt> (&cond))
+      {
+        if (ci->isOne ())
+        {
+          m_bb.assign (lhs, *op0);
+          return;
+        }
+        else if (ci->isZero ())
+        {
+          m_bb.assign (lhs, *op1);
+          return;
+        }
+      }
+      
+      m_bb.select(lhs, symVar (cond),  *op0, *op1);
     }
 
     void visitReturnInst (ReturnInst &I)
@@ -509,57 +536,29 @@ namespace llvm_ikos
     }
   };
   
-  struct SymExecITEVisitor : 
-      public InstVisitor<SymExecITEVisitor>, 
-      private SymEval<VariableFactory, z_lin_exp_t>
-  {
+  // struct SymExecITEVisitor : 
+  //     public InstVisitor<SymExecITEVisitor>, 
+  //     private SymEval<VariableFactory, z_lin_exp_t>
+  // {
     
-    CfgBuilder& m_builder;
-    basic_block_t& m_bb;
-    unsigned id;
-    MemAnalysis *m_mem;
+  //   CfgBuilder& m_builder;
+  //   basic_block_t& m_bb;
+  //   unsigned id;
+  //   MemAnalysis *m_mem;
     
-    SymExecITEVisitor (VariableFactory& vfac, 
-                       CfgBuilder& builder, 
-                       basic_block_t& bb, 
-                       MemAnalysis* mem):
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
-        m_builder (builder), 
-        m_bb (bb), id (0), m_mem (mem)
-    { }
+  //   SymExecITEVisitor (VariableFactory& vfac, 
+  //                      CfgBuilder& builder, 
+  //                      basic_block_t& bb, 
+  //                      MemAnalysis* mem):
+  //       SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
+  //       m_builder (builder), 
+  //       m_bb (bb), id (0), m_mem (mem)
+  //   { }
     
-    void visitCmpInst (CmpInst &I) { }
+  //   void visitCmpInst (CmpInst &I) { }
   
-    void visitSelectInst(SelectInst &I)
-    {
-      
-      if (!isTracked (I)) return;
-      
-      varname_t lhs = symVar(I);
-      
-      const Value& cond = *I.getCondition ();
-      boost::optional<z_lin_exp_t> op0 = lookup (*I.getTrueValue ());
-      boost::optional<z_lin_exp_t> op1 = lookup (*I.getFalseValue ());
-      
-      if (!(op0 && op1)) return;
-      
-      if (const ConstantInt *ci = dyn_cast<const ConstantInt> (&cond))
-      {
-        if (ci->isOne ())
-        {
-          m_bb.assign (lhs, *op0);
-          return;
-        }
-        else if (ci->isZero ())
-        {
-          m_bb.assign (lhs, *op1);
-          return;
-        }
-      }
-      
-      m_bb.select(lhs, symVar (cond),  *op0, *op1);
-    }
-  };
+  //   void visitSelectInst(SelectInst &I) { }
+  // };
 
   CfgBuilder::CfgBuilder (Function &func, VariableFactory &vfac, 
                           MemAnalysis* mem, bool isInterProc): 
@@ -645,6 +644,8 @@ namespace llvm_ikos
         assert (Src && Dst);
 
         // -- dummy BasicBlock 
+        // FIXME: memory leak because the llvm basic block is not
+        // linked to a builder.
         basic_block_label_t bb_id = llvm::BasicBlock::Create(m_func.getContext (),
                                                              create_bb_name ());
         
@@ -718,10 +719,10 @@ namespace llvm_ikos
             v.visit (const_cast<llvm::BasicBlock &>(*dst));
           }
         }
-        {
-          SymExecITEVisitor v (m_vfac, *this, *BB, m_mem);
-          v.visit (B);
-        }
+        // {
+        //   SymExecITEVisitor v (m_vfac, *this, *BB, m_mem);
+        //   v.visit (B);
+        // }
       }
     }
     
@@ -731,6 +732,8 @@ namespace llvm_ikos
     else if (rets.size () > 1)
     {
       // -- insert dummy BasicBlock 
+      // FIXME: memory leak because the llvm basic block is not
+      // linked to a builder.
       basic_block_label_t unified_ret_id = 
           llvm::BasicBlock::Create(m_func.getContext (),
                                    create_bb_name ());
@@ -794,7 +797,7 @@ namespace llvm_ikos
 
     // Important to keep small the cfg
     m_cfg.simplify ();
-
+    std::cout << m_cfg << "\n";
     return ;
   }
 
