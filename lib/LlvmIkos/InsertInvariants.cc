@@ -15,6 +15,8 @@
 #include "ikos_llvm/Support/AbstractDomains.hh"
 #include "ikos_llvm/Support/bignums.hh"
 
+extern llvm::cl::opt<llvm_ikos::IkosDomain> LlvmIkosDomain;
+
 using namespace llvm;
 using namespace llvm_ikos;
 
@@ -167,7 +169,7 @@ namespace llvm_ikos
   };
 
 
-  //! Instrument llvm bitecode with certain invariants.
+  //! Instrument llvm bitecode with invariants.
   //  To avoid a blow up in the code size we do it only for variables
   //  which appear on the lhs of load instructions.
   template<typename AbsDomain, typename SymEval>
@@ -195,12 +197,8 @@ namespace llvm_ikos
     {
       m_B.SetInsertPoint (&I);
 
-#if 1
-      // JN: This just keep a non-relational invariant for lhs. If
-      // commented this code then we will insert too many redundant
-      // invariants (those related to registers). Ideally, we would
-      // like to keep all relational invariants among lhs of load
-      // instructions.
+#if 0
+      // Insert a non-relational invariant for lhs. 
       varname_t lhs = m_eval.symVar(I);
       set<varname_t> vs;
       for (auto c: toLinCst (m_inv))
@@ -213,7 +211,7 @@ namespace llvm_ikos
 #endif 
       auto csts = toLinCst (m_inv);
 
-      errs () << "Translating " << csts << " into bytecode\n";
+      // errs () << "Inserting invariants " << I << "=" << csts << "\n";
 
       CodeExpander g;
       Value* cond = g.gen_code (csts, m_B, m_ctx);
@@ -285,14 +283,22 @@ namespace llvm_ikos
     bool change = false;
     for (auto &B : F)
     {
-      // --- We choose intervals to express the invariants but it can
-      //     be any domain.
-      interval_domain_t inv = interval_domain_t::top ();
+
+      //num_abs_domain_t should be LlvmIkosDomain
+      typedef interval_domain_t num_abs_domain_t;
+
+// #if IKOS_MINOR_VERSION >= 2
+//       typedef dbm_domain_t num_abs_domain_t;
+// #else
+//       typedef interval_domain_t num_abs_domain_t;
+// #endif 
+
+      num_abs_domain_t inv = num_abs_domain_t::top ();
       auto csts = m_ikos->getPost (&B);
       for (auto cst: csts)
         inv += csts;
-      
-      CodeExpanderInvs <interval_domain_t, 
+
+      CodeExpanderInvs <num_abs_domain_t, 
                         sym_eval_t> t (*(F.getParent ()), 
                                        inv, 
                                        sym_eval_t (vfac, m_ikos->getTrackLevel ()),
@@ -309,6 +315,8 @@ namespace llvm_ikos
   {
     AU.setPreservesAll ();
     AU.addRequired<llvm_ikos::LlvmIkos>();
+
+    AU.addRequired<llvm::CallGraphWrapperPass> ();
     AU.addPreserved<llvm::CallGraphWrapperPass> ();
   } 
 
