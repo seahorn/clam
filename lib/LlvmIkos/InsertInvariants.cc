@@ -195,7 +195,10 @@ namespace llvm_ikos
     
     void visitLoadInst (LoadInst &I) 
     {
+      // To insert after the instruction
       m_B.SetInsertPoint (&I);
+      auto insertPoint = m_B.GetInsertPoint ();
+      m_B.SetInsertPoint (++insertPoint);
 
 #if 0
       // Insert a non-relational invariant for lhs. 
