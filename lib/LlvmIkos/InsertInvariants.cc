@@ -101,16 +101,22 @@ namespace llvm_ikos
     }
 
     //! Generate llvm bitecode from a set of linear constraints    
-    Value* gen_code (z_lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx)
+    bool gen_code (z_lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
+                   Function* assumeFn, CallGraph* cg, Function* insertFun)
     {
-      Value* res = mk_bool (B, ctx, true);
+      bool change = false;
       for (auto cst: csts)
       { 
         Value* cst_code = gen_code (cst, B, ctx);
-        if (cst_code)
-          res = B.CreateAnd (res, cst_code);
+        if (cst_code) {
+          CallInst *ci =  B.CreateCall (assumeFn, cst_code);
+          change = true;
+          if (cg)
+            (*cg)[insertFun]->addCalledFunction (CallSite (ci),
+                                                 (*cg)[ci->getCalledFunction ()]);
+        }
       }
-      return res;
+      return change;
     }
     
     // post: return a value of bool type (Int1Ty) that contains the
@@ -182,7 +188,11 @@ namespace llvm_ikos
     Function* m_assumeFn;
     SymEval m_eval;
     CallGraph* m_cg;
-    unsigned m_num_inserts;
+    bool m_modified;
+
+    bool IsModified () const { 
+      return m_modified; 
+    }
 
     CodeExpanderInvs (Module& M, AbsDomain inv, SymEval eval, 
                       Function* assumeFn, CallGraph *cg):
@@ -190,7 +200,7 @@ namespace llvm_ikos
         m_ctx (M.getContext ()), 
         m_inv (inv), m_assumeFn (assumeFn), m_eval (eval),
         m_cg (cg),
-        m_num_inserts (0) 
+        m_modified (false)
     { }
     
     void visitLoadInst (LoadInst &I) 
@@ -217,26 +227,13 @@ namespace llvm_ikos
       // errs () << "Inserting invariants " << I << "=" << csts << "\n";
 
       CodeExpander g;
-      Value* cond = g.gen_code (csts, m_B, m_ctx);
-      if (cond)
-      {
-       CallInst *ci =  m_B.CreateCall (m_assumeFn, cond);
-        if (m_cg)
-          (*m_cg)[I.getParent()->getParent()]->addCalledFunction (CallSite (ci),
-                                           (*m_cg)[ci->getCalledFunction ()]);
-
-        m_num_inserts++;
-      }
+      m_modified = g.gen_code (csts, m_B, m_ctx, 
+                               m_assumeFn, m_cg, I.getParent()->getParent());
     }  
 
     /// base case. if all else fails.
     void visitInstruction (Instruction &I){}
     
-    unsigned get_num_inserts () const 
-    {
-      return m_num_inserts; 
-    }
-
   };
 
 
@@ -308,7 +305,7 @@ namespace llvm_ikos
                                        m_assumeFn,
                                        cg);
       t.visit (&B);
-      change |= (t.get_num_inserts () > 0);
+      change |= t.IsModified ();
     }
     
     return change;
