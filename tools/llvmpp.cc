@@ -27,7 +27,7 @@
 #include <Transforms/NameValues.hh>
 #include <Transforms/MarkInternalInline.hh>
 #include <Transforms/LowerCstExpr.hh>
-#include <Transforms/LowerSelect.hh>
+//#include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
 
 static llvm::cl::opt<std::string>
@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
   // -- must be the last ones:
-  pass_manager.add (new llvm_ikos::LowerSelect ());   
+  // pass_manager.add (new llvm_ikos::LowerSelect ());   
   pass_manager.add (new llvm_ikos::NameValues ()); 
 
   if (!AsmOutputFilename.empty ()) 
