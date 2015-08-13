@@ -53,8 +53,7 @@ namespace llvm_ikos
   
     boost::optional<ZLinExp> lookup (const Value &v)
     {
-      if (isa<ConstantPointerNull> (&v) || 
-          isa<const UndefValue> (&v))
+      if (isa<ConstantPointerNull> (&v) || isa<const UndefValue> (&v))
         return boost::optional<ZLinExp>();
       
       if (const ConstantInt *c = dyn_cast<const ConstantInt> (&v))
@@ -68,8 +67,12 @@ namespace llvm_ikos
           return ZLinExp(c->getValue ().getSExtValue ());
       }
 
-      if (isTracked(v))
-        return ZLinExp (symVar (v));
+      if (isTracked(v)) {
+        if (isa<ConstantExpr> (v))
+          errs () << "Warning: ignored constant expression.\n";
+        else
+          return ZLinExp (symVar (v));
+      }
       
       return boost::optional<ZLinExp>();
     }

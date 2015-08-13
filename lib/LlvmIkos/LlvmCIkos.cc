@@ -1,4 +1,5 @@
 #include "llvm/Pass.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstVisitor.h"
@@ -163,7 +164,7 @@ namespace llvm_ikos
 
   template<typename AbsDomain>
   void analyzeConcSys (conc_sys_t& sys, VariableFactory& vfac, 
-                       Module& M, MemAnalysis& mem)
+                       Module& M, MemAnalysis& mem, const DataLayout* dl)
   {
     typedef ConcAnalyzer <llvm::Function*, cfg_t, 
                           AbsDomain, VariableFactory> conc_analyzer_t;
@@ -189,10 +190,12 @@ namespace llvm_ikos
 
           int arr_id = mem.getArrayId (*(p.first), gv_value); 
           if (arr_id < 0) continue;
+
           ikos::domain_traits::array_store (init_gv_inv,
                                             sym_eval.symVar (arr_id), 
                                             (*((*idx).get_variable ())).name (), 
                                             *val, 
+                                            ikos::z_number (dl->getTypeAllocSize (gv.getType ())),
                                             mem.isSingleton (arr_id));  
         }
       }
@@ -273,34 +276,36 @@ namespace llvm_ikos
       sys.add_thread (f, cfg, shared_vars.begin (), shared_vars.end ());
     }
 
+    const DataLayout* dl = M.getDataLayout ();
+
     /// --- Analyze the concurrent system
     switch (LlvmIkosDomain)
     {
       case INTERVALS_CONGRUENCES: 
         if (LlvmIkosTrackLev >= MEM)
-          analyzeConcSys <arr_ric_domain_t> (sys, vfac, M, m_mem); 
+          analyzeConcSys <arr_ric_domain_t> (sys, vfac, M, m_mem, dl); 
         else
-          analyzeConcSys <ric_domain_t> (sys, vfac, M, m_mem); 
+          analyzeConcSys <ric_domain_t> (sys, vfac, M, m_mem, dl); 
         break;
       case ZONES: 
         if (LlvmIkosTrackLev >= MEM)
-          analyzeConcSys <arr_dbm_domain_t> (sys, vfac, M, m_mem); 
+          analyzeConcSys <arr_dbm_domain_t> (sys, vfac, M, m_mem, dl); 
         else
-          analyzeConcSys <dbm_domain_t> (sys, vfac, M, m_mem); 
+          analyzeConcSys <dbm_domain_t> (sys, vfac, M, m_mem, dl); 
         break;
       case OCTAGONS:  
         if (LlvmIkosTrackLev >= MEM)
-          analyzeConcSys <arr_octagon_domain_t> (sys, vfac, M, m_mem); 
+          analyzeConcSys <arr_octagon_domain_t> (sys, vfac, M, m_mem, dl); 
         else
-          analyzeConcSys <octagon_domain_t> (sys, vfac, M, m_mem); 
+          analyzeConcSys <octagon_domain_t> (sys, vfac, M, m_mem, dl); 
         break;
       case TERMS: /*TODO*/
       case INTERVALS:  
       default:
         if (LlvmIkosTrackLev >= MEM)
-          analyzeConcSys <arr_interval_domain_t> (sys, vfac, M, m_mem); 
+          analyzeConcSys <arr_interval_domain_t> (sys, vfac, M, m_mem, dl); 
         else
-          analyzeConcSys <interval_domain_t> (sys, vfac, M, m_mem); 
+          analyzeConcSys <interval_domain_t> (sys, vfac, M, m_mem, dl); 
     }
     return change;
   }

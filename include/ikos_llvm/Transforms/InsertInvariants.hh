@@ -2,7 +2,10 @@
 #define __INSERT_INVARIANTS_HPP_
 
 /* 
- * Instrument program by inserting invariants computed by Ikos.
+ * Instrument program by inserting invariants computed by Ikos. The
+ * invariants are inserted as assume instructions into the LLVM
+ * bitcode. The insertion happens at most once per basic block and
+ * only if the block has a load instruction.
  */
 
 #include "llvm/Pass.h"

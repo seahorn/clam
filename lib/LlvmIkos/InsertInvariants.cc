@@ -15,6 +15,13 @@
 #include "ikos_llvm/Support/AbstractDomains.hh"
 #include "ikos_llvm/Support/bignums.hh"
 
+/* 
+ * Instrument program by inserting invariants computed by Ikos. The
+ * invariants are inserted as assume instructions into the LLVM
+ * bitcode. The insertion happens at most once per basic block and
+ * only if the block has a load instruction.
+ */
+
 extern llvm::cl::opt<llvm_ikos::IkosDomain> LlvmIkosDomain;
 
 using namespace llvm;
@@ -130,8 +137,7 @@ namespace llvm_ikos
       
       if (cst.is_contradiction ()) 
       { 
-        llvm::errs () << "Constraint should not be a contradiction.\n";
-        assert (0); exit (1); 
+        return mk_bool (B, ctx, false);
       }
       
       auto e = cst.expression() - cst.expression().constant();
@@ -174,67 +180,69 @@ namespace llvm_ikos
     }
   };
 
+//// XXX If multiple load's the same assumptions will be inserted
+////      multiple times
+////
+//   //! Instrument llvm bitecode with invariants.
+//   //  To avoid a blow up in the code size we do it only for variables
+//   //  which appear on the lhs of load instructions.
+//   template<typename AbsDomain, typename SymEval>
+//   struct CodeExpanderInvs : 
+//       public InstVisitor<CodeExpanderInvs <AbsDomain, SymEval> >
+//   {
+//     IRBuilder<> m_B;
+//     LLVMContext &m_ctx;
+//     AbsDomain m_inv;
+//     Function* m_assumeFn;
+//     SymEval m_eval;
+//     CallGraph* m_cg;
+//     bool m_modified;
 
-  //! Instrument llvm bitecode with invariants.
-  //  To avoid a blow up in the code size we do it only for variables
-  //  which appear on the lhs of load instructions.
-  template<typename AbsDomain, typename SymEval>
-  struct CodeExpanderInvs : 
-      public InstVisitor<CodeExpanderInvs <AbsDomain, SymEval> >
-  {
-    IRBuilder<> m_B;
-    LLVMContext &m_ctx;
-    AbsDomain m_inv;
-    Function* m_assumeFn;
-    SymEval m_eval;
-    CallGraph* m_cg;
-    bool m_modified;
+//     bool IsModified () const { 
+//       return m_modified; 
+//     }
 
-    bool IsModified () const { 
-      return m_modified; 
-    }
-
-    CodeExpanderInvs (Module& M, AbsDomain inv, SymEval eval, 
-                      Function* assumeFn, CallGraph *cg):
-        m_B (IRBuilder<> (M.getContext ())), 
-        m_ctx (M.getContext ()), 
-        m_inv (inv), m_assumeFn (assumeFn), m_eval (eval),
-        m_cg (cg),
-        m_modified (false)
-    { }
+//     CodeExpanderInvs (Module& M, AbsDomain inv, SymEval eval, 
+//                       Function* assumeFn, CallGraph *cg):
+//         m_B (IRBuilder<> (M.getContext ())), 
+//         m_ctx (M.getContext ()), 
+//         m_inv (inv), m_assumeFn (assumeFn), m_eval (eval),
+//         m_cg (cg),
+//         m_modified (false)
+//     { }
     
-    void visitLoadInst (LoadInst &I) 
-    {
-      // To insert after the instruction
-      m_B.SetInsertPoint (&I);
-      auto insertPoint = m_B.GetInsertPoint ();
-      m_B.SetInsertPoint (++insertPoint);
+//     void visitLoadInst (LoadInst &I) 
+//     {
+//       // To insert after the instruction
+//       m_B.SetInsertPoint (&I);
+//       auto insertPoint = m_B.GetInsertPoint ();
+//       m_B.SetInsertPoint (++insertPoint);
 
-#if 0
-      // Insert a non-relational invariant for lhs. 
-      varname_t lhs = m_eval.symVar(I);
-      set<varname_t> vs;
-      for (auto c: toLinCst (m_inv))
-      {
-        for (auto v: c.variables ())
-          vs.insert (v.name ());
-      }
-      vs.erase (lhs);
-      domain_traits::forget (m_inv, vs.begin (), vs.end ());
-#endif 
-      auto csts = toLinCst (m_inv);
+// #if 0
+//       // Insert a non-relational invariant for lhs. 
+//       varname_t lhs = m_eval.symVar(I);
+//       set<varname_t> vs;
+//       for (auto c: toLinCst (m_inv))
+//       {
+//         for (auto v: c.variables ())
+//           vs.insert (v.name ());
+//       }
+//       vs.erase (lhs);
+//       domain_traits::forget (m_inv, vs.begin (), vs.end ());
+// #endif 
+//       auto csts = toLinCst (m_inv);
 
-      // errs () << "Inserting invariants " << I << "=" << csts << "\n";
+//       // errs () << "Inserting invariants " << I << "=" << csts << "\n";
 
-      CodeExpander g;
-      m_modified = g.gen_code (csts, m_B, m_ctx, 
-                               m_assumeFn, m_cg, I.getParent()->getParent());
-    }  
+//       CodeExpander g;
+//       m_modified = g.gen_code (csts, m_B, m_ctx, 
+//                                m_assumeFn, m_cg, I.getParent()->getParent());
+//     }  
 
-    /// base case. if all else fails.
-    void visitInstruction (Instruction &I){}
+//     /// base case. if all else fails.
+//     void visitInstruction (Instruction &I){}
     
-  };
+//   };
 
 
   bool InsertInvariants::runOnModule (llvm::Module &M)
@@ -280,6 +288,16 @@ namespace llvm_ikos
     LLVMContext &ctx = F.getParent ()->getContext ();
     IRBuilder<> Builder (ctx);
 
+    // XXX This is probably too conservative
+    sym_eval_t s (vfac, m_ikos->getTrackLevel ());
+    set<varname_t> phi_vs;
+    for (auto &B : F)
+      for (auto &I: B) {
+        if (PHINode * PI = dyn_cast<PHINode>(&I)) 
+          phi_vs.insert (s.symVar (I));
+      }
+    
+
     bool change = false;
     for (auto &B : F)
     {
@@ -292,20 +310,89 @@ namespace llvm_ikos
 // #else
 //       typedef interval_domain_t num_abs_domain_t;
 // #endif 
+      
+      bool has_load = false;
+      for (auto &I: B) {
+        if (isa<LoadInst>(&I))
+          has_load = true;
+      }
 
-      num_abs_domain_t inv = num_abs_domain_t::top ();
-      auto csts = m_ikos->getPost (&B);
-      for (auto cst: csts)
-        inv += csts;
+      if (has_load) {
+        num_abs_domain_t inv = num_abs_domain_t::top ();
 
-      CodeExpanderInvs <num_abs_domain_t, 
-                        sym_eval_t> t (*(F.getParent ()), 
-                                       inv, 
-                                       sym_eval_t (vfac, m_ikos->getTrackLevel ()),
-                                       m_assumeFn,
-                                       cg);
-      t.visit (&B);
-      change |= t.IsModified ();
+        /// XXX use the invariants the hold at the exit of the block
+        /// is very tricky due to the mismatch between the LLVM CFG
+        /// and the IKOS CFG. This does not happen if we use the
+        /// invariants that hold at the entry. To avoid these problems
+        /// we could use the invariants and the entry and then
+        /// propagate until the desired program point. However, this
+        /// propagation is not implemented.
+        inv += m_ikos->getPost (&B);
+
+        /*
+          If we just insert at the end of the block all the invariants
+          returned by getPost we would get something like this:
+ 
+            bb:
+              i = phi (0, entry) (i', bb2)
+              br ... bb2 ...
+            bb2:
+              i' = i+1
+              assume (i'>=1 && i'<=9);
+              assume (i>=1 && i <=9);  <--- this is not true the first iteration! 
+              br bb
+
+          `assume (i >=1 && i <=9)` is added because ikos actually
+           analyzes a different program:
+
+             bb: 
+               i=0
+               goto bb2
+             bb2:
+               i'=i+1
+               i=i'  <---
+             goto bb
+
+           but `assume (i >=1 && i <=9)` actually holds when the phi
+           node is executed.
+        */
+
+        // --- Forget variables that are set through a phi node
+        //// XXX this is not enough because we can have bb -> bb1 -> bb2
+        //// such that TI is in bb and the phi node is in bb2.
+        // sym_eval_t s (vfac, m_ikos->getTrackLevel ());
+        // set<varname_t> phi_vs;
+        // TerminatorInst* TI = B.getTerminator ();
+        // for (unsigned i=0, e = TI->getNumSuccessors(); i!=e; ++i) {
+        //   for (auto &I: *(TI->getSuccessor(i))) {
+        //     if (PHINode * PI = dyn_cast<PHINode>(&I)) {
+        //       phi_vs.insert (s.symVar (I));
+        //     }
+        //   }
+        // }
+        domain_traits::forget (inv, phi_vs.begin (), phi_vs.end ());
+
+        // --- Insert just before the terminator of the block
+        Builder.SetInsertPoint (B.getTerminator ());
+
+        auto csts = toLinCst (inv);
+
+        CodeExpander g;
+        change |= g.gen_code (csts, Builder, ctx, m_assumeFn, cg, &F);
+      }
+
+      //// XXX this might insert assumptions that only hold at the
+      //// exit of the block in the middle of the block.
+      // num_abs_domain_t inv = num_abs_domain_t::top ();
+      // inv += m_ikos->getPost (&B);
+      // CodeExpanderInvs <num_abs_domain_t, 
+      //                   sym_eval_t> t (*(F.getParent ()), 
+      //                                  inv, 
+      //                                  sym_eval_t (vfac, m_ikos->getTrackLevel ()),
+      //                                  m_assumeFn,
+      //                                  cg);
+      // t.visit (&B);
+      // change |= t.IsModified ();
     }
     
     return change;

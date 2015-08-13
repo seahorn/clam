@@ -10,6 +10,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/DataLayout.h"
 
 #include "ikos_llvm/MemAnalysis.hh"
 
@@ -125,6 +126,7 @@ namespace llvm_ikos
     llvm_bb_map_t     m_bb_map;
     MemAnalysis*      m_mem;
     bool              m_is_inter_proc;
+    const DataLayout* m_dl;
 
    public:
     

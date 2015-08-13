@@ -5,12 +5,12 @@
 
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/CallSite.h"
-#include "llvm/Support/Debug.h"
+#include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/Debug.h"
 
 #include <boost/lexical_cast.hpp>
-#include <boost/iterator/transform_iterator.hpp>
 #include <boost/range/iterator_range.hpp>
 #include "boost/range/algorithm/set_algorithm.hpp"
 
@@ -18,8 +18,6 @@
 #include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/Support/CFG.hh"
 #include "ikos_llvm/Support/bignums.hh"
-
-//TODO: translation of pointer arithmetic.
 
 namespace llvm_ikos
 {
@@ -38,17 +36,150 @@ namespace llvm_ikos
       return UNK_TYPE;
   }
 
+  struct SymExecCmpInstVisitor : 
+      public InstVisitor<SymExecCmpInstVisitor>, 
+      private SymEval<VariableFactory, z_lin_exp_t>
+  {
+    basic_block_t& m_bb;
+    bool m_is_negated;
+    MemAnalysis *m_mem;    
+    
+    SymExecCmpInstVisitor (VariableFactory& vfac, 
+                           basic_block_t& bb, 
+                           bool is_negated, 
+                           MemAnalysis* mem):
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
+        m_bb (bb), 
+        m_is_negated (is_negated),
+        m_mem (mem)
+    { }
+    
+
+    void normalizeCmpInst(CmpInst &I)
+    {
+      switch (I.getPredicate()){
+        case ICmpInst::ICMP_UGT:	
+        case ICmpInst::ICMP_SGT: I.swapOperands(); break; 
+        case ICmpInst::ICMP_UGE:	
+        case ICmpInst::ICMP_SGE: I.swapOperands(); break; 
+        default: ;
+      }
+    }
+
+    optional<z_lin_cst_t> gen_assertion (CmpInst &I)
+    {
+      
+      normalizeCmpInst(I);
+      
+      const Value& v0 = *I.getOperand (0);
+      const Value& v1 = *I.getOperand (1);
+
+      optional<z_lin_exp_t> op1 = lookup (v0);
+      optional<z_lin_exp_t> op2 = lookup (v1);
+      
+      z_lin_cst_t res;
+      
+      if (op1 && op2) 
+      {
+        switch (I.getPredicate ())
+        {
+          case CmpInst::ICMP_EQ:
+            ( (!m_is_negated) ? 
+              res = z_lin_cst_t (*op1 == *op2) : 
+              res = z_lin_cst_t (*op1 != *op2));
+            break;
+          case CmpInst::ICMP_NE:
+            ( (!m_is_negated) ? 
+              res = z_lin_cst_t (*op1 != *op2) : 
+              res = z_lin_cst_t (*op1 == *op2));
+            break;
+          case CmpInst::ICMP_ULT:
+          case CmpInst::ICMP_SLT:
+            ( (!m_is_negated) ? 
+              res = z_lin_cst_t (*op1 <= *op2 - 1) : 
+              res = z_lin_cst_t (*op1 >= *op2));
+            break; 
+          case CmpInst::ICMP_ULE:
+          case CmpInst::ICMP_SLE:
+            ( (!m_is_negated) ? 
+              res = z_lin_cst_t (*op1 <= *op2) : 
+              res = z_lin_cst_t (*op1 >= *op2 + 1));
+            break;
+          default:  assert (false);
+        }
+        return optional<z_lin_cst_t> (res);
+      }
+      else
+        return optional<z_lin_cst_t> ();
+    }
+
+    void visitCmpInst (CmpInst &I) 
+    {
+            
+      optional<z_lin_cst_t> cst = gen_assertion (I);
+      if (cst) m_bb.assume(*cst);
+      
+      if (isTracked (I))
+      {
+        varname_t lhs = symVar (I);
+        if (m_is_negated)
+          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
+        else
+          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
+      }
+    }
+  };
+
+  struct SymExecPhiVisitor : 
+      public InstVisitor<SymExecPhiVisitor>, 
+      private SymEval<VariableFactory, z_lin_exp_t>
+  {
+    // block where assignment/havoc will be inserted
+    basic_block_t&    m_bb; 
+    // incoming block of the PHI instruction
+    const llvm::BasicBlock& m_inc_BB; 
+    // memory analysis
+    MemAnalysis *m_mem;
+
+    SymExecPhiVisitor (VariableFactory& vfac, 
+                       basic_block_t& bb, 
+                       const llvm::BasicBlock& inc_BB, 
+                       MemAnalysis* mem): 
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
+        m_bb (bb), m_inc_BB (inc_BB), m_mem (mem)
+    { }
+    
+    void visitPHINode (PHINode &I) 
+    {
+      if (!isTracked (I)) return;
+      
+      const Value *LHS = dyn_cast<const Value>(&I);
+      const Value &v = *I.getIncomingValueForBlock (&m_inc_BB);
+      
+      if (LHS == &v) return;
+      
+      varname_t lhs = symVar(I);
+      optional<z_lin_exp_t> rhs = lookup(v);
+      if (rhs) 
+        m_bb.assign(lhs, *rhs);
+      else     
+        m_bb.havoc(lhs);
+    }
+  };
+
   struct SymExecVisitor : 
       public InstVisitor<SymExecVisitor>, 
       private SymEval<VariableFactory, z_lin_exp_t>
   {
+    const DataLayout* m_dl;
     basic_block_t& m_bb;
-    MemAnalysis *m_mem;
+    MemAnalysis* m_mem;
     bool m_is_inter_proc;
 
-    SymExecVisitor (VariableFactory& vfac, basic_block_t & bb,
+    SymExecVisitor (const DataLayout* dl, VariableFactory& vfac, basic_block_t & bb,
                     MemAnalysis* mem, bool isInterProc): 
         SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()),
+        m_dl (dl),
         m_bb (bb), 
         m_mem (mem),
         m_is_inter_proc (isInterProc)  
@@ -65,45 +196,32 @@ namespace llvm_ikos
     
     void visitCmpInst (CmpInst &I) 
     {
-    
+      // --- We translate I if it does not feed to the terminator of
+      //     the block. Otherwise, it will be covered by execBr.
+
       if (!isTracked (I)) return;
-    
-      varname_t lhs = symVar(I);
 
-      bool covered = true;
-
+#if 0
       if (const Value *cond = dyn_cast<const Value> (&I))
       {
-        for (auto &use: boost::make_iterator_range (cond->use_begin (),
-                                                    cond->use_end ()))
-        {
-          const Instruction * User = dyn_cast<Instruction>(&use);
-          
-          if (const BranchInst *br = dyn_cast<const BranchInst> (User))
-          { 
-            // -- comparison can be used as a "filter". We skip it
-            //    here because it will treated by SymExecCmpInstVisitor.
-            if (br->isConditional () && br->getCondition() == cond) 
-              continue;
-          }    
-          
-          if (isa<const SelectInst> (User) ) 
-          { // -- this case is covered by SymExecVisitor
-            continue;
+        TerminatorInst * TI = I.getParent()->getTerminator ();
+        if (const BranchInst *br = dyn_cast<const BranchInst> (TI)) {
+          if (!(br->isConditional () && br->getCondition() == cond)) {
+            SymExecCmpInstVisitor v (m_vfac, m_bb, false, m_mem);
+            if (auto opt_cst = v.gen_assertion (I))
+              m_bb.select (symVar(I), *opt_cst, 
+                           z_lin_exp_t (1) /*tt*/, 
+                           z_lin_exp_t (0) /*ff*/);
+            else
+              m_bb.havoc (symVar (I));
           }
-          
-          if (isa<const CastInst> (User) || isLogicalOp (*User)) 
-          {
-            // -- abstraction: source of imprecision
-          }
-          covered = false;
-          break;
         }
       }
-      if (!covered)
-        m_bb.havoc(lhs);
+#else 
+      m_bb.havoc (symVar (I));
+#endif 
     }    
-
+    
     /// skip BranchInst
     void visitBranchInst (BranchInst &I) {}
       
@@ -139,8 +257,8 @@ namespace llvm_ikos
       const Value& v1 = *i.getOperand(0);
       const Value& v2 = *i.getOperand(1);
       
-      boost::optional<z_lin_exp_t> op1 = lookup (v1);
-      boost::optional<z_lin_exp_t> op2 = lookup (v2);
+      optional<z_lin_exp_t> op1 = lookup (v1);
+      optional<z_lin_exp_t> op2 = lookup (v2);
       
       if (!(op1 && op2)) return;
       
@@ -210,7 +328,7 @@ namespace llvm_ikos
       varname_t dst = symVar (I);
       const Value& v = *I.getOperand (0); // the value to be casted
 
-      boost::optional<z_lin_exp_t> src = lookup (v);
+      optional<z_lin_exp_t> src = lookup (v);
 
       if (src)
         m_bb.assign(dst, *src);
@@ -225,66 +343,99 @@ namespace llvm_ikos
       }
     }
 
-    void visitLoadInst (LoadInst &I)
+    unsigned fieldOffset (const StructType *t, unsigned field) {
+      return m_dl->getStructLayout (const_cast<StructType*>(t))->
+          getElementOffset (field);
+    }
+
+    unsigned storageSize (const Type *t) {
+      return m_dl->getTypeStoreSize (const_cast<Type*> (t));
+    }
+
+    /// The translation of Gep instructions works but it's commented
+    /// just because current analyses do not make use of it.  This
+    /// avoids unnecessary arithmetic instructions that will put more
+    /// pressure on the numerical abstract domain.
+#if 0
+    void visitGetElementPtrInst (GetElementPtrInst &I)
     {
-      if (!isTracked (I)) return;
+      if (!isTracked (*I.getPointerOperand ())) return;
+
+      optional<z_lin_exp_t> ptr = lookup (*I.getPointerOperand ());
+      if (!ptr) return;
+
+      varname_t res = symVar (I);
+      m_bb.assign (res, *ptr);
+
+      SmallVector<const Value*, 4> ps;
+      SmallVector<const Type*, 4> ts;
+      gep_type_iterator typeIt = gep_type_begin (I);
+      for (unsigned i = 1; i < I.getNumOperands (); ++i, ++typeIt) {
+        ps.push_back (I.getOperand (i));
+        ts.push_back (*typeIt);
+      }
+
+      for (unsigned i = 0; i < ps.size (); ++i) {
+        if (const StructType *st = dyn_cast<const StructType> (ts [i]))
+        {
+          if (const ConstantInt *ci = dyn_cast<const ConstantInt> (ps [i]))
+            m_bb.add (res, res, ikos::z_number (fieldOffset (st, ci->getZExtValue ())));
+          else 
+            assert (0);
+        }
+        else if (const SequentialType *seqt = dyn_cast<const SequentialType> (ts [i]))
+        {
+          optional<z_lin_exp_t> p = lookup (*ps[i]);
+          assert (p);
+
+          varname_t off = m_vfac.get ();
+          m_bb.mul (off, *p, ikos::z_number (storageSize (seqt->getElementType ())));
+          m_bb.add (res, res, off);
+        }
+      }
+    }
+#endif 
+
+    void visitLoadInst (LoadInst &I)
+    { 
+      if (!isTracked (*I.getPointerOperand ())) return;
+
+      /// --- Track only loads into integer variables
+      Type *ty = I.getType();
+      if (!ty->isIntegerTy ()) return;
       
       int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), 
                                        I.getPointerOperand ());
-                                      
       if (arr_idx < 0) return;
 
-      varname_t lhs = symVar (I);
-      boost::optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
+      optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
       if (!idx) return ;
 
-      m_bb.array_load (lhs, symVar (arr_idx), *idx);
+      m_bb.array_load (symVar (I), symVar (arr_idx), *idx,
+                       ikos::z_number (m_dl->getTypeAllocSize (ty)));
     }
     
     void visitStoreInst (StoreInst &I)
     {
-      if (!isTracked (*I.getOperand (0))) return;
+      if (!isTracked (*I.getPointerOperand ())) return;
 
-     
-      boost::optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
+      /// --- Track only stores of integer values
+      Type* ty = I.getOperand (0)->getType ();
+      if (!ty->isIntegerTy ()) return;
+
+      optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
       if (!idx) return;
 
-      boost::optional<z_lin_exp_t> val = lookup (*I.getOperand (0));
+      optional<z_lin_exp_t> val = lookup (*I.getOperand (0));
       if (!val) return;
 
       int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()),
                                        I.getOperand (1)); 
-                                      
       if (arr_idx < 0) return;
 
-      // FIXME
-      // This will ignore all the non-integer fields.
-      // Maybe more appropriate is to create a different array for
-      // each non-integer field.
-      if (I.getOperand (0)->getType ()->isIntegerTy ())
-        m_bb.array_store (symVar (arr_idx), *idx, *val, 
-                          m_mem->isSingleton (arr_idx)); 
-    }
-
-    pair<varname_t, VariableType> normalizePar (Value& V)
-    {
-      if (Constant *cst = dyn_cast< Constant> (&V))
-      { 
-        varname_t v = m_vfac.get ();
-        if (ConstantInt * intCst = dyn_cast<ConstantInt> (cst))
-        {
-          auto e = lookup (*intCst);
-          if (e)
-          {
-            m_bb.assign (v, *e);
-            return make_pair (v, INT_TYPE);
-          }
-        }
-        m_bb.havoc (v);
-        return make_pair (v, UNK_TYPE);
-      }
-      else
-        return make_pair (m_vfac [V], getType (V.getType ()));
+      m_bb.array_store (symVar (arr_idx), *idx, *val, 
+                        ikos::z_number (m_dl->getTypeAllocSize (ty)),
+                        m_mem->isSingleton (arr_idx)); 
     }
 
     void visitSelectInst(SelectInst &I)
@@ -292,14 +443,13 @@ namespace llvm_ikos
       
       if (!isTracked (I)) return;
       
-      varname_t lhs = symVar(I);
-      
       const Value& cond = *I.getCondition ();
-      boost::optional<z_lin_exp_t> op0 = lookup (*I.getTrueValue ());
-      boost::optional<z_lin_exp_t> op1 = lookup (*I.getFalseValue ());
+      optional<z_lin_exp_t> op0 = lookup (*I.getTrueValue ());
+      optional<z_lin_exp_t> op1 = lookup (*I.getFalseValue ());
       
       if (!(op0 && op1)) return;
-      
+
+      varname_t lhs = symVar(I);      
       if (const ConstantInt *ci = dyn_cast<const ConstantInt> (&cond))
       {
         if (ci->isOne ())
@@ -332,6 +482,27 @@ namespace llvm_ikos
         
       }
     }
+
+    pair<varname_t, VariableType> normalizeParam (Value& V)
+    {
+      if (Constant *cst = dyn_cast< Constant> (&V))
+      { 
+        varname_t v = m_vfac.get ();
+        if (ConstantInt * intCst = dyn_cast<ConstantInt> (cst))
+        {
+          auto e = lookup (*intCst);
+          if (e)
+          {
+            m_bb.assign (v, *e);
+            return make_pair (v, INT_TYPE);
+          }
+        }
+        m_bb.havoc (v);
+        return make_pair (v, UNK_TYPE);
+      }
+      else
+        return make_pair (m_vfac [V], getType (V.getType ()));
+    }
     
     void visitCallInst (CallInst &I) 
     {
@@ -344,6 +515,37 @@ namespace llvm_ikos
 
       // -- skip if intrinsic
       if (callee->isIntrinsic ()) return;
+
+      // -- some special functions
+      if (callee->getName ().equals ("verifier.assume")) {
+        Value *cond = CS.getArgument (0);
+
+        // strip zext if there is one
+        if (const ZExtInst *ze = dyn_cast<const ZExtInst> (cond))
+          cond = ze->getOperand (0);
+
+        if (llvm::Instruction *I = dyn_cast<llvm::Instruction> (cond)) {
+          SymExecCmpInstVisitor v (m_vfac, m_bb, false, m_mem);
+          v.visit (I);
+        }
+
+        return;
+      }
+
+      if (callee->getName ().equals ("verifier.assume.not")) {
+        Value *cond = CS.getArgument (0);
+
+        // strip zext if there is one
+        if (const ZExtInst *ze = dyn_cast<const ZExtInst> (cond))
+          cond = ze->getOperand (0);
+
+        if (llvm::Instruction *I = dyn_cast<llvm::Instruction> (cond)) {
+          SymExecCmpInstVisitor v (m_vfac, m_bb, true, m_mem);
+          v.visit (I);
+        }
+
+        return;
+      }
 
       if (!m_is_inter_proc && 
           m_mem->getTrackLevel () >= MEM)
@@ -361,7 +563,7 @@ namespace llvm_ikos
                                                    CS.arg_end()))
         { 
           Value *v = a.get();
-          actuals.push_back (normalizePar (*v));
+          actuals.push_back (normalizeParam (*v));
         }
         
         set<int> mods;
@@ -397,6 +599,7 @@ namespace llvm_ikos
     void visitInstruction (Instruction &I)
     {
       if (!isTracked (I)) return;
+
       if (isa<AllocaInst> (I)) return;
 
       varname_t lhs = symVar(I);
@@ -405,161 +608,6 @@ namespace llvm_ikos
     
   };
 
-  struct SymExecPhiVisitor : 
-      public InstVisitor<SymExecPhiVisitor>, 
-      private SymEval<VariableFactory, z_lin_exp_t>
-  {
-    // block where assignment/havoc will be inserted
-    basic_block_t&    m_bb; 
-    // incoming block of the PHI instruction
-    const llvm::BasicBlock& m_inc_BB; 
-    // memory analysis
-    MemAnalysis *m_mem;
-
-    SymExecPhiVisitor (VariableFactory& vfac, 
-                       basic_block_t& bb, 
-                       const llvm::BasicBlock& inc_BB, 
-                       MemAnalysis* mem): 
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
-        m_bb (bb), m_inc_BB (inc_BB), m_mem (mem)
-    { }
-    
-    void visitPHINode (PHINode &I) 
-    {
-      if (!isTracked (I)) return;
-      
-      const Value *LHS = dyn_cast<const Value>(&I);
-      const Value &v = *I.getIncomingValueForBlock (&m_inc_BB);
-      
-      if (LHS == &v) return;
-      
-      varname_t lhs = symVar(I);
-      boost::optional<z_lin_exp_t> rhs = lookup(v);
-      if (rhs) m_bb.assign(lhs, *rhs);
-      else     m_bb.havoc(lhs);
-    }
-  };
-
-
-  struct SymExecCmpInstVisitor : 
-      public InstVisitor<SymExecCmpInstVisitor>, 
-      private SymEval<VariableFactory, z_lin_exp_t>
-  {
-    basic_block_t& m_bb;
-    bool m_is_negated;
-    MemAnalysis *m_mem;    
-    
-    SymExecCmpInstVisitor (VariableFactory& vfac, 
-                           basic_block_t& bb, 
-                           bool is_negated, 
-                           MemAnalysis* mem):
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
-        m_bb (bb), 
-        m_is_negated (is_negated),
-        m_mem (mem)
-    { }
-    
-
-    void normalizeCmpInst(CmpInst &I)
-    {
-      switch (I.getPredicate()){
-        case ICmpInst::ICMP_UGT:	
-        case ICmpInst::ICMP_SGT: I.swapOperands(); break; 
-        case ICmpInst::ICMP_UGE:	
-        case ICmpInst::ICMP_SGE: I.swapOperands(); break; 
-        default: ;
-      }
-    }
-
-    boost::optional<z_lin_cst_t> 
-    gen_assertion (CmpInst &I, bool is_negated)
-    {
-      
-      normalizeCmpInst(I);
-      
-      const Value& v0 = *I.getOperand (0);
-      const Value& v1 = *I.getOperand (1);
-
-      boost::optional<z_lin_exp_t> op1 = lookup (v0);
-      boost::optional<z_lin_exp_t> op2 = lookup (v1);
-      
-      z_lin_cst_t res;
-      
-      if (op1 && op2) 
-      {
-        switch (I.getPredicate ())
-        {
-          case CmpInst::ICMP_EQ:
-            ( (!is_negated) ? 
-              res = z_lin_cst_t (*op1 == *op2) : 
-              res = z_lin_cst_t (*op1 != *op2));
-            break;
-          case CmpInst::ICMP_NE:
-            ( (!is_negated) ? 
-              res = z_lin_cst_t (*op1 != *op2) : 
-              res = z_lin_cst_t (*op1 == *op2));
-            break;
-          case CmpInst::ICMP_ULT:
-          case CmpInst::ICMP_SLT:
-            ( (!is_negated) ? 
-              res = z_lin_cst_t (*op1 <= *op2 - 1) : 
-              res = z_lin_cst_t (*op1 >= *op2));
-            break; 
-          case CmpInst::ICMP_ULE:
-          case CmpInst::ICMP_SLE:
-            ( (!is_negated) ? 
-              res = z_lin_cst_t (*op1 <= *op2) : 
-              res = z_lin_cst_t (*op1 >= *op2 + 1));
-            break;
-          default:  assert (false);
-        }
-        return boost::optional<z_lin_cst_t> (res);
-      }
-      else
-        return boost::optional<z_lin_cst_t> ();
-    }
-
-    void visitCmpInst (CmpInst &I) 
-    {
-      
-      boost::optional<z_lin_cst_t> cst = gen_assertion (I, m_is_negated);
-      if (cst) m_bb.assume(*cst);
-      
-      if (isTracked (I))
-      {
-        varname_t lhs = symVar (I);
-        if (m_is_negated)
-          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
-        else
-          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
-      }
-    }
-  };
-  
-  // struct SymExecITEVisitor : 
-  //     public InstVisitor<SymExecITEVisitor>, 
-  //     private SymEval<VariableFactory, z_lin_exp_t>
-  // {
-    
-  //   CfgBuilder& m_builder;
-  //   basic_block_t& m_bb;
-  //   unsigned id;
-  //   MemAnalysis *m_mem;
-    
-  //   SymExecITEVisitor (VariableFactory& vfac, 
-  //                      CfgBuilder& builder, 
-  //                      basic_block_t& bb, 
-  //                      MemAnalysis* mem):
-  //       SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
-  //       m_builder (builder), 
-  //       m_bb (bb), id (0), m_mem (mem)
-  //   { }
-    
-  //   void visitCmpInst (CmpInst &I) { }
-  
-  //   void visitSelectInst(SelectInst &I) { }
-  // };
-
   CfgBuilder::CfgBuilder (Function &func, VariableFactory &vfac, 
                           MemAnalysis* mem, bool isInterProc): 
         m_func (func), 
@@ -567,7 +615,8 @@ namespace llvm_ikos
         m_id (0),
         m_cfg (&m_func.getEntryBlock (), (mem->getTrackLevel ())),
         m_mem (mem),
-        m_is_inter_proc (isInterProc) { }    
+        m_is_inter_proc (isInterProc),
+        m_dl (func.getParent ()->getDataLayout ()){ }    
 
   CfgBuilder::opt_basic_block_t 
   CfgBuilder::lookup (const llvm::BasicBlock &B)  
@@ -674,6 +723,39 @@ namespace llvm_ikos
     return opt_basic_block_t();    
   }
 
+  void doInitializer (Constant * cst, basic_block_t& bb, 
+                      MemAnalysis* mem, varname_t a) {
+
+    if (isa<ConstantAggregateZero> (cst)){
+      //errs () << *cst << " is either struct or array with zero initialization\n";
+      // a struct or array with all elements initialized to zero
+      bb.assume_array (a, 0);
+    }
+    else if (ConstantInt * ci = dyn_cast<ConstantInt> (cst)) {
+      //errs () << *cst << " is a scalar global variable\n";
+      // an integer scalar global variable
+      vector<ikos::z_number> val;
+      val.push_back (ci->getZExtValue ());
+      bb.array_init (a, val);
+    }
+    else if (ConstantDataSequential  *cds = dyn_cast<ConstantDataSequential> (cst)) {
+      // an array of integers 1/2/4/8 bytes
+      if (cds->getElementType ()->isIntegerTy ()) {
+        //errs () << *cst << " is a constant data sequential\n";
+        vector<ikos::z_number> vals;
+        for (unsigned i=0; i < cds->getNumElements (); i++)
+          vals.push_back (cds->getElementAsInteger (i));
+        bb.array_init (a, vals);
+      }
+    }
+    else if (GlobalAlias* alias = dyn_cast< GlobalAlias >(cst)) {
+      doInitializer (alias->getAliasee (), bb, mem, a);
+    }
+    //else errs () << "Missed initialization of " << *cst << "\n";
+
+  }
+
+
   void CfgBuilder::make_cfg()
   {
 
@@ -691,7 +773,7 @@ namespace llvm_ikos
         assert (BB);
         basic_block_t& bb = *BB;
         rets.push_back (&bb);
-        SymExecVisitor v (m_vfac, *BB, m_mem, m_is_inter_proc);
+        SymExecVisitor v (m_dl, m_vfac, *BB, m_mem, m_is_inter_proc);
         v.visit (B);
       }
       else
@@ -699,10 +781,10 @@ namespace llvm_ikos
         opt_basic_block_t BB = lookup (B);
         assert (BB);
 
-        // -- build an initial CFG block from bb but ignoring for now
-        //    branches, ite instructions and phi-nodes
+        // -- build an initial CFG block from bb but ignoring branches
+        //    and phi-nodes
         {
-          SymExecVisitor v (m_vfac, *BB, m_mem, m_is_inter_proc);
+          SymExecVisitor v (m_dl, m_vfac, *BB, m_mem, m_is_inter_proc);
           v.visit (B);
         }
         
@@ -719,15 +801,10 @@ namespace llvm_ikos
             v.visit (const_cast<llvm::BasicBlock &>(*dst));
           }
         }
-        // {
-        //   SymExecITEVisitor v (m_vfac, *this, *BB, m_mem);
-        //   v.visit (B);
-        // }
       }
     }
     
     // -- unify multiple return blocks
-
     if (rets.size () == 1) m_cfg.set_exit (rets [0]->label ());
     else if (rets.size () > 1)
     {
@@ -745,27 +822,46 @@ namespace llvm_ikos
       m_cfg.set_exit (unified_ret.label ());
     }
 
-    // -- allocate the arrays
     if (m_mem->getTrackLevel () >= MEM)
     {
-      basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
-      for (auto node_id : m_mem->getAllocArrays (m_func))
-      {
-        entry.set_insert_point_front ();
-        entry.array_init (m_vfac.get (node_id));
+      // basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+      // for (auto node_id : m_mem->getAllocArrays (m_func))
+      // {
+      //   entry.set_insert_point_front ();
+      //   entry.array_init (m_vfac.get (node_id));
+      // }
+      // if (m_func.getName ().equals ("main"))
+      // {
+      //   auto p = m_mem->getInOutArrays (m_func);
+      //   auto in = p.first; auto out = p.second;
+      //   set<int> all;      
+      //   boost::set_union(in, out, std::inserter (all, all.end()));
+      //   for (auto a: all)
+      //   {
+      //     entry.set_insert_point_front ();
+      //     entry.array_init (m_vfac.get (a));
+      //   }
+      // }
+
+      // -- allocate arrays with initial values (if available)
+      SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, m_mem->getTrackLevel ());
+      if (m_func.getName ().equals ("main")) {
+        
+        Module*M = m_func.getParent ();
+        basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+        for (GlobalVariable &gv : boost::make_iterator_range (M->global_begin (),
+                                                              M->global_end ())) {
+          if (gv.hasDefinitiveInitializer ())  {
+            int arr_idx = m_mem->getArrayId (m_func, &gv);
+            if (arr_idx < 0) continue;
+
+            entry.set_insert_point_front ();
+            doInitializer (gv.getInitializer (), entry, 
+                           m_mem, s.symVar (arr_idx));
+          }
+        }          
       }
-      if (m_func.getName ().equals ("main"))
-      {
-        auto p = m_mem->getInOutArrays (m_func);
-        auto in = p.first; auto out = p.second;
-        set<int> all;      
-        boost::set_union(in, out, std::inserter (all, all.end()));
-        for (auto a: all)
-        {
-          entry.set_insert_point_front ();
-          entry.array_init (m_vfac.get (a));
-        }
-      }
+
     }
 
     if (m_is_inter_proc)
@@ -797,7 +893,9 @@ namespace llvm_ikos
 
     // Important to keep small the cfg
     m_cfg.simplify ();
-    std::cout << m_cfg << "\n";
+#if 1
+    cout << m_cfg << "\n";
+#endif 
     return ;
   }
 
