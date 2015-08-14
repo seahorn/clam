@@ -201,7 +201,6 @@ namespace llvm_ikos
 
       if (!isTracked (I)) return;
 
-#if 0
       if (const Value *cond = dyn_cast<const Value> (&I))
       {
         TerminatorInst * TI = I.getParent()->getTerminator ();
@@ -217,9 +216,6 @@ namespace llvm_ikos
           }
         }
       }
-#else 
-      m_bb.havoc (symVar (I));
-#endif 
     }    
     
     /// skip BranchInst
