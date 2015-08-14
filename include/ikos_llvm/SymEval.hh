@@ -51,6 +51,12 @@ namespace llvm_ikos
       return m_vfac.get (v);
     }
   
+    bool isVar (ZLinExp e) {
+      auto v = e.get_variable ();
+      bool res = (v ? true: false);
+      return res;
+    }
+
     boost::optional<ZLinExp> lookup (const Value &v)
     {
       if (isa<ConstantPointerNull> (&v) || isa<const UndefValue> (&v))

@@ -66,7 +66,7 @@ namespace llvm_ikos
       }
     }
 
-    optional<z_lin_cst_t> gen_assertion (CmpInst &I)
+    z_lin_cst_sys_t gen_assertion (CmpInst &I)
     {
       
       normalizeCmpInst(I);
@@ -77,47 +77,58 @@ namespace llvm_ikos
       optional<z_lin_exp_t> op1 = lookup (v0);
       optional<z_lin_exp_t> op2 = lookup (v1);
       
-      z_lin_cst_t res;
+      z_lin_cst_sys_t res;
       
       if (op1 && op2) 
       {
         switch (I.getPredicate ())
         {
           case CmpInst::ICMP_EQ:
-            ( (!m_is_negated) ? 
-              res = z_lin_cst_t (*op1 == *op2) : 
-              res = z_lin_cst_t (*op1 != *op2));
+            if (!m_is_negated)
+              res += z_lin_cst_t (*op1 == *op2);
+            else
+              res += z_lin_cst_t (*op1 != *op2);
             break;
           case CmpInst::ICMP_NE:
-            ( (!m_is_negated) ? 
-              res = z_lin_cst_t (*op1 != *op2) : 
-              res = z_lin_cst_t (*op1 == *op2));
+            if (!m_is_negated)
+              res += z_lin_cst_t (*op1 != *op2);
+            else
+              res += z_lin_cst_t (*op1 == *op2);
             break;
           case CmpInst::ICMP_ULT:
+            if (isVar (*op1))
+              res += z_lin_cst_t (*op1 >= z_number (0));
+            if (isVar (*op2))
+              res += z_lin_cst_t (*op2 >= z_number (0));
           case CmpInst::ICMP_SLT:
-            ( (!m_is_negated) ? 
-              res = z_lin_cst_t (*op1 <= *op2 - 1) : 
-              res = z_lin_cst_t (*op1 >= *op2));
+            if (!m_is_negated)
+              res += z_lin_cst_t (*op1 <= *op2 - 1);
+            else
+              res += z_lin_cst_t (*op1 >= *op2);
             break; 
           case CmpInst::ICMP_ULE:
+            if (isVar (*op1))
+              res += z_lin_cst_t (*op1 >= z_number (0));
+            if (isVar (*op2))
+              res += z_lin_cst_t (*op2 >= z_number (0));
           case CmpInst::ICMP_SLE:
-            ( (!m_is_negated) ? 
-              res = z_lin_cst_t (*op1 <= *op2) : 
-              res = z_lin_cst_t (*op1 >= *op2 + 1));
+            if (!m_is_negated)
+              res += z_lin_cst_t (*op1 <= *op2);
+            else
+              res += z_lin_cst_t (*op1 >= *op2 + 1);
             break;
           default:  assert (false);
         }
-        return optional<z_lin_cst_t> (res);
       }
-      else
-        return optional<z_lin_cst_t> ();
+      return res;
     }
 
     void visitCmpInst (CmpInst &I) 
     {
             
-      optional<z_lin_cst_t> cst = gen_assertion (I);
-      if (cst) m_bb.assume(*cst);
+      z_lin_cst_sys_t csts = gen_assertion (I);
+      for (auto cst: csts)
+        m_bb.assume(cst);
       
       if (isTracked (I))
       {
@@ -152,8 +163,13 @@ namespace llvm_ikos
     void visitPHINode (PHINode &I) 
     {
       if (!isTracked (I)) return;
-      
+
       const Value *LHS = dyn_cast<const Value>(&I);
+
+      // --- Hook to ignore always integer shadow variables from
+      //     SeaHorn ShadowMemDsa pass.
+      if (LHS->getName ().startswith ("shadow.mem")) return;
+      
       const Value &v = *I.getIncomingValueForBlock (&m_inc_BB);
       
       if (LHS == &v) return;
@@ -207,10 +223,16 @@ namespace llvm_ikos
         if (const BranchInst *br = dyn_cast<const BranchInst> (TI)) {
           if (!(br->isConditional () && br->getCondition() == cond)) {
             SymExecCmpInstVisitor v (m_vfac, m_bb, false, m_mem);
-            if (auto opt_cst = v.gen_assertion (I))
-              m_bb.select (symVar(I), *opt_cst, 
+            auto csts = v.gen_assertion (I);
+            if (csts.begin () != csts.end ()) {
+              // select only takes a single constraint otherwise the
+              // reasoning gets complicated if the analysis needs to
+              // negate conjunction of constraints.
+              // TODO: we just choose the first constraint arbitrarily.
+              m_bb.select (symVar(I), *(csts.begin ()), 
                            z_lin_exp_t (1) /*tt*/, 
                            z_lin_exp_t (0) /*ff*/);
+            }
             else
               m_bb.havoc (symVar (I));
           }
@@ -459,7 +481,7 @@ namespace llvm_ikos
           return;
         }
       }
-      
+     
       m_bb.select(lhs, symVar (cond),  *op0, *op1);
     }
 
