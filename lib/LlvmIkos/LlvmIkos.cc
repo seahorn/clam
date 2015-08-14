@@ -67,7 +67,7 @@ LlvmIkosTrackLev("ikos-track-lvl",
    cl::init (TrackedPrecision::REG));
 
 llvm::cl::opt<bool>
-LlvmIkosInterProc ("ikos-inter-proc",
+LlvmIkosInterProc ("ikos-cfg-interproc",
              cl::desc ("Build inter-procedural Cfg"), 
              cl::init (false));
 
