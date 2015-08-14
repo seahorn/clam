@@ -156,7 +156,7 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
   // -- must be the last ones before running ikos:
-  pass_manager.add (new llvm_ikos::LowerSelect ());   
+  //pass_manager.add (new llvm_ikos::LowerSelect ());   
   pass_manager.add (new llvm_ikos::NameValues ()); 
 
   if (Concurrency)
