@@ -846,15 +846,13 @@ namespace llvm_ikos
       // -- allocate arrays with initial values (if available)
       SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, m_mem->getTrackLevel ());
       if (m_func.getName ().equals ("main")) {
-        
         Module*M = m_func.getParent ();
         basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
         for (GlobalVariable &gv : boost::make_iterator_range (M->global_begin (),
                                                               M->global_end ())) {
-          if (gv.hasDefinitiveInitializer ())  {
+          if (gv.hasInitializer ())  {
             int arr_idx = m_mem->getArrayId (m_func, &gv);
             if (arr_idx < 0) continue;
-
             entry.set_insert_point_front ();
             doInitializer (gv.getInitializer (), entry, 
                            m_mem, s.symVar (arr_idx));
