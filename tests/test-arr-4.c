@@ -14,9 +14,10 @@ void bar ()
   y++;
 }
 
+int a[10];
+
 int main ()
 {
-  int a[10];
   int i;
   foo ();
   for (i=0;i<10;i++)

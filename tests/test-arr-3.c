@@ -3,9 +3,10 @@ extern int nd ();
 
 int x = 5;
 
+int a[10];
+
 int main ()
 {
-  int a[10];
   int i;
   x++;
   for (i=0;i<10;i++)

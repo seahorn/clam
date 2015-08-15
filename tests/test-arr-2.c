@@ -4,10 +4,10 @@ extern int nd ();
 int x = 5;
 int y = 3;
 
+int a[10];
 
 int main ()
 {
-  int a[10];
   int i;
   int *p =&x;
   *p= *p + 1;
