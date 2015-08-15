@@ -9,6 +9,7 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/CommandLine.h"
 
 #include <boost/lexical_cast.hpp>
 #include <boost/range/iterator_range.hpp>
@@ -19,12 +20,22 @@
 #include "ikos_llvm/Support/CFG.hh"
 #include "ikos_llvm/Support/bignums.hh"
 
+using namespace llvm;
+
+llvm::cl::opt<bool>
+LlvmIkosCFGSimplify ("ikos-cfg-simplify",
+             cl::desc ("Simplify CFG built by Ikos"), 
+             cl::init (false));
+
+llvm::cl::opt<bool>
+LlvmIkosGEP ("ikos-enable-ptr",
+             cl::desc ("Translate pointer arithmetic instructions"), 
+             cl::init (false));
+
 namespace llvm_ikos
 {
 
   using namespace cfg_impl;
-  using namespace llvm;
-  using namespace std;
 
   VariableType getType (Type * ty)
   {
@@ -370,14 +381,16 @@ namespace llvm_ikos
       return m_dl->getTypeStoreSize (const_cast<Type*> (t));
     }
 
-    /// The translation of Gep instructions works but it's commented
-    /// just because current analyses do not make use of it.  This
-    /// avoids unnecessary arithmetic instructions that will put more
-    /// pressure on the numerical abstract domain.
-#if 0
     void visitGetElementPtrInst (GetElementPtrInst &I)
     {
       if (!isTracked (*I.getPointerOperand ())) return;
+
+      /// --- By default we do not translate pointer arithmetic
+      /// --- because we are not currently using any ikos analysis
+      /// --- that needs it. This avoids unnecessary arithmetic
+      /// --- instructions that will put more pressure on the
+      /// --- numerical abstract domain.
+      if (!LlvmIkosGEP) return;
 
       optional<z_lin_exp_t> ptr = lookup (*I.getPointerOperand ());
       if (!ptr) return;
@@ -412,7 +425,6 @@ namespace llvm_ikos
         }
       }
     }
-#endif 
 
     void visitLoadInst (LoadInst &I)
     { 
@@ -907,8 +919,9 @@ namespace llvm_ikos
       }
     }
 
-    // Important to keep small the cfg
-    m_cfg.simplify ();
+    
+    if (LlvmIkosCFGSimplify) // Important to keep small the cfg
+      m_cfg.simplify ();
 #if 1
     cout << m_cfg << "\n";
 #endif 
