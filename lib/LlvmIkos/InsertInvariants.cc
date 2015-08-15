@@ -70,13 +70,13 @@ namespace llvm_ikos
                       IRBuilder<>B, 
                       LLVMContext &ctx,                  
                       Value *LHS, Value *RHS, 
-                      const Twine &Name = "")
+                      const Twine &Name)
     {
       assert (LHS->getType ()->isIntegerTy () && 
               RHS->getType ()->isIntegerTy ());
     
-      Value *LHS1 = B.CreateZExtOrBitCast (LHS, Type::getInt64Ty (ctx)); 
-      Value *RHS1 = B.CreateZExtOrBitCast (RHS, Type::getInt64Ty (ctx)); 
+      Value *LHS1 = B.CreateZExtOrBitCast (LHS, Type::getInt64Ty (ctx), Name); 
+      Value *RHS1 = B.CreateZExtOrBitCast (RHS, Type::getInt64Ty (ctx), Name); 
 
       switch (Op)
       {
@@ -109,12 +109,13 @@ namespace llvm_ikos
 
     //! Generate llvm bitecode from a set of linear constraints    
     bool gen_code (z_lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
-                   Function* assumeFn, CallGraph* cg, Function* insertFun)
+                   Function* assumeFn, CallGraph* cg, Function* insertFun,
+                   const Twine &Name = "")
     {
       bool change = false;
       for (auto cst: csts)
       { 
-        Value* cst_code = gen_code (cst, B, ctx);
+        Value* cst_code = gen_code (cst, B, ctx, Name);
         if (cst_code) {
           CallInst *ci =  B.CreateCall (assumeFn, cst_code);
           change = true;
@@ -128,7 +129,8 @@ namespace llvm_ikos
     
     // post: return a value of bool type (Int1Ty) that contains the
     // computation of cst
-    Value* gen_code (z_lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx)
+    Value* gen_code (z_lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx, 
+                     const Twine &Name)
     {
       if (cst.is_tautology ())     
       {
@@ -155,14 +157,15 @@ namespace llvm_ikos
         {
           if (n == 1) 
             ee = mk_bin_op (ADD, B, ctx, 
-                            ee, vv);
+                            ee, vv, Name);
           else if (n == -1) 
             ee = mk_bin_op (SUB, B, ctx, 
-                            ee, vv);
+                            ee, vv, Name);
           else
             ee = mk_bin_op (ADD, B, ctx, 
                             ee, 
-                            mk_bin_op ( MUL, B, ctx, mk_num (n, ctx), vv));
+                            mk_bin_op ( MUL, B, ctx, mk_num (n, ctx), vv, Name), 
+                            Name);
         }
         else
           return nullptr;
@@ -172,11 +175,11 @@ namespace llvm_ikos
       Value* cc = mk_num (c, ctx);
 
       if (cst.is_inequality ())
-        return B.CreateICmpSLE (ee, cc);
+        return B.CreateICmpSLE (ee, cc, Name);
       else if (cst.is_equality ())
-        return B.CreateICmpEQ (ee, cc);        
+        return B.CreateICmpEQ (ee, cc, Name);        
       else 
-        return B.CreateICmpNE (ee, cc);        
+        return B.CreateICmpNE (ee, cc, Name);        
     }
   };
 
@@ -378,7 +381,7 @@ namespace llvm_ikos
         auto csts = toLinCst (inv);
 
         CodeExpander g;
-        change |= g.gen_code (csts, Builder, ctx, m_assumeFn, cg, &F);
+        change |= g.gen_code (csts, Builder, ctx, m_assumeFn, cg, &F, "ikos_");
       }
 
       //// XXX this might insert assumptions that only hold at the
@@ -413,6 +416,3 @@ static llvm::RegisterPass<llvm_ikos::InsertInvariants>
 X ("insert-ikos-invs",
    "Insert invariants inferred by Ikos", 
    false, false);
-   
-
-
