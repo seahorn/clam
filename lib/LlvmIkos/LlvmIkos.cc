@@ -13,14 +13,8 @@
 #include "ikos_llvm/config.h"
 #include "ikos_llvm/LlvmIkos.hh"
 #include "ikos_llvm/SymEval.hh"
-#include "ikos_llvm/Support/AbstractDomains.hh"
-#if IKOS_MINOR_VERSION >= 2
-#include <ikos/domains/term/term_util.hpp>
-#include <ikos/domains/term_equiv.hpp>
-#endif 
-#include "ikos_llvm/Support/bignums.hh"
-
-#include <ikos/analysis/FwdAnalyzer.hpp>
+#include "ikos_llvm/AbstractDomainsImpl.hh"
+#include "ikos/analysis/FwdAnalyzer.hpp"
 
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
@@ -71,45 +65,6 @@ LlvmIkosInterProc ("ikos-cfg-interproc",
              cl::desc ("Build inter-procedural Cfg"), 
              cl::init (false));
 
-
-namespace domain_impl
-{
-  using namespace cfg_impl;
-  using namespace ikos;
-
-  // Numerical domains
-  typedef interval_domain< z_number, varname_t > interval_domain_t;
-#if IKOS_MINOR_VERSION >= 2
-  // scalar versions
-  typedef interval_congruence_domain< z_number, varname_t > ric_domain_t;
-  typedef DBM< z_number, varname_t > dbm_domain_t;
-  typedef octagon< z_number, varname_t > octagon_domain_t;
-  //typedef ikos::term::TDomInfo<z_number, varname_t, interval_domain_t> idom_info;
-  typedef interval_domain< z_number, ikos::term::StrVarAlloc_col::varname_t > str_interval_dom_t;
-  typedef ikos::term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
-  typedef anti_unif<idom_info>::anti_unif_t term_domain_t;  
-  // array versions
-  typedef array_smashing<interval_domain_t,z_number,varname_t> arr_interval_domain_t;
-  typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
-  typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;
-  typedef array_smashing<octagon_domain_t,z_number,varname_t> arr_octagon_domain_t;
-  typedef array_smashing<term_domain_t,z_number,varname_t> arr_term_domain_t;
-#endif
-  typedef ikos::linear_expression<z_number, varname_t> z_lin_exp_t;
-  typedef ikos::linear_constraint<z_number, varname_t> z_lin_cst_t;
-  typedef ikos::linear_constraint_system<z_number, varname_t> z_lin_cst_sys_t;
-
-  template<typename AbsDomain>
-  z_lin_cst_sys_t toLinCst (AbsDomain inv)
-  {
-#if IKOS_MINOR_VERSION >= 2
-    return inv.to_linear_constraint_system ();
-#else
-    return intervals_traits::to_linear_constraint_system (inv);
-#endif       
-  }
-
-} // end namespace
 
 namespace llvm_ikos
 {

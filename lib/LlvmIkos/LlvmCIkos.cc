@@ -15,7 +15,7 @@
 #include "ikos_llvm/CfgBuilder.hh"
 #include "ikos_llvm/SymEval.hh"
 #include "ikos_llvm/LlvmCIkos.hh"
-#include "ikos_llvm/Support/AbstractDomains.hh"
+#include "ikos_llvm/AbstractDomainsImpl.hh"
 
 #include <ikos/cfg/ConcSys.hpp>
 #include <ikos/analysis/ConcAnalyzer.hpp>
@@ -35,22 +35,6 @@ extern llvm::cl::opt<enum cfg::TrackedPrecision> LlvmIkosTrackLev;
 extern llvm::cl::opt<bool> LlvmIkosInterProc;
 
 using namespace llvm;
-
-namespace domain_impl
-{
-   using namespace ikos;
-   using namespace cfg_impl; 
-   // scalar versions
-   typedef interval_domain<z_number, varname_t> interval_domain_t;
-   typedef interval_congruence_domain< z_number, varname_t > ric_domain_t;
-   typedef DBM< z_number, varname_t > dbm_domain_t;
-   typedef octagon< z_number, varname_t > octagon_domain_t;
-   // array versions
-   typedef array_smashing<interval_domain_t,z_number,varname_t> arr_interval_domain_t;
-   typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
-   typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;
-   typedef array_smashing<octagon_domain_t,z_number,varname_t> arr_octagon_domain_t;
-} 
 
 namespace
 {
