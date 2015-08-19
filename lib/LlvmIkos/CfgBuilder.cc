@@ -1,6 +1,7 @@
 
 /* 
- * Translate a LLVM function to a custom CFG understood by ikos-core.
+ * Translate a LLVM function to a CFG language understood by
+ * ikos-core.
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -47,15 +48,16 @@ namespace llvm_ikos
       return UNK_TYPE;
   }
 
-  struct SymExecCmpInstVisitor : 
-      public InstVisitor<SymExecCmpInstVisitor>, 
+  //! Translate flag conditions 
+  struct SymExecConditionVisitor : 
+      public InstVisitor<SymExecConditionVisitor>, 
       private SymEval<VariableFactory, z_lin_exp_t>
   {
     basic_block_t& m_bb;
     bool m_is_negated;
     MemAnalysis *m_mem;    
     
-    SymExecCmpInstVisitor (VariableFactory& vfac, 
+    SymExecConditionVisitor (VariableFactory& vfac, 
                            basic_block_t& bb, 
                            bool is_negated, 
                            MemAnalysis* mem):
@@ -134,6 +136,62 @@ namespace llvm_ikos
       return res;
     }
 
+    void visitBinaryOperator(BinaryOperator &I)
+    {
+      // It searches only for this particular pattern:
+      // 
+      //   %o1 = icmp ...
+      //   %o2 = icmp ...
+      //   %f = and %o1 %o2 
+      //   br %f bb1 bb2
+      // 
+      // and it adds *only* in bb1 the constraints from %o1 and %2. 
+      // 
+      // Note that we do not add any constraint in bb2 because we
+      // would need to add a disjunction and the CFG language does not
+      // allow that. 
+
+      CmpInst* C1 = nullptr;
+      CmpInst* C2 = nullptr;
+
+      switch (I.getOpcode ())
+      {
+        case BinaryOperator::And:
+          if (!m_is_negated) {
+            C1 = dyn_cast<CmpInst> (I.getOperand (0));
+            C2 = dyn_cast<CmpInst> (I.getOperand (1));
+          }
+          break;
+        case BinaryOperator::Or:
+          if (m_is_negated) {
+            C1 = dyn_cast<CmpInst> (I.getOperand (0));
+            C2 = dyn_cast<CmpInst> (I.getOperand (1));
+          }
+          break;
+        default:
+          //m_bb.havoc(lhs);
+          break;
+      }
+
+      if (C1 && C2) {
+        z_lin_cst_sys_t csts1 = gen_assertion (*C1);
+        for (auto cst: csts1) {
+          if (m_is_negated)
+            m_bb.assume(cst.negate ());
+          else
+            m_bb.assume(cst);
+        }
+        z_lin_cst_sys_t csts2 = gen_assertion (*C2);
+        for (auto cst: csts2) {
+          if (m_is_negated)
+            m_bb.assume(cst.negate ());
+          else
+            m_bb.assume(cst);
+        }
+      }
+      
+    }
+
     void visitCmpInst (CmpInst &I) 
     {
             
@@ -152,6 +210,7 @@ namespace llvm_ikos
     }
   };
 
+  //! Translate PHI nodes
   struct SymExecPhiVisitor : 
       public InstVisitor<SymExecPhiVisitor>, 
       private SymEval<VariableFactory, z_lin_exp_t>
@@ -194,6 +253,7 @@ namespace llvm_ikos
     }
   };
 
+  //! Translate the rest of instructions
   struct SymExecVisitor : 
       public InstVisitor<SymExecVisitor>, 
       private SymEval<VariableFactory, z_lin_exp_t>
@@ -220,12 +280,16 @@ namespace llvm_ikos
         
     /// skip PHI nodes
     void visitPHINode (PHINode &I) {}
+
+    /// skip BranchInst
+    void visitBranchInst (BranchInst &I) {}
     
     void visitCmpInst (CmpInst &I) 
     {
       // --- We translate I if it does not feed to the terminator of
       //     the block. Otherwise, it will be covered by execBr.
 
+#if 0
       if (!isTracked (I)) return;
 
       if (const Value *cond = dyn_cast<const Value> (&I))
@@ -233,7 +297,7 @@ namespace llvm_ikos
         TerminatorInst * TI = I.getParent()->getTerminator ();
         if (const BranchInst *br = dyn_cast<const BranchInst> (TI)) {
           if (!(br->isConditional () && br->getCondition() == cond)) {
-            SymExecCmpInstVisitor v (m_vfac, m_bb, false, m_mem);
+            SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
             auto csts = v.gen_assertion (I);
             if (csts.begin () != csts.end ()) {
               // select only takes a single constraint otherwise the
@@ -249,10 +313,9 @@ namespace llvm_ikos
           }
         }
       }
+#endif 
     }    
     
-    /// skip BranchInst
-    void visitBranchInst (BranchInst &I) {}
       
     void visitBinaryOperator(BinaryOperator &I)
     {
@@ -555,7 +618,7 @@ namespace llvm_ikos
           cond = ze->getOperand (0);
 
         if (llvm::Instruction *I = dyn_cast<llvm::Instruction> (cond)) {
-          SymExecCmpInstVisitor v (m_vfac, m_bb, false, m_mem);
+          SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
           v.visit (I);
         }
 
@@ -570,7 +633,7 @@ namespace llvm_ikos
           cond = ze->getOperand (0);
 
         if (llvm::Instruction *I = dyn_cast<llvm::Instruction> (cond)) {
-          SymExecCmpInstVisitor v (m_vfac, m_bb, true, m_mem);
+          SymExecConditionVisitor v (m_vfac, m_bb, true, m_mem);
           v.visit (I);
         }
 
@@ -739,10 +802,11 @@ namespace llvm_ikos
         }
         else 
         {
-          SymExecCmpInstVisitor v (m_vfac, bb, br->getSuccessor (1) == &dst, m_mem);
           if (llvm::Instruction *I = 
-              dyn_cast<llvm::Instruction> (& const_cast<llvm::Value&>(c)))
+              dyn_cast<llvm::Instruction> (& const_cast<llvm::Value&>(c))) {
+            SymExecConditionVisitor v (m_vfac, bb, br->getSuccessor (1) == &dst, m_mem);
             v.visit (I); 
+          }
           else
             errs () << "Warning: cannot generate guard from " << c << "\n";
         }
