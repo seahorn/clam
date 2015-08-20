@@ -158,14 +158,18 @@ namespace llvm_ikos
       {
         case BinaryOperator::And:
           if (!m_is_negated) {
-            C1 = dyn_cast<CmpInst> (I.getOperand (0));
-            C2 = dyn_cast<CmpInst> (I.getOperand (1));
+            if (I.getOperand (0)->getType ()->isIntegerTy ())
+              C1 = dyn_cast<CmpInst> (I.getOperand (0));
+            if (I.getOperand (1)->getType ()->isIntegerTy ())
+              C2 = dyn_cast<CmpInst> (I.getOperand (1));
           }
           break;
         case BinaryOperator::Or:
           if (m_is_negated) {
-            C1 = dyn_cast<CmpInst> (I.getOperand (0));
-            C2 = dyn_cast<CmpInst> (I.getOperand (1));
+            if (I.getOperand (0)->getType ()->isIntegerTy ())
+              C1 = dyn_cast<CmpInst> (I.getOperand (0));
+            if (I.getOperand (1)->getType ()->isIntegerTy ())
+              C2 = dyn_cast<CmpInst> (I.getOperand (1));
           }
           break;
         default:
@@ -174,15 +178,13 @@ namespace llvm_ikos
       }
 
       if (C1 && C2) {
-        z_lin_cst_sys_t csts1 = gen_assertion (*C1);
-        for (auto cst: csts1) {
+        for (auto cst: gen_assertion (*C1)) {
           if (m_is_negated)
             m_bb.assume(cst.negate ());
           else
             m_bb.assume(cst);
         }
-        z_lin_cst_sys_t csts2 = gen_assertion (*C2);
-        for (auto cst: csts2) {
+        for (auto cst: gen_assertion (*C2)) {
           if (m_is_negated)
             m_bb.assume(cst.negate ());
           else
@@ -194,19 +196,22 @@ namespace llvm_ikos
 
     void visitCmpInst (CmpInst &I) 
     {
-            
-      z_lin_cst_sys_t csts = gen_assertion (I);
-      for (auto cst: csts)
-        m_bb.assume(cst);
-      
-      if (isTracked (I))
-      {
-        varname_t lhs = symVar (I);
-        if (m_is_negated)
-          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
-        else
-          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
+
+      if (!(isTracked (I) && 
+            I.getOperand (0)->getType ()->isIntegerTy () &&
+            I.getOperand (1)->getType ()->isIntegerTy ())) {
+        return;    
       }
+        
+      for (auto cst: gen_assertion (I)) {
+        m_bb.assume(cst);
+      }
+      
+      varname_t lhs = symVar (I);
+      if (m_is_negated)
+        m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
+      else
+        m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
     }
   };
 
@@ -604,6 +609,7 @@ namespace llvm_ikos
       Function * callee = CS.getCalledFunction ();
 
       // -- if no direct do nothing for now
+      // -- TODO: resolve by using DSA 
       if (!callee) return;
 
       // -- skip if intrinsic
