@@ -25,12 +25,17 @@ using namespace llvm;
 
 llvm::cl::opt<bool>
 LlvmIkosCFGSimplify ("ikos-cfg-simplify",
-             cl::desc ("Simplify CFG built by Ikos"), 
+             cl::desc ("Simplify Ikos CFG"), 
+             cl::init (false));
+
+llvm::cl::opt<bool>
+LlvmIkosPrintCFG ("ikos-print-cfg",
+             cl::desc ("Print Ikos CFG"), 
              cl::init (false));
 
 llvm::cl::opt<bool>
 LlvmIkosGEP ("ikos-enable-ptr",
-             cl::desc ("Translate pointer arithmetic instructions"), 
+             cl::desc ("Add pointer arithmetic instructions in Ikos CFG"), 
              cl::init (false));
 
 namespace llvm_ikos
@@ -992,9 +997,9 @@ namespace llvm_ikos
     
     if (LlvmIkosCFGSimplify) // Important to keep small the cfg
       m_cfg.simplify ();
-#if 1
-    cout << m_cfg << "\n";
-#endif 
+
+    if (LlvmIkosPrintCFG)
+      cout << m_cfg << "\n";
     return ;
   }
 
