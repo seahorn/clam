@@ -25,7 +25,7 @@ namespace domain_impl
   typedef DBM< z_number, varname_t > dbm_domain_t;
   typedef octagon< z_number, varname_t > octagon_domain_t;
   //typedef ikos::term::TDomInfo<z_number, varname_t, interval_domain_t> idom_info;
-  typedef interval_domain< z_number, ikos::term::StrVarAlloc_col::varname_t > str_interval_dom_t;
+  typedef interval_domain< z_number, cfg::var_factory_impl::StrVarAlloc_col::varname_t > str_interval_dom_t;
   typedef ikos::term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
   typedef anti_unif<idom_info>::anti_unif_t term_domain_t;  
   // array versions

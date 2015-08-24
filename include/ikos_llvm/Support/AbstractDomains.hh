@@ -10,7 +10,6 @@
 #include <ikos/domains/octagons.hpp>                      
 #include <ikos/domains/dbm.hpp>
 #include <ikos/domains/array_smashing.hpp>
-#include <ikos/domains/term/term_util.hpp>
 #include <ikos/domains/term_equiv.hpp>
 #else 
 #include <ikos/intervals_traits.hpp>
