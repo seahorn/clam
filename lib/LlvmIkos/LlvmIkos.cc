@@ -182,15 +182,15 @@ namespace llvm_ikos
     {
       if (F.isDeclaration () || F.empty ()) continue;
       
-        errs () << "\nFunction " << F.getName () << "\n";
+        outs () << "\nFunction " << F.getName () << "\n";
         for (auto &B : F)
         {
           const llvm::BasicBlock * BB = &B;
-          errs () << "\t" << BB->getName () << ": ";
+          outs () << "\t" << BB->getName () << ": ";
           auto inv = getPost (BB);
-          errs () << inv << "\n";
+          outs () << inv << "\n";
         }
-        errs () <<  "\n";
+        outs () <<  "\n";
     }
   }
 
