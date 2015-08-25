@@ -12,6 +12,7 @@
 #include "ikos_llvm/config.h"
 #include "ikos_llvm/Transforms/InsertInvariants.hh"
 #include "ikos_llvm/SymEval.hh"
+#include "ikos_llvm/AbstractDomainsImpl.hh"
 #include "ikos_llvm/Support/AbstractDomains.hh"
 #include "ikos_llvm/Support/bignums.hh"
 
@@ -26,34 +27,6 @@ extern llvm::cl::opt<llvm_ikos::IkosDomain> LlvmIkosDomain;
 
 using namespace llvm;
 using namespace llvm_ikos;
-
-namespace domain_impl
-{
-  using namespace cfg_impl;
-  using namespace ikos;
-
-  // Numerical domains to represent linear arithmetic
-  typedef interval_domain< z_number, varname_t > interval_domain_t;
-#if IKOS_MINOR_VERSION >= 2
-  typedef interval_congruence_domain< z_number, varname_t > ric_domain_t;
-  typedef DBM< z_number, varname_t > dbm_domain_t;
-  typedef octagon< z_number, varname_t > octagon_domain_t;
-#endif 
-  typedef ikos::linear_expression<z_number, varname_t> z_lin_exp_t;
-  typedef ikos::linear_constraint<z_number, varname_t> z_lin_cst_t;
-  typedef ikos::linear_constraint_system<z_number, varname_t> z_lin_cst_sys_t;
-
-  template<typename AbsDomain>
-  z_lin_cst_sys_t toLinCst (AbsDomain inv)
-  {
-#if IKOS_MINOR_VERSION >= 2
-    return inv.to_linear_constraint_system ();
-#else
-    return intervals_traits::to_linear_constraint_system (inv);
-#endif       
-  }
-
-} // end namespace
 
 namespace llvm_ikos
 {
