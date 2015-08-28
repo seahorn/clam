@@ -127,18 +127,20 @@ namespace llvm_ikos
     MemAnalysis*      m_mem;
     bool              m_is_inter_proc;
     const DataLayout* m_dl;
+    vector<llvm::BasicBlock*> m_extra_blks;
 
    public:
     
     CfgBuilder (Function &func, VariableFactory &vfac, MemAnalysis* mem, 
                 bool isInterProc);
-    
-    cfg_t & operator()()
-    { 
-      make_cfg ();
+        
+    ~CfgBuilder ();
+
+    cfg_t & makeCfg () { 
+      build_cfg ();
       return m_cfg; 
     }
-    
+
    private:
     
     string create_bb_name(string prefix = "")
@@ -149,7 +151,7 @@ namespace llvm_ikos
       return prefix + id_str;
     }
 
-    void make_cfg();
+    void build_cfg();
 
     opt_basic_block_t lookup(const llvm::BasicBlock &);
     

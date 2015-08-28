@@ -98,7 +98,8 @@ namespace llvm_ikos
     // -- skip functions without a body
     if (F.isDeclaration () || F.empty ()) return false;
 
-    cfg_t cfg = CfgBuilder (F, m_vfac, &m_mem, LlvmIkosInterProc)();
+    CfgBuilder builder (F, m_vfac, &m_mem, LlvmIkosInterProc);
+    cfg_t &cfg = builder.makeCfg ();
 
     bool change=false;
     switch (m_absdom)
@@ -159,7 +160,7 @@ namespace llvm_ikos
       else if (pre.is_top ())
         m_pre_map.insert (make_pair (BB, mkTRUE ()));        
       else
-          m_pre_map.insert (make_pair (BB, toLinCst (pre)));
+        m_pre_map.insert (make_pair (BB, toLinCst (pre)));
 
       // --- invariants that hold at the exit of the blocks
       AbsDomain post = analyzer.get_post (&B);

@@ -722,6 +722,14 @@ namespace llvm_ikos
         m_is_inter_proc (isInterProc),
         m_dl (func.getParent ()->getDataLayout ()){ }    
 
+  CfgBuilder::~CfgBuilder () {
+    // These extra blocks are not linked to a builder so llvm will not
+    // free them.
+    for (auto bb: m_extra_blks) {
+      delete bb;
+    }
+  }
+
   CfgBuilder::opt_basic_block_t 
   CfgBuilder::lookup (const llvm::BasicBlock &B)  
   {
@@ -797,11 +805,13 @@ namespace llvm_ikos
         assert (Src && Dst);
 
         // -- dummy BasicBlock 
-        // FIXME: memory leak because the llvm basic block is not
-        // linked to a builder.
         basic_block_label_t bb_id = llvm::BasicBlock::Create(m_func.getContext (),
                                                              create_bb_name ());
         
+        // -- remember this block to free it later because llvm will
+        //    not do it.
+        m_extra_blks.push_back (bb_id);
+
         basic_block_t &bb = add_block_in_between (*Src, *Dst, bb_id);
         
         const Value &c = *br->getCondition ();
@@ -860,8 +870,7 @@ namespace llvm_ikos
 
   }
 
-
-  void CfgBuilder::make_cfg()
+  void CfgBuilder::build_cfg()
   {
 
     for (auto &B : m_func) 
@@ -914,11 +923,13 @@ namespace llvm_ikos
     else if (rets.size () > 1)
     {
       // -- insert dummy BasicBlock 
-      // FIXME: memory leak because the llvm basic block is not
-      // linked to a builder.
       basic_block_label_t unified_ret_id = 
           llvm::BasicBlock::Create(m_func.getContext (),
                                    create_bb_name ());
+
+      // -- remember this block to free it later because llvm will not
+      //    do it.
+      m_extra_blks.push_back (unified_ret_id);
 
       basic_block_t &unified_ret = m_cfg.insert (unified_ret_id);
 
@@ -995,11 +1006,12 @@ namespace llvm_ikos
     }
 
     
-    if (LlvmIkosCFGSimplify) // Important to keep small the cfg
+    if (LlvmIkosCFGSimplify) 
       m_cfg.simplify ();
 
     if (LlvmIkosPrintCFG)
       cout << m_cfg << "\n";
+
     return ;
   }
 
