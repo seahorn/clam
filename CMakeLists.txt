@@ -191,6 +191,7 @@ if (TopLevel)
   include_directories (${CMAKE_BINARY_DIR}/include)
   add_subdirectory(lib)
   add_subdirectory(tools)
+  add_subdirectory(py)
 endif()
 
 configure_file( include/ikos_llvm/config.h.cmake
