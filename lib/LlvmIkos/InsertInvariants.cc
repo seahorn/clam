@@ -16,6 +16,8 @@
 #include "ikos_llvm/Support/AbstractDomains.hh"
 #include "ikos_llvm/Support/bignums.hh"
 
+#include "ikos/analysis/InvTable_traits.hpp"
+
 /* 
  * Instrument program by inserting invariants computed by Ikos. The
  * invariants are inserted as assume instructions into the LLVM
@@ -273,20 +275,15 @@ namespace llvm_ikos
           phi_vs.insert (s.symVar (I));
       }
     
-
     bool change = false;
-    for (auto &B : F)
-    {
-
+    for (auto &B : F) {
       //num_abs_domain_t should be LlvmIkosDomain
       typedef interval_domain_t num_abs_domain_t;
-
 // #if IKOS_MINOR_VERSION >= 2
 //       typedef dbm_domain_t num_abs_domain_t;
 // #else
 //       typedef interval_domain_t num_abs_domain_t;
 // #endif 
-      
       bool has_load = false;
       for (auto &I: B) {
         if (isa<LoadInst>(&I))
@@ -303,7 +300,10 @@ namespace llvm_ikos
         /// we could use the invariants and the entry and then
         /// propagate until the desired program point. However, this
         /// propagation is not implemented.
-        inv += m_ikos->getPost (&B);
+
+        typedef analyzer::inv_tbl_traits <num_abs_domain_t, z_lin_cst_sys_t> inv_tbl_t;
+        num_abs_domain_t bb_inv = inv_tbl_t::unmarshall (m_ikos->getPost (&B));
+        inv = inv & bb_inv;
 
         /*
           If we just insert at the end of the block all the invariants

@@ -151,7 +151,7 @@ namespace llvm_ikos
                        Module& M, MemAnalysis& mem, const DataLayout* dl)
   {
     typedef ConcAnalyzer <llvm::Function*, cfg_t, 
-                          AbsDomain, VariableFactory> conc_analyzer_t;
+                          AbsDomain, VariableFactory, AbsDomain> conc_analyzer_t;
 
 
     /// --- Initialize shared global state
@@ -245,7 +245,8 @@ namespace llvm_ikos
     sym_eval_t sym_eval (vfac, m_mem.getTrackLevel ());
     for (auto f : m_threads)
     {
-      auto cfg = CfgBuilder (*f, vfac, &m_mem, LlvmIkosInterProc) ();
+      CfgBuilder builder (*f, vfac, &m_mem, LlvmIkosInterProc);
+      auto cfg = builder.makeCfg ();
                            
       vector<varname_t> shared_vars;
       for (auto v : m_shared_vars)

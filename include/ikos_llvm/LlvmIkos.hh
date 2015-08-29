@@ -34,8 +34,12 @@ namespace llvm_ikos
   /*! Compute invariants using Ikos for the whole module. */
   class LlvmIkos : public llvm::ModulePass
   {
-    typedef llvm::DenseMap< const llvm::BasicBlock *, 
-                            z_lin_cst_sys_t > invariants_map_t;
+   public:
+    //! all invariants will be translated into linear constraints
+    typedef z_lin_cst_sys_t inv_tbl_val_t;
+
+   private:
+    typedef llvm::DenseMap<const llvm::BasicBlock *,inv_tbl_val_t> invariants_map_t;
 
     invariants_map_t m_pre_map;
     invariants_map_t m_post_map;
@@ -72,30 +76,31 @@ namespace llvm_ikos
     virtual bool runOnFunction (llvm::Function &F);
 
     // return invariants that hold at the entry of BB
-    z_lin_cst_sys_t getPre (const llvm::BasicBlock *BB) const
-    {
+    const inv_tbl_val_t& getPre (const llvm::BasicBlock *BB) const {
       return this->operator[] (BB);
     }
 
     // return invariants that hold at the exit of BB
-    z_lin_cst_sys_t getPost (const llvm::BasicBlock *BB) const
-    {
+    const inv_tbl_val_t& getPost (const llvm::BasicBlock *BB) const {
       const_iterator it = m_post_map.find (BB);
       assert (it != m_post_map.end ());
       return it->second;
     }
 
     // alias for getPre
-    z_lin_cst_sys_t operator[] (const llvm::BasicBlock *BB) const
-    {
+    const inv_tbl_val_t& operator[] (const llvm::BasicBlock *BB) const {
       const_iterator it = m_pre_map.find (BB);
       assert (it != m_pre_map.end ());
       return it->second;
     }
 
-    TrackedPrecision getTrackLevel () const { return m_mem.getTrackLevel (); }
+    TrackedPrecision getTrackLevel () const { 
+      return m_mem.getTrackLevel (); 
+    }
 
-    VariableFactory& getVariableFactory () { return m_vfac; }
+    VariableFactory& getVariableFactory () { 
+      return m_vfac; 
+    }
 
     iterator       begin ()       { return m_pre_map.begin(); } 
     iterator       end ()         { return m_pre_map.end();   }
@@ -105,12 +110,6 @@ namespace llvm_ikos
     void dump (llvm::Module &M) const;
 
    private:
-
-    z_lin_cst_t mkTRUE() const 
-    { return z_lin_cst_t ( z_lin_exp_t (1) == z_lin_exp_t (1)); }
-
-    z_lin_cst_t mkFALSE() const 
-    { return z_lin_cst_t ( z_lin_exp_t (1) == z_lin_exp_t (0)); }
 
     template<typename AbsDomain> 
     bool runOnCfg (cfg_t& cfg, llvm::Function &F);

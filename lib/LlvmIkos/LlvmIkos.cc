@@ -143,33 +143,21 @@ namespace llvm_ikos
   template<typename AbsDomain>
   bool LlvmIkos::runOnCfg (cfg_t& cfg, llvm::Function &F)
   {
-    typedef typename NumFwdAnalyzer <cfg_t,AbsDomain,VariableFactory>::type analyzer_t;
+    typedef typename NumFwdAnalyzer <cfg_t, AbsDomain, 
+                                     VariableFactory, 
+                                     inv_tbl_val_t>::type analyzer_t;
 
     analyzer_t analyzer (cfg, m_vfac, m_runlive);
     analyzer.Run (AbsDomain::top());
 
-    // --- Translate internal abstract representations to integer
-    //     linear constraints.
+    // Store invariants to survive across functions
     for (auto &B : F)
     {
-      // --- invariants that hold at the entry of the blocks
       const llvm::BasicBlock *BB = &B;
-      AbsDomain pre = analyzer.get_pre (&B);
-      if (pre.is_bottom ())
-        m_pre_map.insert (make_pair (BB, mkFALSE ()));
-      else if (pre.is_top ())
-        m_pre_map.insert (make_pair (BB, mkTRUE ()));        
-      else
-        m_pre_map.insert (make_pair (BB, toLinCst (pre)));
-
+      // --- invariants that hold at the entry of the blocks
+      m_pre_map.insert (make_pair (BB, analyzer.get_pre (&B)));
       // --- invariants that hold at the exit of the blocks
-      AbsDomain post = analyzer.get_post (&B);
-      if (post.is_bottom ())
-        m_post_map.insert (make_pair (BB, mkFALSE ()));
-      else if (post.is_top ())
-        m_post_map.insert (make_pair (BB, mkTRUE ()));        
-      else
-        m_post_map.insert (make_pair (BB, toLinCst (post)));
+      m_post_map.insert (make_pair (BB, analyzer.get_post (&B)));
     }
     
     return false;
@@ -179,19 +167,16 @@ namespace llvm_ikos
   // Write to standard output the invariants 
   void LlvmIkos::dump (llvm::Module &M) const
   {
-    for (auto &F : M)
-    {
+    for (auto &F : M) {
       if (F.isDeclaration () || F.empty ()) continue;
-      
-        outs () << "\nFunction " << F.getName () << "\n";
-        for (auto &B : F)
-        {
-          const llvm::BasicBlock * BB = &B;
-          outs () << "\t" << BB->getName () << ": ";
-          auto inv = getPost (BB);
-          outs () << inv << "\n";
-        }
-        outs () <<  "\n";
+      outs () << "\nFunction " << F.getName () << "\n";
+      for (auto &B : F) {
+        const llvm::BasicBlock * BB = &B;
+        outs () << "\t" << BB->getName () << ": ";
+        auto inv = getPost (BB);
+        outs () << inv << "\n";
+      }
+      outs () <<  "\n";
     }
   }
 
