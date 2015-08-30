@@ -1,4 +1,3 @@
-
 /* 
  * Translate a LLVM function to a CFG language understood by
  * ikos-core.
@@ -33,9 +32,14 @@ LlvmIkosPrintCFG ("ikos-print-cfg",
              cl::desc ("Print Ikos CFG"), 
              cl::init (false));
 
+/* 
+ To allow to track memory ignoring pointer arithmetic. This makes
+ sense because some ikos analyses can reason about memory without
+ having any knowledge about pointer arithmetic.
+*/
 llvm::cl::opt<bool>
-LlvmIkosGEP ("ikos-enable-ptr",
-             cl::desc ("Add pointer arithmetic instructions in Ikos CFG"), 
+LlvmIkosNoGEP ("ikos-disable-ptr",
+             cl::desc ("Disable translation of pointer arithmetic in Ikos CFG"), 
              cl::init (false));
 
 namespace llvm_ikos
@@ -53,6 +57,17 @@ namespace llvm_ikos
       return UNK_TYPE;
   }
 
+  PHINode* hasOnlyOnePHINodeUse (const Instruction &I) {
+    const Value *v = &I;
+    if (v->hasOneUse ()) {
+      const Use &U = *(v->use_begin ());
+      if (PHINode* PHI  = dyn_cast<PHINode> (U.getUser ())) {
+        return PHI;
+      }
+    }
+    return nullptr;
+  }
+
   //! Translate flag conditions 
   struct SymExecConditionVisitor : 
       public InstVisitor<SymExecConditionVisitor>, 
@@ -63,9 +78,9 @@ namespace llvm_ikos
     MemAnalysis *m_mem;    
     
     SymExecConditionVisitor (VariableFactory& vfac, 
-                           basic_block_t& bb, 
-                           bool is_negated, 
-                           MemAnalysis* mem):
+                             basic_block_t& bb, 
+                             bool is_negated, 
+                             MemAnalysis* mem):
         SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
         m_bb (bb), 
         m_is_negated (is_negated),
@@ -178,7 +193,7 @@ namespace llvm_ikos
           }
           break;
         default:
-          //m_bb.havoc(lhs);
+          m_bb.havoc(symVar (I));
           break;
       }
 
@@ -207,7 +222,7 @@ namespace llvm_ikos
             I.getOperand (1)->getType ()->isIntegerTy ())) {
         return;    
       }
-        
+
       for (auto cst: gen_assertion (I)) {
         m_bb.assume(cst);
       }
@@ -254,6 +269,12 @@ namespace llvm_ikos
       
       if (LHS == &v) return;
       
+      // OptimizationXX:
+      if (Instruction *II = dyn_cast<Instruction> (I.getIncomingValueForBlock (&m_inc_BB))) {
+        if (hasOnlyOnePHINodeUse (*II))
+          return;
+      }
+      
       varname_t lhs = symVar(I);
       optional<z_lin_exp_t> rhs = lookup(v);
       if (rhs) 
@@ -294,36 +315,32 @@ namespace llvm_ikos
     /// skip BranchInst
     void visitBranchInst (BranchInst &I) {}
     
-    void visitCmpInst (CmpInst &I) 
-    {
+    void visitCmpInst (CmpInst &I) {
       // --- We translate I if it does not feed to the terminator of
       //     the block. Otherwise, it will be covered by execBr.
 
-#if 0
-      if (!isTracked (I)) return;
-
-      if (const Value *cond = dyn_cast<const Value> (&I))
-      {
-        TerminatorInst * TI = I.getParent()->getTerminator ();
-        if (const BranchInst *br = dyn_cast<const BranchInst> (TI)) {
-          if (!(br->isConditional () && br->getCondition() == cond)) {
-            SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
-            auto csts = v.gen_assertion (I);
-            if (csts.begin () != csts.end ()) {
-              // select only takes a single constraint otherwise the
-              // reasoning gets complicated if the analysis needs to
-              // negate conjunction of constraints.
-              // TODO: we just choose the first constraint arbitrarily.
-              m_bb.select (symVar(I), *(csts.begin ()), 
-                           z_lin_exp_t (1) /*tt*/, 
-                           z_lin_exp_t (0) /*ff*/);
-            }
-            else
-              m_bb.havoc (symVar (I));
-          }
-        }
-      }
-#endif 
+      //       if (!isTracked (I)) return;
+      //       if (const Value *cond = dyn_cast<const Value> (&I))
+      //       {
+      //         TerminatorInst * TI = I.getParent()->getTerminator ();
+      //         if (const BranchInst *br = dyn_cast<const BranchInst> (TI)) {
+      //           if (!(br->isConditional () && br->getCondition() == cond)) {
+      //             SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
+      //             auto csts = v.gen_assertion (I);
+      //             if (csts.begin () != csts.end ()) {
+      //               // select only takes a single constraint otherwise the
+      //               // reasoning gets complicated if the analysis needs to
+      //               // negate conjunction of constraints.
+      //               // TODO: we just choose the first constraint arbitrarily.
+      //               m_bb.select (symVar(I), *(csts.begin ()), 
+      //                            z_lin_exp_t (1) /*tt*/, 
+      //                            z_lin_exp_t (0) /*ff*/);
+      //             }
+      //             else
+      //               m_bb.havoc (symVar (I));
+      //           }
+      //         }
+      //       }
     }    
     
       
@@ -341,6 +358,11 @@ namespace llvm_ikos
         case BinaryOperator::UDiv:
         case BinaryOperator::SDiv:
         case BinaryOperator::Shl:
+          // OptimizationXX: if the lhs has only one user and the user
+          // is a phi node then we save one assignment.
+          if (PHINode* PHI  = hasOnlyOnePHINodeUse (I)) {
+              lhs = symVar (*PHI);
+          }
           doArithmetic (lhs, I);
           break;
           // case BinaryOperator::And:
@@ -418,7 +440,34 @@ namespace llvm_ikos
     { doCast (I); }
     
     void visitZExtInst (ZExtInst &I)
-    { doCast (I); }
+    { 
+      // This optimization should not have too much impact if the
+      // subsequent analyses discard dead variables. However, they are
+      // usually applied at the level of basic blocks so this
+      // optimization still will help if within a block there are many
+      // instructions that follow this idiom.
+      if (m_mem->getTrackLevel () < PTR || LlvmIkosNoGEP) {
+        /* --- Search for this idiom: 
+
+           %_14 = zext i8 %_13 to i32
+           %_15 = getelementptr inbounds [10 x i8]* @_ptr, i32 0, i32 %_14
+
+           If we do not translate gep instructions we do not bother
+           translating the ZExt instruction because it will be dead
+           code anyway. This will put less pressure on the numerical
+           abstract domain later on.
+         */
+        Value* dest = &I; 
+        bool all_gep = true;
+        for (Use &U: boost::make_iterator_range(dest->use_begin(),
+                                                dest->use_end()))
+          all_gep &= isa<GetElementPtrInst> (U.getUser ());
+
+        if (all_gep) 
+          return;
+      }
+      doCast (I); 
+    }
     
     void visitSExtInst (SExtInst &I)
     { doCast (I); }
@@ -456,17 +505,17 @@ namespace llvm_ikos
 
     void visitGetElementPtrInst (GetElementPtrInst &I)
     {
-      if (!isTracked (*I.getPointerOperand ())) return;
-
-      /// --- By default we do not translate pointer arithmetic
-      /// --- because we are not currently using any ikos analysis
-      /// --- that needs it. This avoids unnecessary arithmetic
-      /// --- instructions that will put more pressure on the
-      /// --- numerical abstract domain.
-      if (!LlvmIkosGEP) return;
+      if ( (!isTracked (*I.getPointerOperand ())) ||
+           LlvmIkosNoGEP) {
+        m_bb.havoc (symVar (I));
+        return;
+      }
 
       optional<z_lin_exp_t> ptr = lookup (*I.getPointerOperand ());
-      if (!ptr) return;
+      if (!ptr) {
+        m_bb.havoc (symVar (I));
+        return;
+      }
 
       varname_t res = symVar (I);
       m_bb.assign (res, *ptr);
@@ -501,44 +550,47 @@ namespace llvm_ikos
 
     void visitLoadInst (LoadInst &I)
     { 
-      if (!isTracked (*I.getPointerOperand ())) return;
-
       /// --- Track only loads into integer variables
       Type *ty = I.getType();
       if (!ty->isIntegerTy ()) return;
-      
-      int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), 
-                                       I.getPointerOperand ());
-      if (arr_idx < 0) return;
 
-      optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
-      if (!idx) return ;
+      if (m_mem->getTrackLevel () >= MEM) {
+        int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), 
+                                         I.getPointerOperand ());
+        if (arr_idx < 0) return;
+        
+        optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
+        if (!idx) return ;
+        
+        m_bb.array_load (symVar (I), symVar (arr_idx), *idx,
+                         ikos::z_number (m_dl->getTypeAllocSize (ty)));
+      }
+      else 
+        m_bb.havoc (symVar (I));
 
-      m_bb.array_load (symVar (I), symVar (arr_idx), *idx,
-                       ikos::z_number (m_dl->getTypeAllocSize (ty)));
     }
     
     void visitStoreInst (StoreInst &I)
     {
-      if (!isTracked (*I.getPointerOperand ())) return;
-
       /// --- Track only stores of integer values
       Type* ty = I.getOperand (0)->getType ();
       if (!ty->isIntegerTy ()) return;
 
-      optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
-      if (!idx) return;
-
-      optional<z_lin_exp_t> val = lookup (*I.getOperand (0));
-      if (!val) return;
-
-      int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()),
-                                       I.getOperand (1)); 
-      if (arr_idx < 0) return;
-
-      m_bb.array_store (symVar (arr_idx), *idx, *val, 
-                        ikos::z_number (m_dl->getTypeAllocSize (ty)),
-                        m_mem->isSingleton (arr_idx)); 
+      if (m_mem->getTrackLevel () >= MEM) {        
+        optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
+        if (!idx) return;
+        
+        optional<z_lin_exp_t> val = lookup (*I.getOperand (0));
+        if (!val) return;
+        
+        int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()),
+                                         I.getOperand (1)); 
+        if (arr_idx < 0) return;
+        
+        m_bb.array_store (symVar (arr_idx), *idx, *val, 
+                          ikos::z_number (m_dl->getTypeAllocSize (ty)),
+                          m_mem->isSingleton (arr_idx)); 
+      }
     }
 
     void visitSelectInst(SelectInst &I)
@@ -651,28 +703,30 @@ namespace llvm_ikos
         return;
       }
 
-      if (!m_is_inter_proc && 
-          m_mem->getTrackLevel () >= MEM)
-      {// -- havoc all modified nodes by the callee
-        for (auto a : m_mem->getReadModArrays (I).second)
-          m_bb.havoc (symVar (a));
-        return;
+      if (!m_is_inter_proc) {
+        Value *ret = &I;
+        // -- havoc return value
+        if (!ret->getType()->isVoidTy() && isTracked (*ret)) {
+          m_bb.havoc (symVar (I));
+        }
+        
+        // -- havoc all modified nodes by the callee
+        if (m_mem->getTrackLevel () >= MEM) {
+          for (auto a : m_mem->getReadModArrays (I).second)
+            m_bb.havoc (symVar (a));
+        }
       }
-
-      if (m_is_inter_proc)
-      {
+      else {
         // -- add the callsite
         vector<pair<varname_t,VariableType> > actuals;
         for (auto &a : boost::make_iterator_range (CS.arg_begin(),
-                                                   CS.arg_end()))
-        { 
+                                                   CS.arg_end())) {
           Value *v = a.get();
           actuals.push_back (normalizeParam (*v));
         }
         
         set<int> mods;
-        if (m_mem->getTrackLevel () >= MEM)
-        {
+        if (m_mem->getTrackLevel () >= MEM) {
           // -- add the array actual parameters
           auto p = m_mem->getReadModArrays (I);
           auto reads = p.first;
@@ -690,13 +744,12 @@ namespace llvm_ikos
           m_bb.callsite (m_vfac [*callee], actuals);
         
         // -- and havoc all modified nodes by the callee
-        if (m_mem->getTrackLevel () >= MEM)
-        {
+        if (m_mem->getTrackLevel () >= MEM) {
           for (auto a : mods)
             m_bb.havoc (symVar (a));
         }
       }
-
+      
     }
 
     /// base case. if all else fails.

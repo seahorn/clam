@@ -1,7 +1,25 @@
 #ifndef __CFG_BUILDER_HH_
 #define __CFG_BUILDER_HH_
 
-/* Build a CFG from a LLVM function */
+/* 
+ * Translate a LLVM function to a CFG language understood by
+ * ikos-core.
+ *
+ * WARNING: the translation is, in general, an abstraction of the
+ * concrete semantics of the input program. This is a key feature to
+ * make more scalable analyses.
+ *
+ * There are different ways of abstraction during the translation. One
+ * example is that users can choose reasoning between llvm registers,
+ * pointers or memory contents. This means of course that the user
+ * needs to know then which analyses will run so that he/she can
+ * ensure that the CFG language contains all the details needed by the
+ * analyses but hopefully not more. Another example of abstraction is
+ * to ignore certain instructions (e.g., bitwise and floating point
+ * operations) for which user knows that his/her abstract domain
+ * cannot reason about it. A third example is that if the analysis is
+ * intra-procedural the user can choose to ignore all callsites.
+ */
 
 #include <boost/optional.hpp>
 #include <boost/noncopyable.hpp>
@@ -109,8 +127,6 @@ namespace llvm_ikos
   class CfgBuilder: public boost::noncopyable
   {
     
-    friend class SymExecSelectVisitor;
-
    public:
 
     typedef boost::optional<basic_block_t&> opt_basic_block_t;
