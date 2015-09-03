@@ -27,7 +27,7 @@
 #include <Transforms/NameValues.hh>
 #include <Transforms/MarkInternalInline.hh>
 #include <Transforms/LowerCstExpr.hh>
-//#include <Transforms/LowerSelect.hh>
+#include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
 
 static llvm::cl::opt<std::string>
@@ -52,6 +52,10 @@ DefaultDataLayout("default-data-layout",
 
 static llvm::cl::opt<bool>
 InlineAll ("ikos-inline-all", llvm::cl::desc ("Inline all functions"),
+           llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+IkosLowerSelect ("ikos-lower-select", llvm::cl::desc ("Lower all select instructions"),
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
@@ -237,7 +241,8 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
   // -- must be the last ones:
-  // pass_manager.add (new llvm_ikos::LowerSelect ());   
+  if (IkosLowerSelect)
+    pass_manager.add (new llvm_ikos::LowerSelect ());   
   pass_manager.add (new llvm_ikos::NameValues ()); 
 
   if (!AsmOutputFilename.empty ()) 
