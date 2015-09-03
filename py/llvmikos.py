@@ -80,6 +80,12 @@ def parseArgs (argv):
                        help='MEM limit (MB)', default=-1)
     p.add_argument ('--inline', dest='inline', help='Inline all functions',
                     default=False, action='store_true')
+    p.add_argument ("--disable-cc", dest="no_cc", 
+                       help="Disable compilation", action='store_true',
+                       default=False)
+    p.add_argument ("--disable-pp", dest="no_pp", 
+                       help="Disable preprocessing", action='store_true',
+                       default=False)
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN IKOS
     p.add_argument ('--ikos-dom',
@@ -89,6 +95,9 @@ def parseArgs (argv):
     p.add_argument ('--ikos-track',
                     help='Track registers, pointers, and memory',
                     choices=['reg', 'ptr', 'mem'], dest='track', default='reg')
+    p.add_argument ('--ikos-live',
+                    help='Use of liveness information',
+                    dest='ikos_live', default=False, action='store_true')        
     p.add_argument ('--ikos-answer',
                     help='Display computed invariants',
                     dest='show_invars', default=False, action='store_true')
@@ -99,14 +108,11 @@ def parseArgs (argv):
                     help='Instrument code with invariants',
                     dest='insert_invs', default=False, action='store_true')
     p.add_argument ('--ikos-disable-ptr',
-                    help='Disable translation of pointer arithmetic instructions',
+                    help='Disable translation of pointer arithmetic instructions (experimental)',
                     dest='ikos_disable_ptr', default=False, action='store_true')
     p.add_argument ('--ikos-cfg-simplify',
                     help='Simplify CFG built by Ikos (experimental)',
                     dest='ikos_cfg_simplify', default=False, action='store_true')
-    p.add_argument ('--ikos-live',
-                    help='Use of liveness information (experimental)',
-                    dest='ikos_live', default=False, action='store_true')        
     p.add_argument ('--ikos-cfg-interproc',
                     help='Build inter-procedural CFG (experimental)',
                     dest='ikos_interproc', default=False, action='store_true')
@@ -270,38 +276,36 @@ def main (argv):
                            os.pathsep + os.environ['PATH']
     
     args  = parseArgs (argv[1:])
-
     workdir = createWorkDir (args.temp_dir, args.save_temps)
-
     in_name = args.file
 
-    bc_out = defBCName (in_name, workdir)
-    if bc_out != in_name:
-        with stats.timer ('Clang'):
-            extra_args = []
-            if args.debug_info:
-                extra_args.append ('-g')
-            clang (in_name, bc_out, arch=args.machine, extra_args=extra_args)
-        stat ('Progress', 'CLANG')
+    if not args.no_cc:
+        bc_out = defBCName (in_name, workdir)
+        if bc_out != in_name:
+            with stats.timer ('Clang'):
+                extra_args = []
+                if args.debug_info:
+                    extra_args.append ('-g')
+                clang (in_name, bc_out, arch=args.machine, extra_args=extra_args)
+            stat ('Progress', 'CLANG')
+        in_name = bc_out
 
-    in_name = bc_out
+    if not args.no_pp:
+        pp_out = defPPName (in_name, workdir)
+        if pp_out != in_name:
+            with stats.timer ('LlvmPP'):
+                llvmpp (in_name, pp_out, arch=args.machine, args=args)
+            stat ('Progress', 'LLVMPP')
+        in_name = pp_out
 
-    pp_out = defPPName (in_name, workdir)
-    if pp_out != in_name:
-        with stats.timer ('LlvmPP'):
-            llvmpp (in_name, pp_out, arch=args.machine, args=args)
-        stat ('Progress', 'LLVMPP')
-
-    in_name = pp_out
-
-    final_pp_out = defOutPPName(in_name, workdir)
+    pp_out = defOutPPName(in_name, workdir)
     with stats.timer ('LlvmIkos'):
-        llvmikos (in_name, final_pp_out, args, cpu=args.cpu, mem=args.mem)
+        llvmikos (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
     stat ('Progress', 'LLVMIKOS')
 
-    if args.out_name is not None and args.out_name != final_pp_out:
-        if verbose: print 'cp {0} {1}'.format (final_pp_out, args.out_name)
-        shutil.copy2 (final_pp_out, args.out_name)
+    if args.out_name is not None and args.out_name != pp_out:
+        if verbose: print 'cp {0} {1}'.format (pp_out, args.out_name)
+        shutil.copy2 (pp_out, args.out_name)
 
     return 0
 
