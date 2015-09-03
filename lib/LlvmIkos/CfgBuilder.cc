@@ -268,12 +268,14 @@ namespace llvm_ikos
       const Value &v = *I.getIncomingValueForBlock (&m_inc_BB);
       
       if (LHS == &v) return;
-      
+
+#if 0      
       // OptimizationXX:
       if (Instruction *II = dyn_cast<Instruction> (I.getIncomingValueForBlock (&m_inc_BB))) {
         if (hasOnlyOnePHINodeUse (*II))
           return;
       }
+#endif 
       
       varname_t lhs = symVar(I);
       optional<z_lin_exp_t> rhs = lookup(v);
@@ -358,11 +360,13 @@ namespace llvm_ikos
         case BinaryOperator::UDiv:
         case BinaryOperator::SDiv:
         case BinaryOperator::Shl:
+#if 0
           // OptimizationXX: if the lhs has only one user and the user
           // is a phi node then we save one assignment.
           if (PHINode* PHI  = hasOnlyOnePHINodeUse (I)) {
               lhs = symVar (*PHI);
           }
+#endif 
           doArithmetic (lhs, I);
           break;
           // case BinaryOperator::And:
