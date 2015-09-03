@@ -1,5 +1,5 @@
-#ifndef IKOSINDVARSIMPLIFY 
-#define IKOSINDVARSIMPLIFY 
+#ifndef CRABINDVARSIMPLIFY 
+#define CRABINDVARSIMPLIFY 
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Dominators.h"
@@ -12,9 +12,9 @@
 
 using namespace llvm;
 
-namespace llvm_ikos {
+namespace crab_llvm {
 
-  class IkosIndVarSimplify : public LoopPass 
+  class CrabIndVarSimplify : public LoopPass 
   {
     LoopInfo        *LI;
     ScalarEvolution *SE;
@@ -29,7 +29,7 @@ namespace llvm_ikos {
 
     static char ID; 
 
-    IkosIndVarSimplify() : 
+    CrabIndVarSimplify() : 
         LoopPass(ID), LI(0), SE(0), DT(0), TD(0), Changed(false) 
     { }
 
@@ -47,7 +47,7 @@ namespace llvm_ikos {
       AU.setPreservesCFG();
     }
 
-    virtual const char* getPassName () const {return "IkosIndVarSimplify";}
+    virtual const char* getPassName () const {return "CrabIndVarSimplify";}
 
   private:
 

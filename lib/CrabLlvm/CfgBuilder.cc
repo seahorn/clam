@@ -1,6 +1,6 @@
 /* 
  * Translate a LLVM function to a CFG language understood by
- * ikos-core.
+ * crab.
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -15,37 +15,37 @@
 #include <boost/range/iterator_range.hpp>
 #include "boost/range/algorithm/set_algorithm.hpp"
 
-#include "ikos_llvm/SymEval.hh"
-#include "ikos_llvm/CfgBuilder.hh"
-#include "ikos_llvm/Support/CFG.hh"
-#include "ikos_llvm/Support/bignums.hh"
+#include "crab_llvm/SymEval.hh"
+#include "crab_llvm/CfgBuilder.hh"
+#include "crab_llvm/Support/CFG.hh"
+#include "crab_llvm/Support/bignums.hh"
 
 using namespace llvm;
 
 llvm::cl::opt<bool>
-LlvmIkosCFGSimplify ("ikos-cfg-simplify",
-             cl::desc ("Simplify Ikos CFG"), 
+LlvmCrabCFGSimplify ("crab-cfg-simplify",
+             cl::desc ("Simplify Crab CFG"), 
              cl::init (false));
 
 llvm::cl::opt<bool>
-LlvmIkosPrintCFG ("ikos-print-cfg",
-             cl::desc ("Print Ikos CFG"), 
+LlvmCrabPrintCFG ("crab-print-cfg",
+             cl::desc ("Print Crab CFG"), 
              cl::init (false));
 
 /* 
  To allow to track memory ignoring pointer arithmetic. This makes
- sense because some ikos analyses can reason about memory without
+ sense because some crab analyses can reason about memory without
  having any knowledge about pointer arithmetic.
 */
 llvm::cl::opt<bool>
-LlvmIkosNoGEP ("ikos-disable-ptr",
-             cl::desc ("Disable translation of pointer arithmetic in Ikos CFG"), 
+LlvmCrabNoGEP ("crab-disable-ptr",
+             cl::desc ("Disable translation of pointer arithmetic in Crab CFG"), 
              cl::init (false));
 
-namespace llvm_ikos
+namespace crab_llvm
 {
 
-  using namespace cfg_impl;
+  using namespace crab::cfg_impl;
 
   VariableType getType (Type * ty)
   {
@@ -398,7 +398,7 @@ namespace llvm_ikos
         case BinaryOperator::Sub:
             if ((*op1).is_constant())            
             { // cfg does not support subtraction of a constant by a
-              // variable because the ikos api for abstract domains
+              // variable because the crab api for abstract domains
               // does not support it.
               m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
               m_bb.sub (lhs, z_lin_exp_t (lhs), *op2);
@@ -413,7 +413,7 @@ namespace llvm_ikos
           {
             if ((*op1).is_constant())            
             { // cfg does not support division of a constant by a
-              // variable because the ikos api for abstract domains
+              // variable because the crab api for abstract domains
               // does not support it.
               m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
               m_bb.div (lhs, z_lin_exp_t (lhs), *op2);
@@ -450,7 +450,7 @@ namespace llvm_ikos
       // usually applied at the level of basic blocks so this
       // optimization still will help if within a block there are many
       // instructions that follow this idiom.
-      if (m_mem->getTrackLevel () < PTR || LlvmIkosNoGEP) {
+      if (m_mem->getTrackLevel () < PTR || LlvmCrabNoGEP) {
         /* --- Search for this idiom: 
 
            %_14 = zext i8 %_13 to i32
@@ -510,7 +510,7 @@ namespace llvm_ikos
     void visitGetElementPtrInst (GetElementPtrInst &I)
     {
       if ( (!isTracked (*I.getPointerOperand ())) ||
-           LlvmIkosNoGEP) {
+           LlvmCrabNoGEP) {
         m_bb.havoc (symVar (I));
         return;
       }
@@ -1063,13 +1063,13 @@ namespace llvm_ikos
     }
 
     
-    if (LlvmIkosCFGSimplify) 
+    if (LlvmCrabCFGSimplify) 
       m_cfg.simplify ();
 
-    if (LlvmIkosPrintCFG)
+    if (LlvmCrabPrintCFG)
       cout << m_cfg << "\n";
 
     return ;
   }
 
-} // end namespace llvm_ikos
+} // end namespace crab_llvm

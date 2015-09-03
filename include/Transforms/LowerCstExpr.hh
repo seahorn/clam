@@ -12,7 +12,7 @@
 
 /* Lower constant expressions to instructions */
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   using namespace llvm;
 

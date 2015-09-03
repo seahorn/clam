@@ -15,14 +15,14 @@ target_link_libraries (llvmpp LlvmPasses ${USED_LIBS})
 llvm_config (llvmpp ${LLVM_LINK_COMPONENTS})
 install(TARGETS llvmpp RUNTIME DESTINATION bin)
 
-add_executable(llvmikos llvmikos.cc)
-target_link_libraries (llvmikos 
-  LlvmIkosAnalysis LlvmIkosInstrumentation LlvmPasses 
-  ${IKOS_DBM_LIB} ${USED_LIBS})
-llvm_config (llvmikos ${LLVM_LINK_COMPONENTS})
-install(TARGETS llvmikos RUNTIME DESTINATION bin)
+add_executable(crabllvm crabllvm.cc)
+target_link_libraries (crabllvm
+  CrabLlvmAnalysis CrabLlvmInstrumentation LlvmPasses 
+  ${CRAB_DBM_LIB} ${CRAB_TERM_LIB}  ${USED_LIBS})
+llvm_config (crabllvm ${LLVM_LINK_COMPONENTS})
+install(TARGETS crabllvm RUNTIME DESTINATION bin)
 
-if (LLVMIKOS_STATIC_EXE)
+if (CRABLLVM_STATIC_EXE)
   set (CMAKE_EXE_LINKER_FLAGS "-static -static-libgcc -static-libstdc++")
   set_target_properties (llvmpp PROPERTIES LINK_SEARCH_START_STATIC ON)
   set_target_properties (llvmpp PROPERTIES LINK_SEARCH_END_STATIC ON)

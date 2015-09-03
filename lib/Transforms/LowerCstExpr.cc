@@ -4,7 +4,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   using namespace llvm;
 
@@ -216,6 +216,6 @@ namespace llvm_ikos
   }
 }
 
-static llvm::RegisterPass<llvm_ikos::LowerCstExprPass> 
+static llvm::RegisterPass<crab_llvm::LowerCstExprPass> 
 X ("lowercstexp",
    "Lower constant expressions to instructions");

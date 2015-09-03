@@ -1,4 +1,4 @@
-project(IkosLlvm)
+project(CrabLlvm)
 cmake_minimum_required(VERSION 2.8.11)
 
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
@@ -20,7 +20,6 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 # Add path for custom modules
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-#option (LLVMIKOS_STATIC_EXE "Static executable." OFF)
 if (TopLevel)
   set (CUSTOM_BOOST_ROOT "" CACHE PATH "Path to custom boost installation.")
   if (CUSTOM_BOOST_ROOT)
@@ -59,14 +58,13 @@ else ()
 endif ()
 
 if (GIT_FOUND)
-  set (IKOS_CORE_TAG "origin/master" CACHE STRING "ikos-core tag to use")
-  #set (IKOS_CORE_REPO "https://github.com/seahorn/ikos-core.git"
-  set (IKOS_CORE_REPO "git@bitbucket.org:jorgenavas/ikos-core.git"
-    CACHE STRING "ikos-core repository")
-  ExternalProject_Add(ikos-core
-    GIT_REPOSITORY ${IKOS_CORE_REPO}
-    GIT_TAG ${IKOS_CORE_TAG}
-    PREFIX ${CMAKE_BINARY_DIR}/ikos-core
+  set (CRAB_CORE_TAG "origin/master" CACHE STRING "crab tag to use")
+  set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
+       CACHE STRING "crab repository")
+  ExternalProject_Add(crab
+    GIT_REPOSITORY ${CRAB_CORE_REPO}
+    GIT_TAG ${CRAB_CORE_TAG}
+    PREFIX ${CMAKE_BINARY_DIR}/crab
     INSTALL_DIR ${CMAKE_BINARY_DIR}/run
     CMAKE_ARGS
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
@@ -79,25 +77,25 @@ if (GIT_FOUND)
     LOG_BUILD 1
     LOG_INSTALL 1)
 else ()
-    message (STATUS "Could not find git. Not downloading ikos-core")
+    message (STATUS "Could not find git. Not downloading crab")
 endif()
   
-find_package (IKOS)
-if (NOT IKOS_FOUND)
-  ExternalProject_Get_Property (ikos-core INSTALL_DIR)
-  set (IKOS_ROOT ${INSTALL_DIR} CACHE FILEPATH "Forced location of ikos-core" FORCE)
-  message(WARNING "No ikos found. Run \n\tcmake --build . --target ikos-core && cmake ${CMAKE_SOURCE_DIR}")
+find_package (Crab)
+if (NOT CRAB_FOUND)
+  ExternalProject_Get_Property (crab INSTALL_DIR)
+  set (CRAB_ROOT ${INSTALL_DIR} CACHE FILEPATH "Forced location of crab" FORCE)
+  message(WARNING "No crab found. Run \n\tcmake --build . --target crab && cmake ${CMAKE_SOURCE_DIR}")
   return()
 else()
   if (NOT TopLevel)
     # propagate variables to the caller
-    set (IKOS_FOUND ${IKOS_FOUND} PARENT_SCOPE)
-    set (IKOS_INCLUDE_DIR ${IKOS_INCLUDE_DIR} PARENT_SCOPE)
+    set (CRAB_FOUND ${CRAB_FOUND} PARENT_SCOPE)
+    set (CRAB_INCLUDE_DIR ${CRAB_INCLUDE_DIR} PARENT_SCOPE)
   endif()
 endif()  
 
-include_directories (${IKOS_INCLUDE_DIR})
-set_target_properties(ikos-core PROPERTIES EXCLUDE_FROM_ALL ON)
+include_directories (${CRAB_INCLUDE_DIR})
+set_target_properties(crab PROPERTIES EXCLUDE_FROM_ALL ON)
 
 if (TopLevel)
   # if top-level, offer to build llvm
@@ -185,7 +183,7 @@ if (TopLevel)
   endif()
 endif ()
 
-include_directories(${IkosLlvm_SOURCE_DIR}/include)
+include_directories(${CrabLlvm_SOURCE_DIR}/include)
 
 if (TopLevel)
   include_directories (${CMAKE_BINARY_DIR}/include)
@@ -194,7 +192,7 @@ if (TopLevel)
   add_subdirectory(py)
 endif()
 
-configure_file( include/ikos_llvm/config.h.cmake
-                ${CMAKE_BINARY_DIR}/include/ikos_llvm/config.h )
+configure_file( include/crab_llvm/config.h.cmake
+                ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h )
 
-install(DIRECTORY include/ikos_llvm DESTINATION include/ikos_llvm)
+install(DIRECTORY include/crab_llvm DESTINATION include/crab_llvm)

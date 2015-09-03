@@ -1,5 +1,5 @@
 ///
-// LlvmIkos-- Abstract Interpretation-based Analyzer for LLVM bitcode 
+// CrabLlvm-- Abstract Interpretation-based Analyzer for LLVM bitcode 
 ///
 
 #include "llvm/LinkAllPasses.h"
@@ -21,8 +21,8 @@
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/IR/Verifier.h"
 
-#include "ikos_llvm/LlvmIkos.hh"
-#include "ikos_llvm/LlvmCIkos.hh"
+#include "crab_llvm/CrabLlvm.hh"
+#include "crab_llvm/ConCrabLlvm.hh"
 
 #include <Transforms/LowerGvInitializers.hh>
 #include <Transforms/NameValues.hh>
@@ -31,7 +31,7 @@
 #include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
 
-#include <ikos_llvm/Transforms/InsertInvariants.hh>
+#include <crab_llvm/Transforms/InsertInvariants.hh>
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
@@ -54,14 +54,14 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
 static llvm::cl::opt<bool>
-Concurrency ("ikos-concur", llvm::cl::desc ("Analysis of concurrent programs"),
+Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs"),
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-InsertInvs ("ikos-insert-invs", llvm::cl::desc ("Instrument code with invariants"),
+InsertInvs ("crab-insert-invs", llvm::cl::desc ("Instrument code with invariants"),
            llvm::cl::init (false));
 
-using namespace llvm_ikos;
+using namespace crab_llvm;
 
 // removes extension from filename if there is one
 std::string getFileName(const std::string &str) {
@@ -75,7 +75,7 @@ std::string getFileName(const std::string &str) {
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;  // calls llvm_shutdown() on exit
   llvm::cl::ParseCommandLineOptions(argc, argv,
-                                    "LlvmIkos-- Abstract Interpretation-based Analyzer of LLVM bitcode\n");
+                                    "CrabLlvm-- Abstract Interpretation-based Analyzer of LLVM bitcode\n");
 
   llvm::sys::PrintStackTraceOnErrorSignal();
   llvm::PrettyStackTraceProgram PSTP(argc, argv);
@@ -148,23 +148,23 @@ int main(int argc, char **argv) {
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   // -- remove unreachable blocks 
-  pass_manager.add (new llvm_ikos::RemoveUnreachableBlocksPass ());
+  pass_manager.add (new crab_llvm::RemoveUnreachableBlocksPass ());
   // -- remove switch constructions
   pass_manager.add (llvm::createLowerSwitchPass());
   // -- lower constant expressions to instructions
-  pass_manager.add (new llvm_ikos::LowerCstExprPass ());   
+  pass_manager.add (new crab_llvm::LowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
-  // -- must be the last ones before running ikos:
-  //pass_manager.add (new llvm_ikos::LowerSelect ());   
-  pass_manager.add (new llvm_ikos::NameValues ()); 
+  // -- must be the last ones before running crab:
+  //pass_manager.add (new crab_llvm::LowerSelect ());   
+  pass_manager.add (new crab_llvm::NameValues ()); 
 
   if (Concurrency)
-    pass_manager.add (new llvm_ikos::LlvmCIkos ());
+    pass_manager.add (new crab_llvm::ConCrabLlvm ());
   else {
-    pass_manager.add (new llvm_ikos::LlvmIkos ());
+    pass_manager.add (new crab_llvm::CrabLlvm ());
     if (InsertInvs) {
-      pass_manager.add (new llvm_ikos::InsertInvariants ());
+      pass_manager.add (new crab_llvm::InsertInvariants ());
       // -- simplify invariants added in the bytecode.
       pass_manager.add (llvm::createInstructionCombiningPass ()); 
     }

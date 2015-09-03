@@ -1,3 +1,3 @@
-add_subdirectory (LlvmIkos)
+add_subdirectory (CrabLlvm)
 add_subdirectory (Transforms)
 

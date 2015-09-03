@@ -3,7 +3,7 @@
 
 using namespace llvm;
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   char RemoveUnreachableBlocksPass::ID = 0;
   

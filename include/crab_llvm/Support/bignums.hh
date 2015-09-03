@@ -2,9 +2,9 @@
 #define __BIGNUMS_HH_
 
 /// Extra support for bignums
-#include <ikos/bignums.hpp>
+#include <crab/common/bignums.hpp>
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   using namespace ikos;
 

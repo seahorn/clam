@@ -3,7 +3,7 @@
 
 /* 
  * Translate a LLVM function to a CFG language understood by
- * ikos-core.
+ * crab.
  *
  * WARNING: the translation is, in general, an abstraction of the
  * concrete semantics of the input program. This is a key feature to
@@ -30,86 +30,84 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/DataLayout.h"
 
-#include "ikos_llvm/MemAnalysis.hh"
+#include "crab_llvm/MemAnalysis.hh"
 
-#include <ikos/cfg/Cfg.hpp>
-#include <ikos/cfg/VarFactory.hpp>
-#include <ikos/bignums.hpp>
+#include <crab/cfg/Cfg.hpp>
+#include <crab/cfg/VarFactory.hpp>
+#include <crab/common/bignums.hpp>
 
-namespace cfg
-{
-  namespace var_factory_impl
-  {
-    namespace indexed_string_impl 
-    {
-      // To print variable names
-      template<> inline std::string get_str(const llvm::Value *v) 
-      {return v->getName().str();}
-    } 
-  }
-}
+namespace crab { namespace cfg { 
+   namespace var_factory_impl {
+      namespace indexed_string_impl {
+         // To print variable names
+         template<> inline std::string get_str(const llvm::Value *v) 
+         {return v->getName().str();}
+      } 
+   }
+}}
 
-namespace cfg_impl
-{
-  using namespace cfg;
+namespace crab {
+  namespace cfg_impl {
 
-  // To print basic block labels
-  template<> inline std::string get_label_str(llvm::BasicBlock *B) 
-  { return B->getName (); }
+     using namespace cfg;
 
-  // Variable factory from llvm::Value's
-  class LlvmVariableFactory : public boost::noncopyable  
-  {
-    typedef var_factory_impl::VariableFactory< const llvm::Value* > LlvmVariableFactory_t;
-    std::unique_ptr< LlvmVariableFactory_t > m_factory; 
-    
-   public: 
-    
-    typedef LlvmVariableFactory_t::variable_t varname_t;
-    typedef LlvmVariableFactory_t::const_var_range const_var_range;
-    
-    LlvmVariableFactory(): m_factory (new LlvmVariableFactory_t()){ }
-
-    const_var_range get_shadow_vars () const 
-    {
-      return m_factory->get_shadow_vars ();
-    }
-
-    // to generate fresh varname_t without having a Value
-    varname_t get ()  
-    {
-      return m_factory->get ();
-    }
+     // To print basic block labels
+     template<> inline std::string get_label_str(llvm::BasicBlock *B) 
+     { return B->getName (); }
   
-    // to generate varname_t without having a Value
-    varname_t get (int k)  
-    {
-      return m_factory->get (k);
-    }
+     // Variable factory from llvm::Value's
+     class LlvmVariableFactory : public boost::noncopyable  
+     {
+       typedef var_factory_impl::VariableFactory< const llvm::Value* > LlvmVariableFactory_t;
+       std::unique_ptr< LlvmVariableFactory_t > m_factory; 
+       
+      public: 
+       
+       typedef LlvmVariableFactory_t::variable_t varname_t;
+       typedef LlvmVariableFactory_t::const_var_range const_var_range;
+       
+       LlvmVariableFactory(): m_factory (new LlvmVariableFactory_t()){ }
 
-    varname_t operator[](const llvm::Value &v)
-    {
-      const llvm::Value *V = &v;
-      return (*m_factory)[V];			      
-    }
-  }; 
-
-  typedef LlvmVariableFactory VariableFactory;
-  typedef typename VariableFactory::varname_t varname_t;
-  // CFG
-  typedef ikos::variable< ikos::z_number, varname_t > z_var;
-  typedef llvm::BasicBlock* basic_block_label_t;
-  typedef Cfg< basic_block_label_t, varname_t> cfg_t;
-  typedef cfg_t::basic_block_t basic_block_t;
-  typedef typename cfg_t::basic_block_t::z_lin_exp_t z_lin_exp_t;
-  typedef typename cfg_t::basic_block_t::z_lin_cst_t z_lin_cst_t;
-  typedef ikos::linear_constraint_system<ikos::z_number, varname_t> z_lin_cst_sys_t;
-
-} // end namespace cfg_impl
+       const_var_range get_shadow_vars () const 
+       {
+         return m_factory->get_shadow_vars ();
+       }
+       
+       // to generate fresh varname_t without having a Value
+       varname_t get ()  
+       {
+         return m_factory->get ();
+       }
+       
+       // to generate varname_t without having a Value
+       varname_t get (int k)  
+       {
+         return m_factory->get (k);
+       }
+       
+       varname_t operator[](const llvm::Value &v)
+       {
+         const llvm::Value *V = &v;
+         return (*m_factory)[V];			      
+       }
+     }; 
+  
+     typedef LlvmVariableFactory VariableFactory;
+     typedef typename VariableFactory::varname_t varname_t;
+     // CFG
+     typedef ikos::variable< ikos::z_number, varname_t > z_var;
+     typedef llvm::BasicBlock* basic_block_label_t;
+     typedef Cfg< basic_block_label_t, varname_t> cfg_t;
+     typedef cfg_t::basic_block_t basic_block_t;
+     typedef typename cfg_t::basic_block_t::z_lin_exp_t z_lin_exp_t;
+     typedef typename cfg_t::basic_block_t::z_lin_cst_t z_lin_cst_t;
+     typedef ikos::linear_constraint_system<ikos::z_number, varname_t> z_lin_cst_sys_t;
+  } // end namespace cfg_impl
+} // end namespace crab
 
 namespace
 {
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, cfg_impl::cfg_t cfg)
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, crab::cfg_impl::cfg_t cfg)
   {
     std::ostringstream s;
     s << cfg;
@@ -118,10 +116,10 @@ namespace
   }
 }
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   using namespace std;
-  using namespace cfg_impl;
+  using namespace crab::cfg_impl;
   using namespace llvm;
 
   class CfgBuilder: public boost::noncopyable
@@ -184,6 +182,6 @@ namespace llvm_ikos
 
   }; // end class CfgBuilder
 
-} // end namespace llvm_ikos
+} // end namespace crab_llvm
 
 #endif 

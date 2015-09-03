@@ -4,7 +4,7 @@
 #include "llvm/Pass.h"
 #include "llvm/IR/Function.h"
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   using namespace llvm;
   

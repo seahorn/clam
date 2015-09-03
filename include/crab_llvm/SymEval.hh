@@ -6,16 +6,15 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/APInt.h"
 
-#include "ikos_llvm/Support/bignums.hh"
+#include "crab_llvm/Support/bignums.hh"
+#include <crab/cfg/Cfg.hpp>
 
-#include <ikos/cfg/Cfg.hpp>
-
-namespace llvm_ikos
+namespace crab_llvm
 {
 
   using namespace llvm;
   using namespace std;
-  using namespace cfg;
+  using namespace crab::cfg;
 
   //! Map llvm values to integer linear expressions
   template<typename VariableFactory, typename ZLinExp>

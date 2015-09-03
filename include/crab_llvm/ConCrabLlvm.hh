@@ -1,25 +1,25 @@
-#ifndef __LLVM_CIKOS_HPP_
-#define __LLVM_CIKOS_HPP_
+#ifndef __CONC_CRAB_LLVM_HPP_
+#define __CONC_CRAB_LLVM_HPP_
 
 /* 
- * Infer invariants using Ikos for concurrent programs.
+ * Infer invariants using Crab for concurrent programs.
  */
 
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "ikos_llvm/MemAnalysis.hh"
-#include "ikos_llvm/LlvmIkos.hh"
+#include "crab_llvm/MemAnalysis.hh"
+#include "crab_llvm/CrabLlvm.hh"
 
-#include <ikos/cfg/ConcSys.hpp>
+#include <crab/cfg/ConcSys.hpp>
 
-namespace llvm_ikos
+namespace crab_llvm
 {
 
   using namespace llvm;
-  using namespace cfg_impl;
+  using namespace crab::cfg_impl;
 
-  class LlvmCIkos : public llvm::ModulePass
+  class ConCrabLlvm : public llvm::ModulePass
   {
     // --- used by the builder of each cfg
     MemAnalysis m_mem;    
@@ -34,9 +34,9 @@ namespace llvm_ikos
 
     static char ID;        
     
-    LlvmCIkos (): llvm::ModulePass (ID) { }
+    ConCrabLlvm (): llvm::ModulePass (ID) { }
 
-    ~LlvmCIkos () { }
+    ~ConCrabLlvm () { }
 
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const ;
 
@@ -50,6 +50,6 @@ namespace llvm_ikos
 
   };
 
-} // end namespace llvm_ikos
+} // end namespace
 
 #endif

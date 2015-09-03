@@ -11,7 +11,7 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/Support/Debug.h"
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   using namespace llvm;
 

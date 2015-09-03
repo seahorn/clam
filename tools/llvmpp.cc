@@ -22,7 +22,7 @@
 
 #include "llvm/IR/Verifier.h"
 
-#include <Transforms/IkosIndVarSimplify.hh>
+#include <Transforms/CrabIndVarSimplify.hh>
 #include <Transforms/LowerGvInitializers.hh>
 #include <Transforms/NameValues.hh>
 #include <Transforms/MarkInternalInline.hh>
@@ -51,15 +51,15 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
 static llvm::cl::opt<bool>
-InlineAll ("ikos-inline-all", llvm::cl::desc ("Inline all functions"),
+InlineAll ("crab-inline-all", llvm::cl::desc ("Inline all functions"),
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-IkosLowerSelect ("ikos-lower-select", llvm::cl::desc ("Lower all select instructions"),
+CrabLowerSelect ("crab-lower-select", llvm::cl::desc ("Lower all select instructions"),
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-Concurrency ("ikos-concur", llvm::cl::desc ("Preprocessing for concurrent analysis"),
+Concurrency ("crab-concur", llvm::cl::desc ("Preprocessing for concurrent analysis"),
            llvm::cl::init (false));
 
 
@@ -165,7 +165,7 @@ int main(int argc, char **argv) {
   // -- optimizations inline them if requested
   pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
   pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global  
-  pass_manager.add (new llvm_ikos::RemoveUnreachableBlocksPass ());
+  pass_manager.add (new crab_llvm::RemoveUnreachableBlocksPass ());
   // -- global optimizations
   pass_manager.add (llvm::createGlobalOptimizerPass());
   
@@ -196,12 +196,12 @@ int main(int argc, char **argv) {
   
   if (InlineAll)
   {
-    pass_manager.add (new llvm_ikos::MarkInternalInline ());   
+    pass_manager.add (new crab_llvm::MarkInternalInline ());   
     pass_manager.add (llvm::createAlwaysInlinerPass ());
     pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global
   }
   
-  pass_manager.add (new llvm_ikos::RemoveUnreachableBlocksPass ());
+  pass_manager.add (new crab_llvm::RemoveUnreachableBlocksPass ());
   pass_manager.add(llvm::createDeadInstEliminationPass());
     
   // canonical form for loops
@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
   // loop-closed SSA 
   pass_manager.add (llvm::createLCSSAPass());
   // induction variable
-  // pass_manager.add (new llvm_ikos::IkosIndVarSimplify ());
+  // pass_manager.add (new crab_llvm::CrabIndVarSimplify ());
   // trivial invariants outside loops 
   pass_manager.add (llvm::createBasicAliasAnalysisPass());
   pass_manager.add (llvm::createLICMPass()); //LICM needs alias analysis
@@ -220,30 +220,26 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createCFGSimplificationPass ()); // cleanup unnecessary blocks 
   
   // -- lower initializers of global variables
-  pass_manager.add (new llvm_ikos::LowerGvInitializers ());   
+  pass_manager.add (new crab_llvm::LowerGvInitializers ());   
 
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
-  // -- remove functions without exit points
-  // pass_manager.add (new ikos_cc::MarkNoReturnFunctions ());
-  // -- MarkNoReturnFunctions only insert unreachable instructions we
-  // -- then perform DCE
   pass_manager.add (llvm::createGlobalDCEPass ()); 
   pass_manager.add (llvm::createDeadCodeEliminationPass());
   // -- remove unreachable blocks also dead cycles
-  pass_manager.add (new llvm_ikos::RemoveUnreachableBlocksPass ());
+  pass_manager.add (new crab_llvm::RemoveUnreachableBlocksPass ());
 
   // -- remove switch constructions
   pass_manager.add (llvm::createLowerSwitchPass());
   
   // -- lower constant expressions to instructions
-  pass_manager.add (new llvm_ikos::LowerCstExprPass ());   
+  pass_manager.add (new crab_llvm::LowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
   // -- must be the last ones:
-  if (IkosLowerSelect)
-    pass_manager.add (new llvm_ikos::LowerSelect ());   
-  pass_manager.add (new llvm_ikos::NameValues ()); 
+  if (CrabLowerSelect)
+    pass_manager.add (new crab_llvm::LowerSelect ());   
+  pass_manager.add (new crab_llvm::NameValues ()); 
 
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (asmOutput->os ()));

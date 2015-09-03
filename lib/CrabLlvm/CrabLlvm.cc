@@ -10,49 +10,45 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 
-#include "ikos_llvm/config.h"
-#include "ikos_llvm/LlvmIkos.hh"
-#include "ikos_llvm/SymEval.hh"
-#include "ikos_llvm/AbstractDomainsImpl.hh"
-#include "ikos/analysis/FwdAnalyzer.hpp"
+#include "crab_llvm/config.h"
+#include "crab_llvm/CrabLlvm.hh"
+#include "crab_llvm/SymEval.hh"
+#include "crab_llvm/AbstractDomainsImpl.hh"
+#include "crab/analysis/FwdAnalyzer.hpp"
 
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
 #endif 
 
 using namespace llvm;
-using namespace llvm_ikos;
+using namespace crab_llvm;
 
 llvm::cl::opt<bool>
-LlvmIkosPrintAns ("ikos-answer", llvm::cl::desc ("Print Ikos invariants"),
+LlvmCrabPrintAns ("crab-answer", llvm::cl::desc ("Print Crab invariants"),
              llvm::cl::init (false));
 
-llvm::cl::opt<IkosDomain>
-LlvmIkosDomain("ikos-dom",
-       llvm::cl::desc ("Ikos abstract domain used to infer invariants"),
+llvm::cl::opt<CrabDomain>
+LlvmCrabDomain("crab-dom",
+       llvm::cl::desc ("Crab abstract domain used to infer invariants"),
        llvm::cl::values 
        (clEnumValN (INTERVALS, "int",
                     "Classical interval domain (default)"),
-#if IKOS_MINOR_VERSION >= 2
         clEnumValN (INTERVALS_CONGRUENCES, "ric",
                     "Reduced product of intervals with congruences"),
         clEnumValN (ZONES , "zones",
                     "Difference-Bounds Matrix (or Zones) domain"),
-        // clEnumValN (OCTAGONS, "oct",
-        //            "Octagon domain"),
         clEnumValN (TERMS, "term",
                     "Term-enriched interval domain."),
-#endif 
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
 
 llvm::cl::opt<bool>
-LlvmIkosLive("ikos-live", 
-        llvm::cl::desc("Run Ikos with live ranges"),
+LlvmCrabLive("crab-live", 
+        llvm::cl::desc("Run Crab with live ranges"),
         llvm::cl::init (false));
 
 llvm::cl::opt<enum TrackedPrecision>
-LlvmIkosTrackLev("ikos-track-lvl",
+LlvmCrabTrackLev("crab-track-lvl",
    llvm::cl::desc ("Track level for Cfg and abstract domains"),
    cl::values (clEnumValN (REG, "reg", "Primitive registers only"),
                clEnumValN (PTR, "ptr", "REG + pointers"),
@@ -61,87 +57,76 @@ LlvmIkosTrackLev("ikos-track-lvl",
    cl::init (TrackedPrecision::REG));
 
 llvm::cl::opt<bool>
-LlvmIkosInterProc ("ikos-cfg-interproc",
+LlvmCrabInterProc ("crab-cfg-interproc",
              cl::desc ("Build inter-procedural Cfg"), 
              cl::init (false));
 
 
-namespace llvm_ikos
+namespace crab_llvm
 {
 
-  using namespace analyzer;
+  using namespace crab::analyzer;
   using namespace domain_impl;
 
-  char llvm_ikos::LlvmIkos::ID = 0;
+  char crab_llvm::CrabLlvm::ID = 0;
 
-  bool LlvmIkos::runOnModule (llvm::Module &M)
+  bool CrabLlvm::runOnModule (llvm::Module &M)
   {
     // -- initialize from cli options
-    m_absdom = LlvmIkosDomain;
-    m_runlive = LlvmIkosLive;
+    m_absdom = LlvmCrabDomain;
+    m_runlive = LlvmCrabLive;
 
 #ifdef HAVE_DSA
     m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (),
-                         LlvmIkosTrackLev);
+                         LlvmCrabTrackLev);
 #endif     
 
     bool change=false;
     for (auto &f : M) 
       change |= runOnFunction (f); 
     
-    if (LlvmIkosPrintAns) dump (M);
+    if (LlvmCrabPrintAns) dump (M);
     return change;
   }
 
-  bool LlvmIkos::runOnFunction (llvm::Function &F)
+  bool CrabLlvm::runOnFunction (llvm::Function &F)
   {
     // -- skip functions without a body
     if (F.isDeclaration () || F.empty ()) return false;
 
-    CfgBuilder builder (F, m_vfac, &m_mem, LlvmIkosInterProc);
+    CfgBuilder builder (F, m_vfac, &m_mem, LlvmCrabInterProc);
     cfg_t &cfg = builder.makeCfg ();
 
     bool change=false;
     switch (m_absdom)
     {
       case INTERVALS:  
-#if IKOS_MINOR_VERSION >= 2
-          change = (LlvmIkosTrackLev >= MEM ? 
-                    runOnCfg <arr_interval_domain_t> (cfg, F) : 
-                    runOnCfg <interval_domain_t> (cfg, F)) ; 
-#else
-          change = runOnCfg <interval_domain_t> (cfg, F); 
-#endif 
+        change = (LlvmCrabTrackLev >= MEM ? 
+                  runOnCfg <arr_interval_domain_t> (cfg, F) : 
+                  runOnCfg <interval_domain_t> (cfg, F)) ; 
         break;
-#if IKOS_MINOR_VERSION >= 2
       case INTERVALS_CONGRUENCES: 
-         change = (LlvmIkosTrackLev >= MEM ? 
-                   runOnCfg <arr_ric_domain_t> (cfg, F) : 
-                   runOnCfg <ric_domain_t> (cfg, F)) ; 
+        change = (LlvmCrabTrackLev >= MEM ? 
+                  runOnCfg <arr_ric_domain_t> (cfg, F) : 
+                  runOnCfg <ric_domain_t> (cfg, F)) ; 
         break;
       case ZONES: 
-         change = (LlvmIkosTrackLev >= MEM ? 
-                   runOnCfg <arr_dbm_domain_t> (cfg, F) :  
-                   runOnCfg <dbm_domain_t> (cfg, F)) ; 
-        break;
-      case OCTAGONS: 
-        change = (LlvmIkosTrackLev >= MEM ? 
-                  runOnCfg <arr_octagon_domain_t> (cfg, F) : 
-                  runOnCfg <octagon_domain_t> (cfg, F)) ; 
+        change = (LlvmCrabTrackLev >= MEM ? 
+                  runOnCfg <arr_dbm_domain_t> (cfg, F) :  
+                  runOnCfg <dbm_domain_t> (cfg, F)) ; 
         break;
       case TERMS:
-        change = (LlvmIkosTrackLev >= MEM ? 
+        change = (LlvmCrabTrackLev >= MEM ? 
                   runOnCfg <arr_term_domain_t> (cfg, F) : 
                   runOnCfg <term_domain_t> (cfg, F)) ; 
         break;
-#endif
       default: assert(false && "Unsupported abstract domain");
     }
     return change;
   }
 
   template<typename AbsDomain>
-  bool LlvmIkos::runOnCfg (cfg_t& cfg, llvm::Function &F)
+  bool CrabLlvm::runOnCfg (cfg_t& cfg, llvm::Function &F)
   {
     typedef typename NumFwdAnalyzer <cfg_t, AbsDomain, 
                                      VariableFactory, 
@@ -165,7 +150,7 @@ namespace llvm_ikos
 
 
   // Write to standard output the invariants 
-  void LlvmIkos::dump (llvm::Module &M) const
+  void CrabLlvm::dump (llvm::Module &M) const
   {
     for (auto &F : M) {
       if (F.isDeclaration () || F.empty ()) continue;
@@ -180,7 +165,7 @@ namespace llvm_ikos
     }
   }
 
-  void LlvmIkos::getAnalysisUsage (llvm::AnalysisUsage &AU) const
+  void CrabLlvm::getAnalysisUsage (llvm::AnalysisUsage &AU) const
   {
     AU.setPreservesAll ();
 #ifdef HAVE_DSA
@@ -190,11 +175,11 @@ namespace llvm_ikos
 #endif 
   } 
 
-} // end namespace llvm_ikos
+} // end namespace 
 
-static llvm::RegisterPass<llvm_ikos::LlvmIkos> 
-X ("llvm-ikos",
-   "Infer invariants using Ikos", 
+static llvm::RegisterPass<crab_llvm::CrabLlvm> 
+X ("crab-llvm",
+   "Infer invariants using Crab", 
    false, false);
    
 

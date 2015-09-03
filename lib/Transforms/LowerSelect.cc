@@ -2,7 +2,7 @@
 #include "Transforms/LowerSelect.hh"
 #include <vector>
 
-namespace llvm_ikos 
+namespace crab_llvm 
 {
 
 using namespace llvm;
@@ -103,6 +103,6 @@ void LowerSelect::processSelectInst(SelectInst *SI)
 } // end namespace
 
 // Registration of the pass
-static llvm::RegisterPass<llvm_ikos::LowerSelect> 
+static llvm::RegisterPass<crab_llvm::LowerSelect> 
 X ("lowerselect", "Lower select instructions",
    false, false);

@@ -87,36 +87,36 @@ def parseArgs (argv):
                        help="Disable preprocessing", action='store_true',
                        default=False)
     p.add_argument ('file', metavar='FILE', help='Input file')
-    ### BEGIN IKOS
-    p.add_argument ('--ikos-dom',
-                    help='Choose IKOS abstract domain',
+    ### BEGIN CRAB
+    p.add_argument ('--crab-dom',
+                    help='Choose abstract domain',
                     choices=['int','ric','zones','term'],
-                    dest='ikos_dom', default='int')
-    p.add_argument ('--ikos-track',
+                    dest='crab_dom', default='int')
+    p.add_argument ('--crab-track',
                     help='Track registers, pointers, and memory',
                     choices=['reg', 'ptr', 'mem'], dest='track', default='reg')
-    p.add_argument ('--ikos-live',
+    p.add_argument ('--crab-live',
                     help='Use of liveness information',
-                    dest='ikos_live', default=False, action='store_true')        
-    p.add_argument ('--ikos-answer',
+                    dest='crab_live', default=False, action='store_true')        
+    p.add_argument ('--crab-answer',
                     help='Display computed invariants',
                     dest='show_invars', default=False, action='store_true')
-    p.add_argument ('--ikos-print-cfg',
-                    help='Print Ikos CFG',
+    p.add_argument ('--crab-print-cfg',
+                    help='Print Crab CFG',
                     dest='print_cfg', default=False, action='store_true')
-    p.add_argument ('--ikos-insert-invs',
+    p.add_argument ('--crab-insert-invs',
                     help='Instrument code with invariants',
                     dest='insert_invs', default=False, action='store_true')
-    p.add_argument ('--ikos-disable-ptr',
+    p.add_argument ('--crab-disable-ptr',
                     help='Disable translation of pointer arithmetic instructions (experimental)',
-                    dest='ikos_disable_ptr', default=False, action='store_true')
-    p.add_argument ('--ikos-cfg-simplify',
-                    help='Simplify CFG built by Ikos (experimental)',
-                    dest='ikos_cfg_simplify', default=False, action='store_true')
-    p.add_argument ('--ikos-cfg-interproc',
+                    dest='crab_disable_ptr', default=False, action='store_true')
+    p.add_argument ('--crab-cfg-simplify',
+                    help='Simplify CFG built by Crab (experimental)',
+                    dest='crab_cfg_simplify', default=False, action='store_true')
+    p.add_argument ('--crab-cfg-interproc',
                     help='Build inter-procedural CFG (experimental)',
-                    dest='ikos_interproc', default=False, action='store_true')
-    #### END IKOS
+                    dest='crab_interproc', default=False, action='store_true')
+    #### END CRAB
     
     args = p.parse_args (argv)
     
@@ -130,7 +130,7 @@ def parseArgs (argv):
 
 def createWorkDir (dname = None, save = False):
     if dname is None:
-        workdir = tempfile.mkdtemp (prefix='llvmikos-')
+        workdir = tempfile.mkdtemp (prefix='crabllvm-')
     else:
         workdir = dname
 
@@ -141,15 +141,15 @@ def createWorkDir (dname = None, save = False):
         atexit.register (shutil.rmtree, path=workdir)
     return workdir
 
-def getLlvmIkos ():
-    llvmikos = None
-    if 'LLVMIKOS' in os.environ: llvmikos = os.environ ['LLVMIKOS']
-    if not isexec (llvmikos):
-        llvmikos = os.path.join (root, "bin/llvmikos")
-    if not isexec (llvmikos): llvmikos = which ('llvmikos')
-    if not isexec (llvmikos):
-        raise IOError ("Cannot find llvmikos")
-    return llvmikos
+def getCrabLlvm ():
+    crabllvm = None
+    if 'CRABLLVM' in os.environ: crabllvm = os.environ ['CRABLLVM']
+    if not isexec (crabllvm):
+        crabllvm = os.path.join (root, "bin/crabllvm")
+    if not isexec (crabllvm): crabllvm = which ('crabllvm')
+    if not isexec (crabllvm):
+        raise IOError ("Cannot find crabllvm")
+    return crabllvm
 
 def getLlvmPP ():
     llvmpp = None
@@ -159,7 +159,7 @@ def getLlvmPP ():
         llvmpp = os.path.join (root, "bin/llvmpp")
     if not isexec (llvmpp): llvmpp = which ('llvmpp')
     if not isexec (llvmpp):
-        raise IOError ("Cannot find llvmikos pre-processor")
+        raise IOError ("Cannot find crabllvm pre-processor")
     return llvmpp
 
 def getClang ():
@@ -205,7 +205,7 @@ def llvmpp (in_name, out_name, arch, args, extra_args=[]):
         out_name = defPPName (in_name)
 
     llvmpp_args = [getLlvmPP (), '-o', out_name, in_name ]
-    if args.inline: llvmpp_args.append ('--ikos-inline-all')
+    if args.inline: llvmpp_args.append ('--crab-inline-all')
     llvmpp_args.extend (extra_args)
 
     if verbose: print ' '.join (llvmpp_args)
@@ -216,37 +216,37 @@ def sharedLib (base):
     if sys.platform.startswith ('darwin'): ext = '.dylib'
     return base + ext
 
-# Run llvmikos
-def llvmikos (in_name, out_name, args, cpu = -1, mem = -1):
+# Run crabllvm
+def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     def set_limits ():
         if mem > 0:
             mem_bytes = mem * 1024 * 1024
             resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
 
-    llvmikos_cmd = [ getLlvmIkos(), in_name,
+    crabllvm_cmd = [ getCrabLlvm(), in_name,
                      '-oll', out_name]
 
-    llvmikos_cmd.append ('--ikos-dom={0}'.format (args.ikos_dom))
-    llvmikos_cmd.append ('--ikos-track-lvl={0}'.format (args.track))
+    crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
+    crabllvm_cmd.append ('--crab-track-lvl={0}'.format (args.track))
 
-    if args.ikos_disable_ptr:
-        llvmikos_cmd.append ('--ikos-disable-ptr')
-    if args.ikos_cfg_simplify:
-        llvmikos_cmd.append ('--ikos-cfg-simplify')
-    if args.ikos_interproc:
-        llvmikos_cmd.append ('--ikos-cfg-interproc')
-    if args.ikos_live:
-        llvmikos_cmd.append ('--ikos-live')
+    if args.crab_disable_ptr:
+        crabllvm_cmd.append ('--crab-disable-ptr')
+    if args.crab_cfg_simplify:
+        crabllvm_cmd.append ('--crab-cfg-simplify')
+    if args.crab_interproc:
+        crabllvm_cmd.append ('--crab-cfg-interproc')
+    if args.crab_live:
+        crabllvm_cmd.append ('--crab-live')
     if args.show_invars:
-        llvmikos_cmd.append ('--ikos-answer')
+        crabllvm_cmd.append ('--crab-answer')
     if args.print_cfg:
-        llvmikos_cmd.append ('--ikos-print-cfg')
+        crabllvm_cmd.append ('--crab-print-cfg')
     if args.insert_invs:
-        llvmikos_cmd.append ('--ikos-insert-invs')
+        crabllvm_cmd.append ('--crab-insert-invs')
 
-    if verbose: print ' '.join (llvmikos_cmd)
+    if verbose: print ' '.join (crabllvm_cmd)
 
-    p = sub.Popen (llvmikos_cmd, preexec_fn=set_limits)
+    p = sub.Popen (crabllvm_cmd, preexec_fn=set_limits)
 
     global running_process
     running_process = p
@@ -261,7 +261,7 @@ def llvmikos (in_name, out_name, args, cpu = -1, mem = -1):
         ## kill the timer if the process has terminated already
         if timer.isAlive (): timer.cancel ()
 
-    ## if llvmikos did not terminate properly, propagate this error code
+    ## if crabllvm did not terminate properly, propagate this error code
     if returnvalue != 0: sys.exit (returnvalue)
 
 
@@ -299,9 +299,9 @@ def main (argv):
         in_name = pp_out
 
     pp_out = defOutPPName(in_name, workdir)
-    with stats.timer ('LlvmIkos'):
-        llvmikos (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
-    stat ('Progress', 'LLVMIKOS')
+    with stats.timer ('CrabLlvm'):
+        crabllvm (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
+    stat ('Progress', 'CRABLLVM')
 
     if args.out_name is not None and args.out_name != pp_out:
         if verbose: print 'cp {0} {1}'.format (pp_out, args.out_name)

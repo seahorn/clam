@@ -5,9 +5,6 @@
 
 using namespace llvm;
 
-namespace llvm_ikos
-{
-  
-  char MarkInternalInline::ID = 0;
-  
+namespace crab_llvm {
+  char MarkInternalInline::ID = 0;  
 }

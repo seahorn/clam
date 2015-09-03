@@ -9,33 +9,33 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Analysis/CallGraph.h"
 
-#include "ikos_llvm/config.h"
-#include "ikos_llvm/Transforms/InsertInvariants.hh"
-#include "ikos_llvm/SymEval.hh"
-#include "ikos_llvm/AbstractDomainsImpl.hh"
-#include "ikos_llvm/Support/AbstractDomains.hh"
-#include "ikos_llvm/Support/bignums.hh"
+#include "crab_llvm/config.h"
+#include "crab_llvm/Transforms/InsertInvariants.hh"
+#include "crab_llvm/SymEval.hh"
+#include "crab_llvm/AbstractDomainsImpl.hh"
+#include "crab_llvm/Support/AbstractDomains.hh"
+#include "crab_llvm/Support/bignums.hh"
 
-#include "ikos/analysis/InvTable_traits.hpp"
+#include "crab/analysis/InvTable_traits.hpp"
 
 /* 
- * Instrument program by inserting invariants computed by Ikos. The
+ * Instrument program by inserting invariants computed by crab. The
  * invariants are inserted as assume instructions into the LLVM
  * bitcode. The insertion happens at most once per basic block and
  * only if the block has a load instruction.
  */
 
-extern llvm::cl::opt<llvm_ikos::IkosDomain> LlvmIkosDomain;
+extern llvm::cl::opt<crab_llvm::CrabDomain> LlvmCrabDomain;
 
 using namespace llvm;
-using namespace llvm_ikos;
+using namespace crab_llvm;
 
-namespace llvm_ikos
+namespace crab_llvm
 {
 
   using namespace domain_impl;
 
-  char llvm_ikos::InsertInvariants::ID = 0;
+  char crab_llvm::InsertInvariants::ID = 0;
 
   struct CodeExpander
   {
@@ -225,7 +225,7 @@ namespace llvm_ikos
 
   bool InsertInvariants::runOnModule (llvm::Module &M)
   {
-    m_ikos = &getAnalysis<LlvmIkos> ();
+    m_crab = &getAnalysis<CrabLlvm> ();
     
     LLVMContext &ctx = M.getContext ();
     AttrBuilder B;
@@ -253,21 +253,21 @@ namespace llvm_ikos
 
   bool InsertInvariants::runOnFunction (llvm::Function &F)
   {
-    typedef typename llvm_ikos::SymEval <VariableFactory, z_lin_exp_t> sym_eval_t;
+    typedef typename crab_llvm::SymEval <VariableFactory, z_lin_exp_t> sym_eval_t;
     // -- skip functions without a body
     if (F.isDeclaration () || F.empty ()) return false;
 
     CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
     CallGraph* cg = cgwp ? &cgwp->getCallGraph () : nullptr;
 
-    VariableFactory &vfac = m_ikos->getVariableFactory ();
+    VariableFactory &vfac = m_crab->getVariableFactory ();
 
     // --- Insert instantiated array invariants in the bitecode.
     LLVMContext &ctx = F.getParent ()->getContext ();
     IRBuilder<> Builder (ctx);
 
     // XXX This is probably too conservative
-    sym_eval_t s (vfac, m_ikos->getTrackLevel ());
+    sym_eval_t s (vfac, m_crab->getTrackLevel ());
     set<varname_t> phi_vs;
     for (auto &B : F)
       for (auto &I: B) {
@@ -277,7 +277,7 @@ namespace llvm_ikos
     
     bool change = false;
     for (auto &B : F) {
-      //num_abs_domain_t should be LlvmIkosDomain
+      //num_abs_domain_t should be LlvmCrabDomain
       typedef interval_domain_t num_abs_domain_t;
 // #if IKOS_MINOR_VERSION >= 2
 //       typedef dbm_domain_t num_abs_domain_t;
@@ -301,8 +301,8 @@ namespace llvm_ikos
         /// propagate until the desired program point. However, this
         /// propagation is not implemented.
 
-        typedef analyzer::inv_tbl_traits <num_abs_domain_t, z_lin_cst_sys_t> inv_tbl_t;
-        num_abs_domain_t bb_inv = inv_tbl_t::unmarshall (m_ikos->getPost (&B));
+        typedef crab::analyzer::inv_tbl_traits <num_abs_domain_t, z_lin_cst_sys_t> inv_tbl_t;
+        num_abs_domain_t bb_inv = inv_tbl_t::unmarshall (m_crab->getPost (&B));
         inv = inv & bb_inv;
 
         /*
@@ -318,7 +318,7 @@ namespace llvm_ikos
               assume (i>=1 && i <=9);  <--- this is not true the first iteration! 
               br bb
 
-          `assume (i >=1 && i <=9)` is added because ikos actually
+          `assume (i >=1 && i <=9)` is added because crab actually
            analyzes a different program:
 
              bb: 
@@ -336,7 +336,7 @@ namespace llvm_ikos
         // --- Forget variables that are set through a phi node
         //// XXX this is not enough because we can have bb -> bb1 -> bb2
         //// such that TI is in bb and the phi node is in bb2.
-        // sym_eval_t s (vfac, m_ikos->getTrackLevel ());
+        // sym_eval_t s (vfac, m_crab->getTrackLevel ());
         // set<varname_t> phi_vs;
         // TerminatorInst* TI = B.getTerminator ();
         // for (unsigned i=0, e = TI->getNumSuccessors(); i!=e; ++i) {
@@ -346,25 +346,25 @@ namespace llvm_ikos
         //     }
         //   }
         // }
-        domain_traits::forget (inv, phi_vs.begin (), phi_vs.end ());
+        crab::domain_traits::forget (inv, phi_vs.begin (), phi_vs.end ());
 
         // --- Insert just before the terminator of the block
         Builder.SetInsertPoint (B.getTerminator ());
 
-        auto csts = toLinCst (inv);
+        auto csts = inv.to_linear_constraint_system ();
 
         CodeExpander g;
-        change |= g.gen_code (csts, Builder, ctx, m_assumeFn, cg, &F, "ikos_");
+        change |= g.gen_code (csts, Builder, ctx, m_assumeFn, cg, &F, "crab_");
       }
 
       //// XXX this might insert assumptions that only hold at the
       //// exit of the block in the middle of the block.
       // num_abs_domain_t inv = num_abs_domain_t::top ();
-      // inv += m_ikos->getPost (&B);
+      // inv += m_crab->getPost (&B);
       // CodeExpanderInvs <num_abs_domain_t, 
       //                   sym_eval_t> t (*(F.getParent ()), 
       //                                  inv, 
-      //                                  sym_eval_t (vfac, m_ikos->getTrackLevel ()),
+      //                                  sym_eval_t (vfac, m_crab->getTrackLevel ()),
       //                                  m_assumeFn,
       //                                  cg);
       // t.visit (&B);
@@ -377,15 +377,15 @@ namespace llvm_ikos
   void InsertInvariants::getAnalysisUsage (llvm::AnalysisUsage &AU) const
   {
     AU.setPreservesAll ();
-    AU.addRequired<llvm_ikos::LlvmIkos>();
+    AU.addRequired<crab_llvm::CrabLlvm>();
 
     AU.addRequired<llvm::CallGraphWrapperPass> ();
     AU.addPreserved<llvm::CallGraphWrapperPass> ();
   } 
 
-} // end namespace llvm_ikos
+} // end namespace 
 
-static llvm::RegisterPass<llvm_ikos::InsertInvariants> 
-X ("insert-ikos-invs",
-   "Insert invariants inferred by Ikos", 
+static llvm::RegisterPass<crab_llvm::InsertInvariants> 
+X ("insert-crab-invs",
+   "Insert invariants inferred by crab", 
    false, false);

@@ -11,36 +11,36 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 
-#include "ikos_llvm/config.h"
-#include "ikos_llvm/CfgBuilder.hh"
-#include "ikos_llvm/SymEval.hh"
-#include "ikos_llvm/LlvmCIkos.hh"
-#include "ikos_llvm/AbstractDomainsImpl.hh"
+#include "crab_llvm/config.h"
+#include "crab_llvm/CfgBuilder.hh"
+#include "crab_llvm/SymEval.hh"
+#include "crab_llvm/ConCrabLlvm.hh"
+#include "crab_llvm/AbstractDomainsImpl.hh"
 
-#include <ikos/cfg/ConcSys.hpp>
-#include <ikos/analysis/ConcAnalyzer.hpp>
-#include <ikos/domains/domain_traits.hpp>
+#include <crab/cfg/ConcSys.hpp>
+#include <crab/analysis/ConcAnalyzer.hpp>
+#include <crab/domains/domain_traits.hpp>
 
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
 #endif 
 
 /* 
-   user-definable options in LlvmIkos.cc 
+   user-definable options in CrabLlvm.cc 
 */
-extern llvm::cl::opt<bool> LlvmIkosPrintAns;
-extern llvm::cl::opt<llvm_ikos::IkosDomain> LlvmIkosDomain;
-extern llvm::cl::opt<bool> LlvmIkosLive;
-extern llvm::cl::opt<enum cfg::TrackedPrecision> LlvmIkosTrackLev;
-extern llvm::cl::opt<bool> LlvmIkosInterProc;
+extern llvm::cl::opt<bool> LlvmCrabPrintAns;
+extern llvm::cl::opt<crab_llvm::CrabDomain> LlvmCrabDomain;
+extern llvm::cl::opt<bool> LlvmCrabLive;
+extern llvm::cl::opt<enum crab::cfg::TrackedPrecision> LlvmCrabTrackLev;
+extern llvm::cl::opt<bool> LlvmCrabInterProc;
 
 using namespace llvm;
 
 namespace
 {
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        conc::ConcSys< llvm::Function*, 
-                                                       cfg_impl::cfg_t> &sys)
+  inline llvm::raw_ostream& operator<< 
+  (llvm::raw_ostream& o, 
+   crab::conc::ConcSys< llvm::Function*, crab::cfg_impl::cfg_t> &sys)
   {
     std::ostringstream s;
     s << sys;
@@ -49,22 +49,21 @@ namespace
   }
 }
 
-namespace conc_impl
-{
+namespace crab { namespace conc_impl {
   template<> inline std::string get_thread_id_str(llvm::Function *f) 
   { return f->getName (); }
-}
+}}
 
-namespace llvm_ikos
+namespace crab_llvm
 {
-  using namespace conc;
+  using namespace crab::conc;
   using namespace domain_impl;
 
   typedef ConcSys< llvm::Function*, cfg_t> conc_sys_t;
-  typedef SymEval<VariableFactory, cfg_impl::z_lin_exp_t> sym_eval_t;
-  typedef boost::optional<cfg_impl::z_lin_exp_t> z_lin_exp_opt_t;
+  typedef SymEval<VariableFactory, crab::cfg_impl::z_lin_exp_t> sym_eval_t;
+  typedef boost::optional<crab::cfg_impl::z_lin_exp_t> z_lin_exp_opt_t;
 
-  char llvm_ikos::LlvmCIkos::ID = 0;
+  char crab_llvm::ConCrabLlvm::ID = 0;
 
   struct SharedVarVisitor : 
       public InstVisitor<SharedVarVisitor>
@@ -175,7 +174,7 @@ namespace llvm_ikos
           int arr_id = mem.getArrayId (*(p.first), gv_value); 
           if (arr_id < 0) continue;
 
-          ikos::domain_traits::array_store (init_gv_inv,
+          crab::domain_traits::array_store (init_gv_inv,
                                             sym_eval.symVar (arr_id), 
                                             (*((*idx).get_variable ())).name (), 
                                             *val, 
@@ -185,7 +184,7 @@ namespace llvm_ikos
       }
     }
 
-    if (LlvmIkosPrintAns)
+    if (LlvmCrabPrintAns)
     {
       errs () << "=========================\n";
       errs () << "Concurrent system\n";
@@ -195,27 +194,27 @@ namespace llvm_ikos
     }
 
     /// --- Global fixpoint 
-    conc_analyzer_t a (sys, vfac, LlvmIkosLive, true /*keep shadows*/);
+    conc_analyzer_t a (sys, vfac, LlvmCrabLive, true /*keep shadows*/);
     a.Run (init_gv_inv);
     
-    if (LlvmIkosPrintAns)
+    if (LlvmCrabPrintAns)
     {
       errs () << "=========================\n";
       errs () << "Invariants\n";
       errs () << "=========================\n";
       for (auto t : sys)
       {
-        errs () << conc_impl::get_thread_id_str (t.first) << "\n";
+        errs () << crab::conc_impl::get_thread_id_str (t.first) << "\n";
         auto &inv_map = a.getInvariants (t.first);
         for (auto p: inv_map)
-          errs () << "\t" << cfg_impl::get_label_str (p.first) << ": " 
+          errs () << "\t" << crab::cfg_impl::get_label_str (p.first) << ": " 
                   << p.second << "\n";
         errs () << "\n";
       }
     }
   }
 
-  bool LlvmCIkos::runOnModule (llvm::Module &M)
+  bool ConCrabLlvm::runOnModule (llvm::Module &M)
   {
 
 #ifdef HAVE_DSA
@@ -245,7 +244,7 @@ namespace llvm_ikos
     sym_eval_t sym_eval (vfac, m_mem.getTrackLevel ());
     for (auto f : m_threads)
     {
-      CfgBuilder builder (*f, vfac, &m_mem, LlvmIkosInterProc);
+      CfgBuilder builder (*f, vfac, &m_mem, LlvmCrabInterProc);
       auto cfg = builder.makeCfg ();
                            
       vector<varname_t> shared_vars;
@@ -264,30 +263,24 @@ namespace llvm_ikos
     const DataLayout* dl = M.getDataLayout ();
 
     /// --- Analyze the concurrent system
-    switch (LlvmIkosDomain)
+    switch (LlvmCrabDomain)
     {
       case INTERVALS_CONGRUENCES: 
-        if (LlvmIkosTrackLev >= MEM)
+        if (LlvmCrabTrackLev >= MEM)
           analyzeConcSys <arr_ric_domain_t> (sys, vfac, M, m_mem, dl); 
         else
           analyzeConcSys <ric_domain_t> (sys, vfac, M, m_mem, dl); 
         break;
       case ZONES: 
-        if (LlvmIkosTrackLev >= MEM)
+        if (LlvmCrabTrackLev >= MEM)
           analyzeConcSys <arr_dbm_domain_t> (sys, vfac, M, m_mem, dl); 
         else
           analyzeConcSys <dbm_domain_t> (sys, vfac, M, m_mem, dl); 
         break;
-      case OCTAGONS:  
-        if (LlvmIkosTrackLev >= MEM)
-          analyzeConcSys <arr_octagon_domain_t> (sys, vfac, M, m_mem, dl); 
-        else
-          analyzeConcSys <octagon_domain_t> (sys, vfac, M, m_mem, dl); 
-        break;
       case TERMS: /*TODO*/
       case INTERVALS:  
       default:
-        if (LlvmIkosTrackLev >= MEM)
+        if (LlvmCrabTrackLev >= MEM)
           analyzeConcSys <arr_interval_domain_t> (sys, vfac, M, m_mem, dl); 
         else
           analyzeConcSys <interval_domain_t> (sys, vfac, M, m_mem, dl); 
@@ -296,7 +289,7 @@ namespace llvm_ikos
   }
 
   //! Identify threads and shared global variables
-  bool LlvmCIkos::processFunction (llvm::Function &F)
+  bool ConCrabLlvm::processFunction (llvm::Function &F)
   {
     // -- skip functions without a body
     if (F.isDeclaration () || F.empty ()) return false;
@@ -338,7 +331,7 @@ namespace llvm_ikos
     return change;
   }
 
-  void LlvmCIkos::getAnalysisUsage (llvm::AnalysisUsage &AU) const
+  void ConCrabLlvm::getAnalysisUsage (llvm::AnalysisUsage &AU) const
   {
     AU.setPreservesAll ();
 #ifdef HAVE_DSA
@@ -348,12 +341,12 @@ namespace llvm_ikos
 #endif 
   } 
 
-} // end namespace llvm_ikos
+} // end namespace 
 
 
-static llvm::RegisterPass<llvm_ikos::LlvmCIkos> 
-X ("llvm-cikos",
-   "Infer invariants for concurrent programs using Ikos", 
+static llvm::RegisterPass<crab_llvm::ConCrabLlvm> 
+X ("con-crab-llvm",
+   "Infer invariants for concurrent programs using Crab", 
    false, false);
 
 

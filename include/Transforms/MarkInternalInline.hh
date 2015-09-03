@@ -6,7 +6,7 @@
 
 using namespace llvm;
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   /// marks all internal functions with AlwaysInline attribute
   struct MarkInternalInline : public ModulePass

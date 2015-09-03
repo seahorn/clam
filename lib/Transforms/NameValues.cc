@@ -11,7 +11,7 @@
 
 using namespace llvm;
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   char NameValues::ID = 0;
     
@@ -79,5 +79,5 @@ namespace llvm_ikos
   
 }
 
-static llvm::RegisterPass<llvm_ikos::NameValues> 
+static llvm::RegisterPass<crab_llvm::NameValues> 
 X ("name-values", "Names all unnamed values");

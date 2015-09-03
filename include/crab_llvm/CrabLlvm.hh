@@ -1,8 +1,8 @@
-#ifndef __LLVM_IKOS_HPP_
-#define __LLVM_IKOS_HPP_
+#ifndef __CRAB_LLVM_HPP_
+#define __CRAB_LLVM_HPP_
 
 /* 
- * Infer invariants using Ikos.
+ * Infer invariants using Crab.
  */
 
 #include "llvm/Pass.h"
@@ -10,29 +10,28 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
 
-#include <ikos_llvm/CfgBuilder.hh>
-#include "ikos_llvm/MemAnalysis.hh"
+#include <crab_llvm/CfgBuilder.hh>
+#include "crab_llvm/MemAnalysis.hh"
 
 
-namespace llvm_ikos
+namespace crab_llvm
 {  
    //! Base numerical domains
-   enum IkosDomain { INTERVALS, 
+   enum CrabDomain { INTERVALS, 
                      CONGRUENCES, 
                      INTERVALS_CONGRUENCES, 
                      ZONES, 
-                     OCTAGONS, 
                      TERMS};
 }
 
-namespace llvm_ikos
+namespace crab_llvm
 {
 
   using namespace llvm;
-  using namespace cfg_impl;
+  using namespace crab::cfg_impl;
 
-  /*! Compute invariants using Ikos for the whole module. */
-  class LlvmIkos : public llvm::ModulePass
+  /*! Compute invariants using Crab for the whole module. */
+  class CrabLlvm : public llvm::ModulePass
   {
    public:
     //! all invariants will be translated into linear constraints
@@ -43,7 +42,7 @@ namespace llvm_ikos
 
     invariants_map_t m_pre_map;
     invariants_map_t m_post_map;
-    IkosDomain       m_absdom;
+    CrabDomain       m_absdom;
     bool             m_runlive;
     MemAnalysis      m_mem;    
     VariableFactory  m_vfac;
@@ -55,11 +54,11 @@ namespace llvm_ikos
 
     static char ID;        
     
-    LlvmIkos (): llvm::ModulePass (ID), 
+    CrabLlvm (): llvm::ModulePass (ID), 
                  m_absdom (INTERVALS), m_runlive(false)  
     { }
 
-    ~LlvmIkos () {
+    ~CrabLlvm () {
       m_pre_map.clear(); 
       m_post_map.clear(); 
     }
@@ -116,6 +115,6 @@ namespace llvm_ikos
 
   };
 
-} // end namespace llvm_ikos
+} // end namespace 
 
 #endif

@@ -7,9 +7,9 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Instructions.h"
 
-#include "ikos_llvm/config.h"
+#include "crab_llvm/config.h"
 
-#include <ikos/cfg/Cfg.hpp>
+#include <crab/cfg/Cfg.hpp>
 
 #ifdef HAVE_DSA
 #include "boost/range/algorithm/set_algorithm.hpp"
@@ -17,11 +17,11 @@
 #include "dsa/DSGraph.h"
 #include "dsa/DSNode.h"
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   using namespace std;
   using namespace llvm;
-  using namespace cfg;
+  using namespace crab::cfg;
 
   class MemAnalysis
   {
@@ -307,9 +307,9 @@ namespace llvm_ikos
 
 } // end namespace
 #else
-namespace llvm_ikos
+namespace crab_llvm
 {
-  using namespace cfg;
+  using namespace crab::cfg;
   struct MemAnalysis
   {
     TrackedPrecision m_tracklev;

@@ -5,7 +5,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/IRBuilder.h"
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   char LowerGvInitializers::ID = 0;
   
@@ -38,5 +38,5 @@ namespace llvm_ikos
 
 }
 
-static llvm::RegisterPass<llvm_ikos::LowerGvInitializers>
+static llvm::RegisterPass<crab_llvm::LowerGvInitializers>
 X ("lower-gv-init", "Lower initialization of global variables\n");

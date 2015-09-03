@@ -7,7 +7,7 @@
 
 #include "llvm/IR/CFG.h"
 
-namespace llvm_ikos
+namespace crab_llvm
 {
   using namespace llvm;
   using namespace boost;
