@@ -193,7 +193,8 @@ namespace crab_llvm
           }
           break;
         default:
-          m_bb.havoc(symVar (I));
+          if (isTracked (I))
+            m_bb.havoc(symVar (I));
           break;
       }
 
@@ -511,13 +512,15 @@ namespace crab_llvm
     {
       if ( (!isTracked (*I.getPointerOperand ())) ||
            LlvmCrabNoGEP) {
-        m_bb.havoc (symVar (I));
+        if (isTracked (I))
+          m_bb.havoc (symVar (I));
         return;
       }
 
       optional<z_lin_exp_t> ptr = lookup (*I.getPointerOperand ());
       if (!ptr) {
-        m_bb.havoc (symVar (I));
+        if (isTracked (I))
+          m_bb.havoc (symVar (I));
         return;
       }
 
@@ -569,8 +572,10 @@ namespace crab_llvm
         m_bb.array_load (symVar (I), symVar (arr_idx), *idx,
                          ikos::z_number (m_dl->getTypeAllocSize (ty)));
       }
-      else 
-        m_bb.havoc (symVar (I));
+      else {
+        if (isTracked (I))
+          m_bb.havoc (symVar (I));
+      }
 
     }
     
