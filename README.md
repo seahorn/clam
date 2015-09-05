@@ -15,6 +15,11 @@ to make easier the task of static analysis.
 The use of `llvmpp` is optional but highly recommended with large
 programs.
 
+## License ##
+
+Crab-llvm is distributed under MIT license. See
+[LICENSE.txt](LICENSE.txt) for details.
+
 #Installation#
 
 Crab-llvm is written in C++ and uses heavily the Boost library. You will need:
@@ -38,19 +43,28 @@ Crab-llvm provides a python script called `crabllvm.py` to interact
 with users. Given a C program, users just need to type: `crabllvm.py
 file.c --crab-answer`.
 
-The option `--crab-answer` displays all the invariants inferred for
-each basic block in the `LLVM` bitcode. Users can also choose the
-abstract domain by typing the option `--crab-domain`. The possible
-values are: `int` (classical intervals),`ric` (reduced product of
-intervals and congruences),`zones` (difference-bound matrices), and
-`term` (term equivalences). We also provide the option
-`--crab-track-lvl` to indicate the level of precision. The possible
-values are: `reg`, `ptr`, and `mem`. The level `reg` reasons about
-integer scalars (LLVM registers). The level `ptr` reasons about
-pointer addresses while the level `mem` reasons about the contents of
-pointers and arrays. If the level is `mem` then Crab-llvm simply uses
-an array smashing domain whose base domain is the one selected by
-option `--crab-domain`.
+- The option `--crab-answer` displays all the invariants inferred for
+each basic block in the `LLVM` bitcode.
+
+- Users can also choose the abstract domain by typing the option
+`--crab-domain`. The possible values are:
+
+    - `int`: classical intervals
+	- `ric`: reduced product of intervals and congruences
+	- `zones`: difference-bound matrices
+    - `term`:  term equivalences
+
+- We also provide the option `--crab-track-lvl` to indicate the level
+of precision. The possible values are: 
+
+    - `reg`: reasons about integer scalars (LLVM registers).
+	- `ptr`: reasons about pointer addresses.	
+    - `mem`: reasons about the contents of pointers and
+arrays.
+
+If the level is `mem` then Crab-llvm simply uses an array smashing
+domain whose base domain is the one selected by option
+`--crab-domain`.
 
 #People#
 
