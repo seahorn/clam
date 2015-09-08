@@ -39,6 +39,10 @@ LlvmCrabDomain("crab-dom",
                     "Difference-Bounds Matrix (or Zones) domain"),
         clEnumValN (TERMS, "term",
                     "Term-enriched interval domain."),
+        clEnumValN (NAIVE_DBM , "naive-dbm",
+                    "Naive Difference-Bounds Matrix (or Zones) domain"),
+        clEnumValN (CGS_DBM , "cgs-dbm",
+                    "Naive DBM + dynamic variable packing"),
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
 
@@ -119,6 +123,12 @@ namespace crab_llvm
         change = (LlvmCrabTrackLev >= MEM ? 
                   runOnCfg <arr_term_domain_t> (cfg, F) : 
                   runOnCfg <term_domain_t> (cfg, F)) ; 
+        break;
+      case NAIVE_DBM:
+        change = runOnCfg <naive_dbm_domain_t> (cfg, F); 
+        break;
+      case CGS_DBM:
+        change = runOnCfg <cgs_dbm_domain_t> (cfg, F); 
         break;
       default: assert(false && "Unsupported abstract domain");
     }

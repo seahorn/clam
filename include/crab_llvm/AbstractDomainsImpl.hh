@@ -34,6 +34,8 @@ namespace domain_impl
   typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
   typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;
   typedef array_smashing<term_domain_t,z_number,varname_t> arr_term_domain_t;
+  typedef naive_dbm <z_number, varname_t> naive_dbm_domain_t;
+  typedef var_packing_naive_dbm <z_number, varname_t> cgs_dbm_domain_t;
 
 } // end namespace
 
