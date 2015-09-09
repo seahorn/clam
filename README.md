@@ -52,7 +52,8 @@ each basic block in the `LLVM` bitcode.
     - `int`: classical intervals
 	- `ric`: reduced product of intervals and congruences
 	- `zones`: difference-bound matrices
-    - `term`:  term equivalences
+    - `term`: term equivalences (functor domain of uninterpreted functions
+              parameterized with intervals)
 
 - We also provide the option `--crab-track-lvl` to indicate the level
 of precision. The possible values are: 
