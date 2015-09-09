@@ -358,9 +358,12 @@ namespace crab_llvm
         case BinaryOperator::Add:
         case BinaryOperator::Sub:
         case BinaryOperator::Mul:
-        case BinaryOperator::UDiv:
         case BinaryOperator::SDiv:
+        case BinaryOperator::UDiv:
+        case BinaryOperator::SRem:
+        case BinaryOperator::URem:
         case BinaryOperator::Shl:
+        case BinaryOperator::AShr:
 #if 0
           // OptimizationXX: if the lhs has only one user and the user
           // is a phi node then we save one assignment.
@@ -370,11 +373,12 @@ namespace crab_llvm
 #endif 
           doArithmetic (lhs, I);
           break;
-          // case BinaryOperator::And:
-          // case BinaryOperator::Or:
-          // case BinaryOperator::Xor:
-          // case BinaryOperator::AShr:
-          // case BinaryOperator::LShr:
+        case BinaryOperator::And:
+        case BinaryOperator::Or:
+        case BinaryOperator::Xor:
+          doBitwise (lhs, I);
+          break;
+        case BinaryOperator::LShr:
         default:
           m_bb.havoc(lhs);
           break;
@@ -397,35 +401,79 @@ namespace crab_llvm
           m_bb.add (lhs, *op1, *op2);
           break;
         case BinaryOperator::Sub:
-            if ((*op1).is_constant())            
-            { // cfg does not support subtraction of a constant by a
-              // variable because the crab api for abstract domains
-              // does not support it.
-              m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
-              m_bb.sub (lhs, z_lin_exp_t (lhs), *op2);
-            }
-            else
-              m_bb.sub (lhs, *op1, *op2);
+          if ((*op1).is_constant())            
+          { // cfg does not support subtraction of a constant by a
+            // variable because the crab api for abstract domains
+            // does not support it.
+            m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
+            m_bb.sub (lhs, z_lin_exp_t (lhs), *op2);
+          }
+          else
+            m_bb.sub (lhs, *op1, *op2);
           break;
         case BinaryOperator::Mul:
           m_bb.mul (lhs, *op1, *op2);
           break;
         case BinaryOperator::SDiv:
-          {
-            if ((*op1).is_constant())            
-            { // cfg does not support division of a constant by a
-              // variable because the crab api for abstract domains
-              // does not support it.
-              m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
-              m_bb.div (lhs, z_lin_exp_t (lhs), *op2);
-            }
-            else
-              m_bb.div (lhs, *op1, *op2);
+          if ((*op1).is_constant())            
+          { // cfg does not support division of a constant by a
+            // variable because the crab api for abstract domains
+            // does not support it.
+            m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
+            m_bb.div (lhs, z_lin_exp_t (lhs), *op2);
           }
+          else
+            m_bb.div (lhs, *op1, *op2);
+          break;
+        case BinaryOperator::UDiv:
+          if ((*op1).is_constant() && (*op2).is_constant ()) {
+            // TODO: Cfg api does not support unsigned arithmetic
+            // operations with both constant operands. Llvm frontend
+            // should get rid of them.
+            errs () << "Warning: ignored udiv with both constant operands\n";
+            m_bb.havoc(lhs);
+          }
+          else if ((*op1).is_constant()) {           
+            // cfg does not support division of a constant by a
+            // variable because the crab api for abstract domains
+            // does not support it.
+            m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
+            m_bb.udiv (lhs, z_lin_exp_t (lhs), *op2);
+          }
+          else
+            m_bb.udiv (lhs, *op1, *op2);
+          break;
+        case BinaryOperator::SRem:
+          if ((*op1).is_constant()) {           
+            // cfg does not support rem of a constant by a
+            // variable because the crab api for abstract domains
+            // does not support it.
+            m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
+            m_bb.rem (lhs, z_lin_exp_t (lhs), *op2);
+          }
+          else
+            m_bb.rem (lhs, *op1, *op2);
+          break;
+        case BinaryOperator::URem:
+          if ((*op1).is_constant() && (*op2).is_constant ()) {
+            // TODO: Cfg api does not support unsigned arithmetic
+            // operations with both constant operands. Llvm frontend
+            // should get rid of them.
+            errs () << "Warning: ignored urem with constant operands\n";
+            m_bb.havoc(lhs);
+          }
+          else if ((*op1).is_constant()) {           
+            // cfg does not support rem of a constant by a
+            // variable because the crab api for abstract domains
+            // does not support it.
+            m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
+            m_bb.urem (lhs, z_lin_exp_t (lhs), *op2);
+          }
+          else
+            m_bb.urem (lhs, *op1, *op2);
           break;
         case BinaryOperator::Shl:
-          if ((*op2).is_constant())
-          {
+          if ((*op2).is_constant()) {
             ikos::z_number k = (*op2).constant ();
             int shift = boost::lexical_cast<int>(toStr (k));
             assert (shift >= 0);
@@ -434,6 +482,48 @@ namespace crab_llvm
               factor *= 2;
             m_bb.mul (lhs, *op1, z_lin_exp_t (factor));            
           }
+          else
+            m_bb.havoc(lhs);
+          break;
+        case BinaryOperator::AShr:
+          if ((*op2).is_constant()) {
+            ikos::z_number k = (*op2).constant ();
+            int shift = boost::lexical_cast<int>(toStr (k));
+            assert (shift >= 0);
+            unsigned factor = 1;
+            for (unsigned i = 0; i < (unsigned) shift; i++) 
+              factor *= 2;
+            m_bb.div (lhs, *op1, z_lin_exp_t (factor));            
+          }
+          else
+            m_bb.havoc(lhs);
+          break;
+        default:
+          m_bb.havoc(lhs);
+          break;
+      }
+    }
+
+    void doBitwise (varname_t lhs, BinaryOperator &i)
+    {
+      const Value& v1 = *i.getOperand(0);
+      const Value& v2 = *i.getOperand(1);
+      
+      optional<z_lin_exp_t> op1 = lookup (v1);
+      optional<z_lin_exp_t> op2 = lookup (v2);
+      
+      if (!(op1 && op2)) return;
+      
+      switch(i.getOpcode())
+      {
+        case BinaryOperator::And:
+          m_bb.bitwise_and (lhs, *op1, *op2);
+          break;
+        case BinaryOperator::Or:
+          m_bb.bitwise_or (lhs, *op1, *op2);
+          break;
+        case BinaryOperator::Xor:
+          m_bb.bitwise_xor (lhs, *op1, *op2);
           break;
         default:
           m_bb.havoc(lhs);
