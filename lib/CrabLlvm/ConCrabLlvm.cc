@@ -277,13 +277,15 @@ namespace crab_llvm
         else
           analyzeConcSys <dbm_domain_t> (sys, vfac, M, m_mem, dl); 
         break;
-      case TERMS: /*TODO*/
-      case INTERVALS:  
       default:
+        if (LlvmCrabDomain != INTERVALS)
+          errs () << "Warning: abstract domain not supported. Running intervals ...\n";
+
         if (LlvmCrabTrackLev >= MEM)
           analyzeConcSys <arr_interval_domain_t> (sys, vfac, M, m_mem, dl); 
         else
           analyzeConcSys <interval_domain_t> (sys, vfac, M, m_mem, dl); 
+        
     }
     return change;
   }
