@@ -15,10 +15,9 @@
  * needs to know then which analyses will run so that he/she can
  * ensure that the CFG language contains all the details needed by the
  * analyses but hopefully not more. Another example of abstraction is
- * to ignore certain instructions (e.g., bitwise and floating point
- * operations) for which user knows that his/her abstract domain
- * cannot reason about it. A third example is that if the analysis is
- * intra-procedural the user can choose to ignore all callsites.
+ * to ignore certain instructions (e.g., floating point operations)
+ * for which user may know that his/her abstract domain cannot reason
+ * about them.
  */
 
 #include <boost/optional.hpp>
