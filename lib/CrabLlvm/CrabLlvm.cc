@@ -37,12 +37,8 @@ LlvmCrabDomain("crab-dom",
                     "Reduced product of intervals with congruences"),
         clEnumValN (ZONES , "zones",
                     "Difference-Bounds Matrix (or Zones) domain"),
-        clEnumValN (TERMS_INTERVALS, "term-int",
+        clEnumValN (TERMS, "term",
                     "Term-enriched interval domain."),
-        clEnumValN (TERMS_CGS_DBM, "term-cgs-dbm",
-                    "Term-enriched cgs-dbm domain."),
-        clEnumValN (TERMS_ZONES, "term-zones",
-                    "Term-enriched dbm domain."),
         clEnumValN (NAIVE_DBM , "naive-dbm",
                     "Naive Difference-Bounds Matrix (or Zones) domain"),
         clEnumValN (CGS_DBM , "cgs-dbm",
@@ -123,18 +119,12 @@ namespace crab_llvm
                   runOnCfg <arr_dbm_domain_t> (cfg, F) :  
                   runOnCfg <dbm_domain_t> (cfg, F)) ; 
         break;
-      case TERMS_INTERVALS:
+      case TERMS:
         change = (LlvmCrabTrackLev >= MEM ? 
                   runOnCfg <arr_term_domain_t> (cfg, F) : 
                   runOnCfg <term_domain_t> (cfg, F)) ; 
         break;
       // Non array versions available
-      case TERMS_ZONES:
-        change = runOnCfg <term_dbm_domain_t> (cfg, F); 
-        break;
-      case TERMS_CGS_DBM:
-        change = runOnCfg <term_cgs_dbm_domain_t> (cfg, F); 
-        break;
       case NAIVE_DBM:
         change = runOnCfg <naive_dbm_domain_t> (cfg, F); 
         break;
