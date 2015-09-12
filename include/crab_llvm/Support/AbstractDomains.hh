@@ -11,6 +11,7 @@
 #include <crab/domains/term_equiv.hpp>
 #include <crab/domains/var_packing_naive_dbm.hpp>                      
 #include <crab/domains/naive_dbm.hpp>   
+#include <crab/domains/symbolic_constant_domain.hpp>   
 
 namespace llvm
 {

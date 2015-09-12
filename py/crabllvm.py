@@ -90,7 +90,7 @@ def parseArgs (argv):
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
                     help='Choose abstract domain',
-                    choices=['int','ric','zones','term'],
+                    choices=['int','ric','zones','term','naive-dbm','dgs-dbm','int-symcst'],
                     dest='crab_dom', default='int')
     p.add_argument ('--crab-track',
                     help='Track registers, pointers, and memory',

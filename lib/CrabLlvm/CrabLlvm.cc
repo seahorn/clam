@@ -43,6 +43,8 @@ LlvmCrabDomain("crab-dom",
                     "Naive Difference-Bounds Matrix (or Zones) domain"),
         clEnumValN (CGS_DBM , "cgs-dbm",
                     "Naive DBM + dynamic variable packing"),
+        clEnumValN (INTERVALS_SYMCST, "int-symcst",
+                    "Classical interval domain enriched with symbolic constant domain"),
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
 
@@ -131,6 +133,9 @@ namespace crab_llvm
       case CGS_DBM:
         change = runOnCfg <cgs_dbm_domain_t> (cfg, F); 
         break;
+      case INTERVALS_SYMCST:
+        change = runOnCfg <interval_symcst_domain_t> (cfg, F); 
+        break;        
       default: assert(false && "Unsupported abstract domain");
     }
     return change;
