@@ -13,6 +13,7 @@
 #include <crab_llvm/CfgBuilder.hh>
 #include "crab_llvm/MemAnalysis.hh"
 
+#include <crab/cg/Cg.hpp>
 
 namespace crab_llvm
 {  
@@ -105,12 +106,15 @@ namespace crab_llvm
     const_iterator begin () const { return m_pre_map.begin(); }
     const_iterator end ()   const { return m_pre_map.end();   }
 
-    void dump (llvm::Module &M) const;
-
    private:
 
     template<typename AbsDomain> 
-    bool runOnCfg (cfg_t& cfg, llvm::Function &F);
+    bool runOnCfg (const cfg_t& cfg, const llvm::Function &F);
+
+    template<typename BUAbsDomain, typename TDAbsDomain> 
+    bool runOnCg (const crab::cg::CallGraph<cfg_t>& cg, const llvm::Module &M);
+
+    void write (llvm::raw_ostream& o, const llvm::Function& F);
 
   };
 

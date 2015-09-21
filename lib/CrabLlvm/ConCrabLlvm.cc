@@ -32,7 +32,6 @@ extern llvm::cl::opt<bool> LlvmCrabPrintAns;
 extern llvm::cl::opt<crab_llvm::CrabDomain> LlvmCrabDomain;
 extern llvm::cl::opt<bool> LlvmCrabLive;
 extern llvm::cl::opt<enum crab::cfg::TrackedPrecision> LlvmCrabTrackLev;
-extern llvm::cl::opt<bool> LlvmCrabInterProc;
 
 using namespace llvm;
 
@@ -244,7 +243,7 @@ namespace crab_llvm
     sym_eval_t sym_eval (vfac, m_mem.getTrackLevel ());
     for (auto f : m_threads)
     {
-      CfgBuilder builder (*f, vfac, &m_mem, LlvmCrabInterProc);
+      CfgBuilder builder (*f, vfac, &m_mem, true);
       auto cfg = builder.makeCfg ();
                            
       vector<varname_t> shared_vars;

@@ -14,7 +14,11 @@
 #include "crab_llvm/CrabLlvm.hh"
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/AbstractDomainsImpl.hh"
+
 #include "crab/analysis/FwdAnalyzer.hpp"
+#include "crab/analysis/InterFwdAnalyzer.hpp"
+#include "crab/cg/CgBgl.hpp"
+
 
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
@@ -24,8 +28,9 @@ using namespace llvm;
 using namespace crab_llvm;
 
 llvm::cl::opt<bool>
-LlvmCrabPrintAns ("crab-answer", llvm::cl::desc ("Print Crab invariants"),
-             llvm::cl::init (false));
+LlvmCrabPrintAns ("crab-answer", 
+                  llvm::cl::desc ("Print Crab invariants"),
+                  llvm::cl::init (false));
 
 llvm::cl::opt<CrabDomain>
 LlvmCrabDomain("crab-dom",
@@ -38,7 +43,7 @@ LlvmCrabDomain("crab-dom",
         clEnumValN (ZONES , "zones",
                     "Difference-Bounds Matrix (or Zones) domain"),
         clEnumValN (TERMS, "term",
-                    "Term-enriched interval domain."),
+                    "Intervals with uninterpreted functions."),
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
 
@@ -57,15 +62,16 @@ LlvmCrabTrackLev("crab-track-lvl",
    cl::init (TrackedPrecision::REG));
 
 llvm::cl::opt<bool>
-LlvmCrabInterProc ("crab-cfg-interproc",
-             cl::desc ("Build inter-procedural Cfg"), 
-             cl::init (false));
+LlvmCrabInter ("crab-inter",
+               cl::desc ("Inter-procedural analysis"), 
+               cl::init (false));
 
 
 namespace crab_llvm
 {
 
   using namespace crab::analyzer;
+  using namespace crab::cg;
   using namespace domain_impl;
 
   char crab_llvm::CrabLlvm::ID = 0;
@@ -81,12 +87,58 @@ namespace crab_llvm
                          LlvmCrabTrackLev);
 #endif     
 
-    bool change=false;
-    for (auto &f : M) 
-      change |= runOnFunction (f); 
-    
-    if (LlvmCrabPrintAns) dump (M);
-    return change;
+    if (LlvmCrabInter){
+      // -- build call graph
+
+      std::vector<cfg_t> cfgs;
+      for (auto &F : M)  {
+        // -- skip functions without a body
+        if (F.isDeclaration () || F.empty ()) continue;
+
+        CfgBuilder builder (F, m_vfac, &m_mem, true /*inter*/);
+        cfg_t &cfg = builder.makeCfg ();
+        cfgs.push_back (cfg);
+      } 
+            
+      CallGraph<cfg_t> cg (cfgs);
+      
+      // -- run the interprocedural analysis
+      
+      bool change = false;
+      switch (m_absdom) {
+        // TODO: make an user option the abstract domain used
+        // for the bottom-up phase of the interprocedural analysis
+        case INTERVALS:  
+          change = (LlvmCrabTrackLev >= MEM ? 
+                    runOnCg <arr_dbm_domain_t, arr_interval_domain_t> (cg, M) : 
+                    runOnCg <dbm_domain_t, interval_domain_t> (cg, M)) ; 
+          break;
+        case INTERVALS_CONGRUENCES: 
+          change = (LlvmCrabTrackLev >= MEM ? 
+                    runOnCg <arr_dbm_domain_t, arr_ric_domain_t> (cg, M) : 
+                    runOnCg <dbm_domain_t, ric_domain_t> (cg, M)) ; 
+          break;
+        case ZONES: 
+          change = (LlvmCrabTrackLev >= MEM ? 
+                    runOnCg <arr_dbm_domain_t, arr_dbm_domain_t> (cg, M) :  
+                    runOnCg <dbm_domain_t, dbm_domain_t> (cg, M)) ; 
+          break;
+        case TERMS:
+          change = (LlvmCrabTrackLev >= MEM ? 
+                    runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, M) : 
+                    runOnCg <dbm_domain_t, term_domain_t> (cg, M)) ; 
+            break;
+        default: assert(false && "Unsupported abstract domain");
+      }
+      return change;
+    }
+    else {
+      // -- run intra-procedural analysis
+      bool change=false;
+      for (auto &f : M) 
+        change |= runOnFunction (f); 
+      return change;
+    }
   }
 
   bool CrabLlvm::runOnFunction (llvm::Function &F)
@@ -94,7 +146,7 @@ namespace crab_llvm
     // -- skip functions without a body
     if (F.isDeclaration () || F.empty ()) return false;
 
-    CfgBuilder builder (F, m_vfac, &m_mem, LlvmCrabInterProc);
+    CfgBuilder builder (F, m_vfac, &m_mem, false /*intra*/);
     cfg_t &cfg = builder.makeCfg ();
 
     bool change=false;
@@ -122,46 +174,75 @@ namespace crab_llvm
         break;
       default: assert(false && "Unsupported abstract domain");
     }
+
+    if (LlvmCrabPrintAns)
+      write (outs (), F);
+    
     return change;
   }
 
+  template<typename BUAbsDomain, typename TDAbsDomain>
+  bool CrabLlvm::runOnCg (const CallGraph<cfg_t>& cg, const llvm::Module &M)
+  {
+    // -- run inter-procedural analysis
+    typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
+                              BUAbsDomain, TDAbsDomain, inv_tbl_val_t> analyzer_t;
+    analyzer_t analyzer(cg, m_vfac, m_runlive);
+    analyzer.Run (TDAbsDomain::top ());
+
+    // -- store invariants     
+    for (auto &n: boost::make_iterator_range (/*boost::vertices (cg)*/cg.nodes ())) {
+      const cfg_t& cfg = n.getCfg ();
+      boost::optional<const llvm::Value *> v = n.name ().get ();
+      if (v) {
+        if (const llvm::Function *F = dyn_cast<llvm::Function> (*v)) {
+          for (auto &B : *F) {
+            // --- invariants that hold at the entry of the blocks
+            m_pre_map.insert (make_pair (&B, analyzer.get_pre (cfg, &B)));
+            // --- invariants that hold at the exit of the blocks
+            m_post_map.insert (make_pair (&B, analyzer.get_post (cfg, &B)));
+          }
+          if (LlvmCrabPrintAns)
+            write (outs (), *F);
+        }
+      }
+    }
+    return false;
+  }
+
   template<typename AbsDomain>
-  bool CrabLlvm::runOnCfg (cfg_t& cfg, llvm::Function &F)
+  bool CrabLlvm::runOnCfg (const cfg_t& cfg, const llvm::Function &F)
   {
     typedef typename NumFwdAnalyzer <cfg_t, AbsDomain, 
                                      VariableFactory, 
                                      inv_tbl_val_t>::type analyzer_t;
 
+    // -- run intra-procedural analysis
     analyzer_t analyzer (cfg, m_vfac, m_runlive);
     analyzer.Run (AbsDomain::top());
 
-    // Store invariants to survive across functions
-    for (auto &B : F)
+    // -- store invariants 
+    for (auto const &B : F)
     {
-      const llvm::BasicBlock *BB = &B;
       // --- invariants that hold at the entry of the blocks
-      m_pre_map.insert (make_pair (BB, analyzer.get_pre (&B)));
+      m_pre_map.insert (make_pair (&B, analyzer.get_pre (&B)));
       // --- invariants that hold at the exit of the blocks
-      m_post_map.insert (make_pair (BB, analyzer.get_post (&B)));
+      m_post_map.insert (make_pair (&B, analyzer.get_post (&B)));
     }
     
     return false;
   }
 
-
-  // Write to standard output the invariants 
-  void CrabLlvm::dump (llvm::Module &M) const
-  {
-    for (auto &F : M) {
-      if (F.isDeclaration () || F.empty ()) continue;
-      outs () << "\nFunction " << F.getName () << "\n";
+  void CrabLlvm::write (llvm::raw_ostream& o, const llvm::Function& F) {
+    if (!F.isDeclaration () && !F.empty ()) {
+      o << "\nFunction " << F.getName () << "\n";
       for (auto &B : F) {
         const llvm::BasicBlock * BB = &B;
-        outs () << "\t" << BB->getName () << ": ";
+        o << "\t" << BB->getName () << ": ";
         auto inv = getPost (BB);
-        outs () << inv << "\n";
+        o << inv << "\n";
       }
-      outs () <<  "\n";
+      o <<  "\n";
     }
   }
 

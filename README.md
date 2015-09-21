@@ -52,8 +52,7 @@ each basic block in the `LLVM` bitcode.
     - `int`: classical intervals
 	- `ric`: reduced product of intervals and congruences
 	- `zones`: difference-bound matrices
-    - `term`: term equivalences (functor domain of uninterpreted functions
-              parameterized with intervals)
+    - `term`: intervals with uninterpreted functions
 
 - We also provide the option `--crab-track-lvl` to indicate the level
 of precision. The possible values are: 
@@ -67,6 +66,14 @@ If the level is `mem` then Crab-llvm simply uses an array smashing
 domain whose base domain is the one selected by option
 `--crab-domain`.
 
+- By default, all the analyses are run in an intra-procedural
+  manner. Enable the option `--crab-inter` to run the inter-procedural
+  version. Crab-llvm implements a standard two-phase algorithm in
+  which the call graph is first traversed from the leaves to the root
+  while computing summaries and then from the root the leaves reusing
+  summaries. Each function is executed only once. The analysis is
+  sound with recursive functions but very imprecise.
+  
 #People#
 
 * [Jorge Navas](http://ti.arc.nasa.gov/profile/jorge/)

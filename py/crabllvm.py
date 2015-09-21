@@ -74,18 +74,18 @@ def parseArgs (argv):
                     help='Compile with debug information')
     p.add_argument ('-m', type=int, dest='machine',
                        help='Machine architecture MACHINE:[32,64]', default=32)
+    p.add_argument ("--disable-cc", dest="no_cc", 
+                       help=a.SUPPRESS, action='store_true',
+                       default=False)
+    p.add_argument ("--disable-pp", dest="no_pp", 
+                       help=a.SUPPRESS, action='store_true',
+                       default=False)
     p.add_argument ('--cpu', type=int, dest='cpu', metavar='SEC',
                        help='CPU time limit (seconds)', default=-1)
     p.add_argument ('--mem', type=int, dest='mem', metavar='MB',
                        help='MEM limit (MB)', default=-1)
     p.add_argument ('--inline', dest='inline', help='Inline all functions',
                     default=False, action='store_true')
-    p.add_argument ("--disable-cc", dest="no_cc", 
-                       help="Disable compilation", action='store_true',
-                       default=False)
-    p.add_argument ("--disable-pp", dest="no_pp", 
-                       help="Disable preprocessing", action='store_true',
-                       default=False)
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
@@ -95,27 +95,28 @@ def parseArgs (argv):
     p.add_argument ('--crab-track',
                     help='Track registers, pointers, and memory',
                     choices=['reg', 'ptr', 'mem'], dest='track', default='reg')
-    p.add_argument ('--crab-live',
-                    help='Use of liveness information',
-                    dest='crab_live', default=False, action='store_true')        
+    p.add_argument ('--crab-inter',
+                    help='Run inter-procedural analysis',
+                    dest='crab_inter', default=False, action='store_true')
     p.add_argument ('--crab-answer',
                     help='Display computed invariants',
                     dest='show_invars', default=False, action='store_true')
-    p.add_argument ('--crab-print-cfg',
-                    help='Print Crab CFG',
-                    dest='print_cfg', default=False, action='store_true')
     p.add_argument ('--crab-insert-invs',
                     help='Instrument code with invariants',
                     dest='insert_invs', default=False, action='store_true')
+    ######################################################################
+    p.add_argument ('--crab-live',
+                    help='Use of liveness information',
+                    dest='crab_live', default=False, action='store_true')        
+    p.add_argument ('--crab-print-cfg',
+                    help='Print Crab CFG',
+                    dest='print_cfg', default=False, action='store_true')
     p.add_argument ('--crab-disable-ptr',
                     help='Disable translation of pointer arithmetic instructions (experimental)',
                     dest='crab_disable_ptr', default=False, action='store_true')
     p.add_argument ('--crab-cfg-simplify',
                     help='Simplify CFG built by Crab (experimental)',
                     dest='crab_cfg_simplify', default=False, action='store_true')
-    p.add_argument ('--crab-cfg-interproc',
-                    help='Build inter-procedural CFG (experimental)',
-                    dest='crab_interproc', default=False, action='store_true')
     #### END CRAB
     
     args = p.parse_args (argv)
@@ -233,8 +234,8 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
         crabllvm_cmd.append ('--crab-disable-ptr')
     if args.crab_cfg_simplify:
         crabllvm_cmd.append ('--crab-cfg-simplify')
-    if args.crab_interproc:
-        crabllvm_cmd.append ('--crab-cfg-interproc')
+    if args.crab_inter:
+        crabllvm_cmd.append ('--crab-inter')
     if args.crab_live:
         crabllvm_cmd.append ('--crab-live')
     if args.show_invars:

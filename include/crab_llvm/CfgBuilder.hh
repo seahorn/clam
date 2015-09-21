@@ -51,7 +51,7 @@ namespace crab {
      using namespace cfg;
 
      // To print basic block labels
-     template<> inline std::string get_label_str(llvm::BasicBlock *B) 
+     template<> inline std::string get_label_str(const llvm::BasicBlock *B) 
      { return B->getName (); }
   
      // Variable factory from llvm::Value's
@@ -95,7 +95,7 @@ namespace crab {
      typedef typename VariableFactory::varname_t varname_t;
      // CFG
      typedef ikos::variable< ikos::z_number, varname_t > z_var;
-     typedef llvm::BasicBlock* basic_block_label_t;
+     typedef const llvm::BasicBlock* basic_block_label_t;
      typedef Cfg< basic_block_label_t, varname_t> cfg_t;
      typedef cfg_t::basic_block_t basic_block_t;
      typedef typename cfg_t::basic_block_t::z_lin_exp_t z_lin_exp_t;
@@ -140,7 +140,7 @@ namespace crab_llvm
     MemAnalysis*      m_mem;
     bool              m_is_inter_proc;
     const DataLayout* m_dl;
-    vector<llvm::BasicBlock*> m_extra_blks;
+    vector<basic_block_label_t> m_extra_blks;
 
    public:
     
