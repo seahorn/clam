@@ -8,8 +8,4 @@ add_library(LlvmPasses STATIC
   MarkInternalInline.cc
   )
 
-if (HAVE_DSA)
-  target_link_libraries (LlvmPasses ${DSA_LIBS})
-else ()
-  target_link_libraries (LlvmPasses)
-endif ()
+install(TARGETS LlvmPasses ARCHIVE DESTINATION lib)

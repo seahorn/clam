@@ -98,19 +98,22 @@ def parseArgs (argv):
     p.add_argument ('--crab-inter',
                     help='Run inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
-    p.add_argument ('--crab-answer',
-                    help='Display computed invariants',
-                    dest='show_invars', default=False, action='store_true')
-    p.add_argument ('--crab-insert-invs',
+    p.add_argument ('--crab-insert-invariants',
                     help='Instrument code with invariants',
                     dest='insert_invs', default=False, action='store_true')
+    p.add_argument ('--crab-print-invariants',
+                    help='Display computed invariants',
+                    dest='show_invars', default=False, action='store_true')
+    p.add_argument ('--crab-print-summaries',
+                    help='Display computed summaries (if --crab-inter)',
+                    dest='show_summs', default=False, action='store_true')
+    p.add_argument ('--crab-print-cfg',
+                    help='Display Crab CFG',
+                    dest='print_cfg', default=False, action='store_true')
     ######################################################################
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        
-    p.add_argument ('--crab-print-cfg',
-                    help='Print Crab CFG',
-                    dest='print_cfg', default=False, action='store_true')
     p.add_argument ('--crab-disable-ptr',
                     help='Disable translation of pointer arithmetic instructions (experimental)',
                     dest='crab_disable_ptr', default=False, action='store_true')
@@ -239,11 +242,13 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     if args.crab_live:
         crabllvm_cmd.append ('--crab-live')
     if args.show_invars:
-        crabllvm_cmd.append ('--crab-answer')
+        crabllvm_cmd.append ('--crab-print-invariants')
+    if args.show_summs:
+        crabllvm_cmd.append ('--crab-print-summaries')
     if args.print_cfg:
         crabllvm_cmd.append ('--crab-print-cfg')
     if args.insert_invs:
-        crabllvm_cmd.append ('--crab-insert-invs')
+        crabllvm_cmd.append ('--crab-insert-invariants')
 
     if verbose: print ' '.join (crabllvm_cmd)
 

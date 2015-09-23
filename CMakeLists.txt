@@ -195,7 +195,8 @@ endif()
 configure_file( include/crab_llvm/config.h.cmake
                 ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h )
 
-install(DIRECTORY include/crab_llvm DESTINATION include/crab_llvm)
+install(DIRECTORY include/crab_llvm DESTINATION include)
+install(DIRECTORY include/Transforms DESTINATION include)
 
 # License
 install(FILES LICENSE.txt DESTINATION share/doc)       

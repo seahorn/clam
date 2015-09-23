@@ -20,9 +20,10 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/IR/Verifier.h"
-
-#include "crab_llvm/CrabLlvm.hh"
-#include "crab_llvm/ConCrabLlvm.hh"
+#include "crab_llvm/config.h"
+#ifdef HAVE_DSA
+#include "assistDS/Devirt.h"
+#endif 
 
 #include <Transforms/LowerGvInitializers.hh>
 #include <Transforms/NameValues.hh>
@@ -31,7 +32,9 @@
 #include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
 
+#include "crab_llvm/CrabLlvm.hh"
 #include <crab_llvm/Transforms/InsertInvariants.hh>
+#include "crab_llvm/ConCrabLlvm.hh"
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
@@ -58,7 +61,7 @@ Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs"),
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-InsertInvs ("crab-insert-invs", llvm::cl::desc ("Instrument code with invariants"),
+InsertInvs ("crab-insert-invariants", llvm::cl::desc ("Instrument code with invariants"),
            llvm::cl::init (false));
 
 using namespace crab_llvm;
@@ -142,9 +145,19 @@ int main(int argc, char **argv) {
     dl = module->getDataLayout ();
   }
   if (dl) pass_manager.add (new DataLayoutPass ());
-  
-  // -- SSA
+
+  /////
+  // Here only passes that are necessary or very recommended for Crab
+  /////
+
+  // -- promote alloca's to registers
   pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
+
+#ifdef HAVE_DSA
+  // -- resolve indirect calls
+  pass_manager.add (new llvm::Devirtualize ());
+#endif 
+
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   // -- remove unreachable blocks 
@@ -155,13 +168,18 @@ int main(int argc, char **argv) {
   pass_manager.add (new crab_llvm::LowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
-  // -- must be the last ones before running crab:
+  // -- must be the last ones before running crab.
+  //    It is not a must anymore since Crab can handle select
+  //    instructions. However, Crab can be more precise if select are
+  //    lowered. llvmpp has the option to lower select instructions.
   //pass_manager.add (new crab_llvm::LowerSelect ());   
   pass_manager.add (new crab_llvm::NameValues ()); 
-
-  if (Concurrency)
+  
+  if (Concurrency) {
     pass_manager.add (new crab_llvm::ConCrabLlvm ());
+  }
   else {
+    /// -- run the crab analyzer
     pass_manager.add (new crab_llvm::CrabLlvm ());
     if (InsertInvs) {
       pass_manager.add (new crab_llvm::InsertInvariants ());

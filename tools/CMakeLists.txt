@@ -7,8 +7,15 @@ set (USED_LIBS
   ${GMP_LIB}
   ${RT_LIB})
 
-set(LLVM_LINK_COMPONENTS irreader bitwriter ipo scalaropts instrumentation core 
-  codegen objcarcopts)
+set(LLVM_LINK_COMPONENTS 
+  irreader 
+  bitwriter 
+  ipo 
+  scalaropts 
+  instrumentation 
+  core 
+  codegen 
+  objcarcopts)
 
 add_executable(llvmpp llvmpp.cc)
 target_link_libraries (llvmpp LlvmPasses ${USED_LIBS})
@@ -17,8 +24,13 @@ install(TARGETS llvmpp RUNTIME DESTINATION bin)
 
 add_executable(crabllvm crabllvm.cc)
 target_link_libraries (crabllvm
-  CrabLlvmAnalysis CrabLlvmInstrumentation LlvmPasses 
-  ${CRAB_DBM_LIB} ${CRAB_TERM_LIB}  ${USED_LIBS})
+  CrabLlvmAnalysis 
+  CrabLlvmInstrumentation 
+  LlvmPasses 
+  ${USED_LIBS})
+if (HAVE_DSA)
+  target_link_libraries (crabllvm ${DSA_LIBS})
+endif ()
 llvm_config (crabllvm ${LLVM_LINK_COMPONENTS})
 install(TARGETS crabllvm RUNTIME DESTINATION bin)
 

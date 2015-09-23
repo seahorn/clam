@@ -32,6 +32,9 @@ download the following package at the root directory:
 
 * [dsa-seahorn](https://github.com/seahorn/dsa-seahorn): ``` git clone https://github.com/seahorn/dsa-seahorn.git ```
 
+`dsa-seahorn` is also needed to resolve indirect calls (i.e., function
+pointers).
+
 Then, the compilation steps are:
 
 1. ```mkdir build ; cd build```
@@ -41,10 +44,10 @@ Then, the compilation steps are:
 
 Crab-llvm provides a python script called `crabllvm.py` to interact
 with users. Given a C program, users just need to type: `crabllvm.py
-file.c --crab-answer`.
+file.c --crab-print-invariants`.
 
-- The option `--crab-answer` displays all the invariants inferred for
-each basic block in the `LLVM` bitcode.
+- The option `--crab-print-invariants` displays all the invariants
+inferred for each basic block in the `LLVM` bitcode.
 
 - Users can also choose the abstract domain by typing the option
 `--crab-domain`. The possible values are:
@@ -59,12 +62,10 @@ of precision. The possible values are:
 
     - `reg`: reasons about integer scalars (LLVM registers).
 	- `ptr`: reasons about pointer addresses.	
-    - `mem`: reasons about the contents of pointers and
-arrays.
+    - `mem`: reasons about the contents of pointers and arrays.
 
-If the level is `mem` then Crab-llvm simply uses an array smashing
-domain whose base domain is the one selected by option
-`--crab-domain`.
+   If the level is `mem` then Crab-llvm simply uses an array smashing
+   domain whose base domain is the one selected by option `--crab-domain`.
 
 - By default, all the analyses are run in an intra-procedural
   manner. Enable the option `--crab-inter` to run the inter-procedural
@@ -72,7 +73,8 @@ domain whose base domain is the one selected by option
   which the call graph is first traversed from the leaves to the root
   while computing summaries and then from the root the leaves reusing
   summaries. Each function is executed only once. The analysis is
-  sound with recursive functions but very imprecise.
+  sound with recursive functions but very imprecise. The option
+  `--crab-print-summaries` displays the summaries for each function.
   
 #People#
 

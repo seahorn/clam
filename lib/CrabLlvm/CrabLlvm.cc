@@ -28,9 +28,14 @@ using namespace llvm;
 using namespace crab_llvm;
 
 llvm::cl::opt<bool>
-LlvmCrabPrintAns ("crab-answer", 
+LlvmCrabPrintAns ("crab-print-invariants", 
                   llvm::cl::desc ("Print Crab invariants"),
                   llvm::cl::init (false));
+
+llvm::cl::opt<bool>
+LlvmCrabPrintSumm ("crab-print-summaries", 
+                   llvm::cl::desc ("Print Crab function summaries"),
+                   llvm::cl::init (false));
 
 llvm::cl::opt<CrabDomain>
 LlvmCrabDomain("crab-dom",
@@ -202,8 +207,16 @@ namespace crab_llvm
             // --- invariants that hold at the exit of the blocks
             m_post_map.insert (make_pair (&B, analyzer.get_post (cfg, &B)));
           }
+
+          // -- print invariants and summaries
           if (LlvmCrabPrintAns)
             write (outs (), *F);
+          if (LlvmCrabPrintSumm) {
+            if (analyzer.has_summary (cfg)) {
+              auto summ = analyzer.get_summary (cfg);
+              outs () << "SUMMARY " << F->getName () << ": " << summ << "\n";
+            }
+          }
         }
       }
     }
