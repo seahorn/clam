@@ -1,6 +1,8 @@
 #Crab-llvm#
 
-![Imgur](http://i.imgur.com/0woNEKp.png)
+<img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> |
+<img src="http://llvm.org/img/DragonSmall.png" alt="llvm logo" width=280 height=200 />
+
 
 #About#
 
@@ -19,7 +21,7 @@ to make easier the task of static analysis.
 The use of `llvmpp` is optional but highly recommended with large
 programs.
 
-## License ##
+#License#
 
 Crab-llvm is distributed under MIT license. See
 [LICENSE.txt](LICENSE.txt) for details.
@@ -35,9 +37,6 @@ If you want Crab-llvm to reason about pointers and arrays you need to
 download the following package at the root directory:
 
 * [dsa-seahorn](https://github.com/seahorn/dsa-seahorn): ``` git clone https://github.com/seahorn/dsa-seahorn.git ```
-
-`dsa-seahorn` is also needed to resolve indirect calls (i.e., function
-pointers).
 
 Then, the compilation steps are:
 
@@ -64,12 +63,29 @@ inferred for each basic block in the `LLVM` bitcode.
 - We also provide the option `--crab-track-lvl` to indicate the level
 of precision. The possible values are: 
 
-    - `reg`: reasons about integer scalars (LLVM registers).
+    - `int`: reasons about integer scalars (LLVM registers).
 	- `ptr`: reasons about pointer addresses.	
-    - `mem`: reasons about the contents of pointers and arrays.
+    - `arr`: reasons about the contents of pointers and arrays.
 
-   If the level is `mem` then Crab-llvm simply uses an array smashing
-   domain whose base domain is the one selected by option `--crab-domain`.
+   If the level is `ptr` then Crab-llvm reasons about pointer
+   arithmetic but it does not translate neither LLVM loads nor stores.
+   
+   If the level is `arr` then Crab-llvm uses the heap analysis
+   provided by `dsa-seahorn` to partition the heap into disjoint
+   arrays (i.e., sequence of consecutive bytes). Each LLVM load and
+   store is translated to an array read and write operation,
+   respectively. Then, it will use an array domain provided by Crab
+   whose base domain is the one selected by option
+   `--crab-domain`. Unlike `int` and `ptr` which produce a concrete
+   semantics (up to the selected level of precision), the level `arr`
+   produces an abstract semantics where all memory contents are
+   already over-approximated. Nevertheless, Crab's analyses can always
+   refine this abstract semantics by using more precise pointer and/or
+   value analyses.
+
+   Regardless the level of precision, Crab-llvm can try to resolve
+   indirect calls (i.e., function pointers) if `dsa-seahorn` is
+   installed and enable option `--crab-devirt`.
 
 - By default, all the analyses are run in an intra-procedural
   manner. Enable the option `--crab-inter` to run the inter-procedural
@@ -78,7 +94,9 @@ of precision. The possible values are:
   while computing summaries and then from the root the leaves reusing
   summaries. Each function is executed only once. The analysis is
   sound with recursive functions but very imprecise. The option
-  `--crab-print-summaries` displays the summaries for each function.
+  `--crab-print-summaries` displays the summaries for each
+  function. The inter-procedural analysis is specially important if
+  reasoning about memory contents is desired.
   
 #People#
 

@@ -7,8 +7,9 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Instructions.h"
 
-#include "crab_llvm/config.h"
+#include "boost/tuple/tuple.hpp"
 
+#include "crab_llvm/config.h"
 #include <crab/cfg/Cfg.hpp>
 
 #ifdef HAVE_DSA
@@ -35,6 +36,7 @@ namespace crab_llvm
      */
 
    public:
+
     typedef int array_id_t; // if < 0 then error
 
    private:
@@ -52,16 +54,15 @@ namespace crab_llvm
     ///            return node
     std::set<const DSNode*> m_retReach;
 
-    template<typename First, typename Second>
-    struct getSecond : public std::unary_function<pair<First,Second>, Second>
-    {
-      getSecond () { }
-      Second operator () (const pair<First,Second> &p) const { return p.second; }
-    }; 
+    // template<typename First, typename Second>
+    // struct getSecond : public std::unary_function<pair<First,Second>, Second> {
+    //   getSecond () { }
+    //   Second operator () (const pair<First,Second> &p) const { return p.second; }
+    // }; 
 
-    typedef boost::transform_iterator< getSecond<const DSNode*,unsigned>, 
-                                       typename DenseMap<const DSNode*, 
-                                                         unsigned>::iterator > iterator;
+    // typedef boost::transform_iterator< getSecond<const DSNode*,unsigned>, 
+    //                                    typename DenseMap<const DSNode*, 
+    //                                                      unsigned>::iterator > iterator;
 
     array_id_t getId (const DSNode *n)
     {
@@ -142,24 +143,24 @@ namespace crab_llvm
       }
     }
 
-    //! return begin iterator to node id's
-    iterator begin () {       
-        return boost::make_transform_iterator 
-            (m_node_ids.begin (), 
-             getSecond<const DSNode*,unsigned> ());
-    }
+    // //! return begin iterator to node id's
+    // iterator begin () {       
+    //     return boost::make_transform_iterator 
+    //         (m_node_ids.begin (), 
+    //          getSecond<const DSNode*,unsigned> ());
+    // }
 
-    //! return end iterator to node id's
-    iterator end () {       
-        return boost::make_transform_iterator 
-            (m_node_ids.end (), 
-             getSecond<const DSNode*,unsigned> ());
-    }
+    // //! return end iterator to node id's
+    // iterator end () {       
+    //     return boost::make_transform_iterator 
+    //         (m_node_ids.end (), 
+    //          getSecond<const DSNode*,unsigned> ());
+    // }
 
     
    public:
     
-    MemAnalysis ():  m_dsa (0), m_tracklev (REG) { }
+    MemAnalysis ():  m_dsa (0), m_tracklev (INT) { }
 
     MemAnalysis (DataStructures * dsa, 
                  TrackedPrecision tracklev): 
@@ -193,79 +194,55 @@ namespace crab_llvm
       return it->second->getUniqueScalar ();
     }
 
-    //! return all the arrays that must be allocated at the
-    //! beginning of the function.
-    set<array_id_t> getAllocArrays (Function& f)
-    {
+    // Return the set of ref, mod and new nodes such that mod nodes
+    // are a subset of the ref nodes and the new nodes are disjoint
+    // from mod nodes.
+    boost::tuple< set<array_id_t>, set<array_id_t>, set<array_id_t> > 
+    getRefModNewArrays (Function& f) {
       std::set<const DSNode*> reach, retReach;
       argReachableNodes (f, reach, retReach);
-      
-      set<array_id_t> inits;
-      for (auto node_id : boost::make_iterator_range (begin (), end ()))
-      {
-        if (reach.count (m_rev_node_ids [node_id]) <= 0)
-        { // -- does not escape the function
-          inits.insert (node_id);
-        }
-      }
-      for (const DSNode* n : reach)
-      {
-        if (!n->isReadNode () && !n->isModifiedNode ()) 
+
+      set<array_id_t> refs, mods, news;
+      for (const DSNode* n : reach) {
+        if (!n->isReadNode () && !n->isModifiedNode ())
           continue;
 
-        if (n->isModifiedNode () &&retReach.count (n))
-            inits.insert (getId (n));
-      }
-      return inits;
-    }
-    
-
-    //! return all the in/out arrays for the function
-    pair<set<array_id_t>,set<array_id_t> > getInOutArrays (Function& f)
-    {
-      std::set<const DSNode*> reach, retReach;
-      argReachableNodes (f, reach, retReach);
-
-      set<array_id_t> in, out;
-      for (const DSNode* n : reach)
-      {
-        // n is read and is not only return-node reachable (for
-        // return-only reachable nodes, there is no initial value
-        // because they are created within this function)
-        if ((n->isReadNode () || n->isModifiedNode ()) 
-            && retReach.count (n) <= 0)
-          in.insert (getId (n));
+        if ((n->isReadNode () || n->isModifiedNode ()) && retReach.count (n) <= 0) 
+          refs.insert (getId (n));
       
-        if (n->isModifiedNode ())
-          out.insert (getId (n));
+        if (n->isModifiedNode () && retReach.count (n) <= 0)
+          mods.insert (getId (n));
+
+        if (n->isModifiedNode () && retReach.count (n))
+          news.insert (getId (n));
       }
-      return make_pair (in,out);
+      return boost::make_tuple (refs, mods, news);
     }
 
-    //! return the set of read-only and read/write arrays by the call
-    pair<set<array_id_t>,set<array_id_t> >
-    getReadModArrays (CallInst& I)
-    {
-      set<array_id_t> reads_only;
-      set<array_id_t> read_writes;
+    // Return the set of ref, mod and new nodes such that mod nodes
+    // are a subset of the ref nodes and the new nodes are disjoint
+    // from mod nodes.
+    boost::tuple< set<array_id_t>, set<array_id_t>, set<array_id_t> > 
+    getRefModNewArrays (CallInst& I) {
+      set<array_id_t> refs, mods, news;
 
       /// ignore inline assembly
-      if (I.isInlineAsm ()) return make_pair (reads_only, read_writes);
+      if (I.isInlineAsm ())
+        return boost::make_tuple (refs, mods, news); 
       
       DSGraph *dsg = m_dsa->getDSGraph (*(I.getParent ()->getParent ()));
       DSCallSite CS = dsg->getDSCallSiteForCallSite (CallSite (&I));
       
-      // TODO: resolve the indirect call
       if (!CS.isDirectCall ()) 
-        return make_pair (reads_only, read_writes); 
+        return boost::make_tuple (refs, mods, news); 
       
       if (!m_dsa->hasDSGraph (*CS.getCalleeFunc ())) 
-        return make_pair (reads_only, read_writes);
+        return boost::make_tuple (refs, mods, news); 
           
       const Function &CF = *CS.getCalleeFunc ();
       DSGraph *cdsg = m_dsa->getDSGraph (CF);
       if (!cdsg) 
-        return make_pair (reads_only, read_writes);
+        return boost::make_tuple (refs, mods, news); 
       
       // -- compute callee nodes reachable from arguments and returns
       DSCallSite CCS = cdsg->getCallSiteForArguments (CF);
@@ -275,32 +252,26 @@ namespace crab_llvm
       DSGraph::NodeMapTy nodeMap;
       dsg->computeCalleeCallerMapping (CS, CF, *cdsg, nodeMap);
       
-      /// classify nodes as mod, ref, new, based on whether the remote
-      /// node reads, writes, or creates the corresponding node.
-      for (const DSNode* n : reach)
-      {
-        // skip nodes that are not read/written by the callee
-        if (!n->isReadNode () && !n->isModifiedNode ()) 
+      for (const DSNode* n : reach) {
+        if (!n->isReadNode () && !n->isModifiedNode ())
           continue;
 
-        // -- read only node
-        if (n->isReadNode () && !n->isModifiedNode ())
-          reads_only.insert (getId (n)); 
+        if ((n->isReadNode () || n->isModifiedNode ()) && retReach.count (n) <= 0) 
+          refs.insert (getId (n));
+      
+        if (n->isModifiedNode () && retReach.count (n) <= 0)
+          mods.insert (getId (n));
 
-        // -- read/write or new node
-        else if (n->isModifiedNode ())
-        {
-          if (retReach.count (n) <= 0)
-            read_writes.insert (getId (n));          
-          // -- n is new node iff it is reachable only from the return
-          // node. We ignore the new nodes
-        }
+        if (n->isModifiedNode () && retReach.count (n))
+          news.insert (getId (n));
+
       }
       // -- add the node of the lhs of the call site
       int ret = getArrayId (*(I.getParent ()->getParent ()), &I);
-      if (ret >=0) read_writes.insert (ret);
+      if (ret >=0) 
+        mods.insert (ret);
 
-      return make_pair (reads_only, read_writes);
+      return boost::make_tuple (refs, mods, news); 
     }
     
   }; 
@@ -310,21 +281,20 @@ namespace crab_llvm
 namespace crab_llvm
 {
   using namespace crab::cfg;
-  struct MemAnalysis
-  {
+  struct MemAnalysis {
+    typedef int array_id_t; 
     TrackedPrecision m_tracklev;
-    MemAnalysis (): m_tracklev (REG) { }
+    MemAnalysis (): m_tracklev (INT) { }
     TrackedPrecision getTrackLevel () const { return m_tracklev; }
     int getArrayId (llvm::Function&, llvm::Value*) { return -1; }
     bool isSingleton (int) { return false; }
-    set<int> getAllocArrays (llvm::Function&) { 
-      return set<int> ();  
-    }
-    pair<set<int>,set<int> > getInOutArrays (llvm::Function&) {  
-      return make_pair (set<int> (), set<int> ()); 
+    boost::tuple<set<int>,set<int>, set<int> > 
+    getRefModNewArrays (llvm::Function&) {  
+      return boost::make_tuple (set<int> (), set<int> (), set<int> ()); 
     } 
-    pair<set<int>,set<int> > getReadModArrays (llvm::CallInst&) {  
-      return make_pair (set<int> (), set<int> ()); 
+    boost::tuple<set<int>,set<int>, set<int> > 
+    getRefModNewArrays (llvm::CallInst&) {  
+      return boost::make_tuple (set<int> (), set<int> (), set<int> ()); 
     } 
   }; 
 } // end namespace

@@ -59,18 +59,25 @@ LlvmCrabLive("crab-live",
 
 llvm::cl::opt<enum TrackedPrecision>
 LlvmCrabTrackLev("crab-track-lvl",
-   llvm::cl::desc ("Track level for Cfg and abstract domains"),
-   cl::values (clEnumValN (REG, "reg", "Primitive registers only"),
-               clEnumValN (PTR, "ptr", "REG + pointers"),
-               clEnumValN (MEM, "mem", "PTR + memory content"),
+   llvm::cl::desc ("Track precision level of the Crab Cfg"),
+   cl::values (clEnumValN (INT, "int", "Integer registers only"),
+               clEnumValN (PTR, "ptr", "INT + pointer addresses"),
+               clEnumValN (ARR, "arr", "PTR + memory content via array abstraction"),
                clEnumValEnd),
-   cl::init (TrackedPrecision::REG));
+   cl::init (TrackedPrecision::INT));
 
 llvm::cl::opt<bool>
 LlvmCrabInter ("crab-inter",
-               cl::desc ("Inter-procedural analysis"), 
+               cl::desc ("Crab Inter-procedural analysis"), 
                cl::init (false));
 
+//! Shadow variables are variables that do not have correspondence to
+//  a const Value*. These are created for instance for memory heaps.
+llvm::cl::opt<bool>
+LlvmKeepShadows ("crab-keep-shadows",
+                 cl::desc ("Display shadow variables in the invariants and summaries"), 
+                 cl::init (false),
+                 cl::Hidden);
 
 namespace crab_llvm
 {
@@ -114,22 +121,22 @@ namespace crab_llvm
         // TODO: make an user option the abstract domain used
         // for the bottom-up phase of the interprocedural analysis
         case INTERVALS:  
-          change = (LlvmCrabTrackLev >= MEM ? 
+          change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_dbm_domain_t, arr_interval_domain_t> (cg, M) : 
                     runOnCg <dbm_domain_t, interval_domain_t> (cg, M)) ; 
           break;
         case INTERVALS_CONGRUENCES: 
-          change = (LlvmCrabTrackLev >= MEM ? 
+          change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_dbm_domain_t, arr_ric_domain_t> (cg, M) : 
                     runOnCg <dbm_domain_t, ric_domain_t> (cg, M)) ; 
           break;
         case ZONES: 
-          change = (LlvmCrabTrackLev >= MEM ? 
+          change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_dbm_domain_t, arr_dbm_domain_t> (cg, M) :  
                     runOnCg <dbm_domain_t, dbm_domain_t> (cg, M)) ; 
           break;
         case TERMS:
-          change = (LlvmCrabTrackLev >= MEM ? 
+          change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, M) : 
                     runOnCg <dbm_domain_t, term_domain_t> (cg, M)) ; 
             break;
@@ -158,22 +165,22 @@ namespace crab_llvm
     switch (m_absdom)
     {
       case INTERVALS:  
-        change = (LlvmCrabTrackLev >= MEM ? 
+        change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_interval_domain_t> (cfg, F) : 
                   runOnCfg <interval_domain_t> (cfg, F)) ; 
         break;
       case INTERVALS_CONGRUENCES: 
-        change = (LlvmCrabTrackLev >= MEM ? 
+        change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_ric_domain_t> (cfg, F) : 
                   runOnCfg <ric_domain_t> (cfg, F)) ; 
         break;
       case ZONES: 
-        change = (LlvmCrabTrackLev >= MEM ? 
+        change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_dbm_domain_t> (cfg, F) :  
                   runOnCfg <dbm_domain_t> (cfg, F)) ; 
         break;
       case TERMS:
-        change = (LlvmCrabTrackLev >= MEM ? 
+        change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_term_domain_t> (cfg, F) : 
                   runOnCfg <term_domain_t> (cfg, F)) ; 
         break;
@@ -192,7 +199,7 @@ namespace crab_llvm
     // -- run inter-procedural analysis
     typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
                               BUAbsDomain, TDAbsDomain, inv_tbl_val_t> analyzer_t;
-    analyzer_t analyzer(cg, m_vfac, m_runlive);
+    analyzer_t analyzer(cg, m_vfac, m_runlive, LlvmKeepShadows);
     analyzer.Run (TDAbsDomain::top ());
 
     // -- store invariants     
@@ -231,7 +238,7 @@ namespace crab_llvm
                                      inv_tbl_val_t>::type analyzer_t;
 
     // -- run intra-procedural analysis
-    analyzer_t analyzer (cfg, m_vfac, m_runlive);
+    analyzer_t analyzer (cfg, m_vfac, m_runlive, LlvmKeepShadows);
     analyzer.Run (AbsDomain::top());
 
     // -- store invariants 

@@ -93,14 +93,20 @@ def parseArgs (argv):
                     choices=['int','ric','zones','term'],
                     dest='crab_dom', default='int')
     p.add_argument ('--crab-track',
-                    help='Track registers, pointers, and memory',
-                    choices=['reg', 'ptr', 'mem'], dest='track', default='reg')
+                    help='Track integers, pointers, and memory',
+                    choices=['int', 'ptr', 'arr'], dest='track', default='reg')
     p.add_argument ('--crab-inter',
                     help='Run inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
+    p.add_argument ('--crab-devirt',
+                    help='Resolve indirect calls',
+                    dest='crab_devirt', default=False, action='store_true')
     p.add_argument ('--crab-insert-invariants',
                     help='Instrument code with invariants',
                     dest='insert_invs', default=False, action='store_true')
+    p.add_argument ('--crab-live',
+                    help='Use of liveness information',
+                    dest='crab_live', default=False, action='store_true')        
     p.add_argument ('--crab-print-invariants',
                     help='Display computed invariants',
                     dest='show_invars', default=False, action='store_true')
@@ -111,15 +117,17 @@ def parseArgs (argv):
                     help='Display Crab CFG',
                     dest='print_cfg', default=False, action='store_true')
     ######################################################################
-    p.add_argument ('--crab-live',
-                    help='Use of liveness information',
-                    dest='crab_live', default=False, action='store_true')        
     p.add_argument ('--crab-disable-ptr',
-                    help='Disable translation of pointer arithmetic instructions (experimental)',
+                    #help='Disable translation of pointer arithmetic instructions (experimental)',
+                    help=a.SUPPRESS,
                     dest='crab_disable_ptr', default=False, action='store_true')
     p.add_argument ('--crab-cfg-simplify',
-                    help='Simplify CFG built by Crab (experimental)',
+                    #help='Simplify CFG built by Crab (experimental)',
+                    help=a.SUPPRESS,
                     dest='crab_cfg_simplify', default=False, action='store_true')
+    p.add_argument ('--crab-keep-shadows',
+                    help=a.SUPPRESS,
+                    dest='crab_keep_shadows', default=False, action='store_true')
     #### END CRAB
     
     args = p.parse_args (argv)
@@ -227,28 +235,33 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
             mem_bytes = mem * 1024 * 1024
             resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
 
-    crabllvm_cmd = [ getCrabLlvm(), in_name,
-                     '-oll', out_name]
+    crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     crabllvm_cmd.append ('--crab-track-lvl={0}'.format (args.track))
-
-    if args.crab_disable_ptr:
-        crabllvm_cmd.append ('--crab-disable-ptr')
-    if args.crab_cfg_simplify:
-        crabllvm_cmd.append ('--crab-cfg-simplify')
     if args.crab_inter:
         crabllvm_cmd.append ('--crab-inter')
+    if args.crab_devirt:
+        crabllvm_cmd.append ('--crab-devirt')
     if args.crab_live:
         crabllvm_cmd.append ('--crab-live')
+    if args.insert_invs:
+        crabllvm_cmd.append ('--crab-insert-invariants')
     if args.show_invars:
         crabllvm_cmd.append ('--crab-print-invariants')
     if args.show_summs:
         crabllvm_cmd.append ('--crab-print-summaries')
     if args.print_cfg:
         crabllvm_cmd.append ('--crab-print-cfg')
-    if args.insert_invs:
-        crabllvm_cmd.append ('--crab-insert-invariants')
+
+    # hidden options
+    if args.crab_disable_ptr:
+        crabllvm_cmd.append ('--crab-disable-ptr')
+    if args.crab_cfg_simplify:
+        crabllvm_cmd.append ('--crab-cfg-simplify')
+    if args.crab_keep_shadows:
+        crabllvm_cmd.append ('--crab-keep-shadows')
+
 
     if verbose: print ' '.join (crabllvm_cmd)
 

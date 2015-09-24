@@ -6,18 +6,8 @@
  * crab.
  *
  * WARNING: the translation is, in general, an abstraction of the
- * concrete semantics of the input program. This is a key feature to
- * make more scalable analyses.
- *
- * There are different ways of abstraction during the translation. One
- * example is that users can choose reasoning between llvm registers,
- * pointers or memory contents. This means of course that the user
- * needs to know then which analyses will run so that he/she can
- * ensure that the CFG language contains all the details needed by the
- * analyses but hopefully not more. Another example of abstraction is
- * to ignore certain instructions (e.g., floating point operations)
- * for which user may know that his/her abstract domain cannot reason
- * about them.
+ * concrete semantics of the input program. In particular, if the
+ * level of precision is ARR.
  */
 
 #include <boost/optional.hpp>

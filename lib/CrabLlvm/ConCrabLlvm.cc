@@ -217,7 +217,7 @@ namespace crab_llvm
   {
 
 #ifdef HAVE_DSA
-    m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (), MEM);
+    m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (), ARR);
 #endif     
 
     /// --- Identify threads and shared global variables
@@ -265,13 +265,13 @@ namespace crab_llvm
     switch (LlvmCrabDomain)
     {
       case INTERVALS_CONGRUENCES: 
-        if (LlvmCrabTrackLev >= MEM)
+        if (LlvmCrabTrackLev == ARR)
           analyzeConcSys <arr_ric_domain_t> (sys, vfac, M, m_mem, dl); 
         else
           analyzeConcSys <ric_domain_t> (sys, vfac, M, m_mem, dl); 
         break;
       case ZONES: 
-        if (LlvmCrabTrackLev >= MEM)
+        if (LlvmCrabTrackLev == ARR)
           analyzeConcSys <arr_dbm_domain_t> (sys, vfac, M, m_mem, dl); 
         else
           analyzeConcSys <dbm_domain_t> (sys, vfac, M, m_mem, dl); 
@@ -279,7 +279,7 @@ namespace crab_llvm
       case TERMS: /*TODO*/
       case INTERVALS:  
       default:
-        if (LlvmCrabTrackLev >= MEM)
+        if (LlvmCrabTrackLev == ARR)
           analyzeConcSys <arr_interval_domain_t> (sys, vfac, M, m_mem, dl); 
         else
           analyzeConcSys <interval_domain_t> (sys, vfac, M, m_mem, dl); 

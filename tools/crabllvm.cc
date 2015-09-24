@@ -64,6 +64,10 @@ static llvm::cl::opt<bool>
 InsertInvs ("crab-insert-invariants", llvm::cl::desc ("Instrument code with invariants"),
            llvm::cl::init (false));
 
+static llvm::cl::opt<bool>
+CrabDevirtualize ("crab-devirt", llvm::cl::desc ("Resolve indirect calls"),
+                    llvm::cl::init (false));
+
 using namespace crab_llvm;
 
 // removes extension from filename if there is one
@@ -154,8 +158,10 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
 
 #ifdef HAVE_DSA
-  // -- resolve indirect calls
-  pass_manager.add (new llvm::Devirtualize ());
+  if (CrabDevirtualize) {
+    // -- resolve indirect calls
+    pass_manager.add (new llvm::Devirtualize ());
+  }
 #endif 
 
   // -- ensure one single exit point per function

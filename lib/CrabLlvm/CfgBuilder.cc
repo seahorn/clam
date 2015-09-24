@@ -11,6 +11,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/CommandLine.h"
 
+#include "boost/tuple/tuple.hpp"
 #include <boost/lexical_cast.hpp>
 #include <boost/range/iterator_range.hpp>
 #include "boost/range/algorithm/set_algorithm.hpp"
@@ -24,14 +25,15 @@ using namespace llvm;
 
 llvm::cl::opt<bool>
 LlvmCrabCFGSimplify ("crab-cfg-simplify",
-             cl::desc ("Simplify Crab CFG"), 
-             cl::init (false));
+                       cl::desc ("Simplify Crab CFG"), 
+                       cl::init (false),
+                       cl::Hidden);
 
 llvm::cl::opt<bool>
 LlvmCrabPrintCFG ("crab-print-cfg",
-             cl::desc ("Print Crab CFG"), 
-             cl::init (false));
-
+                    cl::desc ("Print Crab CFG"), 
+                    cl::init (false));
+                    
 /* 
  To allow to track memory ignoring pointer arithmetic. This makes
  sense because some crab analyses can reason about memory without
@@ -39,8 +41,9 @@ LlvmCrabPrintCFG ("crab-print-cfg",
 */
 llvm::cl::opt<bool>
 LlvmCrabNoGEP ("crab-disable-ptr",
-             cl::desc ("Disable translation of pointer arithmetic in Crab CFG"), 
-             cl::init (false));
+                 cl::desc ("Disable translation of pointer arithmetic in Crab CFG"), 
+                 cl::init (false),
+                 cl::Hidden);
 
 namespace crab_llvm
 {
@@ -531,41 +534,39 @@ namespace crab_llvm
       }
     }
     
-    void visitTruncInst(TruncInst &I)              
-    { doCast (I); }
     
     void visitZExtInst (ZExtInst &I)
     { 
-      // This optimization should not have too much impact if the
-      // subsequent analyses discard dead variables. However, they are
-      // usually applied at the level of basic blocks so this
-      // optimization still will help if within a block there are many
-      // instructions that follow this idiom.
-      if (m_mem->getTrackLevel () < PTR || LlvmCrabNoGEP) {
-        /* --- Search for this idiom: 
-
-           %_14 = zext i8 %_13 to i32
-           %_15 = getelementptr inbounds [10 x i8]* @_ptr, i32 0, i32 %_14
-
-           If we do not translate gep instructions we do not bother
-           translating the ZExt instruction because it will be dead
-           code anyway. This will put less pressure on the numerical
-           abstract domain later on.
-         */
-        Value* dest = &I; 
-        bool all_gep = true;
-        for (Use &U: boost::make_iterator_range(dest->use_begin(),
-                                                dest->use_end()))
-          all_gep &= isa<GetElementPtrInst> (U.getUser ());
-
-        if (all_gep) 
-          return;
+      // This optimization tries to reduce the number variables within
+      // a basic block. This will put less pressure on the numerical
+      // abstract domain later on.
+      /* --- Search for this idiom: 
+         
+         %_14 = zext i8 %_13 to i32
+         %_15 = getelementptr inbounds [10 x i8]* @_ptr, i32 0, i32 %_14
+         
+         If all users of the zext instructions are gep's then we can
+         skip the translation of the zext instruction.
+      */
+      Value* dest = &I; 
+      bool all_gep = true;
+      for (Use &U: boost::make_iterator_range(dest->use_begin(),
+                                              dest->use_end())) {
+        all_gep &= isa<GetElementPtrInst> (U.getUser ());
       }
-      doCast (I); 
+
+      if (!all_gep) {
+        doCast (I); 
+      }
+
     }
+
+
+    // void visitTruncInst(TruncInst &I)              
+    // { doCast (I); }
     
-    void visitSExtInst (SExtInst &I)
-    { doCast (I); }
+    // void visitSExtInst (SExtInst &I)
+    // { doCast (I); }
     
     void doCast(CastInst &I)
     {
@@ -587,6 +588,11 @@ namespace crab_llvm
         }
         else m_bb.havoc(dst);
       }
+    }
+
+    // This will cover the whole class of cast instructions
+    void visitCastInst (CastInst &I) {
+      doCast (I);
     }
 
     unsigned fieldOffset (const StructType *t, unsigned field) {
@@ -621,7 +627,11 @@ namespace crab_llvm
       SmallVector<const Type*, 4> ts;
       gep_type_iterator typeIt = gep_type_begin (I);
       for (unsigned i = 1; i < I.getNumOperands (); ++i, ++typeIt) {
-        ps.push_back (I.getOperand (i));
+        // strip zext if there is one
+        if (const ZExtInst *ze = dyn_cast<const ZExtInst> (I.getOperand (i)))
+          ps.push_back (ze->getOperand (0));
+        else 
+          ps.push_back (I.getOperand (i));
         ts.push_back (*typeIt);
       }
 
@@ -651,7 +661,7 @@ namespace crab_llvm
       Type *ty = I.getType();
       if (!ty->isIntegerTy ()) return;
 
-      if (m_mem->getTrackLevel () >= MEM) {
+      if (m_mem->getTrackLevel () == ARR) {
         int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), 
                                          I.getPointerOperand ());
         if (arr_idx < 0) return;
@@ -675,7 +685,7 @@ namespace crab_llvm
       Type* ty = I.getOperand (0)->getType ();
       if (!ty->isIntegerTy ()) return;
 
-      if (m_mem->getTrackLevel () >= MEM) {        
+      if (m_mem->getTrackLevel () == ARR) {        
         optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
         if (!idx) return;
         
@@ -729,11 +739,10 @@ namespace crab_llvm
       if (I.getParent ()->getParent ()->getName ().equals ("main")) 
         return;
       
-      if (I.getNumOperands () > 0)
-      {
-        m_bb.ret (m_vfac [*(I.getOperand (0))], 
-                  getType ((*I.getOperand (0)).getType ()));
-        
+      if (I.getNumOperands () > 0) {
+        if (isTracked (*(I.getOperand (0))))
+          m_bb.ret ( symVar (*(I.getOperand (0))), 
+                     getType ((*I.getOperand (0)).getType ()));
       }
     }
 
@@ -755,18 +764,30 @@ namespace crab_llvm
         return make_pair (v, UNK_TYPE);
       }
       else
-        return make_pair (m_vfac [V], getType (V.getType ()));
+        return make_pair (symVar (V), getType (V.getType ()));
     }
     
     void visitCallInst (CallInst &I) 
     {
       CallSite CS (&I);
-
       Function * callee = CS.getCalledFunction ();
 
-      // -- if no direct do nothing for now
-      // -- TODO: resolve by using DSA 
-      if (!callee) return;
+      if (!callee) {         
+        // --- If HAVE_DSA then we have run first the devirt pass so
+        //     if this is still happening is because DSA could not
+        //     resolve the indirect call
+        if (I.isInlineAsm ())
+          errs () << "WARNING: skipped inline asm statement call " << I << "\n";
+        else
+          errs () << "WARNING: skipped indirect call " << I << "\n";
+
+        // -- havoc return value
+        Value *ret = &I;
+        if (!ret->getType()->isVoidTy() && isTracked (*ret))
+          m_bb.havoc (symVar (I));
+
+        return;
+      }
 
       // -- skip if intrinsic
       if (callee->isIntrinsic ()) return;
@@ -774,79 +795,86 @@ namespace crab_llvm
       // -- some special functions
       if (callee->getName ().equals ("verifier.assume")) {
         Value *cond = CS.getArgument (0);
-
         // strip zext if there is one
         if (const ZExtInst *ze = dyn_cast<const ZExtInst> (cond))
           cond = ze->getOperand (0);
-
         if (llvm::Instruction *I = dyn_cast<llvm::Instruction> (cond)) {
           SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
           v.visit (I);
         }
-
         return;
       }
 
       if (callee->getName ().equals ("verifier.assume.not")) {
         Value *cond = CS.getArgument (0);
-
         // strip zext if there is one
         if (const ZExtInst *ze = dyn_cast<const ZExtInst> (cond))
           cond = ze->getOperand (0);
-
         if (llvm::Instruction *I = dyn_cast<llvm::Instruction> (cond)) {
           SymExecConditionVisitor v (m_vfac, m_bb, true, m_mem);
           v.visit (I);
         }
-
         return;
       }
 
       if (!m_is_inter_proc) {
-        Value *ret = &I;
         // -- havoc return value
-        if (!ret->getType()->isVoidTy() && isTracked (*ret)) {
+        Value *ret = &I;
+        if (!ret->getType()->isVoidTy() && isTracked (*ret))
           m_bb.havoc (symVar (I));
-        }
         
         // -- havoc all modified nodes by the callee
-        if (m_mem->getTrackLevel () >= MEM) {
-          for (auto a : m_mem->getReadModArrays (I).second)
-            m_bb.havoc (symVar (a));
-        }
-      }
-      else {
-        // -- add the callsite
-        vector<pair<varname_t,VariableType> > actuals;
-        for (auto &a : boost::make_iterator_range (CS.arg_begin(),
-                                                   CS.arg_end())) {
-          Value *v = a.get();
-          actuals.push_back (normalizeParam (*v));
-        }
-        
-        set<int> mods;
-        if (m_mem->getTrackLevel () >= MEM) {
-          // -- add the array actual parameters
-          auto p = m_mem->getReadModArrays (I);
-          auto reads = p.first;
-          mods = p.second;
-          set<int> all;      
-          boost::set_union(reads, mods, std::inserter (all, all.end()));
-          for (auto a : all)
-            actuals.push_back (make_pair (symVar (a), ARR_TYPE));
-        }
-        
-        if (getType (I.getType ()) != UNK_TYPE)
-          m_bb.callsite (make_pair (m_vfac [I], getType (I.getType ())), 
-                         m_vfac [*callee], actuals);
-        else
-          m_bb.callsite (m_vfac [*callee], actuals);
-        
-        // -- and havoc all modified nodes by the callee
-        if (m_mem->getTrackLevel () >= MEM) {
+        if (m_mem->getTrackLevel () == ARR) {
+          auto t = m_mem->getRefModNewArrays (I);
+          auto mods = get<1> (t);
           for (auto a : mods)
             m_bb.havoc (symVar (a));
         }
+
+      }
+      else {
+        vector<pair<varname_t,VariableType> > actuals;
+        // -- add the scalar actual parameters
+        for (auto &a : boost::make_iterator_range (CS.arg_begin(),
+                                                   CS.arg_end())) {
+          Value *v = a.get();
+          if (!isTracked (*v)) 
+            continue;
+
+          actuals.push_back (normalizeParam (*v));
+        }
+
+        if (m_mem->getTrackLevel () == ARR) {
+          // -- add the array actual parameters
+          auto t = m_mem->getRefModNewArrays (I);
+          auto refs = get<0> (t);
+          auto mods = get<1> (t);
+          auto news = get<2> (t);
+          // Build sequence In's. Ref's . New's . New's where |In's| = |Ref's|
+          for (auto a: refs) {
+            varname_t a_in = m_vfac.get (); // fresh variable
+            m_bb.assign (a_in, z_lin_exp_t (symVar (a))); 
+            m_bb.havoc (symVar (a)); 
+            actuals.push_back (make_pair (a_in, ARR_TYPE));
+          }
+          for (auto a: refs) 
+            actuals.push_back (make_pair (symVar (a), ARR_TYPE));
+          for (auto a: news) 
+            actuals.push_back (make_pair (symVar (a), ARR_TYPE));
+
+          // Make sure that the order of the actuals parameters is the
+          // same than the order of the formal parameters when the
+          // callee signature is built, search below for (**). This is
+          // ensured because array names are globals and
+          // getRefModNewArrays returns always the same order.
+        }
+
+        // -- add the callsite
+        if ( (getType (I.getType ()) != UNK_TYPE) && isTracked (I))
+          m_bb.callsite (make_pair (symVar (I), getType (I.getType ())), 
+                         m_vfac [*callee], actuals);
+        else
+          m_bb.callsite (m_vfac [*callee], actuals);        
       }
       
     }
@@ -1072,15 +1100,13 @@ namespace crab_llvm
     
     // -- unify multiple return blocks
     if (rets.size () == 1) m_cfg.set_exit (rets [0]->label ());
-    else if (rets.size () > 1)
-    {
+    else if (rets.size () > 1) {
       // -- insert dummy BasicBlock 
       basic_block_label_t unified_ret_id = 
           llvm::BasicBlock::Create(m_func.getContext (),
                                    create_bb_name ());
 
-      // -- remember this block to free it later because llvm will not
-      //    do it.
+      // -- remember this block to free it later because llvm will not do it.
       m_extra_blks.push_back (unified_ret_id);
 
       basic_block_t &unified_ret = m_cfg.insert (unified_ret_id);
@@ -1090,29 +1116,12 @@ namespace crab_llvm
       m_cfg.set_exit (unified_ret.label ());
     }
 
-    if (m_mem->getTrackLevel () >= MEM)
-    {
-      // basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
-      // for (auto node_id : m_mem->getAllocArrays (m_func))
-      // {
-      //   entry.set_insert_point_front ();
-      //   entry.array_init (m_vfac.get (node_id));
-      // }
-      // if (m_func.getName ().equals ("main"))
-      // {
-      //   auto p = m_mem->getInOutArrays (m_func);
-      //   auto in = p.first; auto out = p.second;
-      //   set<int> all;      
-      //   boost::set_union(in, out, std::inserter (all, all.end()));
-      //   for (auto a: all)
-      //   {
-      //     entry.set_insert_point_front ();
-      //     entry.array_init (m_vfac.get (a));
-      //   }
-      // }
+    SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, m_mem->getTrackLevel ());
 
-      // -- allocate arrays with initial values (if available)
-      SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, m_mem->getTrackLevel ());
+    if (m_mem->getTrackLevel () == ARR) {
+
+      /// Allocate arrays with initial values 
+      
       if (m_func.getName ().equals ("main")) {
         Module*M = m_func.getParent ();
         basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
@@ -1125,38 +1134,73 @@ namespace crab_llvm
             doInitializer (gv.getInitializer (), entry, 
                            m_mem, s.symVar (arr_idx));
           }
-        }          
+        } 
       }
-
+      
+      // HOOK: nodes which do not have an explicit initialization are
+      // initially undefined. Instead, we assume they are zero
+      // initialized so that Crab's array smashing can infer something
+      // meaningful. This is correct because in presence of undefined
+      // behaviour we can do whatever we want but it will, for
+      // instance, preclude the analysis to detect things like
+      // uninitialized variables and also if a more expressive array
+      // domain is used then this initialization will make it more
+      // imprecise.
+      basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+      auto t = m_mem->getRefModNewArrays (m_func);
+      auto news =  get<2> (t);
+      for (auto n: news) {
+        entry.set_insert_point_front ();
+        entry.assume_array (s.symVar (n), 0);
+      }
     }
 
-    if (m_is_inter_proc)
-    {
+    if (m_is_inter_proc) {
       // -- add function declaration
-      if (!m_func.isVarArg ())
-      {
+      if (!m_func.isVarArg ()) {
         vector<pair<varname_t,VariableType> > params;
+        // -- add scalar formal parameters
         for (llvm::Value &arg : boost::make_iterator_range (m_func.arg_begin (),
-                                                            m_func.arg_end ()))
-        params.push_back (make_pair (m_vfac [arg], getType (arg.getType ())));
+                                                            m_func.arg_end ())) {
+          if (!s.isTracked (arg))
+            continue;
+          params.push_back (make_pair (s.symVar (arg), 
+                                       getType (arg.getType ())));
+        }
         
-        // -- add array formal parameters 
-        if (m_mem->getTrackLevel () >= MEM && 
-            (!m_func.getName ().equals ("main")))
-        {
-          auto p = m_mem->getInOutArrays (m_func);
-          auto in = p.first; auto out = p.second;
-          set<int> all;      
-          boost::set_union(in, out, std::inserter (all, all.end()));
-          for (auto a: all)
-            params.push_back (make_pair (m_vfac.get (a), ARR_TYPE));
+        if (m_mem->getTrackLevel () == ARR && 
+            (!m_func.getName ().equals ("main"))) {
+          // -- add array formal parameters 
+          basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+
+          auto t = m_mem->getRefModNewArrays (m_func);
+          auto refs =  get<0> (t);
+          auto mods =  get<1> (t);
+          auto news =  get<2> (t);
+          // (**) Build sequence In's . Ref's . New's where |In's| = |Ref's|
+          for (auto a: refs) {
+            // -- for each ref parameter `a` we create a fresh version
+            //    `a_in` where `a_in` acts as the input version of the
+            //    parameter and `a` is the output version. Note that
+            //    the translation of the function will not produce new
+            //    versions of `a` since all array stores overwrite `a`.
+            entry.set_insert_point_front ();
+            varname_t a_in = m_vfac.get (); // fresh variable
+            entry.assign (s.symVar (a), z_lin_exp_t (a_in)); 
+            params.push_back (make_pair (a_in, ARR_TYPE));
+          }
+          for (auto a: refs) 
+            params.push_back (make_pair (s.symVar (a), ARR_TYPE));
+          for (auto a: news)
+            params.push_back (make_pair (s.symVar (a), ARR_TYPE));
+          
         }
         FunctionDecl<varname_t> decl (getType (m_func.getReturnType ()), 
                                       m_vfac[m_func], params);
         m_cfg.set_func_decl (decl);
+        
       }
     }
-
     
     if (LlvmCrabCFGSimplify) 
       m_cfg.simplify ();
