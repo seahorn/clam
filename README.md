@@ -1,6 +1,6 @@
 #Crab-llvm#
 
-[Imgur](http://i.imgur.com/0woNEKp.png)
+![Imgur](http://i.imgur.com/0woNEKp.png)
 
 #About#
 
