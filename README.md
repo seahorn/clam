@@ -1,7 +1,8 @@
 #Crab-llvm#
 
-<img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> |
-<img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=340 height=240 />
+<img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=240 /> 
+<img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
+
 
 
 #About#
