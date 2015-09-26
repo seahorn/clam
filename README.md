@@ -1,6 +1,6 @@
 #Crab-llvm#
 
-<img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=240 /> 
+<img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /> 
 <img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
 
@@ -98,7 +98,11 @@ of precision. The possible values are:
   `--crab-print-summaries` displays the summaries for each
   function. The inter-procedural analysis is specially important if
   reasoning about memory contents is desired.
-  
+
+#Known Limitations#
+
+- Variadic functions are safely ignored.
+
 #People#
 
 * [Jorge Navas](http://ti.arc.nasa.gov/profile/jorge/)
