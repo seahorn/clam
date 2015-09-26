@@ -1,6 +1,5 @@
 /* 
- * Translate a LLVM function to a CFG language understood by
- * crab.
+ * Translate a LLVM function to a CFG language understood by Crab
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -817,7 +816,7 @@ namespace crab_llvm
         return;
       }
 
-      if (!m_is_inter_proc) {
+      if ((!m_is_inter_proc) || callee->isVarArg()) {
         // -- havoc return value
         Value *ret = &I;
         if (!ret->getType()->isVoidTy() && isTracked (*ret))
@@ -830,7 +829,6 @@ namespace crab_llvm
           for (auto a : mods)
             m_bb.havoc (symVar (a));
         }
-
       }
       else {
         vector<pair<varname_t,VariableType> > actuals;
@@ -1099,7 +1097,9 @@ namespace crab_llvm
     }
     
     // -- unify multiple return blocks
-    if (rets.size () == 1) m_cfg.set_exit (rets [0]->label ());
+    if (rets.size () == 1) { 
+      m_cfg.set_exit (rets [0]->label ());
+    }
     else if (rets.size () > 1) {
       // -- insert dummy BasicBlock 
       basic_block_label_t unified_ret_id = 
@@ -1157,57 +1157,57 @@ namespace crab_llvm
 
     if (m_is_inter_proc) {
       // -- add function declaration
-      if (!m_func.isVarArg ()) {
-        vector<pair<varname_t,VariableType> > params;
-        // -- add scalar formal parameters
-        for (llvm::Value &arg : boost::make_iterator_range (m_func.arg_begin (),
-                                                            m_func.arg_end ())) {
-          if (!s.isTracked (arg))
-            continue;
-          params.push_back (make_pair (s.symVar (arg), 
-                                       getType (arg.getType ())));
-        }
-        
-        if (m_mem->getTrackLevel () == ARR && 
-            (!m_func.getName ().equals ("main"))) {
-          // -- add array formal parameters 
-          basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+      assert (!m_func.isVarArg ());
 
-          auto t = m_mem->getRefModNewArrays (m_func);
-          auto refs =  get<0> (t);
-          auto mods =  get<1> (t);
-          auto news =  get<2> (t);
-          // (**) Build sequence In's . Ref's . New's where |In's| = |Ref's|
-          for (auto a: refs) {
-            // -- for each ref parameter `a` we create a fresh version
-            //    `a_in` where `a_in` acts as the input version of the
-            //    parameter and `a` is the output version. Note that
-            //    the translation of the function will not produce new
-            //    versions of `a` since all array stores overwrite `a`.
-            entry.set_insert_point_front ();
-            varname_t a_in = m_vfac.get (); // fresh variable
-            entry.assign (s.symVar (a), z_lin_exp_t (a_in)); 
+      vector<pair<varname_t,VariableType> > params;
+      // -- add scalar formal parameters
+      for (llvm::Value &arg : boost::make_iterator_range (m_func.arg_begin (),
+                                                          m_func.arg_end ())) {
+        if (!s.isTracked (arg))
+          continue;
+        params.push_back (make_pair (s.symVar (arg), 
+                                     getType (arg.getType ())));
+      }
+      
+      if (m_mem->getTrackLevel () == ARR && 
+          (!m_func.getName ().equals ("main"))) {
+        // -- add array formal parameters 
+        basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+        
+        auto t = m_mem->getRefModNewArrays (m_func);
+        auto refs =  get<0> (t);
+        auto mods =  get<1> (t);
+        auto news =  get<2> (t);
+        // (**) Build sequence In's . Ref's . New's where |In's| = |Ref's|
+        for (auto a: refs) {
+          // -- for each ref parameter `a` we create a fresh version
+          //    `a_in` where `a_in` acts as the input version of the
+          //    parameter and `a` is the output version. Note that
+          //    the translation of the function will not produce new
+          //    versions of `a` since all array stores overwrite `a`.
+          entry.set_insert_point_front ();
+          varname_t a_in = m_vfac.get (); // fresh variable
+          entry.assign (s.symVar (a), z_lin_exp_t (a_in)); 
             params.push_back (make_pair (a_in, ARR_TYPE));
-          }
-          for (auto a: refs) 
-            params.push_back (make_pair (s.symVar (a), ARR_TYPE));
-          for (auto a: news)
-            params.push_back (make_pair (s.symVar (a), ARR_TYPE));
-          
         }
-        FunctionDecl<varname_t> decl (getType (m_func.getReturnType ()), 
-                                      m_vfac[m_func], params);
-        m_cfg.set_func_decl (decl);
+        for (auto a: refs) 
+          params.push_back (make_pair (s.symVar (a), ARR_TYPE));
+        for (auto a: news)
+          params.push_back (make_pair (s.symVar (a), ARR_TYPE));
         
       }
+      FunctionDecl<varname_t> decl (getType (m_func.getReturnType ()), 
+                                    m_vfac[m_func], params);
+      m_cfg.set_func_decl (decl);
+      
     }
     
     if (LlvmCrabCFGSimplify) 
       m_cfg.simplify ();
-
+    
     if (LlvmCrabPrintCFG)
       cout << m_cfg << "\n";
-
+    
     return ;
   }
 
