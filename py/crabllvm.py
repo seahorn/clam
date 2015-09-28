@@ -94,7 +94,7 @@ def parseArgs (argv):
                     dest='crab_dom', default='int')
     p.add_argument ('--crab-track',
                     help='Track integers, pointers, and memory',
-                    choices=['int', 'ptr', 'arr'], dest='track', default='reg')
+                    choices=['int', 'ptr', 'arr'], dest='track', default='int')
     p.add_argument ('--crab-inter',
                     help='Run inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
