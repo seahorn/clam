@@ -620,8 +620,16 @@ namespace crab_llvm
       }
 
       varname_t res = symVar (I);
-      m_bb.assign (res, *ptr);
 
+      // -- more efficient translation if the GEP offset is constant
+      unsigned BitWidth = m_dl->getPointerTypeSizeInBits(I.getType());
+      APInt Offset(BitWidth, 0);
+      if (I.accumulateConstantOffset (*m_dl, Offset)) {
+        m_bb.add (res, *ptr, z_lin_exp_t (toMpz (Offset).get_str ()));
+        return;
+      }
+
+      m_bb.assign (res, *ptr);
       SmallVector<const Value*, 4> ps;
       SmallVector<const Type*, 4> ts;
       gep_type_iterator typeIt = gep_type_begin (I);
