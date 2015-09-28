@@ -57,9 +57,10 @@ inferred for each basic block in the `LLVM` bitcode.
 `--crab-domain`. The possible values are:
 
     - `int`: classical intervals
-	- `ric`: reduced product of intervals and congruences
-	- `zones`: difference-bound matrices
+	- `ric`: intervals with congruences
     - `term`: intervals with uninterpreted functions
+	- `zones`: difference-bound matrices
+
 
 - We also provide the option `--crab-track-lvl` to indicate the level
 of precision. The possible values are: 
@@ -85,8 +86,8 @@ of precision. The possible values are:
    value analyses.
 
    Regardless the level of precision, Crab-llvm can try to resolve
-   indirect calls (i.e., function pointers) if `dsa-seahorn` is
-   installed and enable option `--crab-devirt`.
+   indirect calls if `dsa-seahorn` is installed and enable option
+   `--crab-devirt`.
 
 - By default, all the analyses are run in an intra-procedural
   manner. Enable the option `--crab-inter` to run the inter-procedural
@@ -101,7 +102,9 @@ of precision. The possible values are:
 
 #Known Limitations#
 
-- Variadic functions are safely ignored.
+- Variadic functions are ignored.
+- Floating point operations are ignored.
+- ...
 
 #People#
 
