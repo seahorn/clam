@@ -18,7 +18,7 @@ set(LLVM_LINK_COMPONENTS
   objcarcopts)
 
 add_executable(llvmpp llvmpp.cc)
-target_link_libraries (llvmpp LlvmPasses ${USED_LIBS})
+target_link_libraries (llvmpp LlvmPasses ${USED_LIBS} ${LLVM_SEAHORN_LIBS})
 llvm_config (llvmpp ${LLVM_LINK_COMPONENTS})
 install(TARGETS llvmpp RUNTIME DESTINATION bin)
 

@@ -47,9 +47,13 @@ if (GIT_FOUND)
   if (TopLevel)
     set (DSA_SEAHORN_REPO "https://github.com/seahorn/dsa-seahorn"
       CACHE STRING "dsa-seahorn repo")
+    set (SEAHORN_LLVM_REPO "https://github.com/seahorn/llvm-seahorn"
+      CACHE STRING "seahorn-llvm repo")
     add_custom_target (dsa-seahorn-git
       ${GIT_EXECUTABLE} clone ${DSA_SEAHORN_REPO} ${CMAKE_SOURCE_DIR}/dsa-seahorn)
-    add_custom_target (extra DEPENDS dsa-seahorn-git)
+    add_custom_target (seahorn-llvm-git
+      ${GIT_EXECUTABLE} clone ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
+    add_custom_target (extra DEPENDS dsa-seahorn-git seahorn-llvm-git)
   endif ()
 else ()
   if (TopLevel)
@@ -132,6 +136,9 @@ if (TopLevel)
   # We incorporate the CMake features provided by LLVM:
   list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
   include(AddLLVM)
+  include(HandleLLVMOptions)
+  set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin)
+  set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib)
 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
@@ -180,6 +187,18 @@ if (TopLevel)
   else()
     message (WARNING "No DSA found in ${CMAKE_SOURCE_DIR}/dsa-seahorn")
     set (DSA_LIBS "")
+  endif()
+endif ()
+
+
+if (TopLevel)
+  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND
+      EXISTS ${CMAKE_SOURCE_DIR}/llvm-seahorn/lib/CMakeLists.txt)
+    include_directories (BEFORE llvm-seahorn/include)
+    add_subdirectory(llvm-seahorn/lib)
+    add_subdirectory(llvm-seahorn/tools)
+    set (HAVE_LLVM_SEAHORN TRUE)
+    set (LLVM_SEAHORN_LIBS SeaInstCombine)
   endif()
 endif ()
 

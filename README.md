@@ -39,6 +39,10 @@ download the following package at the root directory:
 
 * [dsa-seahorn](https://github.com/seahorn/dsa-seahorn): ``` git clone https://github.com/seahorn/dsa-seahorn.git ```
 
+Another optional component used by `llvmpp` is:
+
+* [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
+
 Then, the compilation steps are:
 
 1. ```mkdir build ; cd build```

@@ -30,6 +30,10 @@
 #include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
 
+#ifdef HAVE_LLVM_SEAHORN
+#include "llvm_seahorn/Transforms/Scalar.h"
+#endif 
+
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
               llvm::cl::Required, llvm::cl::value_desc("filename"));
@@ -172,7 +176,9 @@ int main(int argc, char **argv) {
   // -- SSA
   pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
   // -- cleanup after SSA
-  //pass_manager.add (llvm::createInstructionCombiningPass ()); // bad for static analysis
+#ifdef HAVE_LLVM_SEAHORN
+  pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
+#endif 
   pass_manager.add (llvm::createCFGSimplificationPass ());
   
   
@@ -186,7 +192,9 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createGVNPass());
   
   // -- cleanup after break aggregates
-  //pass_manager.add (llvm::createInstructionCombiningPass ());
+#ifdef HAVE_LLVM_SEAHORN
+  pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
+#endif 
   pass_manager.add (llvm::createCFGSimplificationPass ());
   
   // -- lower invoke's
