@@ -6,7 +6,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/APInt.h"
 
-#include "crab_llvm/Support/bignums.hh"
 #include <crab/cfg/Cfg.hpp>
 
 namespace crab_llvm

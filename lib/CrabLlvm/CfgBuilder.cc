@@ -11,14 +11,12 @@
 #include "llvm/Support/CommandLine.h"
 
 #include "boost/tuple/tuple.hpp"
-#include <boost/lexical_cast.hpp>
 #include <boost/range/iterator_range.hpp>
 #include "boost/range/algorithm/set_algorithm.hpp"
 
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/CfgBuilder.hh"
 #include "crab_llvm/Support/CFG.hh"
-#include "crab_llvm/Support/bignums.hh"
 
 using namespace llvm;
 
@@ -477,7 +475,7 @@ namespace crab_llvm
         case BinaryOperator::Shl:
           if ((*op2).is_constant()) {
             ikos::z_number k = (*op2).constant ();
-            int shift = boost::lexical_cast<int>(toStr (k));
+            int shift = (int) k;
             assert (shift >= 0);
             unsigned factor = 1;
             for (unsigned i = 0; i < (unsigned) shift; i++) 
@@ -490,7 +488,7 @@ namespace crab_llvm
         case BinaryOperator::AShr:
           if ((*op2).is_constant()) {
             ikos::z_number k = (*op2).constant ();
-            int shift = boost::lexical_cast<int>(toStr (k));
+            int shift = (int) k;
             assert (shift >= 0);
             unsigned factor = 1;
             for (unsigned i = 0; i < (unsigned) shift; i++) 
