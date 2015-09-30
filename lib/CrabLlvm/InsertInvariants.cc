@@ -7,7 +7,7 @@
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Analysis/CallGraph.h"
+#include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 
 #include "crab_llvm/config.h"
 #include "crab_llvm/Transforms/InsertInvariants.hh"
@@ -15,17 +15,20 @@
 #include "crab_llvm/AbstractDomainsImpl.hh"
 #include "crab_llvm/Support/AbstractDomains.hh"
 #include "crab_llvm/Support/bignums.hh"
+#include <crab_llvm/CfgBuilder.hh>
+
+#ifdef HAVE_DSA
+#include "dsa/Steensgaard.hh"
+#endif 
 
 #include "crab/analysis/InvTable_traits.hpp"
+#include "crab/analysis/AbsTransformer.hpp"
+#include "crab/analysis/InterDS.hpp"
 
 /* 
- * Instrument program by inserting invariants computed by crab. The
- * invariants are inserted as assume instructions into the LLVM
- * bitcode. The insertion happens at most once per basic block and
- * only if the block has a load instruction.
+ * Instrument LLVM bitecode by inserting invariants computed by
+ * crab. The invariants are inserted as llvm.assume intrinsics.
  */
-
-extern llvm::cl::opt<crab_llvm::CrabDomain> LlvmCrabDomain;
 
 using namespace llvm;
 using namespace crab_llvm;
@@ -36,6 +39,14 @@ namespace crab_llvm
   using namespace domain_impl;
 
   char crab_llvm::InsertInvariants::ID = 0;
+
+  // helper
+  inline bool reads_memory (const llvm::BasicBlock& B) {
+    for (auto &I: B) 
+      if (isa<LoadInst>(&I))
+        return true;
+    return false;
+  }
 
   struct CodeExpander
   {
@@ -84,7 +95,7 @@ namespace crab_llvm
 
     //! Generate llvm bitecode from a set of linear constraints    
     bool gen_code (z_lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
-                   Function* assumeFn, CallGraph* cg, Function* insertFun,
+                   Function* assumeFn, CallGraph* cg, const Function* insertFun,
                    const Twine &Name = "")
     {
       bool change = false;
@@ -93,6 +104,9 @@ namespace crab_llvm
         Value* cst_code = gen_code (cst, B, ctx, Name);
         if (cst_code) {
           CallInst *ci =  B.CreateCall (assumeFn, cst_code);
+
+          // errs () << "Added " << *ci << " with " << *cst_code << "\n";
+
           change = true;
           if (cg)
             (*cg)[insertFun]->addCalledFunction (CallSite (ci),
@@ -108,14 +122,10 @@ namespace crab_llvm
                      const Twine &Name)
     {
       if (cst.is_tautology ())     
-      {
         return mk_bool (B, ctx, true);
-      }
       
       if (cst.is_contradiction ()) 
-      { 
         return mk_bool (B, ctx, false);
-      }
       
       auto e = cst.expression() - cst.expression().constant();
       Value * ee = mk_num ( ikos::z_number ("0"), ctx);
@@ -130,6 +140,11 @@ namespace crab_llvm
 
         if (Value * vv = mk_var (v))
         {
+          // cst can contain pointer variables representing their offsets.
+          // We ignore them for now.
+          if (!vv->getType()->isIntegerTy ())
+            return nullptr;
+
           if (n == 1) 
             ee = mk_bin_op (ADD, B, ctx, 
                             ee, vv, Name);
@@ -158,76 +173,91 @@ namespace crab_llvm
     }
   };
 
-//// XXX If multiple load's the same assumptions will be inserted
-////      multiple times
-////
-//   //! Instrument llvm bitecode with invariants.
-//   //  To avoid a blow up in the code size we do it only for variables
-//   //  which appear on the lhs of load instructions.
-//   template<typename AbsDomain, typename SymEval>
-//   struct CodeExpanderInvs : 
-//       public InstVisitor<CodeExpanderInvs <AbsDomain, SymEval> >
-//   {
-//     IRBuilder<> m_B;
-//     LLVMContext &m_ctx;
-//     AbsDomain m_inv;
-//     Function* m_assumeFn;
-//     SymEval m_eval;
-//     CallGraph* m_cg;
-//     bool m_modified;
 
-//     bool IsModified () const { 
-//       return m_modified; 
-//     }
+  //! Instrument all load instructions in a basic block.
+  //
+  // The instrumentation is a bit involved because Crab gives us
+  // invariants that hold either at the entry or at the exit of a
+  // basic block but not at each program point. Thus, we need to take
+  // the invariants that hold at the entry and propagate them locally
+  // across the statements of the basic block. This will redo some
+  // work but it's more efficient than storing all invariants at each
+  // program point.
+  template<typename AbsDomain>
+  bool InsertInvariants::instrument_loads (AbsDomain pre, 
+                                           basic_block_t& bb, 
+                                           LLVMContext &ctx,
+                                           CallGraph* cg) {
+    typedef crab::analyzer::NumAbsTransformer 
+        <AbsDomain,
+         crab::analyzer::SummaryTable<cfg_t, AbsDomain>,
+         crab::analyzer::CallCtxTable<cfg_t, AbsDomain> > num_abs_tr_t; 
 
-//     CodeExpanderInvs (Module& M, AbsDomain inv, SymEval eval, 
-//                       Function* assumeFn, CallGraph *cg):
-//         m_B (IRBuilder<> (M.getContext ())), 
-//         m_ctx (M.getContext ()), 
-//         m_inv (inv), m_assumeFn (assumeFn), m_eval (eval),
-//         m_cg (cg),
-//         m_modified (false)
-//     { }
-    
-//     void visitLoadInst (LoadInst &I) 
-//     {
-//       // To insert after the instruction
-//       m_B.SetInsertPoint (&I);
-//       auto insertPoint = m_B.GetInsertPoint ();
-//       m_B.SetInsertPoint (++insertPoint);
+    IRBuilder<> Builder (ctx);
+    bool change=false;
 
-// #if 0
-//       // Insert a non-relational invariant for lhs. 
-//       varname_t lhs = m_eval.symVar(I);
-//       set<varname_t> vs;
-//       for (auto c: toLinCst (m_inv))
-//       {
-//         for (auto v: c.variables ())
-//           vs.insert (v.name ());
-//       }
-//       vs.erase (lhs);
-//       domain_traits::forget (m_inv, vs.begin (), vs.end ());
-// #endif 
-//       auto csts = toLinCst (m_inv);
+    // FIXME: it will propagate forward pre through the basic block
+    //        but ignoring callsites
+    num_abs_tr_t vis (pre, nullptr, nullptr); 
+    for (auto &s: bb) {
 
-//       // errs () << "Inserting invariants " << I << "=" << csts << "\n";
+      s.accept (&vis); //propagate the invariant one statement forward
 
-//       CodeExpander g;
-//       m_modified = g.gen_code (csts, m_B, m_ctx, 
-//                                m_assumeFn, m_cg, I.getParent()->getParent());
-//     }  
+      const llvm::LoadInst* I = nullptr;
+      z_lin_cst_t::variable_set_t load_vs;
+      if (s.isArrRead ()) { 
+        const ArrayLoad <z_number, varname_t>* load_stmt = 
+            static_cast< const ArrayLoad <z_number, varname_t> *> (&s);
+        if (boost::optional<const llvm::Value *> v = load_stmt->lhs ().name().get ()) {
+          I = dyn_cast<const llvm::LoadInst> (*v);
+          load_vs += (load_stmt->lhs ().name ());
+        }
+      }
+      else if (s.isPtrRead ()) { 
+        const PtrLoad <z_number, varname_t>* load_stmt = 
+            static_cast< const PtrLoad <z_number, varname_t> *> (&s);
+        if (boost::optional<const llvm::Value *> v = load_stmt->lhs ().get ()) {
+          load_vs += (load_stmt->lhs ());
+          I = dyn_cast<const llvm::LoadInst> (*v);
+        }
+      }
+      
+      if (!I)
+        continue;
 
-//     /// base case. if all else fails.
-//     void visitInstruction (Instruction &I){}
-    
-//   };
-
+      AbsDomain inv = vis.inv ();
+      
+      // -- Remove array shadow variables otherwise llvm will
+      //    get choked
+      VariableFactory &vfac = m_crab->getVariableFactory ();
+      auto shadows = vfac.get_shadow_vars ();
+      crab::domain_traits::forget (inv, shadows.begin(), shadows.end());            
+      
+      // -- Filter out all constraints that do not use x.
+      z_lin_cst_sys_t rel_csts;
+      for (auto cst: inv.to_linear_constraint_system ()) {
+        auto vs = cst.variables();
+        if (!(vs & load_vs).empty ())
+          rel_csts += cst;
+      }
+      
+      // -- Insert llvm.assume's the next after I
+      Builder.SetInsertPoint (const_cast<llvm::LoadInst*> (I));
+      llvm::BasicBlock* InsertBlk = Builder.GetInsertBlock ();
+      llvm::BasicBlock::iterator InsertPt = Builder.GetInsertPoint ();
+      InsertPt++; // this is ok because LoadInstr cannot be terminators.
+      Builder.SetInsertPoint (InsertBlk, InsertPt);
+      CodeExpander g;
+      change |= g.gen_code (rel_csts, Builder, ctx, m_assumeFn, cg, 
+                            I->getParent()->getParent (), "crab_");
+    }
+  }
 
   bool InsertInvariants::runOnModule (llvm::Module &M)
   {
     m_crab = &getAnalysis<CrabLlvm> ();
     
-    LLVMContext &ctx = M.getContext ();
+    LLVMContext& ctx = M.getContext ();
     AttrBuilder B;
     AttributeSet as = AttributeSet::get (ctx, 
                                          AttributeSet::FunctionIndex,
@@ -239,6 +269,10 @@ namespace crab_llvm
                                                Type::getInt1Ty (ctx),
                                                NULL));
     
+#ifdef HAVE_DSA
+    m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (),
+                         m_crab->getTrackLevel ());
+#endif     
 
     CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
     if (CallGraph *cg = cgwp ? &cgwp->getCallGraph () : nullptr)
@@ -253,124 +287,30 @@ namespace crab_llvm
 
   bool InsertInvariants::runOnFunction (llvm::Function &F)
   {
-    typedef typename crab_llvm::SymEval <VariableFactory, z_lin_exp_t> sym_eval_t;
-    // -- skip functions without a body
-    if (F.isDeclaration () || F.empty ()) return false;
+    if (F.isDeclaration () || F.empty () || F.isVarArg ()) 
+      return false;
 
     CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
     CallGraph* cg = cgwp ? &cgwp->getCallGraph () : nullptr;
 
     VariableFactory &vfac = m_crab->getVariableFactory ();
-
-    // --- Insert instantiated array invariants in the bitecode.
-    LLVMContext &ctx = F.getParent ()->getContext ();
-    IRBuilder<> Builder (ctx);
-
-    // XXX This is probably too conservative
-    sym_eval_t s (vfac, m_crab->getTrackLevel ());
-    set<varname_t> phi_vs;
-    for (auto &B : F)
-      for (auto &I: B) {
-        if (PHINode * PI = dyn_cast<PHINode>(&I)) 
-          phi_vs.insert (s.symVar (I));
-      }
     
+    CfgBuilder builder (F, vfac, &m_mem, false);
+    cfg_t &cfg = builder.makeCfg ();
+ 
     bool change = false;
     for (auto &B : F) {
-      //num_abs_domain_t should be LlvmCrabDomain
-      typedef interval_domain_t num_abs_domain_t;
-// #if IKOS_MINOR_VERSION >= 2
-//       typedef dbm_domain_t num_abs_domain_t;
-// #else
-//       typedef interval_domain_t num_abs_domain_t;
-// #endif 
-      bool has_load = false;
-      for (auto &I: B) {
-        if (isa<LoadInst>(&I))
-          has_load = true;
+
+      // --- We only instrument Load instructions
+      if (reads_memory (B)) {
+        // FIXME: choose as abstract domain m_crab->getAbsDomain()
+        typedef crab::analyzer::inv_tbl_traits <arr_interval_domain_t, z_lin_cst_sys_t> inv_tbl_t;
+        arr_interval_domain_t pre = 
+            inv_tbl_t::unmarshall (m_crab->getPre (&B, true /*keep shadows*/));
+        change |= instrument_loads (pre, cfg.get_node (&B), F.getContext (), cg);
       }
 
-      if (has_load) {
-        num_abs_domain_t inv = num_abs_domain_t::top ();
-
-        /// XXX use the invariants the hold at the exit of the block
-        /// is very tricky due to the mismatch between the LLVM CFG
-        /// and the IKOS CFG. This does not happen if we use the
-        /// invariants that hold at the entry. To avoid these problems
-        /// we could use the invariants and the entry and then
-        /// propagate until the desired program point. However, this
-        /// propagation is not implemented.
-
-        typedef crab::analyzer::inv_tbl_traits <num_abs_domain_t, z_lin_cst_sys_t> inv_tbl_t;
-        num_abs_domain_t bb_inv = inv_tbl_t::unmarshall (m_crab->getPost (&B));
-        inv = inv & bb_inv;
-
-        /*
-          If we just insert at the end of the block all the invariants
-          returned by getPost we would get something like this:
- 
-            bb:
-              i = phi (0, entry) (i', bb2)
-              br ... bb2 ...
-            bb2:
-              i' = i+1
-              assume (i'>=1 && i'<=9);
-              assume (i>=1 && i <=9);  <--- this is not true the first iteration! 
-              br bb
-
-          `assume (i >=1 && i <=9)` is added because crab actually
-           analyzes a different program:
-
-             bb: 
-               i=0
-               goto bb2
-             bb2:
-               i'=i+1
-               i=i'  <---
-             goto bb
-
-           but `assume (i >=1 && i <=9)` actually holds when the phi
-           node is executed.
-        */
-
-        // --- Forget variables that are set through a phi node
-        //// XXX this is not enough because we can have bb -> bb1 -> bb2
-        //// such that TI is in bb and the phi node is in bb2.
-        // sym_eval_t s (vfac, m_crab->getTrackLevel ());
-        // set<varname_t> phi_vs;
-        // TerminatorInst* TI = B.getTerminator ();
-        // for (unsigned i=0, e = TI->getNumSuccessors(); i!=e; ++i) {
-        //   for (auto &I: *(TI->getSuccessor(i))) {
-        //     if (PHINode * PI = dyn_cast<PHINode>(&I)) {
-        //       phi_vs.insert (s.symVar (I));
-        //     }
-        //   }
-        // }
-        crab::domain_traits::forget (inv, phi_vs.begin (), phi_vs.end ());
-
-        // --- Insert just before the terminator of the block
-        Builder.SetInsertPoint (B.getTerminator ());
-
-        auto csts = inv.to_linear_constraint_system ();
-
-        CodeExpander g;
-        change |= g.gen_code (csts, Builder, ctx, m_assumeFn, cg, &F, "crab_");
-      }
-
-      //// XXX this might insert assumptions that only hold at the
-      //// exit of the block in the middle of the block.
-      // num_abs_domain_t inv = num_abs_domain_t::top ();
-      // inv += m_crab->getPost (&B);
-      // CodeExpanderInvs <num_abs_domain_t, 
-      //                   sym_eval_t> t (*(F.getParent ()), 
-      //                                  inv, 
-      //                                  sym_eval_t (vfac, m_crab->getTrackLevel ()),
-      //                                  m_assumeFn,
-      //                                  cg);
-      // t.visit (&B);
-      // change |= t.IsModified ();
     }
-    
     return change;
   }
 
@@ -378,7 +318,11 @@ namespace crab_llvm
   {
     AU.setPreservesAll ();
     AU.addRequired<crab_llvm::CrabLlvm>();
-
+#ifdef HAVE_DSA
+    AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
+#endif 
+    AU.addRequired<llvm::DataLayoutPass>();
+    AU.addRequired<llvm::UnifyFunctionExitNodes> ();
     AU.addRequired<llvm::CallGraphWrapperPass> ();
     AU.addPreserved<llvm::CallGraphWrapperPass> ();
   } 

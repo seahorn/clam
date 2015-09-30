@@ -2,17 +2,17 @@
 #define __INSERT_INVARIANTS_HPP_
 
 /* 
- * Instrument program by inserting invariants computed by crab. The
- * invariants are inserted as assume instructions into the LLVM
- * bitcode. The insertion happens at most once per basic block and
- * only if the block has a load instruction.
+ * Instrument LLVM bitecode by inserting invariants computed by
+ * crab. The invariants are inserted as llvm.assume instructions.
  */
 
 #include "llvm/Pass.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/Analysis/CallGraph.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "crab_llvm/CrabLlvm.hh"
+#include "crab_llvm/MemAnalysis.hh"
 
 namespace crab_llvm
 {
@@ -23,14 +23,21 @@ namespace crab_llvm
   {
     CrabLlvm* m_crab;
     Function* m_assumeFn;
+    MemAnalysis m_mem;    
+
+   private:
+
+     template<typename AbsDomain> bool instrument_loads (AbsDomain pre, 
+                                                         basic_block_t& bb, 
+                                                         LLVMContext& ctx,
+                                                         CallGraph* cg);
 
    public:
 
     static char ID;        
     
-    InsertInvariants (): llvm::ModulePass (ID), m_crab(0), m_assumeFn (0) {}
-
-    ~InsertInvariants () {} 
+    InsertInvariants (): 
+        llvm::ModulePass (ID), m_crab(0), m_assumeFn (0) {}
 
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const ;
 
