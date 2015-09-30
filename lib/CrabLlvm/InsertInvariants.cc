@@ -193,6 +193,11 @@ namespace crab_llvm
                                              llvm::BasicBlock* bb, 
                                              LLVMContext &ctx,
                                              CallGraph* cg) {
+
+    // If the block is an exit we do not instrument it.
+    const ReturnInst *ret = dyn_cast<const ReturnInst> (bb->getTerminator ());
+    if (ret) return false;
+
     IRBuilder<> Builder (ctx);
     Builder.SetInsertPoint (bb->getFirstNonPHI ());
     CodeExpander g;
