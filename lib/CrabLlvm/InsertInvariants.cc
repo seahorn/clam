@@ -263,7 +263,7 @@ namespace crab_llvm
                                          AttributeSet::FunctionIndex,
                                          B);
     m_assumeFn = dyn_cast<Function>
-                       (M.getOrInsertFunction ("verifier.assume", 
+                       (M.getOrInsertFunction ("llvm.assume", 
                                                as,
                                                Type::getVoidTy (ctx),
                                                Type::getInt1Ty (ctx),

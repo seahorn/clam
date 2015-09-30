@@ -195,7 +195,6 @@ int main(int argc, char **argv) {
     if (InsertInvs) {
       pass_manager.add (new crab_llvm::InsertInvariants ());
       // -- simplify invariants added in the bytecode.
-      //    TODO: eliminate llvm.assume (true) after InstructionCombiningPass.
 #ifdef HAVE_LLVM_SEAHORN
       pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
 #else
