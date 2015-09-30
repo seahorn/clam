@@ -24,6 +24,9 @@
 #ifdef HAVE_DSA
 #include "assistDS/Devirt.h"
 #endif 
+#ifdef HAVE_LLVM_SEAHORN
+#include "llvm_seahorn/Transforms/Scalar.h"
+#endif 
 
 #include <Transforms/LowerGvInitializers.hh>
 #include <Transforms/NameValues.hh>
@@ -61,8 +64,9 @@ Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs"),
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-InsertInvs ("crab-insert-invariants", llvm::cl::desc ("Instrument code with invariants"),
-           llvm::cl::init (false));
+InsertInvs ("crab-insert-invariants", 
+              llvm::cl::desc ("Instrument code with invariants"),
+              llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
 CrabDevirtualize ("crab-devirt", llvm::cl::desc ("Resolve indirect calls"),
@@ -182,6 +186,7 @@ int main(int argc, char **argv) {
   pass_manager.add (new crab_llvm::NameValues ()); 
   
   if (Concurrency) {
+    // TOO EXPERIMENTAL
     pass_manager.add (new crab_llvm::ConCrabLlvm ());
   }
   else {
@@ -190,7 +195,12 @@ int main(int argc, char **argv) {
     if (InsertInvs) {
       pass_manager.add (new crab_llvm::InsertInvariants ());
       // -- simplify invariants added in the bytecode.
+      //    TODO: eliminate llvm.assume (true) after InstructionCombiningPass.
+#ifdef HAVE_LLVM_SEAHORN
+      pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
+#else
       pass_manager.add (llvm::createInstructionCombiningPass ()); 
+#endif 
     }
   }
 

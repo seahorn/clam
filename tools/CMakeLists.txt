@@ -27,7 +27,8 @@ target_link_libraries (crabllvm
   CrabLlvmAnalysis 
   CrabLlvmInstrumentation 
   LlvmPasses 
-  ${USED_LIBS})
+  ${USED_LIBS}
+  ${LLVM_SEAHORN_LIBS})
 if (HAVE_DSA)
   target_link_libraries (crabllvm ${DSA_LIBS})
 endif ()
