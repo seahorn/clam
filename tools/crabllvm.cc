@@ -60,13 +60,8 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
 static llvm::cl::opt<bool>
-Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs"),
+Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs (experimental)"),
            llvm::cl::init (false));
-
-static llvm::cl::opt<bool>
-InsertInvs ("crab-insert-invariants", 
-              llvm::cl::desc ("Instrument code with invariants"),
-              llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
 CrabDevirtualize ("crab-devirt", llvm::cl::desc ("Resolve indirect calls"),
@@ -186,21 +181,20 @@ int main(int argc, char **argv) {
   pass_manager.add (new crab_llvm::NameValues ()); 
   
   if (Concurrency) {
-    // TOO EXPERIMENTAL
+    // REALLY EXPERIMENTAL ...
     pass_manager.add (new crab_llvm::ConCrabLlvm ());
   }
   else {
     /// -- run the crab analyzer
     pass_manager.add (new crab_llvm::CrabLlvm ());
-    if (InsertInvs) {
-      pass_manager.add (new crab_llvm::InsertInvariants ());
-      // -- simplify invariants added in the bytecode.
+    /// -- insert invariants as assume instructions
+    pass_manager.add (new crab_llvm::InsertInvariants ());
+    /// -- simplify invariants added in the bytecode.
 #ifdef HAVE_LLVM_SEAHORN
-      pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
+    pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
 #else
-      pass_manager.add (llvm::createInstructionCombiningPass ()); 
+    pass_manager.add (llvm::createInstructionCombiningPass ()); 
 #endif 
-    }
   }
 
   if (!AsmOutputFilename.empty ()) 

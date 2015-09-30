@@ -27,11 +27,16 @@ namespace crab_llvm
 
    private:
 
-     template<typename AbsDomain> bool instrument_loads (AbsDomain pre, 
-                                                         basic_block_t& bb, 
-                                                         LLVMContext& ctx,
-                                                         CallGraph* cg);
-
+    bool instrument_entries (z_lin_cst_sys_t csts, 
+                             llvm::BasicBlock* bb, 
+                             LLVMContext &ctx,
+                             CallGraph* cg);
+      
+    template<typename AbsDomain> bool instrument_loads (AbsDomain pre, 
+                                                        basic_block_t& bb, 
+                                                        LLVMContext& ctx,
+                                                        CallGraph* cg);
+    
    public:
 
     static char ID;        

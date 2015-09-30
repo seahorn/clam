@@ -8,14 +8,14 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
+#include "llvm/Support/CommandLine.h"
 
 #include "crab_llvm/config.h"
 #include "crab_llvm/Transforms/InsertInvariants.hh"
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/AbstractDomainsImpl.hh"
 #include "crab_llvm/Support/AbstractDomains.hh"
-#include "crab_llvm/Support/bignums.hh"
-#include <crab_llvm/CfgBuilder.hh>
+#include "crab_llvm/CfgBuilder.hh"
 
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
@@ -25,6 +25,8 @@
 #include "crab/analysis/AbsTransformer.hpp"
 #include "crab/analysis/InterDS.hpp"
 
+#include "boost/lexical_cast.hpp"
+
 /* 
  * Instrument LLVM bitecode by inserting invariants computed by
  * crab. The invariants are inserted as special verifier.assume
@@ -33,6 +35,17 @@
 
 using namespace llvm;
 using namespace crab_llvm;
+
+
+static llvm::cl::opt<bool>
+LlvmCrabInsertEntries ("crab-add-invariants-at-entries", 
+                       llvm::cl::desc ("Instrument basic block entries with invariants"),
+                       llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+LlvmCrabInsertLoads ("crab-add-invariants-after-loads", 
+                     llvm::cl::desc ("Instrument load instructions with invariants"),
+                     llvm::cl::init (false));
 
 namespace crab_llvm
 {
@@ -79,7 +92,7 @@ namespace crab_llvm
     Value* mk_num (ikos::z_number n, LLVMContext &ctx)
     {
       Type * ty = Type::getInt64Ty (ctx); 
-      std::string snum = toStr (n);
+      std::string snum = boost::lexical_cast<std::string> ((int)n);
       return ConstantInt::get (ty, APInt (64, snum, 10));
     }
     
@@ -175,6 +188,18 @@ namespace crab_llvm
   };
 
 
+  //! Instrument basic block entries.
+  bool InsertInvariants::instrument_entries (z_lin_cst_sys_t csts, 
+                                             llvm::BasicBlock* bb, 
+                                             LLVMContext &ctx,
+                                             CallGraph* cg) {
+    IRBuilder<> Builder (ctx);
+    Builder.SetInsertPoint (bb->getFirstNonPHI ());
+    CodeExpander g;
+    return g.gen_code (csts, Builder, ctx, m_assumeFn, cg, 
+                       bb->getParent (), "crab_");
+  }
+
   //! Instrument all load instructions in a basic block.
   //
   // The instrumentation is a bit involved because Crab gives us
@@ -256,6 +281,10 @@ namespace crab_llvm
 
   bool InsertInvariants::runOnModule (llvm::Module &M)
   {
+    if (!LlvmCrabInsertEntries && 
+        !LlvmCrabInsertLoads)
+      return false;
+
     m_crab = &getAnalysis<CrabLlvm> ();
     
     LLVMContext& ctx = M.getContext ();
@@ -295,22 +324,30 @@ namespace crab_llvm
     CallGraph* cg = cgwp ? &cgwp->getCallGraph () : nullptr;
 
     VariableFactory &vfac = m_crab->getVariableFactory ();
-    
+
+    // FIXME: only used if InsertLoads is enabled
     CfgBuilder builder (F, vfac, &m_mem, false);
     cfg_t &cfg = builder.makeCfg ();
  
     bool change = false;
     for (auto &B : F) {
 
-      // --- We only instrument Load instructions
-      if (reads_memory (B)) {
-        // FIXME: choose as abstract domain m_crab->getAbsDomain()
-        typedef crab::analyzer::inv_tbl_traits <arr_interval_domain_t, z_lin_cst_sys_t> inv_tbl_t;
-        arr_interval_domain_t pre = 
-            inv_tbl_t::unmarshall (m_crab->getPre (&B, true /*keep shadows*/));
-        change |= instrument_loads (pre, cfg.get_node (&B), F.getContext (), cg);
+      if (LlvmCrabInsertEntries) {
+        // --- Instrument basic block entry
+        auto csts = m_crab->getPre (&B, false /*remove shadows*/);
+        change |= instrument_entries (csts, &B, F.getContext(), cg);
       }
 
+      if (LlvmCrabInsertLoads) {
+        // --- We only instrument Load instructions
+        if (reads_memory (B)) {
+          // FIXME: choose as abstract domain m_crab->getAbsDomain()
+          typedef crab::analyzer::inv_tbl_traits <arr_interval_domain_t, z_lin_cst_sys_t> inv_tbl_t;
+          arr_interval_domain_t pre = 
+              inv_tbl_t::unmarshall (m_crab->getPre (&B, true /*keep shadows*/));
+          change |= instrument_loads (pre, cfg.get_node (&B), F.getContext (), cg);
+        }
+      }
     }
     return change;
   }

@@ -101,9 +101,12 @@ def parseArgs (argv):
     p.add_argument ('--crab-devirt',
                     help='Resolve indirect calls',
                     dest='crab_devirt', default=False, action='store_true')
-    p.add_argument ('--crab-insert-invariants',
-                    help='Instrument code with invariants',
-                    dest='insert_invs', default=False, action='store_true')
+    p.add_argument ('--crab-add-invariants-at-entries',
+                    help='Instrument code with invariants at each block entry',
+                    dest='insert_invs_entries', default=False, action='store_true')
+    p.add_argument ('--crab-add-invariants-after-loads',
+                    help='Instrument code with invariants after each load instruction',
+                    dest='insert_invs_loads', default=False, action='store_true')
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        
@@ -245,8 +248,10 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
         crabllvm_cmd.append ('--crab-devirt')
     if args.crab_live:
         crabllvm_cmd.append ('--crab-live')
-    if args.insert_invs:
-        crabllvm_cmd.append ('--crab-insert-invariants')
+    if args.insert_invs_entries:
+        crabllvm_cmd.append ('--crab-add-invariants-at-entries')
+    if args.insert_invs_loads:
+        crabllvm_cmd.append ('--crab-add-invariants-after-loads')
     if args.show_invars:
         crabllvm_cmd.append ('--crab-print-invariants')
     if args.show_summs:
