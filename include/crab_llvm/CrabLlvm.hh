@@ -49,7 +49,7 @@ namespace crab_llvm
 
    public:
 
-    typedef invariants_map_t::iterator       iterator;
+    typedef invariants_map_t::iterator iterator;
     typedef invariants_map_t::const_iterator const_iterator;
 
     static char ID;        
@@ -75,23 +75,16 @@ namespace crab_llvm
     virtual bool runOnFunction (llvm::Function &F);
 
     // return invariants that hold at the entry of BB
-    const inv_tbl_val_t& getPre (const llvm::BasicBlock *BB) const {
-      return this->operator[] (BB);
-    }
+    inv_tbl_val_t getPre (const llvm::BasicBlock *BB, 
+                          bool KeepShadows=false) const;
 
+    inv_tbl_val_t operator[] (const llvm::BasicBlock *BB) const {
+      return getPre (BB); 
+    }
+    
     // return invariants that hold at the exit of BB
-    const inv_tbl_val_t& getPost (const llvm::BasicBlock *BB) const {
-      const_iterator it = m_post_map.find (BB);
-      assert (it != m_post_map.end ());
-      return it->second;
-    }
-
-    // alias for getPre
-    const inv_tbl_val_t& operator[] (const llvm::BasicBlock *BB) const {
-      const_iterator it = m_pre_map.find (BB);
-      assert (it != m_pre_map.end ());
-      return it->second;
-    }
+    inv_tbl_val_t getPost (const llvm::BasicBlock *BB, 
+                           bool KeepShadows=false) const;
 
     TrackedPrecision getTrackLevel () const { 
       return m_mem.getTrackLevel (); 
@@ -101,11 +94,10 @@ namespace crab_llvm
       return m_vfac; 
     }
 
-    iterator       begin ()       { return m_pre_map.begin(); } 
-    iterator       end ()         { return m_pre_map.end();   }
-    const_iterator begin () const { return m_pre_map.begin(); }
-    const_iterator end ()   const { return m_pre_map.end();   }
-
+    CrabDomain getAbsDomain () const {
+      return m_absdom;
+    }
+   
    private:
 
     template<typename AbsDomain> 

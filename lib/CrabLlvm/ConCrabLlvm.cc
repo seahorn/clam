@@ -193,7 +193,7 @@ namespace crab_llvm
     }
 
     /// --- Global fixpoint 
-    conc_analyzer_t a (sys, vfac, LlvmCrabLive, true /*keep shadows*/);
+    conc_analyzer_t a (sys, vfac, LlvmCrabLive);
     a.Run (init_gv_inv);
     
     if (LlvmCrabPrintAns)
