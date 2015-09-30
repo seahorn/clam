@@ -3,7 +3,7 @@
 
 /* 
  * Instrument LLVM bitecode by inserting invariants computed by
- * crab. The invariants are inserted as llvm.assume instructions.
+ * crab. The invariants are inserted as verifier.assume instructions.
  */
 
 #include "llvm/Pass.h"

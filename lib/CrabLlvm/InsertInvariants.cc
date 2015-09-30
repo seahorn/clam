@@ -27,7 +27,8 @@
 
 /* 
  * Instrument LLVM bitecode by inserting invariants computed by
- * crab. The invariants are inserted as llvm.assume intrinsics.
+ * crab. The invariants are inserted as special verifier.assume
+ * instructions.
  */
 
 using namespace llvm;
@@ -241,7 +242,7 @@ namespace crab_llvm
           rel_csts += cst;
       }
       
-      // -- Insert llvm.assume's the next after I
+      // -- Insert assume's the next after I
       Builder.SetInsertPoint (const_cast<llvm::LoadInst*> (I));
       llvm::BasicBlock* InsertBlk = Builder.GetInsertBlock ();
       llvm::BasicBlock::iterator InsertPt = Builder.GetInsertPoint ();
@@ -263,7 +264,7 @@ namespace crab_llvm
                                          AttributeSet::FunctionIndex,
                                          B);
     m_assumeFn = dyn_cast<Function>
-                       (M.getOrInsertFunction ("llvm.assume", 
+                       (M.getOrInsertFunction ("verifier.assume", 
                                                as,
                                                Type::getVoidTy (ctx),
                                                Type::getInt1Ty (ctx),
