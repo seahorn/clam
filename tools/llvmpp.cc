@@ -22,7 +22,6 @@
 
 #include "llvm/IR/Verifier.h"
 
-#include <Transforms/CrabIndVarSimplify.hh>
 #include <Transforms/LowerGvInitializers.hh>
 #include <Transforms/NameValues.hh>
 #include <Transforms/MarkInternalInline.hh>
@@ -218,7 +217,7 @@ int main(int argc, char **argv) {
   // loop-closed SSA 
   pass_manager.add (llvm::createLCSSAPass());
   // induction variable
-  // pass_manager.add (new crab_llvm::CrabIndVarSimplify ());
+  //pass_manager.add (llvm::createIndVarSimplifyPass());
   // trivial invariants outside loops 
   pass_manager.add (llvm::createBasicAliasAnalysisPass());
   pass_manager.add (llvm::createLICMPass()); //LICM needs alias analysis

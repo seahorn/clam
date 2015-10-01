@@ -1,5 +1,4 @@
 add_library(LlvmPasses STATIC
-  CrabIndVarSimplify.cc
   LowerCstExpr.cc
   LowerGvInitializers.cc
   LowerSelect.cc
