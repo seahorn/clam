@@ -291,7 +291,6 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
 
 def stat (key, val): stats.put (key, val)
 def main (argv):
-    stat ('Progress', 'UNKNOWN')
     os.setpgrp ()
     loadEnv (os.path.join (root, "env.common"))
 

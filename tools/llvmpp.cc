@@ -29,6 +29,8 @@
 #include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
 
+#include "crab_llvm/config.h"
+
 #ifdef HAVE_LLVM_SEAHORN
 #include "llvm_seahorn/Transforms/Scalar.h"
 #endif 
@@ -58,8 +60,13 @@ InlineAll ("crab-inline-all", llvm::cl::desc ("Inline all functions"),
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-CrabLowerSelect ("crab-lower-select", llvm::cl::desc ("Lower all select instructions"),
+LowerSelect ("crab-lower-select", llvm::cl::desc ("Lower all select instructions"),
            llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+OptimizeLoops ("crab-loop-opt", 
+               llvm::cl::desc ("Perform loop optimizations"),
+               llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
 Concurrency ("crab-concur", llvm::cl::desc ("Preprocessing for concurrent analysis"),
@@ -210,14 +217,19 @@ int main(int argc, char **argv) {
   
   pass_manager.add (new crab_llvm::RemoveUnreachableBlocksPass ());
   pass_manager.add(llvm::createDeadInstEliminationPass());
-    
-  // canonical form for loops
-  pass_manager.add (llvm::createLoopSimplifyPass());
-  pass_manager.add (llvm::createCFGSimplificationPass ());  // cleanup unnecessary blocks 
-  // loop-closed SSA 
-  pass_manager.add (llvm::createLCSSAPass());
-  // induction variable
-  //pass_manager.add (llvm::createIndVarSimplifyPass());
+  
+  if (OptimizeLoops) {
+    // canonical form for loops
+    pass_manager.add (llvm::createLoopSimplifyPass());
+    pass_manager.add (llvm::createCFGSimplificationPass ());  // cleanup unnecessary blocks 
+    // loop-closed SSA 
+    pass_manager.add (llvm::createLCSSAPass());
+#ifdef HAVE_LLVM_SEAHORN
+    // induction variable
+    pass_manager.add (llvm_seahorn::createIndVarSimplifyPass ());
+#endif 
+  }
+
   // trivial invariants outside loops 
   pass_manager.add (llvm::createBasicAliasAnalysisPass());
   pass_manager.add (llvm::createLICMPass()); //LICM needs alias analysis
@@ -244,7 +256,7 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
   // -- must be the last ones:
-  if (CrabLowerSelect)
+  if (LowerSelect)
     pass_manager.add (new crab_llvm::LowerSelect ());   
   pass_manager.add (new crab_llvm::NameValues ()); 
 
