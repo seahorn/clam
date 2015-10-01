@@ -112,6 +112,71 @@ of precision. The possible values are:
   right after each LLVM load instruction. To see the final LLVM
   bitecode just add the option `-o out.bc`.
   
+##Example##
+
+Take the following program:
+
+```c
+
+    extern int nd ();
+    int a[10];
+    int main (){
+       int i;
+       for (i=0;i<10;i++) {
+         if (nd ())
+            a[i]=0;
+         else 
+            a[i]=5;
+	   }		 
+       int res = a[i-1];
+       return res;
+    }
+```
+
+and type `crabllvm.py test.c --crab-live --crab-track=arr --crab-add-invariants-at-entries --crab-add-invariants-after-loads -o test.crab.bc`. The content of `test.crab.bc` should be similar to this:
+
+
+```
+
+    define i32 @main() #0 {
+    entry:
+       br label %loop.header
+    loop.header:   ; preds = %loop.body, %entry
+       %i.0 = phi i32 [ 0, %entry ], [ %_br2, %loop.body ]
+       %crab_2 = icmp ult i32 %i.0, 11
+       call void @verifier.assume(i1 %crab_2) #2
+       %_br1 = icmp slt i32 %i.0, 10
+       br i1 %_br1, label %loop.body, label %loop.exit
+    loop.body:   ; preds = %loop.header
+       call void @verifier.assume(i1 %_br1) #2
+       %crab_14 = icmp ult i32 %i.0, 10
+       call void @verifier.assume(i1 %crab_14) #2
+       %_5 = call i32 (...)* @nd() #2
+       %_6 = icmp eq i32 %_5, 0
+       %_7 = sext i32 %i.0 to i64
+       %_. = getelementptr inbounds [10 x i32]* @a, i64 0, i64 %_7
+       %. = select i1 %_6, i32 5, i32 0
+       store i32 %., i32* %_., align 4
+       %_br2 = add nsw i32 %i.0, 1
+       br label %loop.header
+    loop.exit:   ; preds = %loop.header
+       %_11 = add nsw i32 %i.0, -1
+       %_12 = sext i32 %_11 to i64
+       %_13 = getelementptr inbounds [10 x i32]* @a, i64 0, i64 %_12
+       %_ret = load i32* %_13, align 4
+       %crab_23 = icmp ult i32 %_ret, 6
+       call void @verifier.assume(i1 %crab_23) #2
+       ret i32 %_ret
+    }
+```
+
+The special thing about the above LLVM bitecode is the existence of
+`@verifier.assume` instructions. For instance, the instruction
+`@verifier.assume(i1 %crab_2)` indicates that `%i.0` is between 0 and
+10 at the loop header. Also, `@verifier.assume(i1 %crab_23)` indicates
+that the result of the load instruction at block `loop.exit` is
+between 0 and 5.
+
 
 #Known Limitations#
 
