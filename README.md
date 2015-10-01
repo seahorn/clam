@@ -112,8 +112,6 @@ of precision. The possible values are:
   right after each LLVM load instruction. To see the final LLVM
   bitecode just add the option `-o out.bc`.
   
-##Example##
-
 Take the following program:
 
 ```c
