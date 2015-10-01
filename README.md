@@ -3,23 +3,21 @@
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /> 
 <img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
-
-
 #About#
 
 Crab-llvm is a static analyzer that computes inductive invariants
 based on [Crab](https://github.com/seahorn/crab) for LLVM-based
 languages.
 
-Crab-llvm provides two standalone tools: `llvmpp` and `crabllvm`:
+Crab-llvm provides two standalone tools: `crabllvmpp` and `crabllvm`:
 
-- `llvmpp`: is a LLVM bytecode preprocessor that applies optimizations
+- `crabllvmpp`: is a LLVM bytecode preprocessor that applies optimizations
 to make easier the task of static analysis.
 
 - `crabllvm`: converts LLVM bitcode into a language-independent CFG
   and computes invariants from it.
 
-The use of `llvmpp` is optional but highly recommended with large
+The use of `crabllvmpp` is optional but highly recommended with large
 programs.
 
 #License#
@@ -39,9 +37,11 @@ download the following package at the root directory:
 
 * [dsa-seahorn](https://github.com/seahorn/dsa-seahorn): ``` git clone https://github.com/seahorn/dsa-seahorn.git ```
 
-Another optional component used by `llvmpp` is:
+Another optional component used by `crabllvmpp` is:
 
 * [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
+
+`llvm-seahorn` provides specialized versions of `InstCombine` and `IndVarSimplify` LLVM passes.
 
 Then, the compilation steps are:
 
@@ -64,7 +64,6 @@ inferred for each basic block in the `LLVM` bitcode.
 	- `ric`: intervals with congruences
     - `term`: intervals with uninterpreted functions
 	- `zones`: difference-bound matrices
-
 
 - We also provide the option `--crab-track-lvl` to indicate the level
 of precision. The possible values are: 
@@ -103,6 +102,16 @@ of precision. The possible values are:
   `--crab-print-summaries` displays the summaries for each
   function. The inter-procedural analysis is specially important if
   reasoning about memory contents is desired.
+
+- To make easier the communication with other LLVM-based tools,
+  Crab-llvm can output the invariants by inserting them into the LLVM
+  bitecode via `verifier.assume` instructions. The option
+  `--crab-add-invariants-at-entries` injects the invariants that hold
+  at each basic block entry while option
+  `--crab-add-invariants-after-loads` injects the invariants that hold
+  right after each LLVM load instruction. To see the final LLVM
+  bitecode just add the option `-o out.bc`.
+  
 
 #Known Limitations#
 
