@@ -34,6 +34,7 @@
 #include <Transforms/LowerCstExpr.hh>
 #include <Transforms/LowerSelect.hh>
 #include <Transforms/RemoveUnreachableBlocksPass.hh>
+#include <Transforms/SimplifyAssume.hh>
 
 #include "crab_llvm/CrabLlvm.hh"
 #include <crab_llvm/Transforms/InsertInvariants.hh>
@@ -195,6 +196,7 @@ int main(int argc, char **argv) {
 #else
     pass_manager.add (llvm::createInstructionCombiningPass ()); 
 #endif 
+    pass_manager.add (new crab_llvm::SimplifyAssume ());
   }
 
   if (!AsmOutputFilename.empty ()) 
