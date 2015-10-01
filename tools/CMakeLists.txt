@@ -17,10 +17,10 @@ set(LLVM_LINK_COMPONENTS
   codegen 
   objcarcopts)
 
-add_executable(llvmpp llvmpp.cc)
-target_link_libraries (llvmpp LlvmPasses ${USED_LIBS} ${LLVM_SEAHORN_LIBS})
-llvm_config (llvmpp ${LLVM_LINK_COMPONENTS})
-install(TARGETS llvmpp RUNTIME DESTINATION bin)
+add_executable(crabllvmpp crabllvmpp.cc)
+target_link_libraries (crabllvmpp LlvmPasses ${USED_LIBS} ${LLVM_SEAHORN_LIBS})
+llvm_config (crabllvmpp ${LLVM_LINK_COMPONENTS})
+install(TARGETS crabllvmpp RUNTIME DESTINATION bin)
 
 add_executable(crabllvm crabllvm.cc)
 target_link_libraries (crabllvm
@@ -37,6 +37,6 @@ install(TARGETS crabllvm RUNTIME DESTINATION bin)
 
 if (CRABLLVM_STATIC_EXE)
   set (CMAKE_EXE_LINKER_FLAGS "-static -static-libgcc -static-libstdc++")
-  set_target_properties (llvmpp PROPERTIES LINK_SEARCH_START_STATIC ON)
-  set_target_properties (llvmpp PROPERTIES LINK_SEARCH_END_STATIC ON)
+  set_target_properties (crabllvmpp PROPERTIES LINK_SEARCH_START_STATIC ON)
+  set_target_properties (crabllvmpp PROPERTIES LINK_SEARCH_END_STATIC ON)
 endif()

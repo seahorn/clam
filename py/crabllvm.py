@@ -86,6 +86,9 @@ def parseArgs (argv):
                        help='MEM limit (MB)', default=-1)
     p.add_argument ('--inline', dest='inline', help='Inline all functions',
                     default=False, action='store_true')
+    p.add_argument ('--pp-loops',
+                    help='Preprocessing Loops',
+                    dest='pp_loops', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
@@ -98,6 +101,9 @@ def parseArgs (argv):
     p.add_argument ('--crab-inter',
                     help='Run inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
+    p.add_argument ('--crab-live',
+                    help='Use of liveness information',
+                    dest='crab_live', default=False, action='store_true')        
     p.add_argument ('--crab-devirt',
                     help='Resolve indirect calls',
                     dest='crab_devirt', default=False, action='store_true')
@@ -107,9 +113,6 @@ def parseArgs (argv):
     p.add_argument ('--crab-add-invariants-after-loads',
                     help='Instrument code with invariants after each load instruction',
                     dest='insert_invs_loads', default=False, action='store_true')
-    p.add_argument ('--crab-live',
-                    help='Use of liveness information',
-                    dest='crab_live', default=False, action='store_true')        
     p.add_argument ('--crab-print-invariants',
                     help='Display computed invariants',
                     dest='show_invars', default=False, action='store_true')
@@ -166,16 +169,16 @@ def getCrabLlvm ():
         raise IOError ("Cannot find crabllvm")
     return crabllvm
 
-def getLlvmPP ():
-    llvmpp = None
-    if 'LLVMPP' in os.environ:
-        llvmpp = os.environ ['LLVMPP']
-    if not isexec (llvmpp):
-        llvmpp = os.path.join (root, "bin/llvmpp")
-    if not isexec (llvmpp): llvmpp = which ('llvmpp')
-    if not isexec (llvmpp):
+def getCrabLlvmPP ():
+    crabpp = None
+    if 'CRABLLVMPP' in os.environ:
+        crabpp = os.environ ['CRABLLVMPP']
+    if not isexec (crabpp):
+        crabpp = os.path.join (root, "bin/crabllvmpp")
+    if not isexec (crabpp): crabpp = which ('crabllvmpp')
+    if not isexec (crabpp):
         raise IOError ("Cannot find crabllvm pre-processor")
-    return llvmpp
+    return crabpp
 
 def getClang ():
     names = ['clang-mp-3.6', 'clang-3.6', 'clang', 'clang-mp-3.5', 'clang-mp-3.4']
@@ -214,17 +217,21 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     if verbose: print ' '.join (clang_args)
     sub.check_call (clang_args)
 
-# Run llvmpp
-def llvmpp (in_name, out_name, arch, args, extra_args=[]):
+# Run crabpp
+def crabpp (in_name, out_name, arch, args, extra_args=[]):
     if out_name == '' or out_name == None:
         out_name = defPPName (in_name)
 
-    llvmpp_args = [getLlvmPP (), '-o', out_name, in_name ]
-    if args.inline: llvmpp_args.append ('--crab-inline-all')
-    llvmpp_args.extend (extra_args)
+    crabpp_args = [getCrabLlvmPP (), '-o', out_name, in_name ]
+    if args.inline: 
+        crabpp_args.append ('--crab-inline-all')
+    if args.pp_loops: 
+        crabpp_args.append ('--crab-pp-loops')
 
-    if verbose: print ' '.join (llvmpp_args)
-    sub.check_call (llvmpp_args)
+    crabpp_args.extend (extra_args)
+
+    if verbose: print ' '.join (crabpp_args)
+    sub.check_call (crabpp_args)
 
 def sharedLib (base):
     ext = '.so'
@@ -316,9 +323,9 @@ def main (argv):
     if not args.no_pp:
         pp_out = defPPName (in_name, workdir)
         if pp_out != in_name:
-            with stats.timer ('LlvmPP'):
-                llvmpp (in_name, pp_out, arch=args.machine, args=args)
-            stat ('Progress', 'LLVMPP')
+            with stats.timer ('CrabLlvmPP'):
+                crabpp (in_name, pp_out, arch=args.machine, args=args)
+            stat ('Progress', 'CRABLLVMPP')
         in_name = pp_out
 
     pp_out = defOutPPName(in_name, workdir)

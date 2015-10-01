@@ -64,7 +64,7 @@ LowerSelect ("crab-lower-select", llvm::cl::desc ("Lower all select instructions
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-OptimizeLoops ("crab-loop-opt", 
+OptimizeLoops ("crab-pp-loops", 
                llvm::cl::desc ("Perform loop optimizations"),
                llvm::cl::init (false));
 
