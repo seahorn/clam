@@ -282,6 +282,7 @@ namespace crab_llvm
       change |= g.gen_code (rel_csts, Builder, ctx, m_assumeFn, cg, 
                             I->getParent()->getParent (), "crab_");
     }
+    return change;
   }
 
   bool InsertInvariants::runOnModule (llvm::Module &M)
