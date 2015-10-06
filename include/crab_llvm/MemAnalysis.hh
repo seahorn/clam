@@ -40,7 +40,7 @@ namespace crab_llvm
     typedef int array_id_t; // if < 0 then error
 
    private:
-
+    
     DataStructures*  m_dsa;
     TrackedPrecision m_tracklev;
     
@@ -54,18 +54,7 @@ namespace crab_llvm
     ///            return node
     std::set<const DSNode*> m_retReach;
 
-    // template<typename First, typename Second>
-    // struct getSecond : public std::unary_function<pair<First,Second>, Second> {
-    //   getSecond () { }
-    //   Second operator () (const pair<First,Second> &p) const { return p.second; }
-    // }; 
-
-    // typedef boost::transform_iterator< getSecond<const DSNode*,unsigned>, 
-    //                                    typename DenseMap<const DSNode*, 
-    //                                                      unsigned>::iterator > iterator;
-
-    array_id_t getId (const DSNode *n)
-    {
+    array_id_t getId (const DSNode *n) {
       auto it = m_node_ids.find (n);
       if (it != m_node_ids.end ()) return it->second;
       unsigned id = m_node_ids.size ();
@@ -75,8 +64,7 @@ namespace crab_llvm
     }
 
     template <typename Set>
-    void markReachableNodes (const DSNode *n, Set &set)
-    {
+    void markReachableNodes (const DSNode *n, Set &set) {
       if (!n) return;
       
       assert (!n->isForwarding () && "Cannot mark a forwarded node");
@@ -86,8 +74,7 @@ namespace crab_llvm
     }
     
     template <typename Set>
-    void inputReachableNodes (const DSCallSite &cs, DSGraph &dsg, Set &set)
-    {
+    void inputReachableNodes (const DSCallSite &cs, DSGraph &dsg, Set &set) {
       markReachableNodes (cs.getVAVal().getNode (), set);
       if (cs.isIndirectCall ()) markReachableNodes (cs.getCalleeNode (), set);
       for (unsigned i = 0, e = cs.getNumPtrArgs (); i != e; ++i)
@@ -104,16 +91,14 @@ namespace crab_llvm
     {markReachableNodes (cs.getRetVal ().getNode (), set);}
     
     template <typename Set>
-    void set_difference (Set &s1, Set &s2)
-    {
+    void set_difference (Set &s1, Set &s2) {
       Set s3;
       boost::set_difference (s1, s2, std::inserter (s3, s3.end ()));
       std::swap (s3, s1);
     }
     
     template <typename Set>
-    void set_union (Set &s1, Set &s2)
-    {
+    void set_union (Set &s1, Set &s2) {
       Set s3;
       boost::set_union (s1, s2, std::inserter (s3, s3.end ()));
       std::swap (s3, s1);
@@ -124,8 +109,7 @@ namespace crab_llvm
     /// outReach - subset of reach that is only reachable from the return node
     template <typename Set1, typename Set2>
     void argReachableNodes (DSCallSite CS, DSGraph &dsg, 
-                            Set1 &reach, Set2 &outReach)
-    {
+                            Set1 &reach, Set2 &outReach) {
       inputReachableNodes (CS, dsg, reach);
       retReachableNodes (CS, outReach);
       set_difference (outReach, reach);
@@ -133,31 +117,26 @@ namespace crab_llvm
     }
 
     template <typename Set1, typename Set2>
-    void argReachableNodes (Function&f, Set1 &reach, Set2 &outReach)
-    {
+    void argReachableNodes (Function&f, Set1 &reach, Set2 &outReach) {
       DSGraph *cdsg = m_dsa->getDSGraph (f);
-      if (cdsg)
-      {
+      if (cdsg) {
         DSCallSite CCS = cdsg->getCallSiteForArguments (f);
         argReachableNodes (CCS, *cdsg, reach, outReach);
       }
     }
 
-    // //! return begin iterator to node id's
-    // iterator begin () {       
-    //     return boost::make_transform_iterator 
-    //         (m_node_ids.begin (), 
-    //          getSecond<const DSNode*,unsigned> ());
-    // }
+    // - a node is complete if all its uses have been seen.
+    // - a node is unknown if an integer is cast to a pointer or when
+    //   unanalyzable address arithmetic is seen.
+    // - a node is collapsed if all its uses have compatible type or
+    //   compatible types but misaligned.
+    bool isTrackable (const DSNode* n) const {
+      return  (n->isCompleteNode () && 
+               !n->isUnknownNode () && 
+               !n->isCollapsedNode () &&
+               (n->isAllocaNode () || n->isHeapNode () || n->isGlobalNode ()));
+    }
 
-    // //! return end iterator to node id's
-    // iterator end () {       
-    //     return boost::make_transform_iterator 
-    //         (m_node_ids.end (), 
-    //          getSecond<const DSNode*,unsigned> ());
-    // }
-
-    
    public:
     
     MemAnalysis ():  m_dsa (0), m_tracklev (INT) { }
@@ -169,8 +148,7 @@ namespace crab_llvm
     TrackedPrecision getTrackLevel () const { return m_tracklev; }
     
     //! return < 0 if no array associated with ptr is found
-    array_id_t getArrayId (Function& f, Value* ptr) 
-    {
+    array_id_t getArrayId (Function& f, Value* ptr)  {
       if (!m_dsa) return -1;
 
       DSGraph* dsg = m_dsa->getDSGraph (f);
@@ -180,14 +158,13 @@ namespace crab_llvm
       DSNode* n = dsg->getNodeForValue (ptr).getNode ();
       if (!n) n = gDsg->getNodeForValue (ptr).getNode ();
 
-      if (!n) return -1;
+      if (!n || !isTrackable (n)) return -1;
 
       return getId (n); 
     }
 
     //! return true if the array corresponds to a single memory cell.
-    bool isSingleton (array_id_t array_id)
-    {
+    bool isSingleton (array_id_t array_id) {
       auto it = m_rev_node_ids.find (array_id);
       if (it == m_rev_node_ids.end ()) return false;
 
@@ -204,6 +181,10 @@ namespace crab_llvm
 
       set<array_id_t> refs, mods, news;
       for (const DSNode* n : reach) {
+
+        if (!isTrackable (n))
+          continue;
+
         if (!n->isReadNode () && !n->isModifiedNode ())
           continue;
 
@@ -253,6 +234,10 @@ namespace crab_llvm
       dsg->computeCalleeCallerMapping (CS, CF, *cdsg, nodeMap);
       
       for (const DSNode* n : reach) {
+
+        if (!isTrackable (n))
+          continue;
+
         if (!n->isReadNode () && !n->isModifiedNode ())
           continue;
 
@@ -278,16 +263,18 @@ namespace crab_llvm
 
 } // end namespace
 #else
+
 namespace crab_llvm
 {
   using namespace crab::cfg;
+  // Empty memory analysis
   struct MemAnalysis {
     typedef int array_id_t; 
     TrackedPrecision m_tracklev;
     MemAnalysis (): m_tracklev (INT) { }
     TrackedPrecision getTrackLevel () const { return m_tracklev; }
     int getArrayId (llvm::Function&, llvm::Value*) { return -1; }
-    bool isSingleton (int) { return false; }
+    bool isSingleton (int) { return false;}
     boost::tuple<set<int>,set<int>, set<int> > 
     getRefModNewArrays (llvm::Function&) {  
       return boost::make_tuple (set<int> (), set<int> (), set<int> ()); 
