@@ -106,7 +106,9 @@ namespace crab_llvm
       std::vector<cfg_t> cfgs;
       for (auto &F : M)  {
         // -- skip functions without a body
-        if (F.isDeclaration () || F.empty () || F.isVarArg ()) continue;
+        if (F.isDeclaration () || F.empty ()) continue;
+
+        if (F.isVarArg ()) continue;
 
         CfgBuilder builder (F, m_vfac, &m_mem, true /*inter*/);
         cfg_t &cfg = builder.makeCfg ();
@@ -157,7 +159,9 @@ namespace crab_llvm
   bool CrabLlvm::runOnFunction (llvm::Function &F)
   {
     // -- skip functions without a body
-    if (F.isDeclaration () || F.empty () || F.isVarArg ()) return false;
+    if (F.isDeclaration () || F.empty ()) return false;
+
+    if (F.isVarArg ()) return false;
 
     CfgBuilder builder (F, m_vfac, &m_mem, false /*intra*/);
     cfg_t &cfg = builder.makeCfg ();

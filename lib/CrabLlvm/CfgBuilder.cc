@@ -242,11 +242,11 @@ namespace crab_llvm
       private SymEval<VariableFactory, z_lin_exp_t>
   {
     // block where assignment/havoc will be inserted
-    basic_block_t&    m_bb; 
+    basic_block_t& m_bb; 
     // incoming block of the PHI instruction
     const llvm::BasicBlock& m_inc_BB; 
     // memory analysis
-    MemAnalysis *m_mem;
+    MemAnalysis* m_mem;
 
     SymExecPhiVisitor (VariableFactory& vfac, 
                        basic_block_t& bb, 
@@ -255,36 +255,61 @@ namespace crab_llvm
         SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
         m_bb (bb), m_inc_BB (inc_BB), m_mem (mem)
     { }
-    
-    void visitPHINode (PHINode &I) 
-    {
-      if (!isTracked (I)) return;
 
-      const Value *LHS = dyn_cast<const Value>(&I);
+    void visitBasicBlock (llvm::BasicBlock &BB) {
 
-      // --- Hook to ignore always integer shadow variables from
-      //     SeaHorn ShadowMemDsa pass.
-      if (LHS->getName ().startswith ("shadow.mem")) return;
-      
-      const Value &v = *I.getIncomingValueForBlock (&m_inc_BB);
-      
-      if (LHS == &v) return;
+      auto curr = BB.begin ();
+      if (!isa<PHINode> (curr)) return;
 
-#if 0      
-      // OptimizationXX:
-      if (Instruction *II = dyn_cast<Instruction> (I.getIncomingValueForBlock (&m_inc_BB))) {
-        if (hasOnlyOnePHINodeUse (*II))
-          return;
+      DenseMap<const Value*, z_lin_exp_t> oldValMap;
+
+      // --- All the phi-nodes must be evaluated atomically. This
+      //     means that if one phi node v1 has as incoming value
+      //     another phi node v2 in the same block then it should take
+      //     the v2's old value (i.e., before v2's evaluation).
+
+      for (; PHINode *phi = dyn_cast<PHINode> (curr); ++curr) {        
+
+        const Value &v = *phi->getIncomingValueForBlock (&m_inc_BB);
+        if (!isTracked (v)) continue;
+        // --- Hook to ignore always integer shadow variables from
+        //     SeaHorn ShadowMemDsa pass.
+        if (v.getName().startswith ("shadow.mem")) continue;
+
+        if (isa<PHINode> (&v)) {
+          if (auto x = lookup (v)) {
+            // --- save the old version of the variable that maps to
+            //     the phi node v
+            auto it = oldValMap.find (&v);
+            if (it == oldValMap.end ()) {
+              varname_t oldVal = m_vfac.get ();
+              m_bb.assign (oldVal, *x);
+              oldValMap.insert (make_pair (&v, z_lin_exp_t (oldVal)));
+            }
+          }
+        }
       }
-#endif 
-      
-      varname_t lhs = symVar(I);
-      optional<z_lin_exp_t> rhs = lookup(v);
-      if (rhs) 
-        m_bb.assign(lhs, *rhs);
-      else     
-        m_bb.havoc(lhs);
-    }
+
+      curr = BB.begin ();
+      for (unsigned i = 0; isa<PHINode> (curr); ++curr) {
+        PHINode &phi = *cast<PHINode> (curr);
+        if (!isTracked (phi)) continue;
+        if (phi.getName().startswith ("shadow.mem")) continue;
+
+        varname_t lhs = symVar(phi);
+        const Value &v = *phi.getIncomingValueForBlock (&m_inc_BB);
+        
+        auto it = oldValMap.find (&v);
+        if (it != oldValMap.end ()) 
+          m_bb.assign(lhs, it->second);
+        else {
+          if (auto op = lookup (v))
+            m_bb.assign(lhs, *op);
+          else 
+            m_bb.havoc(lhs);
+        }
+      }
+    }    
   };
 
   //! Translate the rest of instructions
@@ -364,13 +389,6 @@ namespace crab_llvm
         case BinaryOperator::URem:
         case BinaryOperator::Shl:
         case BinaryOperator::AShr:
-#if 0
-          // OptimizationXX: if the lhs has only one user and the user
-          // is a phi node then we save one assignment.
-          if (PHINode* PHI  = hasOnlyOnePHINodeUse (I)) {
-              lhs = symVar (*PHI);
-          }
-#endif 
           doArithmetic (lhs, I);
           break;
         case BinaryOperator::And:
