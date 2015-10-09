@@ -188,6 +188,12 @@ int main(int argc, char **argv) {
   else {
     /// -- run the crab analyzer
     pass_manager.add (new crab_llvm::CrabLlvm ());
+  }
+
+  if (!AsmOutputFilename.empty ()) 
+    pass_manager.add (createPrintModulePass (asmOutput->os ()));
+
+  if (!Concurrency) {
     /// -- insert invariants as assume instructions
     pass_manager.add (new crab_llvm::InsertInvariants ());
     /// -- simplify invariants added in the bytecode.
@@ -198,9 +204,6 @@ int main(int argc, char **argv) {
 #endif 
     pass_manager.add (new crab_llvm::SimplifyAssume ());
   }
-
-  if (!AsmOutputFilename.empty ()) 
-    pass_manager.add (createPrintModulePass (asmOutput->os ()));
       
   if (!OutputFilename.empty ()) 
   {
