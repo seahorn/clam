@@ -32,7 +32,7 @@ LlvmCrabPrintCFG ("crab-print-cfg",
                     cl::init (false));
                     
 /* 
- To allow to track memory but ignoring pointer arithmetic. This makes
+ Allow to track memory but ignoring pointer arithmetic. This makes
  sense because some crab analyses can reason about memory without
  having any knowledge about pointer arithmetic. In general, the
  simplest array domain cannot be sound without reasoning about pointer
@@ -702,7 +702,7 @@ namespace crab_llvm
                                          I.getPointerOperand ());
         if (arr_idx < 0) return;
         // Post: arr_idx corresponds to a cell pointed by objects with
-        //       same types and all accesses are aligned.        
+        //       same type and all accesses are aligned.        
         optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
         if (!idx) return ;
         
@@ -734,11 +734,33 @@ namespace crab_llvm
 
         if (arr_idx < 0) return;
         // Post: arr_idx corresponds to a cell pointed by objects with
-        //       same types and all accesses are aligned.        
+        //       same type and all accesses are aligned.        
         
         m_bb.array_store (symVar (arr_idx), *idx, *val, 
                           ikos::z_number (m_dl->getTypeAllocSize (ty)),
                           m_mem->isSingleton (arr_idx)); 
+      }
+    }
+
+    void visitAllocaInst (AllocaInst &I) {
+
+      if (m_mem->getTrackLevel () == ARR) {        
+        int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), 
+                                         &I);
+        if (arr_idx < 0) return;
+        // Post: arr_idx corresponds to a cell pointed by objects with
+        //       same type and all accesses are aligned.        
+        
+        // HOOK: nodes which do not have an explicit initialization
+        // are initially undefined. Instead, we assume they are zero
+        // initialized so that Crab's array smashing can infer
+        // something meaningful. This is correct because in presence
+        // of undefined behaviour we can do whatever we want but it
+        // will, for instance, preclude the analysis to detect things
+        // like uninitialized variables and also if a more expressive
+        // array domain is used then this initialization will make it
+        // more imprecise.
+        m_bb.assume_array (symVar (arr_idx), 0 /*any value we want*/);
       }
     }
 
@@ -842,9 +864,31 @@ namespace crab_llvm
         return;
       }
 
-      // -- skip if intrinsic
-      if (callee->isIntrinsic ()) return;
+      if (callee->isIntrinsic ()) {
+        if (callee->getName().startswith ("llvm.memset")) {
+          Value *ptr = CS.getArgument (0);
+          Value *val = CS.getArgument (1);
+          int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), ptr);
+          if (arr_idx < 0) return;
+          // Post: arr_idx corresponds to a cell pointed by objects with
+          //       same type and all accesses are aligned.        
+          optional<z_lin_exp_t> op0 = lookup (*val);          
+          if (op0 && (*op0).is_constant ()) {
+            m_bb.havoc (symVar(arr_idx));
+            m_bb.assume_array (symVar(arr_idx), (*op0).constant ());
+          }
+        }
+        else if (callee->getName().startswith ("llvm.memcpy")) {
+          // TODO
+        }
+        // XXX: probably we don't want to model llvm.memmove since it
+        // allows overlapping between source and destination so the
+        // array domain may not be sound.
 
+        // else skip intrinsic
+        return;
+      }
+      
       // -- some special functions
       if (callee->getName ().equals ("verifier.assume")) {
         Value *cond = CS.getArgument (0);
@@ -1190,7 +1234,7 @@ namespace crab_llvm
             int arr_idx = m_mem->getArrayId (m_func, &gv);
             if (arr_idx < 0) continue;
             // Post: arr_idx corresponds to a cell pointed by objects with
-            //       same types and all accesses are aligned.        
+            //       same type and all accesses are aligned.        
 
             entry.set_insert_point_front ();
             doInitializer (gv.getInitializer (), entry, 
@@ -1199,21 +1243,14 @@ namespace crab_llvm
         } 
       }
       
-      // HOOK: nodes which do not have an explicit initialization are
-      // initially undefined. Instead, we assume they are zero
-      // initialized so that Crab's array smashing can infer something
-      // meaningful. This is correct because in presence of undefined
-      // behaviour we can do whatever we want but it will, for
-      // instance, preclude the analysis to detect things like
-      // uninitialized variables and also if a more expressive array
-      // domain is used then this initialization will make it more
-      // imprecise.
+      // Same HOOK described above to give some non-top initialization
+      // to a freshly created array.
       basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
       auto t = m_mem->getRefModNewArrays (m_func);
       auto news =  get<2> (t);
       for (auto n: news) {
         entry.set_insert_point_front ();
-        entry.assume_array (s.symVar (n), 0);
+        entry.assume_array (s.symVar (n), 0 /*any value we want*/);
       }
     }
 
