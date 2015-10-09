@@ -1109,8 +1109,18 @@ namespace crab_llvm
             SymExecConditionVisitor v (m_vfac, bb, br->getSuccessor (1) == &dst, m_mem);
             v.visit (I); 
           }
-          else
-            errs () << "Warning: cannot generate guard from " << c << "\n";
+          else {
+            // -- this can happen if the boolean condition is passed
+            //    directly (after optimization) as a function
+            //    parameter
+            SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, 
+                                                     m_mem->getTrackLevel ());
+            varname_t lhs = s.symVar (c);
+            if (br->getSuccessor (1) == &dst)
+              bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
+            else
+              bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
+          }
         }
         return opt_basic_block_t(bb);
       }
