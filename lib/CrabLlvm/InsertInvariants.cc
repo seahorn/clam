@@ -9,6 +9,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/ADT/Statistic.h"
 
 #include "crab_llvm/config.h"
 #include "crab_llvm/Transforms/InsertInvariants.hh"
@@ -46,6 +47,11 @@ static llvm::cl::opt<bool>
 LlvmCrabInsertLoads ("crab-add-invariants-after-loads", 
                      llvm::cl::desc ("Instrument load instructions with invariants"),
                      llvm::cl::init (false));
+
+#define DEBUG_TYPE "crab-insert-invars"
+
+STATISTIC(NumInstrBlocks  , "Number of basic blocks instrumented with invariants");
+STATISTIC(NumInstrLoads   , "Number of load instructions instrumented with invariants");
 
 namespace crab_llvm
 {
@@ -201,6 +207,7 @@ namespace crab_llvm
     IRBuilder<> Builder (ctx);
     Builder.SetInsertPoint (bb->getFirstNonPHI ());
     CodeExpander g;
+    NumInstrBlocks++;
     return g.gen_code (csts, Builder, ctx, m_assumeFn, cg, 
                        bb->getParent (), "crab_");
   }
@@ -263,7 +270,10 @@ namespace crab_llvm
       VariableFactory &vfac = m_crab->getVariableFactory ();
       auto shadows = vfac.get_shadow_vars ();
       crab::domain_traits::forget (inv, shadows.begin(), shadows.end());            
-      
+
+      if (inv.is_top ())
+        continue;
+
       // -- Filter out all constraints that do not use x.
       z_lin_cst_sys_t rel_csts;
       for (auto cst: inv.to_linear_constraint_system ()) {
@@ -279,6 +289,7 @@ namespace crab_llvm
       InsertPt++; // this is ok because LoadInstr cannot be terminators.
       Builder.SetInsertPoint (InsertBlk, InsertPt);
       CodeExpander g;
+      NumInstrLoads++;
       change |= g.gen_code (rel_csts, Builder, ctx, m_assumeFn, cg, 
                             I->getParent()->getParent (), "crab_");
     }
