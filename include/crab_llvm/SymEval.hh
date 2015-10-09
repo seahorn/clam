@@ -28,8 +28,7 @@ namespace crab_llvm
         m_vfac (vfac), m_track_lvl (track_lvl)
     { }
 
-    bool isTracked (const llvm::Value &v)
-    {
+    bool isTracked (const llvm::Value &v) {
       // -- a pointer
       if (v.getType ()->isPointerTy ()) 
         return (m_track_lvl >= PTR); 
@@ -38,14 +37,12 @@ namespace crab_llvm
       return v.getType ()->isIntegerTy ();
     }
 
-    varname_t symVar (const Value &v)
-    {
+    varname_t symVar (const Value &v) {
       assert (isTracked (v));
       return m_vfac [v];
     }
 
-    varname_t symVar (int v)
-    {
+    varname_t symVar (int v) {
       return m_vfac.get (v);
     }
   
@@ -55,28 +52,25 @@ namespace crab_llvm
       return res;
     }
 
-    boost::optional<ZLinExp> lookup (const Value &v)
-    {
-      if (isa<ConstantPointerNull> (&v) || isa<const UndefValue> (&v))
-        return boost::optional<ZLinExp>();
+    boost::optional<ZLinExp> lookup (const Value &v) {
+
+      if (isa<const UndefValue> (&v))
+        return boost::optional<ZLinExp> ();
+
+      if (isa<ConstantPointerNull> (&v))
+        return boost::optional<ZLinExp> (0);
       
-      if (const ConstantInt *c = dyn_cast<const ConstantInt> (&v))
-      {
-        if (c->getValue ().getMinSignedBits () > 64)
-        {
+      if (const ConstantInt *c = dyn_cast<const ConstantInt> (&v)) {
+        if (c->getValue ().getMinSignedBits () > 64) {
           errs () << "Warning: " << toMpz (c->getValue ()).get_str ()  
                   << " too big for int64_t.\n";
         }
         else
-          return ZLinExp(c->getValue ().getSExtValue ());
+          return ZLinExp (c->getValue ().getSExtValue ());
       }
 
-      if (isTracked(v)) {
-        if (isa<ConstantExpr> (v))
-          errs () << "Warning: ignored constant expression.\n";
-        else
-          return ZLinExp (symVar (v));
-      }
+      if (isTracked(v) && !isa<ConstantExpr> (v))
+        return ZLinExp (symVar (v));
       
       return boost::optional<ZLinExp>();
     }

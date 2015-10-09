@@ -32,15 +32,19 @@ LlvmCrabPrintCFG ("crab-print-cfg",
                     cl::init (false));
                     
 /* 
- To allow to track memory ignoring pointer arithmetic. This makes
+ To allow to track memory but ignoring pointer arithmetic. This makes
  sense because some crab analyses can reason about memory without
- having any knowledge about pointer arithmetic.
+ having any knowledge about pointer arithmetic. In general, the
+ simplest array domain cannot be sound without reasoning about pointer
+ arithmetic unless two conditions are satisfied:
+    1) a cell cannot be pointed by objects of different types, and
+    2) memory accesses cannot be misaligned.
 */
 llvm::cl::opt<bool>
-LlvmCrabNoGEP ("crab-disable-ptr",
-                 cl::desc ("Disable translation of pointer arithmetic in Crab CFG"), 
-                 cl::init (false),
-                 cl::Hidden);
+LlvmCrabNoPtrArith ("crab-disable-ptr",
+                    cl::desc ("Disable translation of pointer arithmetic"), 
+                    cl::init (false),
+                    cl::Hidden);
 
 namespace crab_llvm
 {
@@ -57,16 +61,16 @@ namespace crab_llvm
       return UNK_TYPE;
   }
 
-  PHINode* hasOnlyOnePHINodeUse (const Instruction &I) {
-    const Value *v = &I;
-    if (v->hasOneUse ()) {
-      const Use &U = *(v->use_begin ());
-      if (PHINode* PHI  = dyn_cast<PHINode> (U.getUser ())) {
-        return PHI;
-      }
-    }
-    return nullptr;
-  }
+  // PHINode* hasOnlyOnePHINodeUse (const Instruction &I) {
+  //   const Value *v = &I;
+  //   if (v->hasOneUse ()) {
+  //     const Use &U = *(v->use_begin ());
+  //     if (PHINode* PHI  = dyn_cast<PHINode> (U.getUser ())) {
+  //       return PHI;
+  //     }
+  //   }
+  //   return nullptr;
+  // }
 
   //! Translate flag conditions 
   struct SymExecConditionVisitor : 
@@ -217,16 +221,13 @@ namespace crab_llvm
 
     void visitCmpInst (CmpInst &I) 
     {
-
-      if (!(isTracked (I) && 
-            I.getOperand (0)->getType ()->isIntegerTy () &&
-            I.getOperand (1)->getType ()->isIntegerTy ())) {
+      if (LlvmCrabNoPtrArith && 
+          (!I.getOperand (0)->getType ()->isIntegerTy () ||
+           !I.getOperand (1)->getType ()->isIntegerTy ())) 
         return;    
-      }
 
-      for (auto cst: gen_assertion (I)) {
+      for (auto cst: gen_assertion (I))
         m_bb.assume(cst);
-      }
       
       varname_t lhs = symVar (I);
       if (m_is_negated)
@@ -271,7 +272,11 @@ namespace crab_llvm
       for (; PHINode *phi = dyn_cast<PHINode> (curr); ++curr) {        
 
         const Value &v = *phi->getIncomingValueForBlock (&m_inc_BB);
+
         if (!isTracked (v)) continue;
+
+        if (LlvmCrabNoPtrArith && !phi->getType ()->isIntegerTy ()) continue;
+
         // --- Hook to ignore always integer shadow variables from
         //     SeaHorn ShadowMemDsa pass.
         if (v.getName().startswith ("shadow.mem")) continue;
@@ -293,8 +298,12 @@ namespace crab_llvm
       curr = BB.begin ();
       for (unsigned i = 0; isa<PHINode> (curr); ++curr) {
         PHINode &phi = *cast<PHINode> (curr);
+
         if (!isTracked (phi)) continue;
+
         if (phi.getName().startswith ("shadow.mem")) continue;
+
+        if (LlvmCrabNoPtrArith && !phi.getType ()->isIntegerTy ()) continue;
 
         varname_t lhs = symVar(phi);
         const Value &v = *phi.getIncomingValueForBlock (&m_inc_BB);
@@ -585,7 +594,11 @@ namespace crab_llvm
     
     void doCast(CastInst &I)
     {
-      if (!isTracked (I)) return;
+      if (!isTracked (I)) 
+        return;
+
+      if (LlvmCrabNoPtrArith && !I.getType ()->isIntegerTy ())
+        return;
 
       varname_t dst = symVar (I);
       const Value& v = *I.getOperand (0); // the value to be casted
@@ -622,7 +635,7 @@ namespace crab_llvm
     void visitGetElementPtrInst (GetElementPtrInst &I)
     {
       if ( (!isTracked (*I.getPointerOperand ())) ||
-           LlvmCrabNoGEP) {
+           LlvmCrabNoPtrArith) {
         if (isTracked (I))
           m_bb.havoc (symVar (I));
         return;
@@ -688,7 +701,8 @@ namespace crab_llvm
         int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), 
                                          I.getPointerOperand ());
         if (arr_idx < 0) return;
-        
+        // Post: arr_idx corresponds to a cell pointed by objects with
+        //       same types and all accesses are aligned.        
         optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
         if (!idx) return ;
         
@@ -717,7 +731,10 @@ namespace crab_llvm
         
         int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()),
                                          I.getOperand (1)); 
+
         if (arr_idx < 0) return;
+        // Post: arr_idx corresponds to a cell pointed by objects with
+        //       same types and all accesses are aligned.        
         
         m_bb.array_store (symVar (arr_idx), *idx, *val, 
                           ikos::z_number (m_dl->getTypeAllocSize (ty)),
@@ -729,6 +746,11 @@ namespace crab_llvm
     {
       
       if (!isTracked (I)) return;
+
+      if (LlvmCrabNoPtrArith && 
+          (!I.getTrueValue ()->getType ()->isIntegerTy () ||
+           !I.getFalseValue ()->getType ()->isIntegerTy ())) 
+        return;    
       
       const Value& cond = *I.getCondition ();
       optional<z_lin_exp_t> op0 = lookup (*I.getTrueValue ());
@@ -763,7 +785,14 @@ namespace crab_llvm
         return;
       
       if (I.getNumOperands () > 0) {
-        if (isTracked (*(I.getOperand (0))))
+
+        if (!isTracked (*(I.getOperand (0))))
+          return;
+
+        if (LlvmCrabNoPtrArith && 
+            !I.getOperand (0)->getType ()->isIntegerTy ())
+          return;
+
           m_bb.ret ( symVar (*(I.getOperand (0))), 
                      getType ((*I.getOperand (0)).getType ()));
       }
@@ -799,10 +828,11 @@ namespace crab_llvm
         // --- If HAVE_DSA then we have run first the devirt pass so
         //     if this is still happening is because DSA could not
         //     resolve the indirect call
-        if (I.isInlineAsm ())
-          errs () << "WARNING: skipped inline asm statement call " << I << "\n";
-        else
-          errs () << "WARNING: skipped indirect call " << I << "\n";
+
+        // if (I.isInlineAsm ())
+        //   errs () << "WARNING: skipped inline asm statement call " << I << "\n";
+        // else
+        //   errs () << "WARNING: skipped indirect call " << I << "\n";
 
         // -- havoc return value
         Value *ret = &I;
@@ -862,6 +892,8 @@ namespace crab_llvm
           Value *v = a.get();
           if (!isTracked (*v)) 
             continue;
+          if (LlvmCrabNoPtrArith && !v->getType ()->isIntegerTy ())
+            continue;
 
           actuals.push_back (normalizeParam (*v));
         }
@@ -892,11 +924,14 @@ namespace crab_llvm
         }
 
         // -- add the callsite
-        if ( (getType (I.getType ()) != UNK_TYPE) && isTracked (I))
+        if ( (getType (I.getType ()) != UNK_TYPE) && isTracked (I) &&
+             (!LlvmCrabNoPtrArith || I.getType ()->isIntegerTy ())) {
           m_bb.callsite (make_pair (symVar (I), getType (I.getType ())), 
                          m_vfac [*callee], actuals);
-        else
+        }
+        else {
           m_bb.callsite (m_vfac [*callee], actuals);        
+        }
       }
       
     }
@@ -1154,6 +1189,9 @@ namespace crab_llvm
           if (gv.hasInitializer ())  {
             int arr_idx = m_mem->getArrayId (m_func, &gv);
             if (arr_idx < 0) continue;
+            // Post: arr_idx corresponds to a cell pointed by objects with
+            //       same types and all accesses are aligned.        
+
             entry.set_insert_point_front ();
             doInitializer (gv.getInitializer (), entry, 
                            m_mem, s.symVar (arr_idx));
@@ -1189,6 +1227,9 @@ namespace crab_llvm
                                                           m_func.arg_end ())) {
         if (!s.isTracked (arg))
           continue;
+        if (LlvmCrabNoPtrArith && !arg.getType()->isIntegerTy ())
+          continue;
+
         params.push_back (make_pair (s.symVar (arg), 
                                      getType (arg.getType ())));
       }
@@ -1220,8 +1261,12 @@ namespace crab_llvm
           params.push_back (make_pair (s.symVar (a), ARR_TYPE));
         
       }
-      FunctionDecl<varname_t> decl (getType (m_func.getReturnType ()), 
-                                    m_vfac[m_func], params);
+
+      VariableType retTy = UNK_TYPE;
+      if (!LlvmCrabNoPtrArith || m_func.getReturnType ()->isIntegerTy ())
+        retTy = getType (m_func.getReturnType ());
+
+      FunctionDecl<varname_t> decl (retTy, m_vfac[m_func], params);
       m_cfg.set_func_decl (decl);
       
     }
