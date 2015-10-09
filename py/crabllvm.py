@@ -22,15 +22,20 @@ def isexec (fpath):
     return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
 
 def which(program):
-    fpath, fname = os.path.split(program)
-    if fpath:
-        if isexec (program):
-            return program
+    if isinstance (program, str):
+        choices = [program]
     else:
-        for path in os.environ["PATH"].split(os.pathsep):
-            exe_file = os.path.join(path, program)
-            if isexec (exe_file):
-                return exe_file
+        choices = program
+
+    for p in choices:
+        fpath, fname = os.path.split(p)
+        if fpath:
+            if isexec (p): return p
+        else:
+            for path in os.environ["PATH"].split(os.pathsep):
+                exe_file = os.path.join(path, p)
+                if isexec (exe_file):
+                    return exe_file
     return None
 
 def kill (proc):
@@ -68,18 +73,15 @@ def parseArgs (argv):
     p.add_argument ("--temp-dir", dest="temp_dir", metavar='DIR',
                        help="Temporary directory",
                        default=None)
-    p.add_argument ('-O', type=int, dest='L', metavar='INT',
-                       help='Optimization level L:[0,1,2,3]', default=3)
     p.add_argument ('-g', default=False, action='store_true', dest='debug_info',
                     help='Compile with debug information')
     p.add_argument ('-m', type=int, dest='machine',
                        help='Machine architecture MACHINE:[32,64]', default=32)
-    p.add_argument ("--disable-cc", dest="no_cc", 
-                       help=a.SUPPRESS, action='store_true',
+    p.add_argument ("--only-analyze", dest="only_analyze", 
+                       help='Skip compilation and preprocessing', action='store_true',
                        default=False)
-    p.add_argument ("--disable-pp", dest="no_pp", 
-                       help=a.SUPPRESS, action='store_true',
-                       default=False)
+    p.add_argument ('-O', type=int, dest='L', metavar='INT',
+                       help='Optimization level L:[0,1,2,3]', default=0)
     p.add_argument ('--cpu', type=int, dest='cpu', metavar='SEC',
                        help='CPU time limit (seconds)', default=-1)
     p.add_argument ('--mem', type=int, dest='mem', metavar='MB',
@@ -124,11 +126,9 @@ def parseArgs (argv):
                     dest='print_cfg', default=False, action='store_true')
     ######################################################################
     p.add_argument ('--crab-disable-ptr',
-                    #help='Disable translation of pointer arithmetic instructions (experimental)',
                     help=a.SUPPRESS,
                     dest='crab_disable_ptr', default=False, action='store_true')
     p.add_argument ('--crab-cfg-simplify',
-                    #help='Simplify CFG built by Crab (experimental)',
                     help=a.SUPPRESS,
                     dest='crab_cfg_simplify', default=False, action='store_true')
     p.add_argument ('--crab-keep-shadows',
@@ -181,12 +181,14 @@ def getCrabLlvmPP ():
     return crabpp
 
 def getClang ():
-    names = ['clang-mp-3.6', 'clang-3.6', 'clang', 'clang-mp-3.5', 'clang-mp-3.4']
-    for n in names:
-        clang = which (n)
-        if clang is not None:
-            return clang
-    raise IOError ('Cannot find clang (required)')    
+    cmd_name = which (['clang-mp-3.6', 'clang-3.6', 'clang', 'clang-mp-3.5', 'clang-mp-3.4'])
+    if cmd_name is None: raise IOError ('clang was not found')
+    return cmd_name
+
+def getOptLlvm ():
+    cmd_name = which (['seaopt', 'opt-mp-3.6', 'opt-3.6', 'opt'])
+    if cmd_name is None: raise IOError ('neither seaopt nor opt where found')
+    return cmd_name
 
 ### Passes
 def defBCName (name, wd=None):
@@ -199,11 +201,16 @@ def defPPName (name, wd=None):
     if wd == None: wd = os.path.dirname  (name)
     fname = os.path.splitext (base)[0] + '.pp.bc'
     return os.path.join (wd, fname)
+def defOptName (name, wd=None):
+    base = os.path.basename (name)
+    if wd == None: wd = os.path.dirname  (name)
+    fname = os.path.splitext (base)[0] + '.o.bc'
+    return os.path.join (wd, fname)
 
 def defOutPPName (name, wd=None):
     base = os.path.basename (name)
     if wd == None: wd = os.path.dirname  (name)
-    fname = os.path.splitext (base)[0] + '.out.pp.bc'
+    fname = os.path.splitext (base)[0] + '.ll'
     return os.path.join (wd, fname)
 
 # Run Clang
@@ -217,8 +224,27 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     if verbose: print ' '.join (clang_args)
     sub.check_call (clang_args)
 
+# Run llvm optimizer
+def optLlvm (in_name, out_name, args, extra_args=[]):
+    if out_name == '' or out_name == None:
+        out_name = defOptName (in_name)
+
+    opt_args = [getOptLlvm (), '-f', '-funit-at-a-time']
+    if out_name is not None: opt_args.extend (['-o', out_name])
+    opt_args.append('-O{0}'.format (args.L))
+
+    # They should be optional
+    opt_args.append ('--enable-indvar=false')
+    opt_args.append ('--enable-loop-idiom=false')
+
+    opt_args.extend (extra_args)
+    opt_args.append (in_name)
+
+    if verbose: print ' '.join (opt_args)
+    sub.check_call (opt_args)
+
 # Run crabpp
-def crabpp (in_name, out_name, arch, args, extra_args=[]):
+def crabpp (in_name, out_name, args, extra_args=[]):
     if out_name == '' or out_name == None:
         out_name = defPPName (in_name)
 
@@ -309,29 +335,36 @@ def main (argv):
     workdir = createWorkDir (args.temp_dir, args.save_temps)
     in_name = args.file
 
-    if not args.no_cc:
+    if not args.only_analyze:
         bc_out = defBCName (in_name, workdir)
         if bc_out != in_name:
-            with stats.timer ('Clang'):
                 extra_args = []
-                if args.debug_info:
-                    extra_args.append ('-g')
-                clang (in_name, bc_out, arch=args.machine, extra_args=extra_args)
-            stat ('Progress', 'CLANG')
+                if args.debug_info: extra_args.append ('-g')
+                with stats.timer ('Clang'):
+                    clang (in_name, bc_out, arch=args.machine, extra_args=extra_args)
+                #stat ('Progress', 'Clang')
         in_name = bc_out
 
-    if not args.no_pp:
         pp_out = defPPName (in_name, workdir)
         if pp_out != in_name:
             with stats.timer ('CrabLlvmPP'):
-                crabpp (in_name, pp_out, arch=args.machine, args=args)
-            stat ('Progress', 'CRABLLVMPP')
+                crabpp (in_name, pp_out, args=args)
+            #stat ('Progress', 'Crab Llvm preprocessor')
         in_name = pp_out
+
+        if args.L > 0:
+            o_out = defOptName (in_name, workdir)
+            if o_out != in_name:
+                extra_args = []
+                with stats.timer ('CrabOptLlvm'):
+                    optLlvm (in_name, o_out, args, extra_args)
+                #stat ('Progress', 'Llvm optimizer')
+            in_name = o_out
 
     pp_out = defOutPPName(in_name, workdir)
     with stats.timer ('CrabLlvm'):
         crabllvm (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
-    stat ('Progress', 'CRABLLVM')
+    #stat ('Progress', 'Crab Llvm')
 
     if args.out_name is not None and args.out_name != pp_out:
         if verbose: print 'cp {0} {1}'.format (pp_out, args.out_name)
