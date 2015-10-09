@@ -61,12 +61,17 @@ namespace crab_llvm
         return boost::optional<ZLinExp> (0);
       
       if (const ConstantInt *c = dyn_cast<const ConstantInt> (&v)) {
-        if (c->getValue ().getMinSignedBits () > 64) {
-          errs () << "Warning: " << toMpz (c->getValue ()).get_str ()  
-                  << " too big for int64_t.\n";
+        if (c->getType ()->isIntegerTy(1)) {
+          return ZLinExp (c->getZExtValue ());
         }
-        else
-          return ZLinExp (c->getValue ().getSExtValue ());
+        else if (c->getValue ().getMinSignedBits () <= 64) {
+          return ZLinExp (c->getSExtValue ());
+        }
+        else {
+          errs () << "Warning: " 
+                  <<  toMpz (c->getValue ()).get_str ()  
+                  << " does not fit in int64_t.\n";
+        }
       }
 
       if (isTracked(v) && !isa<ConstantExpr> (v))
