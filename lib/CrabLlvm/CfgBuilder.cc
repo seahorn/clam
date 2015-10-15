@@ -351,36 +351,12 @@ namespace crab_llvm
 
     /// skip BranchInst
     void visitBranchInst (BranchInst &I) {}
-    
-    void visitCmpInst (CmpInst &I) {
-      // --- We translate I if it does not feed to the terminator of
-      //     the block. Otherwise, it will be covered by execBr.
 
-      //       if (!isTracked (I)) return;
-      //       if (const Value *cond = dyn_cast<const Value> (&I))
-      //       {
-      //         TerminatorInst * TI = I.getParent()->getTerminator ();
-      //         if (const BranchInst *br = dyn_cast<const BranchInst> (TI)) {
-      //           if (!(br->isConditional () && br->getCondition() == cond)) {
-      //             SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
-      //             auto csts = v.gen_assertion (I);
-      //             if (csts.begin () != csts.end ()) {
-      //               // select only takes a single constraint otherwise the
-      //               // reasoning gets complicated if the analysis needs to
-      //               // negate conjunction of constraints.
-      //               // TODO: we just choose the first constraint arbitrarily.
-      //               m_bb.select (symVar(I), *(csts.begin ()), 
-      //                            z_lin_exp_t (1) /*tt*/, 
-      //                            z_lin_exp_t (0) /*ff*/);
-      //             }
-      //             else
-      //               m_bb.havoc (symVar (I));
-      //           }
-      //         }
-      //       }
-    }    
-    
-      
+    /// We translate I if it feeds to the terminator of the block
+    /// (execBr), a select, or some bitwise operators. Otherwise, it
+    /// will ignored causing potentially a loss of precision.
+    void visitCmpInst (CmpInst &I) {}
+          
     void visitBinaryOperator(BinaryOperator &I)
     {
       if (!isTracked (I)) return;
@@ -558,6 +534,31 @@ namespace crab_llvm
       }
     }
     
+    void doCast(CastInst &I)
+    {
+      if (!isTracked (I)) 
+        return;
+
+      if (LlvmCrabNoPtrArith && !I.getType ()->isIntegerTy ())
+        return;
+
+      varname_t dst = symVar (I);
+      const Value& v = *I.getOperand (0); // the value to be casted
+
+      optional<z_lin_exp_t> src = lookup (v);
+
+      if (src)
+        m_bb.assign(dst, *src);
+      else
+      {
+        if (v.getType ()->isIntegerTy (1))
+        {
+          m_bb.assume ( z_lin_exp_t (dst) >= z_lin_exp_t (0) );
+          m_bb.assume ( z_lin_exp_t (dst) <= z_lin_exp_t (1) );
+        }
+        else m_bb.havoc(dst);
+      }
+    }
     
     void visitZExtInst (ZExtInst &I)
     { 
@@ -584,40 +585,7 @@ namespace crab_llvm
       }
 
     }
-
-
-    // void visitTruncInst(TruncInst &I)              
-    // { doCast (I); }
     
-    // void visitSExtInst (SExtInst &I)
-    // { doCast (I); }
-    
-    void doCast(CastInst &I)
-    {
-      if (!isTracked (I)) 
-        return;
-
-      if (LlvmCrabNoPtrArith && !I.getType ()->isIntegerTy ())
-        return;
-
-      varname_t dst = symVar (I);
-      const Value& v = *I.getOperand (0); // the value to be casted
-
-      optional<z_lin_exp_t> src = lookup (v);
-
-      if (src)
-        m_bb.assign(dst, *src);
-      else
-      {
-        if (v.getType ()->isIntegerTy (1))
-        {
-          m_bb.assume ( z_lin_exp_t (dst) >= z_lin_exp_t (0) );
-          m_bb.assume ( z_lin_exp_t (dst) <= z_lin_exp_t (1) );
-        }
-        else m_bb.havoc(dst);
-      }
-    }
-
     // This will cover the whole class of cast instructions
     void visitCastInst (CastInst &I) {
       doCast (I);
@@ -774,14 +742,14 @@ namespace crab_llvm
            !I.getFalseValue ()->getType ()->isIntegerTy ())) 
         return;    
       
-      const Value& cond = *I.getCondition ();
+      Value& cond = *I.getCondition ();
       optional<z_lin_exp_t> op0 = lookup (*I.getTrueValue ());
       optional<z_lin_exp_t> op1 = lookup (*I.getFalseValue ());
       
       if (!(op0 && op1)) return;
 
       varname_t lhs = symVar(I);      
-      if (const ConstantInt *ci = dyn_cast<const ConstantInt> (&cond))
+      if (ConstantInt *ci = dyn_cast<ConstantInt> (&cond))
       {
         if (ci->isOne ())
         {
@@ -795,6 +763,19 @@ namespace crab_llvm
         }
       }
      
+      SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
+      if (CmpInst* CI = dyn_cast<CmpInst> (&cond)) {
+        auto csts = v.gen_assertion (*CI);
+        if (std::distance (csts.begin (), csts.end ()) == 1) {
+          // select only takes a single constraint otherwise its
+          // reasoning gets complicated if the analysis needs to
+          // negate conjunction of constraints. 
+          m_bb.select (lhs, *(csts.begin ()), *op0, *op1);
+          return;
+        }
+      }
+
+      // default case if everything fails ...
       m_bb.select(lhs, symVar (cond),  *op0, *op1);
     }
 
@@ -864,6 +845,7 @@ namespace crab_llvm
         return;
       }
 
+      // --- Special functions       
       if (callee->isIntrinsic ()) {
         if (callee->getName().startswith ("llvm.memset")) {
           Value *ptr = CS.getArgument (0);
@@ -889,7 +871,6 @@ namespace crab_llvm
         return;
       }
       
-      // -- some special functions
       if (callee->getName ().equals ("verifier.assume")) {
         Value *cond = CS.getArgument (0);
         // strip zext if there is one
