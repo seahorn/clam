@@ -125,14 +125,12 @@ namespace crab_llvm
       }
     }
 
-    // - a node is complete if all its uses have been seen.
     // - a node is unknown if an integer is cast to a pointer or when
     //   unanalyzable address arithmetic is seen.
-    // - a node is collapsed if all its uses have compatible type or
+    // - a node is collapsed if all its uses have incompatible type or
     //   compatible types but misaligned.
     bool isTrackable (const DSNode* n) const {
-      return  (n->isCompleteNode () && 
-               !n->isUnknownNode () && 
+      return  (!n->isUnknownNode () && 
                !n->isCollapsedNode () &&
                (n->isAllocaNode () || n->isHeapNode () || n->isGlobalNode ()));
     }
@@ -230,8 +228,8 @@ namespace crab_llvm
       std::set<const DSNode*> reach;
       std::set<const DSNode*> retReach;
       argReachableNodes (CCS, *cdsg, reach, retReach);
-      DSGraph::NodeMapTy nodeMap;
-      dsg->computeCalleeCallerMapping (CS, CF, *cdsg, nodeMap);
+      //DSGraph::NodeMapTy nodeMap;
+      //dsg->computeCalleeCallerMapping (CS, CF, *cdsg, nodeMap);
       
       for (const DSNode* n : reach) {
 
