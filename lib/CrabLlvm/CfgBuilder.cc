@@ -1,5 +1,12 @@
 /* 
  * Translate a LLVM function to a CFG language understood by Crab
+ * 
+ * If the precision level includes memory contents both load and
+ * stores as well as other memory builtins (malloc-like functions) and
+ * llvm intrinsics (memset, memcpy, etc) will be translated using a
+ * memory abstraction based on DSA. The translation without
+ * abstraction is not implemented although it should not be hard since
+ * Crab CFG has support for it.
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -703,7 +710,6 @@ namespace crab_llvm
         if (arr_idx < 0) return;
         // Post: arr_idx corresponds to a cell pointed by objects with
         //       same type and all accesses are aligned.        
-        
         m_bb.array_store (symVar (arr_idx), *idx, *val, 
                           ikos::z_number (m_dl->getTypeAllocSize (ty)),
                           m_mem->isSingleton (arr_idx)); 
@@ -719,15 +725,15 @@ namespace crab_llvm
         // Post: arr_idx corresponds to a cell pointed by objects with
         //       same type and all accesses are aligned.        
         
-        // HOOK: nodes which do not have an explicit initialization
-        // are initially undefined. Instead, we assume they are zero
-        // initialized so that Crab's array smashing can infer
-        // something meaningful. This is correct because in presence
-        // of undefined behaviour we can do whatever we want but it
-        // will, for instance, preclude the analysis to detect things
-        // like uninitialized variables and also if a more expressive
-        // array domain is used then this initialization will make it
-        // more imprecise.
+        // "Initialization hook": nodes which do not have an explicit
+        // initialization are initially undefined. Instead, we assume
+        // they are zero initialized so that Crab's array smashing can
+        // infer something meaningful. This is correct because in
+        // presence of undefined behaviour we can do whatever we want
+        // but it will, for instance, preclude the analysis to detect
+        // things like uninitialized variables and also if a more
+        // expressive array domain is used then this initialization
+        // will make it more imprecise.
         m_bb.assume_array (symVar (arr_idx), 0 /*any value we want*/);
       }
     }
@@ -845,7 +851,25 @@ namespace crab_llvm
         return;
       }
 
-      // --- Special functions       
+      // --- Special functions 
+
+      if (callee->isDeclaration () && 
+          I.getParent()->getParent ()->getName ().equals ("main") && 
+          ( callee->getName ().equals ("calloc") || 
+            callee->getName ().equals ("malloc") ||
+            callee->getName ().equals ("valloc") ||
+            callee->getName ().equals ("palloc"))) {
+        Value *ptr = &I;
+        int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), ptr);
+        if (arr_idx < 0) return;
+        // Post: arr_idx corresponds to a cell pointed by objects with
+        //       same type and all accesses are aligned.        
+
+        // We apply here the "Initialization hook"
+        m_bb.assume_array (symVar(arr_idx), 0);        
+        return;
+      }
+
       if (callee->isIntrinsic ()) {
         if (callee->getName().startswith ("llvm.memset")) {
           Value *ptr = CS.getArgument (0);
@@ -861,11 +885,17 @@ namespace crab_llvm
           }
         }
         else if (callee->getName().startswith ("llvm.memcpy")) {
-          // TODO
+          Value *dest = CS.getArgument (0);
+          Value *src  = CS.getArgument (1);
+          int dest_arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), dest);
+          int src_arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), src);
+          if (dest_arr_idx < 0 || src_arr_idx < 0) return;
+          m_bb.havoc (symVar(dest_arr_idx));
+          m_bb.assign (symVar (dest_arr_idx), z_lin_exp_t (symVar (src_arr_idx)));
         }
-        // XXX: probably we don't want to model llvm.memmove since it
-        // allows overlapping between source and destination so the
-        // array domain may not be sound.
+        // We don't want to model llvm.memmove since it allows
+        // overlapping between source and destination so the array
+        // domain may not be sound.
 
         // else skip intrinsic
         return;
@@ -1234,13 +1264,15 @@ namespace crab_llvm
         } 
       }
       
-      // Same HOOK described above to give some non-top initialization
-      // to a freshly created array.
+      // getRefModNewArrays returns in its 3rd tuple argument all the
+      // new nodes created by the function (via malloc-like functions)
+      // except if the function is main.      
       basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
       auto t = m_mem->getRefModNewArrays (m_func);
       auto news =  get<2> (t);
       for (auto n: news) {
         entry.set_insert_point_front ();
+        // We apply here the "Initialization hook".
         entry.assume_array (s.symVar (n), 0 /*any value we want*/);
       }
     }
