@@ -29,6 +29,11 @@ namespace crab_llvm
     { }
 
     bool isTracked (const llvm::Value &v) {
+      
+      // -- ignore any shadow variable created by seahorn
+      if (v.getName().startswith ("shadow.mem")) 
+        return false;
+
       // -- a pointer
       if (v.getType ()->isPointerTy ()) 
         return (m_track_lvl >= PTR); 

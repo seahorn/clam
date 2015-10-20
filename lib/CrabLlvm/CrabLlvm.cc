@@ -99,10 +99,10 @@ namespace crab_llvm
     m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (),
                          LlvmCrabTrackLev);
 #endif     
-
+    
     if (LlvmCrabInter){
-      // -- build call graph
 
+      // -- build call graph
       std::vector<cfg_t> cfgs;
       for (auto &F : M)  {
         // -- skip functions without a body
@@ -110,15 +110,14 @@ namespace crab_llvm
 
         if (F.isVarArg ()) continue;
 
-        CfgBuilder builder (F, m_vfac, &m_mem, true /*inter*/);
+        CfgBuilder builder (F, m_vfac, &m_mem, true /*include function decls and callsites*/);
         cfg_t &cfg = builder.makeCfg ();
         cfgs.push_back (cfg);
       } 
             
       CallGraph<cfg_t> cg (cfgs);
-      
       // -- run the interprocedural analysis
-      
+            
       bool change = false;
       switch (m_absdom) {
         // TODO: make an user option the abstract domain used
@@ -144,7 +143,7 @@ namespace crab_llvm
                     runOnCg <dbm_domain_t, term_domain_t> (cg, M)) ; 
             break;
         default: assert(false && "Unsupported abstract domain");
-      }
+      }      
       return change;
     }
     else {
@@ -163,9 +162,8 @@ namespace crab_llvm
 
     if (F.isVarArg ()) return false;
 
-    CfgBuilder builder (F, m_vfac, &m_mem, false /*intra*/);
+    CfgBuilder builder (F, m_vfac, &m_mem, true /*include function decls and callsites*/);
     cfg_t &cfg = builder.makeCfg ();
-
     bool change=false;
     switch (m_absdom)
     {
@@ -191,10 +189,9 @@ namespace crab_llvm
         break;
       default: assert(false && "Unsupported abstract domain");
     }
-
     if (LlvmCrabPrintAns)
       write (outs (), F);
-    
+
     return change;
   }
 

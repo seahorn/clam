@@ -235,12 +235,18 @@ namespace crab_llvm
 
       for (auto cst: gen_assertion (I))
         m_bb.assume(cst);
-      
-      varname_t lhs = symVar (I);
-      if (m_is_negated)
-        m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
-      else
-        m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
+
+      // If this is reached then I is at least used by some branch so
+      // we check if there is another use. If not, we don't bother to
+      // add these extra constraints.
+      const Value&v = I;
+      if (v.hasNUsesOrMore (2)) {
+        varname_t lhs = symVar (v);
+        if (m_is_negated)
+          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
+        else
+          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
+      }
     }
   };
 
@@ -284,11 +290,8 @@ namespace crab_llvm
 
         if (LlvmCrabNoPtrArith && !phi->getType ()->isIntegerTy ()) continue;
 
-        // --- Hook to ignore always integer shadow variables from
-        //     SeaHorn ShadowMemDsa pass.
-        if (v.getName().startswith ("shadow.mem")) continue;
-
-        if (isa<PHINode> (&v)) {
+        const PHINode* vv = dyn_cast<PHINode> (&v);
+        if (vv && (vv->getParent () == &BB)) {
           if (auto x = lookup (v)) {
             // --- save the old version of the variable that maps to
             //     the phi node v
@@ -308,16 +311,15 @@ namespace crab_llvm
 
         if (!isTracked (phi)) continue;
 
-        if (phi.getName().startswith ("shadow.mem")) continue;
-
         if (LlvmCrabNoPtrArith && !phi.getType ()->isIntegerTy ()) continue;
 
         varname_t lhs = symVar(phi);
         const Value &v = *phi.getIncomingValueForBlock (&m_inc_BB);
         
         auto it = oldValMap.find (&v);
-        if (it != oldValMap.end ()) 
-          m_bb.assign(lhs, it->second);
+        if (it != oldValMap.end ()) {
+          m_bb.assign (lhs, it->second);
+        }
         else {
           if (auto op = lookup (v))
             m_bb.assign(lhs, *op);
@@ -358,12 +360,12 @@ namespace crab_llvm
 
     /// skip BranchInst
     void visitBranchInst (BranchInst &I) {}
-
+    
     /// We translate I if it feeds to the terminator of the block
     /// (execBr), a select, or some bitwise operators. Otherwise, it
     /// will ignored causing potentially a loss of precision.
     void visitCmpInst (CmpInst &I) {}
-          
+      
     void visitBinaryOperator(BinaryOperator &I)
     {
       if (!isTracked (I)) return;
@@ -592,7 +594,7 @@ namespace crab_llvm
       }
 
     }
-    
+
     // This will cover the whole class of cast instructions
     void visitCastInst (CastInst &I) {
       doCast (I);
@@ -710,6 +712,7 @@ namespace crab_llvm
         if (arr_idx < 0) return;
         // Post: arr_idx corresponds to a cell pointed by objects with
         //       same type and all accesses are aligned.        
+        
         m_bb.array_store (symVar (arr_idx), *idx, *val, 
                           ikos::z_number (m_dl->getTypeAllocSize (ty)),
                           m_mem->isSingleton (arr_idx)); 
@@ -724,7 +727,7 @@ namespace crab_llvm
         if (arr_idx < 0) return;
         // Post: arr_idx corresponds to a cell pointed by objects with
         //       same type and all accesses are aligned.        
-        
+
         // "Initialization hook": nodes which do not have an explicit
         // initialization are initially undefined. Instead, we assume
         // they are zero initialized so that Crab's array smashing can
@@ -768,7 +771,7 @@ namespace crab_llvm
           return;
         }
       }
-     
+
       SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
       if (CmpInst* CI = dyn_cast<CmpInst> (&cond)) {
         auto csts = v.gen_assertion (*CI);
@@ -852,6 +855,10 @@ namespace crab_llvm
       }
 
       // --- Special functions 
+
+      // -- ignore any shadow functions created by seahorn
+      if (callee->getName().startswith ("shadow.mem")) return;
+      if (callee->getName().equals ("seahorn.fn.enter")) return;
 
       if (callee->isDeclaration () && 
           I.getParent()->getParent ()->getName ().equals ("main") && 
