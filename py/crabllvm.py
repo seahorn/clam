@@ -64,7 +64,9 @@ def loadEnv (filename):
 def parseArgs (argv):
     import argparse as a
     p = a.ArgumentParser (description='Abstract Interpretation-based Analyzer for LLVM bitecode')
-    p.add_argument ('-oll', dest='out_name', metavar='FILE',
+    p.add_argument ('-oll', dest='asm_out_name', metavar='FILE',
+                       help='Output analyzed bitecode')
+    p.add_argument ('-o', dest='out_name', metavar='FILE',
                        help='Output file name')
     p.add_argument ("--save-temps", dest="save_temps",
                        help="Do not delete temporary files",
@@ -300,8 +302,10 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     if args.crab_keep_shadows:
         crabllvm_cmd.append ('--crab-keep-shadows')
 
-
     if verbose: print ' '.join (crabllvm_cmd)
+
+    if args.out_name is not None:
+        crabllvm_cmd.append ('-o={0}'.format (args.out_name))
 
     p = sub.Popen (crabllvm_cmd, preexec_fn=set_limits)
 
@@ -366,9 +370,9 @@ def main (argv):
         crabllvm (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
     #stat ('Progress', 'Crab Llvm')
 
-    if args.out_name is not None and args.out_name != pp_out:
-        if verbose: print 'cp {0} {1}'.format (pp_out, args.out_name)
-        shutil.copy2 (pp_out, args.out_name)
+    if args.asm_out_name is not None and args.asm_out_name != pp_out:
+        if verbose: print 'cp {0} {1}'.format (pp_out, args.asm_out_name)
+        shutil.copy2 (pp_out, args.asm_out_name)
 
     return 0
 
