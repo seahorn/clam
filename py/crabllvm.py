@@ -352,14 +352,14 @@ def main (argv):
             #stat ('Progress', 'Crab Llvm preprocessor')
         in_name = pp_out
 
-        if args.L > 0:
-            o_out = defOptName (in_name, workdir)
-            if o_out != in_name:
-                extra_args = []
-                with stats.timer ('CrabOptLlvm'):
-                    optLlvm (in_name, o_out, args, extra_args)
-                #stat ('Progress', 'Llvm optimizer')
-            in_name = o_out
+    if args.L > 0:
+        o_out = defOptName (in_name, workdir)
+        if o_out != in_name:
+            extra_args = []
+            with stats.timer ('CrabOptLlvm'):
+                optLlvm (in_name, o_out, args, extra_args)
+            #stat ('Progress', 'Llvm optimizer')
+        in_name = o_out
 
     pp_out = defOutPPName(in_name, workdir)
     with stats.timer ('CrabLlvm'):
