@@ -161,10 +161,11 @@ namespace crab_llvm
       return getId (n); 
     }
 
-    //! return true if the array corresponds to a single memory cell.
-    bool isSingleton (array_id_t array_id) {
+    //! return a value if the array corresponds to a single memory cell,
+    //  or nullptr otherwise.
+    const Value* getSingleton (array_id_t array_id) {
       auto it = m_rev_node_ids.find (array_id);
-      if (it == m_rev_node_ids.end ()) return false;
+      if (it == m_rev_node_ids.end ()) return nullptr;
 
       return it->second->getUniqueScalar ();
     }
@@ -272,7 +273,7 @@ namespace crab_llvm
     MemAnalysis (): m_tracklev (INT) { }
     TrackedPrecision getTrackLevel () const { return m_tracklev; }
     int getArrayId (llvm::Function&, llvm::Value*) { return -1; }
-    bool isSingleton (int) { return false;}
+    const Value* getSingleton (int) { return nullptr;}
     boost::tuple<set<int>,set<int>, set<int> > 
     getRefModNewArrays (llvm::Function&) {  
       return boost::make_tuple (set<int> (), set<int> (), set<int> ()); 

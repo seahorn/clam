@@ -4,9 +4,10 @@
  * If the precision level includes memory contents both load and
  * stores as well as other memory builtins (malloc-like functions) and
  * llvm intrinsics (memset, memcpy, etc) will be translated using a
- * memory abstraction based on DSA. The translation without
- * abstraction is not implemented although it should not be hard since
- * Crab CFG has support for it.
+ * memory abstraction based on DSA. 
+ *
+ * The memory translation without abstraction is not implemented
+ * although it should not be hard since Crab CFG has support for it.
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -68,6 +69,37 @@ namespace crab_llvm
       return UNK_TYPE;
   }
 
+  // Return true if all uses of V are non-trackable memory accesses.
+  bool AllUsesAreNonTrackMem (Value* V) {
+    // strip cast if there is one
+    if (CastInst *CI = dyn_cast<CastInst> (V)) {
+      V = CI;
+    }
+    
+    for (auto &U: V->uses ()) {
+      if (StoreInst *SI = dyn_cast<StoreInst> (U.getUser())) {
+        Type* ty = SI->getOperand (0)->getType ();
+        if (ty->isIntegerTy ()) return false;
+      }
+      else if (LoadInst *LI = dyn_cast<LoadInst> (U.getUser())) {
+        Type *ty = LI->getType();
+        if (ty->isIntegerTy ()) return false;
+      }
+      else if (CallInst *CI = dyn_cast<CallInst> (U.getUser())) { 
+        CallSite CS (CI);
+        Function* callee = CS.getCalledFunction ();
+        if (callee && 
+            ( callee->getName().startswith ("llvm.dbg") || 
+              callee->getName().startswith ("shadow.mem")))
+          continue;
+      }
+      else
+        return false;
+    }
+    return true;
+  }
+
+  
   // PHINode* hasOnlyOnePHINodeUse (const Instruction &I) {
   //   const Value *v = &I;
   //   if (v->hasOneUse ()) {
@@ -92,7 +124,7 @@ namespace crab_llvm
                              basic_block_t& bb, 
                              bool is_negated, 
                              MemAnalysis* mem):
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), 
         m_bb (bb), 
         m_is_negated (is_negated),
         m_mem (mem)
@@ -266,7 +298,7 @@ namespace crab_llvm
                        basic_block_t& bb, 
                        const llvm::BasicBlock& inc_BB, 
                        MemAnalysis* mem): 
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()), 
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem), 
         m_bb (bb), m_inc_BB (inc_BB), m_mem (mem)
     { }
 
@@ -342,7 +374,7 @@ namespace crab_llvm
 
     SymExecVisitor (const DataLayout* dl, VariableFactory& vfac, basic_block_t & bb,
                     MemAnalysis* mem, bool isInterProc): 
-        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem->getTrackLevel ()),
+        SymEval<VariableFactory, z_lin_exp_t> (vfac, mem),
         m_dl (dl),
         m_bb (bb), 
         m_mem (mem),
@@ -361,9 +393,9 @@ namespace crab_llvm
     /// skip BranchInst
     void visitBranchInst (BranchInst &I) {}
     
-    /// We translate I if it feeds to the terminator of the block
-    /// (execBr), a select, or some bitwise operators. Otherwise, it
-    /// will ignored causing potentially a loss of precision.
+    /// We translate I if it feeds the terminator of a block (execBr),
+    /// a select, or some bitwise operators. Otherwise, it will
+    /// ignored causing potentially a loss of precision.
     void visitCmpInst (CmpInst &I) {}
       
     void visitBinaryOperator(BinaryOperator &I)
@@ -439,9 +471,9 @@ namespace crab_llvm
           break;
         case BinaryOperator::UDiv:
           if ((*op1).is_constant() && (*op2).is_constant ()) {
-            // TODO: Cfg api does not support unsigned arithmetic
-            // operations with both constant operands. Llvm frontend
-            // should get rid of them.
+            // cfg api does not support unsigned arithmetic operations
+            // with both constant operands. Llvm frontend should get
+            // rid of them.
             errs () << "Warning: ignored udiv with both constant operands\n";
             m_bb.havoc(lhs);
           }
@@ -468,9 +500,9 @@ namespace crab_llvm
           break;
         case BinaryOperator::URem:
           if ((*op1).is_constant() && (*op2).is_constant ()) {
-            // TODO: Cfg api does not support unsigned arithmetic
-            // operations with both constant operands. Llvm frontend
-            // should get rid of them.
+            // cfg api does not support unsigned arithmetic operations
+            // with both constant operands. Llvm frontend should get
+            // rid of them.
             errs () << "Warning: ignored urem with constant operands\n";
             m_bb.havoc(lhs);
           }
@@ -551,6 +583,9 @@ namespace crab_llvm
       if (LlvmCrabNoPtrArith && !I.getType ()->isIntegerTy ())
         return;
 
+      if (AllUsesAreNonTrackMem (&I))
+        return;
+
       varname_t dst = symVar (I);
       const Value& v = *I.getOperand (0); // the value to be casted
 
@@ -569,8 +604,7 @@ namespace crab_llvm
       }
     }
     
-    void visitZExtInst (ZExtInst &I)
-    { 
+    void visitZExtInst (ZExtInst &I) {
       // This optimization tries to reduce the number variables within
       // a basic block. This will put less pressure on the numerical
       // abstract domain later on.
@@ -585,14 +619,20 @@ namespace crab_llvm
       Value* dest = &I; 
       bool all_gep = true;
       for (Use &U: boost::make_iterator_range(dest->use_begin(),
-                                              dest->use_end())) {
+                                              dest->use_end()))
         all_gep &= isa<GetElementPtrInst> (U.getUser ());
-      }
 
-      if (!all_gep) {
-        doCast (I); 
-      }
+      if (!all_gep) doCast (I); 
+    }
 
+    void visitSExtInst (SExtInst &I) {
+      // try same optimization than with zext
+      Value* dest = &I; 
+      bool all_gep = true;
+      for (Use &U: boost::make_iterator_range(dest->use_begin(),
+                                              dest->use_end()))
+        all_gep &= isa<GetElementPtrInst> (U.getUser ());
+      if (!all_gep) doCast (I); 
     }
 
     // This will cover the whole class of cast instructions
@@ -611,17 +651,17 @@ namespace crab_llvm
 
     void visitGetElementPtrInst (GetElementPtrInst &I)
     {
-      if ( (!isTracked (*I.getPointerOperand ())) ||
-           LlvmCrabNoPtrArith) {
-        if (isTracked (I))
-          m_bb.havoc (symVar (I));
+      if ( LlvmCrabNoPtrArith ||
+           (!isTracked (*I.getPointerOperand ())) ||
+           AllUsesAreNonTrackMem (&I)) {
+        
+        if (isTracked (I)) m_bb.havoc (symVar (I));
         return;
       }
-
+        
       optional<z_lin_exp_t> ptr = lookup (*I.getPointerOperand ());
-      if (!ptr) {
-        if (isTracked (I))
-          m_bb.havoc (symVar (I));
+      if (!ptr && (isTracked (I))) {
+        m_bb.havoc (symVar (I));
         return;
       }
 
@@ -635,14 +675,18 @@ namespace crab_llvm
         return;
       }
 
+      // XXX: this should be probably ptr_assign. For offset purposes
+      // I think it can be zero.
       m_bb.assign (res, *ptr);
       SmallVector<const Value*, 4> ps;
       SmallVector<const Type*, 4> ts;
       gep_type_iterator typeIt = gep_type_begin (I);
       for (unsigned i = 1; i < I.getNumOperands (); ++i, ++typeIt) {
-        // strip zext if there is one
+        // strip zext/sext if there is one
         if (const ZExtInst *ze = dyn_cast<const ZExtInst> (I.getOperand (i)))
           ps.push_back (ze->getOperand (0));
+        else if (const SExtInst *se = dyn_cast<const SExtInst> (I.getOperand (i)))
+          ps.push_back (se->getOperand (0));
         else 
           ps.push_back (I.getOperand (i));
         ts.push_back (*typeIt);
@@ -671,51 +715,67 @@ namespace crab_llvm
     void visitLoadInst (LoadInst &I)
     { 
       /// --- Track only loads into integer variables
-      Type *ty = I.getType();
-      if (!ty->isIntegerTy ()) return;
 
-      if (m_mem->getTrackLevel () == ARR) {
+      // FIXME: since only few store instructions will be modelled we
+      // may produce a big chunk of dead code (e.g., sequence of
+      // pointer arithmetic instructions feeding an non-trackable
+      // store/load).
+      Type *ty = I.getType();
+      if (ty->isIntegerTy () && m_mem->getTrackLevel () == ARR) {
+
         int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), 
                                          I.getPointerOperand ());
-        if (arr_idx < 0) return;
-        // Post: arr_idx corresponds to a cell pointed by objects with
-        //       same type and all accesses are aligned.        
-        optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
-        if (!idx) return ;
-        
-        m_bb.array_load (symVar (I), symVar (arr_idx), *idx,
-                         ikos::z_number (m_dl->getTypeAllocSize (ty)));
+        if (!(arr_idx < 0)) {
+          // Post: arr_idx corresponds to a cell pointed by objects with
+          //       same type and all accesses are aligned.        
+          if (optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ())) {
+            if (const Value* s = m_mem->getSingleton (arr_idx)) {
+              m_bb.assign (symVar (I), z_lin_exp_t(symVar (*s)));
+            }
+            else {
+              m_bb.array_load (symVar (I), symVar (arr_idx), *idx,
+                               ikos::z_number (m_dl->getTypeAllocSize (ty)));
+            }
+            return;
+          }
+        }
       }
-      else {
-        if (isTracked (I))
-          m_bb.havoc (symVar (I));
-      }
-
+      
+      if (isTracked (I))
+        m_bb.havoc (symVar (I));
     }
     
     void visitStoreInst (StoreInst &I)
     {
       /// --- Track only stores of integer values
-      Type* ty = I.getOperand (0)->getType ();
-      if (!ty->isIntegerTy ()) return;
 
-      if (m_mem->getTrackLevel () == ARR) {        
-        optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
-        if (!idx) return;
-        
-        optional<z_lin_exp_t> val = lookup (*I.getOperand (0));
-        if (!val) return;
-        
+      // FIXME: since only few store instructions will be modelled we
+      // may produce a big chunk of dead code (e.g., sequence of
+      // pointer arithmetic instructions feeding an non-trackable
+      // store/load).
+      Type* ty = I.getOperand (0)->getType ();
+      if (ty->isIntegerTy () && m_mem->getTrackLevel () == ARR) {                
         int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()),
                                          I.getOperand (1)); 
-
         if (arr_idx < 0) return;
         // Post: arr_idx corresponds to a cell pointed by objects with
         //       same type and all accesses are aligned.        
         
-        m_bb.array_store (symVar (arr_idx), *idx, *val, 
-                          ikos::z_number (m_dl->getTypeAllocSize (ty)),
-                          m_mem->isSingleton (arr_idx)); 
+        optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ());
+        if (!idx) return; // FIXME: we should havoc the array
+        
+        optional<z_lin_exp_t> val = lookup (*I.getOperand (0));
+        if (!val) return; // FIXME: we should havoc the array
+
+        if (const Value* s = m_mem->getSingleton (arr_idx)) {
+          m_bb.assign (symVar (*s), *val);
+        }
+        else {
+          m_bb.array_store (symVar (arr_idx), 
+                            *idx, *val, 
+                            ikos::z_number (m_dl->getTypeAllocSize (ty)),
+                            false /*non-singleton*/); 
+        }
       }
     }
 
@@ -836,6 +896,9 @@ namespace crab_llvm
       CallSite CS (&I);
       Function * callee = CS.getCalledFunction ();
 
+      if (isTracked (I) && AllUsesAreNonTrackMem (&I))
+        return;
+
       if (!callee) {         
         // --- If HAVE_DSA then we have run first the devirt pass so
         //     if this is still happening is because DSA could not
@@ -858,6 +921,7 @@ namespace crab_llvm
 
       // -- ignore any shadow functions created by seahorn
       if (callee->getName().startswith ("shadow.mem")) return;
+
       if (callee->getName().equals ("seahorn.fn.enter")) return;
 
       if (callee->isDeclaration () && 
@@ -887,8 +951,8 @@ namespace crab_llvm
           //       same type and all accesses are aligned.        
           optional<z_lin_exp_t> op0 = lookup (*val);          
           if (op0 && (*op0).is_constant ()) {
-            m_bb.havoc (symVar(arr_idx));
-            m_bb.assume_array (symVar(arr_idx), (*op0).constant ());
+            m_bb.havoc (symVar (arr_idx));
+            m_bb.assume_array (symVar (arr_idx), (*op0).constant ());
           }
         }
         else if (callee->getName().startswith ("llvm.memcpy")) {
@@ -897,7 +961,7 @@ namespace crab_llvm
           int dest_arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), dest);
           int src_arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), src);
           if (dest_arr_idx < 0 || src_arr_idx < 0) return;
-          m_bb.havoc (symVar(dest_arr_idx));
+          m_bb.havoc (symVar (dest_arr_idx));
           m_bb.assign (symVar (dest_arr_idx), z_lin_exp_t (symVar (src_arr_idx)));
         }
         // We don't want to model llvm.memmove since it allows
@@ -942,8 +1006,9 @@ namespace crab_llvm
         if (m_mem->getTrackLevel () == ARR) {
           auto t = m_mem->getRefModNewArrays (I);
           auto mods = get<1> (t);
-          for (auto a : mods)
+          for (auto a : mods) {
             m_bb.havoc (symVar (a));
+          }
         }
       }
       else {
@@ -1131,8 +1196,7 @@ namespace crab_llvm
             // -- this can happen if the boolean condition is passed
             //    directly (after optimization) as a function
             //    parameter
-            SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, 
-                                                     m_mem->getTrackLevel ());
+            SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, m_mem);
             varname_t lhs = s.symVar (c);
             if (br->getSuccessor (1) == &dst)
               bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
@@ -1152,18 +1216,22 @@ namespace crab_llvm
 
     if (isa<ConstantAggregateZero> (cst)){
       //errs () << *cst << " is either struct or array with zero initialization\n";
-      // a struct or array with all elements initialized to zero
+      // --- a struct or array with all elements initialized to zero
       bb.assume_array (a, 0);
     }
     else if (ConstantInt * ci = dyn_cast<ConstantInt> (cst)) {
       //errs () << *cst << " is a scalar global variable\n";
-      // an integer scalar global variable
-      vector<ikos::z_number> val;
-      val.push_back (ci->getZExtValue ());
-      bb.array_init (a, val);
+      // --- an integer scalar global variable
+
+      // do nothing since scalar global variables are lowered to
+      // registers
+
+      // vector<ikos::z_number> val;
+      // val.push_back (ci->getZExtValue ());
+      // bb.array_init (a, val);
     }
     else if (ConstantDataSequential  *cds = dyn_cast<ConstantDataSequential> (cst)) {
-      // an array of integers 1/2/4/8 bytes
+      // --- an array of integers 1/2/4/8 bytes
       if (cds->getElementType ()->isIntegerTy ()) {
         //errs () << *cst << " is a constant data sequential\n";
         vector<ikos::z_number> vals;
@@ -1247,7 +1315,7 @@ namespace crab_llvm
       m_cfg.set_exit (unified_ret.label ());
     }
 
-    SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, m_mem->getTrackLevel ());
+    SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, m_mem);
 
     if (m_mem->getTrackLevel () == ARR) {
 
@@ -1266,7 +1334,8 @@ namespace crab_llvm
 
             entry.set_insert_point_front ();
             doInitializer (gv.getInitializer (), entry, 
-                           m_mem, s.symVar (arr_idx));
+                           m_mem, 
+                           s.symVar (arr_idx));
           }
         } 
       }

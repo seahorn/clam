@@ -7,6 +7,7 @@
 #include "llvm/ADT/APInt.h"
 
 #include <crab/cfg/Cfg.hpp>
+#include <crab_llvm/MemAnalysis.hh>
 
 namespace crab_llvm
 {
@@ -21,11 +22,12 @@ namespace crab_llvm
 
     VariableFactory& m_vfac;
     TrackedPrecision m_track_lvl;
+    MemAnalysis *m_mem;
 
     typedef typename VariableFactory::varname_t varname_t;
 
-    SymEval (VariableFactory &vfac, TrackedPrecision track_lvl): 
-        m_vfac (vfac), m_track_lvl (track_lvl)
+    SymEval (VariableFactory &vfac, MemAnalysis *mem): 
+        m_vfac (vfac), m_track_lvl (mem->getTrackLevel ()), m_mem (mem)
     { }
 
     bool isTracked (const llvm::Value &v) {
@@ -48,7 +50,13 @@ namespace crab_llvm
     }
 
     varname_t symVar (int v) {
-      return m_vfac.get (v);
+      // if the array id maps to a unique scalar value we preserve its
+      // name
+      const Value* s = m_mem->getSingleton (v);
+      if (s)
+        return symVar (*s);
+      else
+        return m_vfac.get (v);
     }
   
     bool isVar (ZLinExp e) {

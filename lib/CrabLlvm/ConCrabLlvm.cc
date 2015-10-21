@@ -154,7 +154,7 @@ namespace crab_llvm
 
     /// --- Initialize shared global state
     AbsDomain init_gv_inv = AbsDomain::top ();
-    sym_eval_t sym_eval (vfac, mem.getTrackLevel ());
+    sym_eval_t sym_eval (vfac, &mem);
     for (auto p: sys)
     {
       // TODO: we should add only the initialization of the global
@@ -178,7 +178,7 @@ namespace crab_llvm
                                             (*((*idx).get_variable ())).name (), 
                                             *val, 
                                             ikos::z_number (dl->getTypeAllocSize (gv.getType ())),
-                                            mem.isSingleton (arr_id));  
+                                            mem.getSingleton (arr_id) != nullptr);  
         }
       }
     }
@@ -240,7 +240,7 @@ namespace crab_llvm
 
     /// --- Build the system with all the threads and their shared
     /// --- variables
-    sym_eval_t sym_eval (vfac, m_mem.getTrackLevel ());
+    sym_eval_t sym_eval (vfac, &m_mem);
     for (auto f : m_threads)
     {
       CfgBuilder builder (*f, vfac, &m_mem, true);
