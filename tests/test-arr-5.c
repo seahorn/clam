@@ -22,7 +22,7 @@ int main ()
   }
 
   int x = a[i-1]  + b[i-1];
-  if (x > 0)
+  if (x >= 0 && x<=30)
     return 42;
   else
     return 0;
