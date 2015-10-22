@@ -11,9 +11,10 @@
 #include "llvm/ADT/DenseMap.h"
 
 #include <crab_llvm/CfgBuilder.hh>
-#include "crab_llvm/MemAnalysis.hh"
+#include <crab_llvm/MemAnalysis.hh>
 
 #include <crab/cg/Cg.hpp>
+#include <crab/analysis/Liveness.hpp>
 
 namespace crab_llvm
 {  
@@ -38,12 +39,15 @@ namespace crab_llvm
     typedef z_lin_cst_sys_t inv_tbl_val_t;
 
    private:
+
     typedef llvm::DenseMap<const llvm::BasicBlock *,inv_tbl_val_t> invariants_map_t;
+    typedef crab::analyzer::Liveness<cfg_t> liveness_t;
+    // if inter-procedural analysis
+    typedef boost::unordered_map <cfg_t, const liveness_t*> liveness_map_t;
 
     invariants_map_t m_pre_map;
     invariants_map_t m_post_map;
     CrabDomain       m_absdom;
-    bool             m_runlive;
     MemAnalysis      m_mem;    
     VariableFactory  m_vfac;
 
@@ -54,9 +58,7 @@ namespace crab_llvm
 
     static char ID;        
     
-    CrabLlvm (): llvm::ModulePass (ID), 
-                 m_absdom (INTERVALS), m_runlive(false)  
-    { }
+    CrabLlvm (): llvm::ModulePass (ID), m_absdom (INTERVALS) { }
 
     ~CrabLlvm () {
       m_pre_map.clear(); 
@@ -101,10 +103,14 @@ namespace crab_llvm
    private:
 
     template<typename AbsDomain> 
-    bool runOnCfg (const cfg_t& cfg, const llvm::Function &F);
+    bool runOnCfg (const cfg_t& cfg, 
+                   const liveness_t& live, 
+                   const llvm::Function &F);
 
     template<typename BUAbsDomain, typename TDAbsDomain> 
-    bool runOnCg (const crab::cg::CallGraph<cfg_t>& cg, const llvm::Module &M);
+    bool runOnCg (const crab::cg::CallGraph<cfg_t>& cg, 
+                  const liveness_map_t& live_map,
+                  const llvm::Module &M);
 
     void write (llvm::raw_ostream& o, const llvm::Function& F);
 
