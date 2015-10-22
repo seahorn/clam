@@ -54,6 +54,16 @@ LlvmCrabNoPtrArith ("crab-disable-ptr",
                     cl::init (false),
                     cl::Hidden);
 
+/* 
+  Since LLVM IR is in SSA form many of the havoc statements are
+  redundant since variables can be defined only once.
+ */
+llvm::cl::opt<bool>
+LlvmIncludeHavoc ("crab-include-havoc",
+                  cl::desc ("Include all havoc statements."), 
+                  cl::init (true),
+                  cl::Hidden);
+
 namespace crab_llvm
 {
 
@@ -236,7 +246,7 @@ namespace crab_llvm
           }
           break;
         default:
-          if (isTracked (I))
+          if (isTracked (I) && LlvmIncludeHavoc)
             m_bb.havoc(symVar (I));
           break;
       }
@@ -424,7 +434,7 @@ namespace crab_llvm
           break;
         case BinaryOperator::LShr:
         default:
-          m_bb.havoc(lhs);
+          if (LlvmIncludeHavoc) m_bb.havoc(lhs);
           break;
       }
     }
@@ -475,7 +485,8 @@ namespace crab_llvm
             // with both constant operands. Llvm frontend should get
             // rid of them.
             errs () << "Warning: ignored udiv with both constant operands\n";
-            m_bb.havoc(lhs);
+            if (LlvmIncludeHavoc)
+              m_bb.havoc(lhs);
           }
           else if ((*op1).is_constant()) {           
             // cfg does not support division of a constant by a
@@ -504,7 +515,8 @@ namespace crab_llvm
             // with both constant operands. Llvm frontend should get
             // rid of them.
             errs () << "Warning: ignored urem with constant operands\n";
-            m_bb.havoc(lhs);
+            if (LlvmIncludeHavoc)
+              m_bb.havoc(lhs);
           }
           else if ((*op1).is_constant()) {           
             // cfg does not support rem of a constant by a
@@ -526,7 +538,7 @@ namespace crab_llvm
               factor *= 2;
             m_bb.mul (lhs, *op1, z_lin_exp_t (factor));            
           }
-          else
+          else if (LlvmIncludeHavoc)
             m_bb.havoc(lhs);
           break;
         case BinaryOperator::AShr:
@@ -539,11 +551,12 @@ namespace crab_llvm
               factor *= 2;
             m_bb.div (lhs, *op1, z_lin_exp_t (factor));            
           }
-          else
+          else if (LlvmIncludeHavoc)
             m_bb.havoc(lhs);
           break;
         default:
-          m_bb.havoc(lhs);
+          if (LlvmIncludeHavoc)
+            m_bb.havoc(lhs);
           break;
       }
     }
@@ -570,7 +583,8 @@ namespace crab_llvm
           m_bb.bitwise_xor (lhs, *op1, *op2);
           break;
         default:
-          m_bb.havoc(lhs);
+          if (LlvmIncludeHavoc)
+            m_bb.havoc(lhs);
           break;
       }
     }
@@ -593,14 +607,13 @@ namespace crab_llvm
 
       if (src)
         m_bb.assign(dst, *src);
-      else
-      {
-        if (v.getType ()->isIntegerTy (1))
-        {
+      else {
+        if (v.getType ()->isIntegerTy (1)) {
           m_bb.assume ( z_lin_exp_t (dst) >= z_lin_exp_t (0) );
           m_bb.assume ( z_lin_exp_t (dst) <= z_lin_exp_t (1) );
         }
-        else m_bb.havoc(dst);
+        else if (LlvmIncludeHavoc)
+          m_bb.havoc(dst);
       }
     }
     
@@ -655,12 +668,14 @@ namespace crab_llvm
            (!isTracked (*I.getPointerOperand ())) ||
            AllUsesAreNonTrackMem (&I)) {
         
-        if (isTracked (I)) m_bb.havoc (symVar (I));
+        if (LlvmIncludeHavoc) 
+          m_bb.havoc (symVar (I));
+
         return;
       }
         
       optional<z_lin_exp_t> ptr = lookup (*I.getPointerOperand ());
-      if (!ptr && (isTracked (I))) {
+      if (!ptr && LlvmIncludeHavoc) {
         m_bb.havoc (symVar (I));
         return;
       }
@@ -741,7 +756,7 @@ namespace crab_llvm
         }
       }
       
-      if (isTracked (I))
+      if (LlvmIncludeHavoc)
         m_bb.havoc (symVar (I));
     }
     
@@ -911,7 +926,7 @@ namespace crab_llvm
 
         // -- havoc return value
         Value *ret = &I;
-        if (!ret->getType()->isVoidTy() && isTracked (*ret))
+        if (!ret->getType()->isVoidTy() && LlvmIncludeHavoc)
           m_bb.havoc (symVar (I));
 
         return;
@@ -999,7 +1014,7 @@ namespace crab_llvm
       if ((!m_is_inter_proc) || callee->isVarArg()) {
         // -- havoc return value
         Value *ret = &I;
-        if (!ret->getType()->isVoidTy() && isTracked (*ret))
+        if (!ret->getType()->isVoidTy() && LlvmIncludeHavoc)
           m_bb.havoc (symVar (I));
         
         // -- havoc all modified nodes by the callee
@@ -1071,7 +1086,8 @@ namespace crab_llvm
       if (isa<AllocaInst> (I)) return;
 
       varname_t lhs = symVar(I);
-      m_bb.havoc(lhs);
+      if (LlvmIncludeHavoc)
+        m_bb.havoc(lhs);
     }
     
   };
