@@ -28,7 +28,7 @@ using namespace llvm;
 using namespace crab_llvm;
 
 // for debugging
-// #define LIVE_DEBUG
+// #define CRABLLVM_DEBUG
 
 llvm::cl::opt<bool>
 LlvmCrabPrintAns ("crab-print-invariants", 
@@ -101,9 +101,20 @@ namespace crab_llvm
     m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (),
                          LlvmCrabTrackLev);
 #endif     
+
+#ifdef CRABLLVM_DEBUG
+      unsigned num_analyzed_funcs = 0;
+      for (auto &F : M) {
+        if (F.isDeclaration () || F.empty ()) continue;
+        if (F.isVarArg ()) continue;
+        num_analyzed_funcs++;
+      }
+      std::cout << "Total number of analyzed functions:" 
+                << num_analyzed_funcs << "\n";
+      std::cout.flush ();
+#endif 
     
     if (LlvmCrabInter){
-
       std::vector<cfg_t> cfgs;
       liveness_map_t live_map;
       for (auto &F : M) {
@@ -113,24 +124,34 @@ namespace crab_llvm
         if (F.isVarArg ()) continue;
 
         // -- build cfg
-        CfgBuilder builder (F, m_vfac, &m_mem, true /*include function decls and callsites*/);
+        CfgBuilder builder (F, m_vfac, &m_mem, 
+                            /*include function decls and callsites*/
+                            true);
         cfg_t &cfg = builder.makeCfg ();
         cfgs.push_back (cfg);
 
         // -- build liveness
         if (LlvmCrabLive) {
-#ifdef LIVE_DEBUG
-          std::cout << "Running liveness analysis ... ";
+#ifdef CRABLLVM_DEBUG
+          auto fdecl = cfg.get_func_decl ();            
+          assert (fdecl);
+          std::cout << "Running liveness analysis for " 
+                    << (*fdecl).get_func_name ()
+                    << "  ... ";
+          std::cout.flush ();
 #endif 
           liveness_t* live = new liveness_t (cfg);
           live->exec ();
-#ifdef LIVE_DEBUG
+#ifdef CRABLLVM_DEBUG
           std::cout << "DONE!\n";
           // some stats
           unsigned total_live, max_live_per_blk, avg_live_per_blk;
           live->get_stats (total_live, max_live_per_blk, avg_live_per_blk);
-          std::cout << "-- Max number of out live vars per block=" << max_live_per_blk << "\n";
-          std::cout << "-- Avg number of out live vars per block=" << avg_live_per_blk << "\n";
+          std::cout << "-- Max number of out live vars per block=" 
+                    << max_live_per_blk << "\n";
+          std::cout << "-- Avg number of out live vars per block=" 
+                    << avg_live_per_blk << "\n";
+          std::cout.flush ();
 #endif 
           live_map.insert (make_pair (cfg, live));
         }
@@ -164,17 +185,17 @@ namespace crab_llvm
         case INTERVALS:  
         default: 
           if (m_absdom != INTERVALS)
-            std::cout << "Warning: abstract domain not found. Running intervals ...\n"; 
-                
-           change = (LlvmCrabTrackLev == ARR ? 
-              runOnCg <arr_dbm_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
-              runOnCg <dbm_domain_t, interval_domain_t> (cg, live_map, M)) ; 
+            std::cout << "Warning: abstract domain not found."
+                      << "Running intervals ...\n"; 
           
-        }      
+          change = (LlvmCrabTrackLev == ARR ? 
+                    runOnCg <arr_dbm_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
+                    runOnCg <dbm_domain_t, interval_domain_t> (cg, live_map, M)) ; 
+      }      
       
       if (LlvmCrabLive) {
-          for (auto &p : live_map)
-            delete p.second;
+        for (auto &p : live_map)
+          delete p.second;
       }          
         
       return change;
@@ -190,30 +211,43 @@ namespace crab_llvm
 
   bool CrabLlvm::runOnFunction (llvm::Function &F)
   {
+
+    if (LlvmCrabInter) return false;
+      
     // -- skip functions without a body
     if (F.isDeclaration () || F.empty ()) return false;
-
+    // -- skip variadic functions
     if (F.isVarArg ()) return false;
 
     // -- build cfg
-    CfgBuilder builder (F, m_vfac, &m_mem, true /*include function decls and callsites*/);
+    CfgBuilder builder (F, m_vfac, &m_mem, 
+                        /*include function decls and callsites*/
+                        true);
     cfg_t &cfg = builder.makeCfg ();
 
     // -- run liveness
     liveness_t* live = nullptr;
     if (LlvmCrabLive) {
-      liveness_t ls (cfg);
-#ifdef LIVE_DEBUG
-      std::cout << "Running liveness analysis ... ";
+#ifdef CRABLLVM_DEBUG
+      auto fdecl = cfg.get_func_decl ();            
+      assert (fdecl);
+      std::cout << "Running liveness analysis for " 
+                << (*fdecl).get_func_name ()
+                << "  ... ";
+      std::cout.flush ();
 #endif 
+      liveness_t ls (cfg);
       ls.exec ();
-#ifdef LIVE_DEBUG
+#ifdef CRABLLVM_DEBUG
       std::cout << "DONE!\n";
       // some stats
       unsigned total_live, max_live_per_blk, avg_live_per_blk;
       ls.get_stats (total_live, max_live_per_blk, avg_live_per_blk);
-      std::cout << "-- Max number of out live vars per block=" << max_live_per_blk << "\n";
-      std::cout << "-- Avg number of out live vars per block=" << avg_live_per_blk << "\n";
+      std::cout << "-- Max number of out live vars per block=" 
+                << max_live_per_blk << "\n";
+      std::cout << "-- Avg number of out live vars per block=" 
+                << avg_live_per_blk << "\n";
+      std::cout.flush ();
 #endif 
       live = &ls;
     }
@@ -239,14 +273,15 @@ namespace crab_llvm
         break;
       case INTERVALS:  
       default: 
-          if (m_absdom != INTERVALS)
-            std::cout << "Warning: abstract domain not found. Running intervals ...\n"; 
-
-          change = (LlvmCrabTrackLev == ARR ? 
-              runOnCfg <arr_interval_domain_t> (cfg, *live, F) : 
-              runOnCfg <interval_domain_t> (cfg, *live, F)) ; 
+        if (m_absdom != INTERVALS)
+          std::cout << "Warning: abstract domain not found."
+                    << "Running intervals ...\n"; 
+        
+        change = (LlvmCrabTrackLev == ARR ? 
+          runOnCfg <arr_interval_domain_t> (cfg, *live, F) : 
+          runOnCfg <interval_domain_t> (cfg, *live, F)) ; 
     }
-
+    
     if (LlvmCrabPrintAns)
       write (outs (), F);
 
@@ -258,7 +293,7 @@ namespace crab_llvm
                           const liveness_map_t& live_map,
                           const llvm::Module &M)
   {
-    // -- run inter-procedural analysis
+    // -- run inter-procedural analysis on the whole call graph
     typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
                               BUAbsDomain, TDAbsDomain, inv_tbl_val_t> analyzer_t;
     analyzer_t analyzer(cg, m_vfac, (LlvmCrabLive ? &live_map : nullptr));
@@ -301,9 +336,23 @@ namespace crab_llvm
                                      VariableFactory, 
                                      inv_tbl_val_t>::type analyzer_t;
 
+#ifdef CRABLLVM_DEBUG
+    auto fdecl = cfg.get_func_decl ();            
+    assert (fdecl);
+    AbsDomain tmp;
+    std::cout << "Running " << tmp.getDomainName () << " analysis for " 
+              << (*fdecl).get_func_name ()
+              << "  ... ";
+    std::cout.flush ();
+#endif 
+
     // -- run intra-procedural analysis
     analyzer_t analyzer (cfg, m_vfac, &live);
     analyzer.Run (AbsDomain::top());
+
+#ifdef CRABLLVM_DEBUG
+    std::cout << "DONE\n";
+#endif 
 
     // -- store invariants 
     for (auto const &B : F) {
@@ -386,7 +435,7 @@ namespace crab_llvm
 
 
   void CrabLlvm::write (llvm::raw_ostream& o, const llvm::Function& F) {
-    if (!F.isDeclaration () && !F.empty ()) {
+    if (!F.isDeclaration () && !F.empty () && !F.isVarArg ()) {
       o << "\nFunction " << F.getName () << "\n";
       for (auto &B : F) {
         const llvm::BasicBlock * BB = &B;
