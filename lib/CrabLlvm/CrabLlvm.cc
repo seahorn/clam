@@ -70,6 +70,12 @@ LlvmCrabTrackLev("crab-track-lvl",
    cl::init (TrackedPrecision::INT));
 
 llvm::cl::opt<bool>
+LlvmCrabTrackOnlyGlobals ("crab-track-only-globals",
+                          cl::desc ("Track only global arrays"), 
+                          cl::init (false),
+                          cl::Hidden);
+
+llvm::cl::opt<bool>
 LlvmCrabInter ("crab-inter",
                cl::desc ("Crab Inter-procedural analysis"), 
                cl::init (false));
@@ -99,7 +105,7 @@ namespace crab_llvm
 
 #ifdef HAVE_DSA
     m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (),
-                         LlvmCrabTrackLev);
+                         LlvmCrabTrackLev, LlvmCrabTrackOnlyGlobals);
 #endif     
 
 #ifdef CRABLLVM_DEBUG
