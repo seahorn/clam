@@ -246,8 +246,8 @@ namespace crab_llvm
           }
           break;
         default:
-          if (isTracked (I) && LlvmIncludeHavoc)
-            m_bb.havoc(symVar (I));
+          if (isTracked (I))
+            if (LlvmIncludeHavoc) m_bb.havoc (symVar (I));
           break;
       }
 
@@ -664,19 +664,18 @@ namespace crab_llvm
 
     void visitGetElementPtrInst (GetElementPtrInst &I)
     {
-      if ( LlvmCrabNoPtrArith ||
-           (!isTracked (*I.getPointerOperand ())) ||
-           AllUsesAreNonTrackMem (&I)) {
-        
-        if (LlvmIncludeHavoc) 
-          m_bb.havoc (symVar (I));
+      if (!isTracked (I)) {
+        return;
+      }
 
+      if (LlvmCrabNoPtrArith || AllUsesAreNonTrackMem (&I)) {
+        if (LlvmIncludeHavoc) m_bb.havoc (symVar (I)); 
         return;
       }
         
       optional<z_lin_exp_t> ptr = lookup (*I.getPointerOperand ());
-      if (!ptr && LlvmIncludeHavoc) {
-        m_bb.havoc (symVar (I));
+      if (!ptr)  {
+        if (LlvmIncludeHavoc) m_bb.havoc (symVar (I));
         return;
       }
 
@@ -755,9 +754,10 @@ namespace crab_llvm
           }
         }
       }
-      
-      if (LlvmIncludeHavoc)
-        m_bb.havoc (symVar (I));
+
+      if (isTracked (I)) {
+        if (LlvmIncludeHavoc) m_bb.havoc (symVar (I));
+      }
     }
     
     void visitStoreInst (StoreInst &I)
@@ -911,8 +911,8 @@ namespace crab_llvm
       CallSite CS (&I);
       Function * callee = CS.getCalledFunction ();
 
-      if (isTracked (I) && AllUsesAreNonTrackMem (&I))
-        return;
+      // if (isTracked (I) && AllUsesAreNonTrackMem (&I))
+      //   return;
 
       if (!callee) {         
         // --- If HAVE_DSA then we have run first the devirt pass so
@@ -925,10 +925,11 @@ namespace crab_llvm
         //   errs () << "WARNING: skipped indirect call " << I << "\n";
 
         // -- havoc return value
-        Value *ret = &I;
-        if (!ret->getType()->isVoidTy() && LlvmIncludeHavoc)
-          m_bb.havoc (symVar (I));
-
+        if (isTracked (I)) {
+          Value *ret = &I;
+          if (!ret->getType()->isVoidTy() && LlvmIncludeHavoc)
+            m_bb.havoc (symVar (I));
+        }
         return;
       }
 
@@ -1013,9 +1014,11 @@ namespace crab_llvm
 
       if ((!m_is_inter_proc) || callee->isVarArg()) {
         // -- havoc return value
-        Value *ret = &I;
-        if (!ret->getType()->isVoidTy() && LlvmIncludeHavoc)
-          m_bb.havoc (symVar (I));
+        if (isTracked (I)) {
+          Value *ret = &I;
+          if (!ret->getType()->isVoidTy() && LlvmIncludeHavoc)
+            m_bb.havoc (symVar (I));
+        }
         
         // -- havoc all modified nodes by the callee
         if (m_mem->getTrackLevel () == ARR) {

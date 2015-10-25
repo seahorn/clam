@@ -50,13 +50,13 @@ namespace crab_llvm
     }
 
     varname_t symVar (int v) {
-      // if the array id maps to a unique scalar value we preserve its
-      // name
-      const Value* s = m_mem->getSingleton (v);
-      if (s)
-        return symVar (*s);
-      else
-        return m_vfac.get (v);
+      // // if the array id maps to a unique scalar value we preserve its name
+      // const Value* s = m_mem->getSingleton (v);
+      // if (s)
+      //   return symVar (*s);
+      // else
+      //   return m_vfac.get (v);
+      return m_vfac.get (v);
     }
   
     bool isVar (ZLinExp e) {
