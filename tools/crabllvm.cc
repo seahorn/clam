@@ -62,11 +62,12 @@ DefaultDataLayout("default-data-layout",
 
 static llvm::cl::opt<bool>
 Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs (experimental)"),
-           llvm::cl::init (false));
+             llvm::cl::init (false),
+             cl::Hidden);
 
 static llvm::cl::opt<bool>
-CrabDevirtualize ("crab-devirt", llvm::cl::desc ("Resolve indirect calls"),
-                    llvm::cl::init (false));
+CrabDevirtualize ("crab-devirt", llvm::cl::desc ("Resolve indirect calls using alias analysis"),
+                  llvm::cl::init (false));
 
 using namespace crab_llvm;
 

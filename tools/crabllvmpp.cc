@@ -70,7 +70,8 @@ OptimizeLoops ("crab-pp-loops",
 
 static llvm::cl::opt<bool>
 Concurrency ("crab-concur", llvm::cl::desc ("Preprocessing for concurrent analysis"),
-           llvm::cl::init (false));
+             llvm::cl::init (false),
+             cl::Hidden);
 
 
 static llvm::cl::opt<int>
