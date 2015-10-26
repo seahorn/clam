@@ -743,13 +743,13 @@ namespace crab_llvm
           // Post: arr_idx corresponds to a cell pointed by objects with
           //       same type and all accesses are aligned.        
           if (optional<z_lin_exp_t> idx = lookup (*I.getPointerOperand ())) {
-            if (const Value* s = m_mem->getSingleton (arr_idx)) {
-              m_bb.assign (symVar (I), z_lin_exp_t(symVar (*s)));
-            }
-            else {
-              m_bb.array_load (symVar (I), symVar (arr_idx), *idx,
-                               ikos::z_number (m_dl->getTypeAllocSize (ty)));
-            }
+            // if (const Value* s = m_mem->getSingleton (arr_idx)) {
+            //   m_bb.assign (symVar (I), z_lin_exp_t(symVar (*s)));
+            // }
+            // else {
+            m_bb.array_load (symVar (I), symVar (arr_idx), *idx,
+                             ikos::z_number (m_dl->getTypeAllocSize (ty)));
+            //}
             return;
           }
         }
@@ -782,15 +782,15 @@ namespace crab_llvm
         optional<z_lin_exp_t> val = lookup (*I.getOperand (0));
         if (!val) return; // FIXME: we should havoc the array
 
-        if (const Value* s = m_mem->getSingleton (arr_idx)) {
-          m_bb.assign (symVar (*s), *val);
-        }
-        else {
-          m_bb.array_store (symVar (arr_idx), 
-                            *idx, *val, 
-                            ikos::z_number (m_dl->getTypeAllocSize (ty)),
-                            false /*non-singleton*/); 
-        }
+        // if (const Value* s = m_mem->getSingleton (arr_idx)) {
+        //   m_bb.assign (symVar (*s), *val);
+        // }
+        // else {
+        m_bb.array_store (symVar (arr_idx), 
+                          *idx, *val, 
+                          ikos::z_number (m_dl->getTypeAllocSize (ty)),
+                          m_mem->getSingleton (arr_idx) != nullptr); 
+        //}
       }
     }
 
@@ -1234,25 +1234,18 @@ namespace crab_llvm
                       MemAnalysis* mem, varname_t a) {
 
     if (isa<ConstantAggregateZero> (cst)){
-      //errs () << *cst << " is either struct or array with zero initialization\n";
       // --- a struct or array with all elements initialized to zero
       bb.assume_array (a, 0);
     }
     else if (ConstantInt * ci = dyn_cast<ConstantInt> (cst)) {
-      //errs () << *cst << " is a scalar global variable\n";
       // --- an integer scalar global variable
-
-      // do nothing since scalar global variables are lowered to
-      // registers
-
-      // vector<ikos::z_number> val;
-      // val.push_back (ci->getZExtValue ());
-      // bb.array_init (a, val);
+      vector<ikos::z_number> val;
+      val.push_back (ci->getZExtValue ());
+      bb.array_init (a, val);
     }
     else if (ConstantDataSequential  *cds = dyn_cast<ConstantDataSequential> (cst)) {
       // --- an array of integers 1/2/4/8 bytes
       if (cds->getElementType ()->isIntegerTy ()) {
-        //errs () << *cst << " is a constant data sequential\n";
         vector<ikos::z_number> vals;
         for (unsigned i=0; i < cds->getNumElements (); i++)
           vals.push_back (cds->getElementAsInteger (i));
@@ -1262,8 +1255,6 @@ namespace crab_llvm
     else if (GlobalAlias* alias = dyn_cast< GlobalAlias >(cst)) {
       doInitializer (alias->getAliasee (), bb, mem, a);
     }
-    //else errs () << "Missed initialization of " << *cst << "\n";
-
   }
 
   void CfgBuilder::build_cfg()
