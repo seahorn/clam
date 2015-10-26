@@ -99,9 +99,21 @@ def parseArgs (argv):
                     help='Choose abstract domain',
                     choices=['int','ric','zones','term'],
                     dest='crab_dom', default='int')
+    ############ 
     p.add_argument ('--crab-track',
                     help='Track integers, pointers, and memory',
                     choices=['int', 'ptr', 'arr'], dest='track', default='int')
+    # these three options refine crab-track=arr
+    p.add_argument ('--crab-track-only-globals',
+                    help='Track memory contents but only global variables',
+                    dest='crab_track_only_globals', default=False, action='store_true')
+    p.add_argument ('--crab-track-only-singletons',
+                    help='Track memory contents but only singleton cells',
+                    dest='crab_track_only_singletons', default=False, action='store_true')
+    p.add_argument ('--crab-disable-ptr',
+                    help='Track memory contents but ignoring pointer arithmetic',
+                    dest='crab_disable_ptr', default=False, action='store_true')
+    ############
     p.add_argument ('--crab-inter',
                     help='Run inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
@@ -109,7 +121,7 @@ def parseArgs (argv):
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        
     p.add_argument ('--crab-devirt',
-                    help='Resolve indirect calls',
+                    help='Resolve indirect calls using alias analysis',
                     dest='crab_devirt', default=False, action='store_true')
     p.add_argument ('--crab-add-invariants-at-entries',
                     help='Instrument code with invariants at each block entry',
@@ -127,9 +139,6 @@ def parseArgs (argv):
                     help='Display Crab CFG',
                     dest='print_cfg', default=False, action='store_true')
     ######################################################################
-    p.add_argument ('--crab-disable-ptr',
-                    help=a.SUPPRESS,
-                    dest='crab_disable_ptr', default=False, action='store_true')
     p.add_argument ('--crab-cfg-simplify',
                     help=a.SUPPRESS,
                     dest='crab_cfg_simplify', default=False, action='store_true')
@@ -276,7 +285,15 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
+
     crabllvm_cmd.append ('--crab-track-lvl={0}'.format (args.track))
+    if args.crab_track_only_globals:
+        crabllvm_cmd.append ('--crab-track-only-globals')
+    if args.crab_track_only_singletons:
+        crabllvm_cmd.append ('--crab-track-only-singletons')
+    if args.crab_disable_ptr:
+        crabllvm_cmd.append ('--crab-disable-ptr')
+
     if args.crab_inter:
         crabllvm_cmd.append ('--crab-inter')
     if args.crab_devirt:
@@ -293,10 +310,7 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
         crabllvm_cmd.append ('--crab-print-summaries')
     if args.print_cfg:
         crabllvm_cmd.append ('--crab-print-cfg')
-
     # hidden options
-    if args.crab_disable_ptr:
-        crabllvm_cmd.append ('--crab-disable-ptr')
     if args.crab_cfg_simplify:
         crabllvm_cmd.append ('--crab-cfg-simplify')
     if args.crab_keep_shadows:

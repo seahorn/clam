@@ -60,6 +60,11 @@ LlvmCrabLive("crab-live",
         llvm::cl::desc("Run Crab with live ranges"),
         llvm::cl::init (false));
 
+llvm::cl::opt<bool>
+LlvmCrabInter ("crab-inter",
+               cl::desc ("Crab Inter-procedural analysis"), 
+               cl::init (false));
+
 llvm::cl::opt<enum TrackedPrecision>
 LlvmCrabTrackLev("crab-track-lvl",
    llvm::cl::desc ("Track precision level of the Crab Cfg"),
@@ -69,16 +74,17 @@ LlvmCrabTrackLev("crab-track-lvl",
                clEnumValEnd),
    cl::init (TrackedPrecision::INT));
 
+// These two options refine crab-track-lvl=arr
 llvm::cl::opt<bool>
 LlvmCrabTrackOnlyGlobals ("crab-track-only-globals",
                           cl::desc ("Track only global arrays"), 
                           cl::init (false),
                           cl::Hidden);
-
 llvm::cl::opt<bool>
-LlvmCrabInter ("crab-inter",
-               cl::desc ("Crab Inter-procedural analysis"), 
-               cl::init (false));
+LlvmCrabTrackOnlySingletons ("crab-track-only-singletons",
+                          cl::desc ("Track only singleton cells"), 
+                          cl::init (false),
+                          cl::Hidden);
 
 // Important to crab-llvm clients (e.g., SeaHorn):
 // Shadow variables are variables that cannot be mapped back to a
@@ -105,7 +111,9 @@ namespace crab_llvm
 
 #ifdef HAVE_DSA
     m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (),
-                         LlvmCrabTrackLev, LlvmCrabTrackOnlyGlobals);
+                         LlvmCrabTrackLev, 
+                         LlvmCrabTrackOnlyGlobals,
+                         LlvmCrabTrackOnlySingletons);
 #endif     
 
 #ifdef CRABLLVM_DEBUG

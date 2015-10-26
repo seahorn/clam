@@ -44,8 +44,13 @@ namespace crab_llvm
     DataStructures*  m_dsa;
     /// for external queries it is not actually used in this class.
     TrackedPrecision m_tracklev;
-    /// to consider only global nodes
+    
+    //// -- refinement of m_tracklev: track only certain parts of memory
+    
+    /// consider only global nodes
     bool m_only_global_nodes;
+    /// consider only singleton cells
+    bool m_only_singleton_nodes;
     
     /// map from DSNode to ids
     DenseMap<const DSNode*, unsigned> m_node_ids;
@@ -133,12 +138,17 @@ namespace crab_llvm
     // - a node is collapsed if all its uses have incompatible type or
     //   compatible types but misaligned.
     bool isTrackable (const DSNode* n) const {
+
+      if (n->isUnknownNode () || n->isCollapsedNode ()) 
+        return false;
+     
+      if (m_only_singleton_nodes && (n->getUniqueScalar () == nullptr))
+        return false;
+      
       if (m_only_global_nodes)
-        return  (!n->isUnknownNode () && !n->isCollapsedNode () && n->isGlobalNode ());
-      else 
-        return  (!n->isUnknownNode () && 
-                 !n->isCollapsedNode () &&
-                 (n->isAllocaNode () || n->isHeapNode () || n->isGlobalNode ()));
+        return n->isGlobalNode ();
+      else
+        return (n->isAllocaNode () || n->isHeapNode () || n->isGlobalNode ());
     }
 
    public:
@@ -147,9 +157,12 @@ namespace crab_llvm
 
     MemAnalysis (DataStructures * dsa, 
                  TrackedPrecision tracklev,
-                 bool onlyGlobalNodes = false): 
-        m_dsa (dsa), m_tracklev (tracklev), 
-        m_only_global_nodes (onlyGlobalNodes) { }
+                 bool onlyGlobalNodes = false,
+                 bool onlySingletonNodes = false): 
+        m_dsa (dsa), 
+        m_tracklev (tracklev), 
+        m_only_global_nodes (onlyGlobalNodes),
+        m_only_singleton_nodes (onlySingletonNodes) { }
    
     TrackedPrecision getTrackLevel () const { return m_tracklev; }
     
