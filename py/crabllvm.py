@@ -97,9 +97,12 @@ def parseArgs (argv):
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
                     help='Choose abstract domain',
-                    choices=['int','ric','zones','term'],
+                    choices=['int','ric','zones','term','num'],
                     dest='crab_dom', default='int')
     ############ 
+    p.add_argument ('--crab-dom-num-threshold', 
+                    type=int, dest='num_threshold', 
+                    help='Max number of live vars per block before switching domains', default=100)
     p.add_argument ('--crab-track',
                     help='Track integers, pointers, and memory',
                     choices=['int', 'ptr', 'arr'], dest='track', default='int')
@@ -285,6 +288,8 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
+    if (args.crab_dom == 'num'):
+        crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
 
     crabllvm_cmd.append ('--crab-track-lvl={0}'.format (args.track))
     if args.crab_track_only_globals:

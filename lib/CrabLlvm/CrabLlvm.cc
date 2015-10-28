@@ -52,8 +52,15 @@ LlvmCrabDomain("crab-dom",
                     "Difference-Bounds Matrix (or Zones) domain"),
         clEnumValN (TERMS, "term",
                     "Intervals with uninterpreted functions."),
+        clEnumValN (NUM, "num",
+                    "Choose automatically the numerical abstract domain."),
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
+
+llvm::cl::opt<unsigned>
+LlvmCrabNumThreshold("crab-dom-num-max-live", 
+   llvm::cl::desc("Max number of live vars per block before switching domains"),
+   llvm::cl::init (100));
 
 llvm::cl::opt<bool>
 LlvmCrabLive("crab-live", 
@@ -116,21 +123,28 @@ namespace crab_llvm
                          LlvmCrabTrackOnlySingletons);
 #endif     
 
+    if (m_absdom == NUM) {
+      // --- needs liveness information
+      LlvmCrabLive = true;
+    }
+
 #ifdef CRABLLVM_DEBUG
-      unsigned num_analyzed_funcs = 0;
-      for (auto &F : M) {
-        if (F.isDeclaration () || F.empty ()) continue;
-        if (F.isVarArg ()) continue;
-        num_analyzed_funcs++;
-      }
-      std::cout << "Total number of analyzed functions:" 
-                << num_analyzed_funcs << "\n";
-      std::cout.flush ();
+    unsigned num_analyzed_funcs = 0;
+    for (auto &F : M) {
+      if (F.isDeclaration () || F.empty ()) continue;
+      if (F.isVarArg ()) continue;
+      num_analyzed_funcs++;
+    }
+    std::cout << "Total number of analyzed functions:" 
+              << num_analyzed_funcs << "\n";
+    std::cout.flush ();
 #endif 
-    
+
     if (LlvmCrabInter){
+
       std::vector<cfg_t> cfgs;
       liveness_map_t live_map;
+      unsigned max_live_per_blk = 0;
       for (auto &F : M) {
         // -- skip functions without a body
         if (F.isDeclaration () || F.empty ()) continue;
@@ -158,24 +172,46 @@ namespace crab_llvm
           live->exec ();
 #ifdef CRABLLVM_DEBUG
           std::cout << "DONE!\n";
+#endif 
           // some stats
-          unsigned total_live, max_live_per_blk, avg_live_per_blk;
-          live->get_stats (total_live, max_live_per_blk, avg_live_per_blk);
+          unsigned total_live, max_live_per_blk_, avg_live_per_blk;
+          live->get_stats (total_live, max_live_per_blk_, avg_live_per_blk);
+          max_live_per_blk = std::max (max_live_per_blk, max_live_per_blk_);
+#ifdef CRABLLVM_DEBUG
           std::cout << "-- Max number of out live vars per block=" 
-                    << max_live_per_blk << "\n";
+                    << max_live_per_blk_ << "\n";
           std::cout << "-- Avg number of out live vars per block=" 
                     << avg_live_per_blk << "\n";
           std::cout.flush ();
 #endif 
           live_map.insert (make_pair (cfg, live));
         }
-      } 
+      }
 
       // -- build call graph
 
       CallGraph<cfg_t> cg (cfgs);
 
       // -- run the interprocedural analysis
+      
+      if (m_absdom == NUM) {
+#ifdef CRABLLVM_DEBUG
+        cout << "Max live per block: " << max_live_per_blk << endl;
+        cout << "Threshold: " << LlvmCrabNumThreshold << endl;
+#endif               
+        if (max_live_per_blk < LlvmCrabNumThreshold) {
+#ifdef CRABLLVM_DEBUG
+          std::cout << "Choosen automatically zones. \n";
+#endif 
+          m_absdom = ZONES;
+        }
+        else {
+#ifdef CRABLLVM_DEBUG
+          std::cout << "Choosen automatically intervals. \n";
+#endif 
+          m_absdom = INTERVALS;
+        }
+      }
             
       bool change = false;
       switch (m_absdom) {
@@ -241,6 +277,7 @@ namespace crab_llvm
 
     // -- run liveness
     liveness_t* live = nullptr;
+    unsigned max_live_per_blk = 0;
     if (LlvmCrabLive) {
 #ifdef CRABLLVM_DEBUG
       auto fdecl = cfg.get_func_decl ();            
@@ -254,9 +291,11 @@ namespace crab_llvm
       ls.exec ();
 #ifdef CRABLLVM_DEBUG
       std::cout << "DONE!\n";
+#endif 
       // some stats
-      unsigned total_live, max_live_per_blk, avg_live_per_blk;
+      unsigned total_live, avg_live_per_blk;
       ls.get_stats (total_live, max_live_per_blk, avg_live_per_blk);
+#ifdef CRABLLVM_DEBUG
       std::cout << "-- Max number of out live vars per block=" 
                 << max_live_per_blk << "\n";
       std::cout << "-- Avg number of out live vars per block=" 
@@ -266,6 +305,25 @@ namespace crab_llvm
       live = &ls;
     }
 
+    if (m_absdom == NUM) {
+#ifdef CRABLLVM_DEBUG
+      cout << "Max live per block: " << max_live_per_blk << endl;
+      cout << "Threshold: " << LlvmCrabNumThreshold << endl;
+#endif               
+      if (max_live_per_blk < LlvmCrabNumThreshold) {
+#ifdef CRABLLVM_DEBUG
+        std::cout << "Choosen automatically zones. \n";
+#endif 
+        m_absdom = ZONES;
+      }
+      else {
+#ifdef CRABLLVM_DEBUG
+        std::cout << "Choosen automatically intervals. \n";
+#endif
+        m_absdom = INTERVALS;
+      }
+    }
+    
     // -- run invariant generator
     bool change=false;
     switch (m_absdom)
@@ -314,7 +372,7 @@ namespace crab_llvm
     analyzer.Run (TDAbsDomain::top ());
 
     // -- store invariants     
-    for (auto &n: boost::make_iterator_range (/*boost::vertices (cg)*/cg.nodes ())) {
+    for (auto &n: boost::make_iterator_range (vertices (cg))) {
       const cfg_t& cfg = n.getCfg ();
       boost::optional<const llvm::Value *> v = n.name ().get ();
       if (v) {
@@ -397,11 +455,6 @@ namespace crab_llvm
   CrabLlvm::inv_tbl_val_t forget (CrabLlvm::inv_tbl_val_t inv, 
                                   CrabDomain absdom, Range vs) {
     switch (absdom) {
-      case INTERVALS:  
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_interval_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<interval_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
       case INTERVALS_CONGRUENCES: 
         if (LlvmCrabTrackLev == ARR)
           return forget<arr_ric_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
@@ -417,7 +470,12 @@ namespace crab_llvm
           return forget<arr_term_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
         else
           return forget<term_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-      default: assert(false && "unreachable");
+      case INTERVALS:  
+      default:  
+        if (LlvmCrabTrackLev == ARR)
+          return forget<arr_interval_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
+        else
+          return forget<interval_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
     }
   }
 
