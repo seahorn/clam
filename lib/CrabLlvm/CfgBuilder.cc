@@ -210,7 +210,7 @@ namespace crab_llvm
     }
 
     void visitBinaryOperator(BinaryOperator &I)
-    {
+    { 
       // It searches only for this particular pattern:
       // 
       //   %o1 = icmp ...
@@ -237,14 +237,6 @@ namespace crab_llvm
               C2 = dyn_cast<CmpInst> (I.getOperand (1));
           }
           break;
-        case BinaryOperator::Or:
-          if (m_is_negated) {
-            if (I.getOperand (0)->getType ()->isIntegerTy ())
-              C1 = dyn_cast<CmpInst> (I.getOperand (0));
-            if (I.getOperand (1)->getType ()->isIntegerTy ())
-              C2 = dyn_cast<CmpInst> (I.getOperand (1));
-          }
-          break;
         default:
           if (isTracked (I))
             if (LlvmIncludeHavoc) m_bb.havoc (symVar (I));
@@ -261,7 +253,7 @@ namespace crab_llvm
         for (auto cst: gen_assertion (*C2)) {
           if (m_is_negated)
             m_bb.assume(cst.negate ());
-          else
+          else 
             m_bb.assume(cst);
         }
       }
