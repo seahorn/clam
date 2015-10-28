@@ -59,10 +59,24 @@ LlvmCrabNoPtrArith ("crab-disable-ptr",
   redundant since variables can be defined only once.
  */
 llvm::cl::opt<bool>
-LlvmIncludeHavoc ("crab-include-havoc",
-                  cl::desc ("Include all havoc statements."), 
-                  cl::init (true),
-                  cl::Hidden);
+LlvmCrabIncludeHavoc ("crab-include-havoc",
+                      cl::desc ("Include all havoc statements."), 
+                      cl::init (true),
+                      cl::Hidden);
+
+/*
+  Enable initialization of arrays that correspond to objects that may
+  contain an infinite number of memory locations. 
+
+  Initialization of allocation sites originated from calloc or memset
+  instructions may be unsound if it can be executed by more than one
+  execution.
+*/
+llvm::cl::opt<bool>
+LlvmCrabUnsoundArrayInit ("crab-arr-unsound-init",
+                          cl::desc ("Unsound initialization of arrays."), 
+                          cl::init (false),
+                          cl::Hidden);
 
 namespace crab_llvm
 {
@@ -239,7 +253,7 @@ namespace crab_llvm
           break;
         default:
           if (isTracked (I))
-            if (LlvmIncludeHavoc) m_bb.havoc (symVar (I));
+            if (LlvmCrabIncludeHavoc) m_bb.havoc (symVar (I));
           break;
       }
 
@@ -426,7 +440,7 @@ namespace crab_llvm
           break;
         case BinaryOperator::LShr:
         default:
-          if (LlvmIncludeHavoc) m_bb.havoc(lhs);
+          if (LlvmCrabIncludeHavoc) m_bb.havoc(lhs);
           break;
       }
     }
@@ -477,7 +491,7 @@ namespace crab_llvm
             // with both constant operands. Llvm frontend should get
             // rid of them.
             errs () << "Warning: ignored udiv with both constant operands\n";
-            if (LlvmIncludeHavoc)
+            if (LlvmCrabIncludeHavoc)
               m_bb.havoc(lhs);
           }
           else if ((*op1).is_constant()) {           
@@ -507,7 +521,7 @@ namespace crab_llvm
             // with both constant operands. Llvm frontend should get
             // rid of them.
             errs () << "Warning: ignored urem with constant operands\n";
-            if (LlvmIncludeHavoc)
+            if (LlvmCrabIncludeHavoc)
               m_bb.havoc(lhs);
           }
           else if ((*op1).is_constant()) {           
@@ -530,7 +544,7 @@ namespace crab_llvm
               factor *= 2;
             m_bb.mul (lhs, *op1, z_lin_exp_t (factor));            
           }
-          else if (LlvmIncludeHavoc)
+          else if (LlvmCrabIncludeHavoc)
             m_bb.havoc(lhs);
           break;
         case BinaryOperator::AShr:
@@ -543,11 +557,11 @@ namespace crab_llvm
               factor *= 2;
             m_bb.div (lhs, *op1, z_lin_exp_t (factor));            
           }
-          else if (LlvmIncludeHavoc)
+          else if (LlvmCrabIncludeHavoc)
             m_bb.havoc(lhs);
           break;
         default:
-          if (LlvmIncludeHavoc)
+          if (LlvmCrabIncludeHavoc)
             m_bb.havoc(lhs);
           break;
       }
@@ -575,7 +589,7 @@ namespace crab_llvm
           m_bb.bitwise_xor (lhs, *op1, *op2);
           break;
         default:
-          if (LlvmIncludeHavoc)
+          if (LlvmCrabIncludeHavoc)
             m_bb.havoc(lhs);
           break;
       }
@@ -604,7 +618,7 @@ namespace crab_llvm
           m_bb.assume ( z_lin_exp_t (dst) >= z_lin_exp_t (0) );
           m_bb.assume ( z_lin_exp_t (dst) <= z_lin_exp_t (1) );
         }
-        else if (LlvmIncludeHavoc)
+        else if (LlvmCrabIncludeHavoc)
           m_bb.havoc(dst);
       }
     }
@@ -661,13 +675,13 @@ namespace crab_llvm
       }
 
       if (LlvmCrabNoPtrArith || AllUsesAreNonTrackMem (&I)) {
-        if (LlvmIncludeHavoc) m_bb.havoc (symVar (I)); 
+        if (LlvmCrabIncludeHavoc) m_bb.havoc (symVar (I)); 
         return;
       }
         
       optional<z_lin_exp_t> ptr = lookup (*I.getPointerOperand ());
       if (!ptr)  {
-        if (LlvmIncludeHavoc) m_bb.havoc (symVar (I));
+        if (LlvmCrabIncludeHavoc) m_bb.havoc (symVar (I));
         return;
       }
 
@@ -748,7 +762,7 @@ namespace crab_llvm
       }
 
       if (isTracked (I)) {
-        if (LlvmIncludeHavoc) m_bb.havoc (symVar (I));
+        if (LlvmCrabIncludeHavoc) m_bb.havoc (symVar (I));
       }
     }
     
@@ -919,7 +933,7 @@ namespace crab_llvm
         // -- havoc return value
         if (isTracked (I)) {
           Value *ret = &I;
-          if (!ret->getType()->isVoidTy() && LlvmIncludeHavoc)
+          if (!ret->getType()->isVoidTy() && LlvmCrabIncludeHavoc)
             m_bb.havoc (symVar (I));
         }
         return;
@@ -938,45 +952,65 @@ namespace crab_llvm
             callee->getName ().equals ("malloc") ||
             callee->getName ().equals ("valloc") ||
             callee->getName ().equals ("palloc"))) {
-        Value *ptr = &I;
-        int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), ptr);
-        if (arr_idx < 0) return;
-        // Post: arr_idx corresponds to a cell pointed by objects with
-        //       same type and all accesses are aligned.        
+        if (LlvmCrabUnsoundArrayInit) {
+          Value *ptr = &I;
+          int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), ptr);
+          if (arr_idx < 0) return;
+          // Post: arr_idx corresponds to a cell pointed by objects with
+          //       same type and all accesses are aligned.        
+          
+          // We apply here the "Initialization hook"
+          m_bb.assume_array (symVar(arr_idx), 0);        
+        }
 
-        // We apply here the "Initialization hook"
-        m_bb.assume_array (symVar(arr_idx), 0);        
+        // -- havoc return value
+        if (isTracked (I)) {
+          Value *ret = &I;
+          if (!ret->getType()->isVoidTy() && LlvmCrabIncludeHavoc)
+            m_bb.havoc (symVar (I));
+        }
         return;
       }
 
       if (callee->isIntrinsic ()) {
         if (callee->getName().startswith ("llvm.memset")) {
-          Value *ptr = CS.getArgument (0);
-          Value *val = CS.getArgument (1);
-          int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), ptr);
-          if (arr_idx < 0) return;
-          // Post: arr_idx corresponds to a cell pointed by objects with
-          //       same type and all accesses are aligned.        
-          optional<z_lin_exp_t> op0 = lookup (*val);          
-          if (op0 && (*op0).is_constant ()) {
-            m_bb.havoc (symVar (arr_idx));
-            m_bb.assume_array (symVar (arr_idx), (*op0).constant ());
+          if (LlvmCrabUnsoundArrayInit) {
+            Value *ptr = CS.getArgument (0);
+            Value *val = CS.getArgument (1);
+            int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), ptr);
+            if (arr_idx < 0) return;
+            // Post: arr_idx corresponds to a cell pointed by objects with
+            //       same type and all accesses are aligned.        
+            optional<z_lin_exp_t> op0 = lookup (*val);          
+            if (op0 && (*op0).is_constant ()) {
+              m_bb.havoc (symVar (arr_idx));
+              m_bb.assume_array (symVar (arr_idx), (*op0).constant ());
+            }
           }
         }
         else if (callee->getName().startswith ("llvm.memcpy")) {
-          Value *dest = CS.getArgument (0);
-          Value *src  = CS.getArgument (1);
-          int dest_arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), dest);
-          int src_arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), src);
-          if (dest_arr_idx < 0 || src_arr_idx < 0) return;
-          m_bb.havoc (symVar (dest_arr_idx));
-          m_bb.assign (symVar (dest_arr_idx), z_lin_exp_t (symVar (src_arr_idx)));
+          if (LlvmCrabUnsoundArrayInit) {
+            Value *dest = CS.getArgument (0);
+            Value *src  = CS.getArgument (1);
+            int dest_arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), dest);
+            int src_arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), src);
+            if (dest_arr_idx < 0 || src_arr_idx < 0) return;
+            m_bb.havoc (symVar (dest_arr_idx));
+            m_bb.assign (symVar (dest_arr_idx), z_lin_exp_t (symVar (src_arr_idx)));
+          }
         }
         // We don't want to model llvm.memmove since it allows
         // overlapping between source and destination so the array
         // domain may not be sound.
 
         // else skip intrinsic
+
+        // -- havoc return value
+        if (isTracked (I)) {
+          Value *ret = &I;
+          if (!ret->getType()->isVoidTy() && LlvmCrabIncludeHavoc)
+            m_bb.havoc (symVar (I));
+        }
         return;
       }
       
@@ -1008,7 +1042,7 @@ namespace crab_llvm
         // -- havoc return value
         if (isTracked (I)) {
           Value *ret = &I;
-          if (!ret->getType()->isVoidTy() && LlvmIncludeHavoc)
+          if (!ret->getType()->isVoidTy() && LlvmCrabIncludeHavoc)
             m_bb.havoc (symVar (I));
         }
         
@@ -1081,7 +1115,7 @@ namespace crab_llvm
       if (isa<AllocaInst> (I)) return;
 
       varname_t lhs = symVar(I);
-      if (LlvmIncludeHavoc)
+      if (LlvmCrabIncludeHavoc)
         m_bb.havoc(lhs);
     }
     
@@ -1342,16 +1376,18 @@ namespace crab_llvm
         } 
       }
       
-      // getRefModNewArrays returns in its 3rd tuple argument all the
-      // new nodes created by the function (via malloc-like functions)
-      // except if the function is main.      
-      basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
-      auto t = m_mem->getRefModNewArrays (m_func);
-      auto news =  get<2> (t);
-      for (auto n: news) {
-        entry.set_insert_point_front ();
-        // We apply here the "Initialization hook".
-        entry.assume_array (s.symVar (n), 0 /*any value we want*/);
+      if (LlvmCrabUnsoundArrayInit) {
+        // getRefModNewArrays returns in its 3rd tuple argument all the
+        // new nodes created by the function (via malloc-like functions)
+        // except if the function is main.      
+        basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+        auto t = m_mem->getRefModNewArrays (m_func);
+        auto news =  get<2> (t);
+        for (auto n: news) {
+          entry.set_insert_point_front ();
+          // We apply here the "Initialization hook".
+          entry.assume_array (s.symVar (n), 0 /*any value we want*/);
+        }
       }
     }
 
