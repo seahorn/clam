@@ -62,7 +62,7 @@ else ()
 endif ()
 
 if (GIT_FOUND)
-  set (CRAB_CORE_TAG "origin/master" CACHE STRING "crab tag to use")
+  set (CRAB_CORE_TAG "origin/boxes" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
        CACHE STRING "crab repository")
   ExternalProject_Add(crab
@@ -74,6 +74,7 @@ if (GIT_FOUND)
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
     -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+    -DUSE_LDD=ON
     TEST_AFTER_INSTALL 1
     TEST_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
     LOG_DOWNLOAD 1

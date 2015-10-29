@@ -64,7 +64,8 @@ inferred for each basic block in the `LLVM` bitcode.
 	- `ric`: intervals with congruences
     - `term`: intervals with uninterpreted functions
 	- `zones`: difference-bound matrices
-
+    - `boxes`: disjunctive intervals
+	
 - We also provide the option `--crab-track-lvl` to indicate the level
 of precision. The possible values are: 
 

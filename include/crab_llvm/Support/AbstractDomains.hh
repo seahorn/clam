@@ -9,6 +9,7 @@
 #include <crab/domains/dbm.hpp>
 #include <crab/domains/array_smashing.hpp>
 #include <crab/domains/term_equiv.hpp>
+#include <crab/domains/boxes.hpp>
 
 namespace llvm
 {

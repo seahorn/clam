@@ -343,6 +343,11 @@ namespace crab_llvm
                   runOnCfg <arr_term_domain_t> (cfg, *live, F) : 
                   runOnCfg <term_domain_t> (cfg, *live, F)) ; 
         break;
+      case BOXES:
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_boxes_domain_t> (cfg, *live, F) : 
+                  runOnCfg <boxes_domain_t> (cfg, *live, F)) ; 
+        break;
       case INTERVALS:  
       default: 
         if (m_absdom != INTERVALS)
