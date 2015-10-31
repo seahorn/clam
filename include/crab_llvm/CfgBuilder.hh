@@ -148,7 +148,7 @@ namespace crab_llvm
     
     string create_bb_name(string prefix = "")
     {
-      if (prefix == "") prefix = string("_bb_");
+      if (prefix == "") prefix = string("_crab_bb_");
       ++m_id;
       string id_str = std::to_string(m_id);
       return prefix + id_str;
