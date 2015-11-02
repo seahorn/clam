@@ -15,6 +15,7 @@
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/AbstractDomainsImpl.hh"
 
+#include "crab/domains/domain_traits.hpp"
 #include "crab/analysis/FwdAnalyzer.hpp"
 #include "crab/analysis/InterFwdAnalyzer.hpp"
 #include "crab/cg/CgBgl.hpp"
@@ -448,11 +449,11 @@ namespace crab_llvm
   inline T2 forget (T2 inv, Range vs) {
     if (vs.begin () == vs.end ()) 
       return inv;
-    T1 abs_dom_inv = inv_tbl_traits<T1, T2>::unmarshall (inv);
+    T1 abs_dom_inv = crab::domain_traits::absdom_to_formula<T1, T2>::unmarshall (inv);
     if (abs_dom_inv.is_top () || abs_dom_inv.is_bottom ()) 
       return inv;
     crab::domain_traits::forget (abs_dom_inv, vs.begin(), vs.end());
-    return inv_tbl_traits<T1, T2>::marshall(abs_dom_inv);
+    return crab::domain_traits::absdom_to_formula<T1, T2>::marshall(abs_dom_inv);
   }
 
   // It is expensive because it needs to translate from inv_tbl_val_t

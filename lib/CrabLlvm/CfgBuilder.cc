@@ -7,7 +7,8 @@
  * memory abstraction based on DSA. 
  *
  * The memory translation without abstraction is not implemented
- * although it should not be hard since Crab CFG has support for it.
+ * although it should not be hard since Crab CFG language has support
+ * for it.
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -122,20 +123,11 @@ namespace crab_llvm
     }
     return true;
   }
-
   
-  // PHINode* hasOnlyOnePHINodeUse (const Instruction &I) {
-  //   const Value *v = &I;
-  //   if (v->hasOneUse ()) {
-  //     const Use &U = *(v->use_begin ());
-  //     if (PHINode* PHI  = dyn_cast<PHINode> (U.getUser ())) {
-  //       return PHI;
-  //     }
-  //   }
-  //   return nullptr;
-  // }
-
   //! Translate flag conditions 
+  //  Preconditions: this visitor is not intended to be executed for a
+  //                 block. Instead, it should be called to visit a
+  //                 single statement (BinaryOperator or CmpInst).
   struct SymExecConditionVisitor : 
       public InstVisitor<SymExecConditionVisitor>, 
       private SymEval<VariableFactory, z_lin_exp_t>
@@ -154,7 +146,6 @@ namespace crab_llvm
         m_mem (mem)
     { }
     
-
     void normalizeCmpInst(CmpInst &I)
     {
       switch (I.getPredicate()){
@@ -223,55 +214,52 @@ namespace crab_llvm
       return res;
     }
 
-    void visitBinaryOperator(BinaryOperator &I)
-    { 
-      // It searches only for this particular pattern:
-      // 
-      //   %o1 = icmp ...
-      //   %o2 = icmp ...
-      //   %f = and %o1 %o2 
-      //   br %f bb1 bb2
-      // 
-      // and it adds *only* in bb1 the constraints from %o1 and %2. 
-      // 
-      // Note that we do not add any constraint in bb2 because we
-      // would need to add a disjunction and the CFG language does not
-      // allow that. 
+    void translateBitwiseBranchTrueCond (BinaryOperator&I) {
+      assert (!m_is_negated);
+      if (!isTracked (I)) return;
 
       CmpInst* C1 = nullptr;
       CmpInst* C2 = nullptr;
 
-      switch (I.getOpcode ())
-      {
-        case BinaryOperator::And:
-          if (!m_is_negated) {
-            if (I.getOperand (0)->getType ()->isIntegerTy ())
-              C1 = dyn_cast<CmpInst> (I.getOperand (0));
-            if (I.getOperand (1)->getType ()->isIntegerTy ())
-              C2 = dyn_cast<CmpInst> (I.getOperand (1));
-          }
-          break;
-        default:
-          if (isTracked (I))
-            if (LlvmCrabIncludeHavoc) m_bb.havoc (symVar (I));
-          break;
+      if (I.getOperand (0)->getType ()->isIntegerTy () &&
+          I.getOperand (1)->getType ()->isIntegerTy ()) {
+        C1 = dyn_cast<CmpInst> (I.getOperand (0));
+        if (C1)
+          for (auto cst: gen_assertion (*C1)) 
+            m_bb.assume(cst);
+        else if (BinaryOperator* I0 = dyn_cast<BinaryOperator> (I.getOperand (0)))
+          translateBitwiseBranchTrueCond (*I0);
+        
+        C2 = dyn_cast<CmpInst> (I.getOperand (1));
+        if (C2)
+          for (auto cst: gen_assertion (*C2)) 
+            m_bb.assume(cst);
+        else if (BinaryOperator* I1 = dyn_cast<BinaryOperator> (I.getOperand (1))) 
+          translateBitwiseBranchTrueCond (*I1);
       }
+    }
 
-      if (C1 && C2) {
-        for (auto cst: gen_assertion (*C1)) {
-          if (m_is_negated)
-            m_bb.assume(cst.negate ());
-          else
-            m_bb.assume(cst);
-        }
-        for (auto cst: gen_assertion (*C2)) {
-          if (m_is_negated)
-            m_bb.assume(cst.negate ());
-          else 
-            m_bb.assume(cst);
-        }
-      }
-      
+    void visitBinaryOperator(BinaryOperator &I)
+    { 
+#if 0
+      // It searches only for this particular pattern:
+      //   %o1 = icmp ...
+      //   %o2 = icmp ...
+      //   %f = and %o1 %o2 
+      //   br %f bb1 bb2
+      // and it adds *only* in bb1 the constraints from %o1 and %2. 
+      // 
+      // ** The bitwise operation will be anyway translated. The
+      //    purpose here is to add extra constraints to the abstract
+      //    domain which otherwise would be very hard (or sometimes
+      //    impossible) to infer by itself.
+      //
+      // ** We do not add any constraint in bb2 because we would need
+      //    to add a disjunction and the CFG language does not allow
+      //    that.
+      if (!m_is_negated)
+        translateBitwiseBranchTrueCond (I);      
+#endif 
     }
 
     void visitCmpInst (CmpInst &I) 
@@ -409,10 +397,40 @@ namespace crab_llvm
     /// skip BranchInst
     void visitBranchInst (BranchInst &I) {}
     
-    /// We translate I if it feeds the terminator of a block (execBr),
-    /// a select, or some bitwise operators. Otherwise, it will
-    /// ignored causing potentially a loss of precision.
-    void visitCmpInst (CmpInst &I) {}
+    /// CmpInst's are translated only if they feed the terminator of a
+    /// block (execBr) or a select.    
+    void visitCmpInst (CmpInst &I) {
+#if 0
+      /// --- We cover the cases where it feeds a binary operator
+      /// (e.g., bitwise operator).
+
+      /// TODO: this is a overkill if there are many cases because
+      /// Crab select statements perform joins. A solution would be to
+      /// perform multiple select's together so the number of join
+      /// operations can be reduced. This would be require to change
+      /// Crab CFG language.
+
+      if (!isTracked (I)) return;
+
+      Value*V = &I;
+
+      bool isBinOp = false;
+      for (auto &U: V->uses ())
+        isBinOp |= isa<BinaryOperator> (U.getUser ());
+
+      if (isBinOp) {
+        // Perform the following translation:
+        //    %x = geq %y, 10  ---> select (%x, (geq %y, #10), 1, 0)
+
+        SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
+        auto csts = v.gen_assertion (I);
+        if (std::distance (csts.begin (), csts.end ()) == 1)
+          m_bb.select (symVar(I), *(csts.begin ()), 1, 0);
+        else if (LlvmIncludeHavoc) 
+          m_bb.havoc(symVar(I));
+      }
+#endif       
+    }
       
     void visitBinaryOperator(BinaryOperator &I)
     {
@@ -576,7 +594,7 @@ namespace crab_llvm
       optional<z_lin_exp_t> op2 = lookup (v2);
       
       if (!(op1 && op2)) return;
-      
+
       switch(i.getOpcode())
       {
         case BinaryOperator::And:
@@ -853,8 +871,8 @@ namespace crab_llvm
         }
       }
 
-      SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
       if (CmpInst* CI = dyn_cast<CmpInst> (&cond)) {
+        SymExecConditionVisitor v (m_vfac, m_bb, false, m_mem);
         auto csts = v.gen_assertion (*CI);
         if (std::distance (csts.begin (), csts.end ()) == 1) {
           // select only takes a single constraint otherwise its

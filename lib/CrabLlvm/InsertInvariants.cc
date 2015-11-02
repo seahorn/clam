@@ -22,7 +22,6 @@
 #include "dsa/Steensgaard.hh"
 #endif 
 
-#include "crab/analysis/InvTable_traits.hpp"
 #include "crab/analysis/AbsTransformer.hpp"
 #include "crab/analysis/InterDS.hpp"
 
@@ -359,9 +358,9 @@ namespace crab_llvm
         // --- We only instrument Load instructions
         if (reads_memory (B)) {
           // FIXME: choose as abstract domain m_crab->getAbsDomain()
-          typedef crab::analyzer::inv_tbl_traits <arr_interval_domain_t, z_lin_cst_sys_t> inv_tbl_t;
           arr_interval_domain_t pre = 
-              inv_tbl_t::unmarshall (m_crab->getPre (&B, true /*keep shadows*/));
+              crab::domain_traits::absdom_to_formula <arr_interval_domain_t, z_lin_cst_sys_t>
+              ::unmarshall (m_crab->getPre (&B, true /*keep shadows*/));
           change |= instrument_loads (pre, cfg.get_node (&B), F.getContext (), cg);
         }
       }
