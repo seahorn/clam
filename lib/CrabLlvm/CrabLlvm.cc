@@ -60,6 +60,16 @@ LlvmCrabDomain("crab-dom",
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
 
+llvm::cl::opt<unsigned int>
+LlvmCrabWideningThreshold("crab-widening-threshold", 
+   llvm::cl::desc("Max number of fixpoint iterations until widening is triggered"),
+   llvm::cl::init (1));
+
+llvm::cl::opt<unsigned int>
+LlvmCrabNarrowingIters("crab-narrowing-iters", 
+   llvm::cl::desc("Max number of narrowing iterations"),
+   llvm::cl::init (UINT_MAX));
+
 llvm::cl::opt<unsigned>
 LlvmCrabNumThreshold("crab-dom-num-max-live", 
    llvm::cl::desc("Max number of live vars per block before switching domains"),
@@ -235,11 +245,16 @@ namespace crab_llvm
                     runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
                     runOnCg <dbm_domain_t, term_domain_t> (cg, live_map, M)) ; 
           break;
+        case BOXES:
+          change = (LlvmCrabTrackLev == ARR ? 
+                    runOnCg <arr_boxes_domain_t, arr_boxes_domain_t> (cg, live_map, M) : 
+                    runOnCg <boxes_domain_t, boxes_domain_t> (cg, live_map, M)) ; 
+          break;
         case INTERVALS:  
         default: 
           if (m_absdom != INTERVALS)
             std::cout << "Warning: abstract domain not found."
-                      << "Running intervals ...\n"; 
+                      << "Running intervals inter-procedurally ...\n"; 
           
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_dbm_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
@@ -355,7 +370,7 @@ namespace crab_llvm
       default: 
         if (m_absdom != INTERVALS)
           std::cout << "Warning: abstract domain not found."
-                    << "Running intervals ...\n"; 
+                    << "Running intervals intra-procedurally ...\n"; 
         
         change = (LlvmCrabTrackLev == ARR ? 
           runOnCfg <arr_interval_domain_t> (cfg, *live, F) : 
@@ -376,7 +391,8 @@ namespace crab_llvm
     // -- run inter-procedural analysis on the whole call graph
     typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
                               BUAbsDomain, TDAbsDomain, inv_tbl_val_t> analyzer_t;
-    analyzer_t analyzer(cg, m_vfac, (LlvmCrabLive ? &live_map : nullptr));
+    analyzer_t analyzer(cg, m_vfac, (LlvmCrabLive ? &live_map : nullptr),
+                        LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
     analyzer.Run (TDAbsDomain::top ());
 
     // -- store invariants     
@@ -427,7 +443,8 @@ namespace crab_llvm
 #endif 
 
     // -- run intra-procedural analysis
-    analyzer_t analyzer (cfg, m_vfac, &live);
+    analyzer_t analyzer (cfg, m_vfac, &live, 
+                         LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
     analyzer.Run (AbsDomain::top());
 
 #ifdef CRABLLVM_DEBUG
@@ -473,6 +490,11 @@ namespace crab_llvm
           return forget<arr_dbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
         else
           return forget<dbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
+      case BOXES: 
+        if (LlvmCrabTrackLev == ARR)
+          return forget<arr_boxes_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
+        else
+          return forget<boxes_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
       case TERMS:
         if (LlvmCrabTrackLev == ARR)
           return forget<arr_term_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);

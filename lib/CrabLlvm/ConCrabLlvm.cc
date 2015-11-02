@@ -32,6 +32,8 @@ extern llvm::cl::opt<bool> LlvmCrabPrintAns;
 extern llvm::cl::opt<crab_llvm::CrabDomain> LlvmCrabDomain;
 extern llvm::cl::opt<bool> LlvmCrabLive;
 extern llvm::cl::opt<enum crab::cfg::TrackedPrecision> LlvmCrabTrackLev;
+extern llvm::cl::opt<unsigned int> LlvmCrabWideningThreshold;
+extern llvm::cl::opt<unsigned int> LlvmCrabNarrowingIters;
 
 using namespace llvm;
 
