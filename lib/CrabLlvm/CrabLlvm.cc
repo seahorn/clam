@@ -141,6 +141,14 @@ namespace crab_llvm
       LlvmCrabLive = true;
     }
 
+    if (m_absdom == BOXES) {
+      // default values for BOXES
+      if (LlvmCrabWideningThreshold == 1)
+        LlvmCrabWideningThreshold = 10;
+      if (LlvmCrabNarrowingIters == UINT_MAX)
+        LlvmCrabWideningThreshold = 2;
+    }
+
 #ifdef CRABLLVM_DEBUG
     unsigned num_analyzed_funcs = 0;
     for (auto &F : M) {
