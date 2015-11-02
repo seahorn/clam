@@ -277,6 +277,9 @@ namespace crab_llvm
           analyzeConcSys <dbm_domain_t> (sys, vfac, M, m_mem, dl); 
         break;
       case TERMS: /*TODO*/
+      case BOXES: /*TODO*/
+        std::cout << "Warning: abstract domain not found."
+                  << "Running intervals ...\n"; 
       case INTERVALS:  
       default:
         if (LlvmCrabTrackLev == ARR)

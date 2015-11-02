@@ -13,6 +13,7 @@ else()
   set (TopLevel FALSE)
 endif()
 
+option (USE_LDD "Enable ldd" OFF)
 
 # put static libraries first
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -61,6 +62,45 @@ else ()
   endif ()
 endif ()
 
+if (TopLevel)
+  # if toplevel, offer to build ldd
+  if (USE_LDD)
+     if (GIT_FOUND)
+        set (LDD_TAG "origin/master" CACHE STRING "ldd tag to use")
+        set (LDD_REPO "http://git.code.sf.net/p/lindd/code" CACHE STRING "ldd repository")
+        ExternalProject_Add(ldd
+	GIT_REPOSITORY ${LDD_REPO}
+	GIT_TAG ${LDD_TAG}
+	PREFIX ${CMAKE_BINARY_DIR}/ldd
+	INSTALL_DIR ${CMAKE_BINARY_DIR}/run/ldd
+	CMAKE_ARGS
+	-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+	-DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
+	-DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+	TEST_AFTER_INSTALL 1
+	TEST_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
+	LOG_DOWNLOAD 1
+	LOG_CONFIGURE 1
+	LOG_BUILD 1
+	LOG_INSTALL 1)
+     else ()
+       message (STATUS "Could not find git. Not downloading ldd")
+     endif()
+
+     find_package(Ldd)
+     if (LDD_FOUND)
+       include_directories (${LDD_INCLUDE_DIR})
+       set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LDD_CXXFLAGS}")
+       set (LDD_LIBS ${LDD_LIBRARY})
+     else()
+       ExternalProject_Get_Property (ldd INSTALL_DIR)
+       set (LDD_ROOT ${INSTALL_DIR} CACHE FILEPATH "Forced location of ldd" FORCE)
+       message (WARNING "No ldd found. Run \n\tcmake --build . --target ldd && cmake ${CMAKE_SOURCE_DIR}")
+       return()
+     endif()
+  endif ()
+endif ()
+
 if (GIT_FOUND)
   set (CRAB_CORE_TAG "origin/boxes" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
@@ -74,7 +114,10 @@ if (GIT_FOUND)
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
     -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
-    -DUSE_LDD=ON
+    -DCMAKE_USE_LDD=${USE_LDD}
+    -DCMAKE_LDD_INCLUDE_DIR=${LDD_INCLUDE_DIR}
+    -DCMAKE_LDD_LIBRARY=${LDD_LIBRARY}
+    -DCMAKE_CUDD_FOUND=${CUDD_FOUND}
     TEST_AFTER_INSTALL 1
     TEST_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
     LOG_DOWNLOAD 1
@@ -100,6 +143,8 @@ else()
 endif()  
 
 include_directories (${CRAB_INCLUDE_DIR})
+configure_file(${CRAB_INCLUDE_DIR}/crab/config.h.cmake
+               ${CMAKE_BINARY_DIR}/include/crab/config.h )
 set_target_properties(crab PROPERTIES EXCLUDE_FROM_ALL ON)
 
 if (TopLevel)

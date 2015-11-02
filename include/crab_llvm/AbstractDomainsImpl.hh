@@ -31,7 +31,6 @@ namespace domain_impl
   typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
   typedef anti_unif<idom_info>::anti_unif_t term_domain_t;  
   typedef boxes_domain< z_number, varname_t > boxes_domain_t;
-
   typedef array_smashing<interval_domain_t,z_number,varname_t> arr_interval_domain_t;
   typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
   typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;
