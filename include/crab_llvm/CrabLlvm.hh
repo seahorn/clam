@@ -10,6 +10,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
 
+#include <crab_llvm/AbstractDomainsImpl.hh>
 #include <crab_llvm/CfgBuilder.hh>
 #include <crab_llvm/MemAnalysis.hh>
 
@@ -36,13 +37,9 @@ namespace crab_llvm
   /*! Compute invariants using Crab for the whole module. */
   class CrabLlvm : public llvm::ModulePass
   {
-   public:
-    //! all invariants will be translated into linear constraints
-    typedef z_lin_cst_sys_t inv_tbl_val_t;
-
    private:
 
-    typedef llvm::DenseMap<const llvm::BasicBlock *,inv_tbl_val_t> invariants_map_t;
+    typedef llvm::DenseMap<const llvm::BasicBlock *, GenericAbsDomWrapperPtr> invariants_map_t;
     typedef crab::analyzer::Liveness<cfg_t> liveness_t;
     // if inter-procedural analysis
     typedef boost::unordered_map <cfg_t, const liveness_t*> liveness_map_t;
@@ -79,16 +76,16 @@ namespace crab_llvm
     virtual bool runOnFunction (llvm::Function &F);
 
     // return invariants that hold at the entry of BB
-    inv_tbl_val_t getPre (const llvm::BasicBlock *BB, 
-                          bool KeepShadows=false) const;
+    GenericAbsDomWrapperPtr getPre (const llvm::BasicBlock *BB, 
+                                    bool KeepShadows=false) const;
 
-    inv_tbl_val_t operator[] (const llvm::BasicBlock *BB) const {
+    GenericAbsDomWrapperPtr operator[] (const llvm::BasicBlock *BB) const {
       return getPre (BB); 
     }
     
     // return invariants that hold at the exit of BB
-    inv_tbl_val_t getPost (const llvm::BasicBlock *BB, 
-                           bool KeepShadows=false) const;
+    GenericAbsDomWrapperPtr getPost (const llvm::BasicBlock *BB, 
+                                     bool KeepShadows=false) const;
 
     TrackedPrecision getTrackLevel () const { 
       return m_mem.getTrackLevel (); 

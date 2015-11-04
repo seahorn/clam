@@ -37,7 +37,7 @@ extern llvm::cl::opt<unsigned int> LlvmCrabNarrowingIters;
 
 using namespace llvm;
 
-namespace
+namespace crab_llvm
 {
   inline llvm::raw_ostream& operator<< 
   (llvm::raw_ostream& o, 
@@ -58,7 +58,6 @@ namespace crab { namespace conc_impl {
 namespace crab_llvm
 {
   using namespace crab::conc;
-  using namespace domain_impl;
 
   typedef ConcSys< llvm::Function*, cfg_t> conc_sys_t;
   typedef SymEval<VariableFactory, crab::cfg_impl::z_lin_exp_t> sym_eval_t;
@@ -151,7 +150,7 @@ namespace crab_llvm
                        Module& M, MemAnalysis& mem, const DataLayout* dl)
   {
     typedef ConcAnalyzer <llvm::Function*, cfg_t, 
-                          AbsDomain, VariableFactory, AbsDomain> conc_analyzer_t;
+                          AbsDomain, VariableFactory> conc_analyzer_t;
 
 
     /// --- Initialize shared global state

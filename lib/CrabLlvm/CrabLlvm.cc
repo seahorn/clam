@@ -63,17 +63,20 @@ LlvmCrabDomain("crab-dom",
 llvm::cl::opt<unsigned int>
 LlvmCrabWideningThreshold("crab-widening-threshold", 
    llvm::cl::desc("Max number of fixpoint iterations until widening is triggered"),
-   llvm::cl::init (1));
+   llvm::cl::init (1),
+   cl::Hidden);
 
 llvm::cl::opt<unsigned int>
 LlvmCrabNarrowingIters("crab-narrowing-iters", 
-   llvm::cl::desc("Max number of narrowing iterations"),
-   llvm::cl::init (UINT_MAX));
+                       llvm::cl::desc("Max number of narrowing iterations"),
+                       llvm::cl::init (999999),
+                       cl::Hidden);
 
 llvm::cl::opt<unsigned>
 LlvmCrabNumThreshold("crab-dom-num-max-live", 
    llvm::cl::desc("Max number of live vars per block before switching domains"),
-   llvm::cl::init (100));
+   llvm::cl::init (100),
+   cl::Hidden);
 
 llvm::cl::opt<bool>
 LlvmCrabLive("crab-live", 
@@ -120,7 +123,6 @@ namespace crab_llvm
 
   using namespace crab::analyzer;
   using namespace crab::cg;
-  using namespace domain_impl;
 
   char crab_llvm::CrabLlvm::ID = 0;
 
@@ -143,10 +145,16 @@ namespace crab_llvm
 
     if (m_absdom == BOXES) {
       // default values for BOXES
-      if (LlvmCrabWideningThreshold == 1)
+      if (LlvmCrabWideningThreshold == 1) {
         LlvmCrabWideningThreshold = 10;
-      if (LlvmCrabNarrowingIters == UINT_MAX)
-        LlvmCrabWideningThreshold = 2;
+        errs () << "BOXES: set widening threshold to " 
+                << LlvmCrabWideningThreshold << "\n";
+      }
+      if (LlvmCrabNarrowingIters == 999999) {
+        LlvmCrabNarrowingIters = 2;
+        errs () << "BOXES: set narrowing iterations to " 
+                << LlvmCrabNarrowingIters << "\n";
+      }
     }
 
 #ifdef CRABLLVM_DEBUG
@@ -398,7 +406,7 @@ namespace crab_llvm
   {
     // -- run inter-procedural analysis on the whole call graph
     typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
-                              BUAbsDomain, TDAbsDomain, inv_tbl_val_t> analyzer_t;
+                              BUAbsDomain, TDAbsDomain> analyzer_t;
     analyzer_t analyzer(cg, m_vfac, (LlvmCrabLive ? &live_map : nullptr),
                         LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
     analyzer.Run (TDAbsDomain::top ());
@@ -411,9 +419,11 @@ namespace crab_llvm
         if (const llvm::Function *F = dyn_cast<llvm::Function> (*v)) {
           for (auto &B : *F) {
             // --- invariants that hold at the entry of the blocks
-            m_pre_map.insert (make_pair (&B, analyzer.get_pre (cfg, &B)));
+            auto pre = analyzer.get_pre (cfg, &B);
+            m_pre_map.insert (make_pair (&B, mkGenericAbsDomWrapper (pre)));
             // --- invariants that hold at the exit of the blocks
-            m_post_map.insert (make_pair (&B, analyzer.get_post (cfg, &B)));
+            auto post = analyzer.get_post (cfg, &B);
+            m_post_map.insert (make_pair (&B, mkGenericAbsDomWrapper (post)));
           }
 
           // -- print invariants and summaries
@@ -436,10 +446,10 @@ namespace crab_llvm
                            const liveness_t& live, 
                            const llvm::Function &F) {
 
-    typedef typename NumFwdAnalyzer <cfg_t, AbsDomain, 
-                                     VariableFactory, 
-                                     inv_tbl_val_t>::type analyzer_t;
-
+    typedef typename NumFwdAnalyzer <cfg_t, 
+                                     AbsDomain, 
+                                     VariableFactory>::type analyzer_t;
+                                     
 #ifdef CRABLLVM_DEBUG
     auto fdecl = cfg.get_func_decl ();            
     assert (fdecl);
@@ -462,84 +472,39 @@ namespace crab_llvm
     // -- store invariants 
     for (auto const &B : F) {
       // --- invariants that hold at the entry of the blocks
-      m_pre_map.insert (make_pair (&B, analyzer.get_pre (&B)));
+      auto pre = analyzer.get_pre (&B);
+      m_pre_map.insert (make_pair (&B, mkGenericAbsDomWrapper (pre)));
       // --- invariants that hold at the exit of the blocks
-      m_post_map.insert (make_pair (&B, analyzer.get_post (&B)));
+      auto post = analyzer.get_post (&B);
+      m_post_map.insert (make_pair (&B, mkGenericAbsDomWrapper (post)));
     }
     
     return false;
   }
 
-  template<typename T1, typename T2, typename Range>
-  inline T2 forget (T2 inv, Range vs) {
-    if (vs.begin () == vs.end ()) 
-      return inv;
-    T1 abs_dom_inv = crab::domain_traits::absdom_to_formula<T1, T2>::unmarshall (inv);
-    if (abs_dom_inv.is_top () || abs_dom_inv.is_bottom ()) 
-      return inv;
-    crab::domain_traits::forget (abs_dom_inv, vs.begin(), vs.end());
-    return crab::domain_traits::absdom_to_formula<T1, T2>::marshall(abs_dom_inv);
-  }
-
-  // It is expensive because it needs to translate from inv_tbl_val_t
-  // to an abstract domain, performs abstract forget operation and
-  // translates back to inv_tbl_val_t.
-  template<typename Range>
-  CrabLlvm::inv_tbl_val_t forget (CrabLlvm::inv_tbl_val_t inv, 
-                                  CrabDomain absdom, Range vs) {
-    switch (absdom) {
-      case INTERVALS_CONGRUENCES: 
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_ric_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<ric_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-      case ZONES: 
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_dbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<dbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-      case BOXES: 
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_boxes_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<boxes_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-      case TERMS:
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_term_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<term_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-      case INTERVALS:  
-      default:  
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_interval_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<interval_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-    }
-  }
-
   // return invariants that hold at the entry of BB
-  CrabLlvm::inv_tbl_val_t CrabLlvm::getPre (const llvm::BasicBlock *BB, 
-                                            bool KeepShadows) const {
+  GenericAbsDomWrapperPtr 
+  CrabLlvm::getPre (const llvm::BasicBlock *BB, bool KeepShadows) const {
     const_iterator it = m_pre_map.find (BB);
     assert (it != m_pre_map.end ());
     if (KeepShadows)
       return it->second;
     else {
       auto shadows = m_vfac.get_shadow_vars ();
-      return forget (it->second, m_absdom, shadows);
+      return forget (it->second, shadows);
     }
   }   
 
   // return invariants that hold at the exit of BB
-  CrabLlvm::inv_tbl_val_t CrabLlvm::getPost (const llvm::BasicBlock *BB, 
-                                             bool KeepShadows) const {
+  GenericAbsDomWrapperPtr 
+  CrabLlvm::getPost (const llvm::BasicBlock *BB, bool KeepShadows) const {
     const_iterator it = m_post_map.find (BB);
     assert (it != m_post_map.end ());
     if (KeepShadows)
       return it->second;
     else {
       auto shadows = m_vfac.get_shadow_vars ();
-      return forget (it->second, m_absdom, shadows);
+      return forget (it->second, shadows);
     }
   }
 

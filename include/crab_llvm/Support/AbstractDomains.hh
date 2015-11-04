@@ -77,12 +77,9 @@ namespace llvm
     return o;
   }
 
-
   template <typename Number, typename VariableName>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab::domains::array_smashing<
-                                        ikos::interval_domain<Number,VariableName>,
-                                        Number, VariableName> & inv)
+                                        crab::domains::boxes_domain<Number,VariableName>& inv)
   {
     ostringstream s;
     s << inv;
@@ -90,11 +87,10 @@ namespace llvm
     return o;
   }
 
-  template <typename Number, typename VariableName>
+  template <typename Base, typename Number, typename VariableName>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab::domains::array_smashing<
-                                        ikos::interval_congruence_domain<Number,VariableName>,
-                                        Number, VariableName> & inv)
+                                        crab::domains::array_smashing
+                                        <Base,Number, VariableName> & inv)
   {
     ostringstream s;
     s << inv;
@@ -102,17 +98,6 @@ namespace llvm
     return o;
   }
 
-  template <typename Number, typename VariableName>
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab::domains::array_smashing<
-                                        crab::domains::DBM<Number,VariableName>,
-                                        Number, VariableName> & inv)
-  {
-    ostringstream s;
-    s << inv;
-    o << s.str ();
-    return o;
-  }
 
 } // end namespace
 
