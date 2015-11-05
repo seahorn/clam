@@ -143,19 +143,19 @@ namespace crab_llvm
       LlvmCrabLive = true;
     }
 
-    if (m_absdom == BOXES) {
-      // default values for BOXES
-      if (LlvmCrabWideningThreshold == 1) {
-        LlvmCrabWideningThreshold = 10;
-        errs () << "BOXES: set widening threshold to " 
-                << LlvmCrabWideningThreshold << "\n";
-      }
-      if (LlvmCrabNarrowingIters == 999999) {
-        LlvmCrabNarrowingIters = 2;
-        errs () << "BOXES: set narrowing iterations to " 
-                << LlvmCrabNarrowingIters << "\n";
-      }
-    }
+    // if (m_absdom == BOXES) {
+    //   // default values for BOXES
+    //   if (LlvmCrabWideningThreshold == 1) {
+    //     LlvmCrabWideningThreshold = 10;
+    //     errs () << "BOXES: set widening threshold to " 
+    //             << LlvmCrabWideningThreshold << "\n";
+    //   }
+    //   if (LlvmCrabNarrowingIters == 999999) {
+    //     LlvmCrabNarrowingIters = 2;
+    //     errs () << "BOXES: set narrowing iterations to " 
+    //             << LlvmCrabNarrowingIters << "\n";
+    //   }
+    // }
 
 #ifdef CRABLLVM_DEBUG
     unsigned num_analyzed_funcs = 0;
