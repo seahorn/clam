@@ -22,6 +22,7 @@ namespace crab_llvm
    enum CrabDomain { INTERVALS, 
                      INTERVALS_CONGRUENCES, 
                      ZONES, 
+                     SZONES,
                      TERMS,
                      NUM};
 }

@@ -51,6 +51,8 @@ LlvmCrabDomain("crab-dom",
                     "Reduced product of intervals with congruences"),
         clEnumValN (ZONES , "zones",
                     "Difference-Bounds Matrix (or Zones) domain"),
+        clEnumValN (SZONES, "szones",
+                    "Split difference-Bounds Matrix domain"),
         clEnumValN (TERMS, "term",
                     "Intervals with uninterpreted functions."),
         clEnumValN (NUM, "num",
@@ -228,6 +230,11 @@ namespace crab_llvm
                     runOnCg <arr_dbm_domain_t, arr_dbm_domain_t> (cg, live_map, M) :  
                     runOnCg <dbm_domain_t, dbm_domain_t> (cg, live_map, M)) ; 
           break;
+        case SZONES: 
+          change = (LlvmCrabTrackLev == ARR ? 
+                    runOnCg <arr_sdbm_domain_t, arr_sdbm_domain_t> (cg, live_map, M) :  
+                    runOnCg <sdbm_domain_t, sdbm_domain_t> (cg, live_map, M)) ; 
+          break;
         case TERMS:
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
@@ -338,6 +345,11 @@ namespace crab_llvm
         change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_dbm_domain_t> (cfg, *live, F) :  
                   runOnCfg <dbm_domain_t> (cfg, *live, F)) ; 
+        break;
+      case SZONES: 
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_sdbm_domain_t> (cfg, *live, F) :  
+                  runOnCfg <sdbm_domain_t> (cfg, *live, F)) ; 
         break;
       case TERMS:
         change = (LlvmCrabTrackLev == ARR ? 
@@ -466,6 +478,11 @@ namespace crab_llvm
           return forget<arr_dbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
         else
           return forget<dbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
+      case SZONES: 
+        if (LlvmCrabTrackLev == ARR)
+          return forget<arr_sdbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
+        else
+          return forget<sdbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
       case TERMS:
         if (LlvmCrabTrackLev == ARR)
           return forget<arr_term_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
