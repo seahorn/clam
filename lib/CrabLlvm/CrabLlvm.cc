@@ -31,7 +31,7 @@ using namespace llvm;
 using namespace crab_llvm;
 
 // for debugging
-#define CRABLLVM_DEBUG
+// #define CRABLLVM_DEBUG
 
 llvm::cl::opt<bool>
 LlvmCrabPrintAns ("crab-print-invariants", 
@@ -42,6 +42,18 @@ llvm::cl::opt<bool>
 LlvmCrabPrintSumm ("crab-print-summaries", 
                    llvm::cl::desc ("Print Crab function summaries"),
                    llvm::cl::init (false));
+
+llvm::cl::opt<unsigned int>
+LlvmCrabWideningThreshold("crab-widening-threshold", 
+   llvm::cl::desc("Max number of fixpoint iterations until widening is triggered"),
+   llvm::cl::init (1),
+   cl::Hidden);
+
+llvm::cl::opt<unsigned int>
+LlvmCrabNarrowingIters("crab-narrowing-iters", 
+                       llvm::cl::desc("Max number of narrowing iterations"),
+                       llvm::cl::init (999999),
+                       cl::Hidden);
 
 llvm::cl::opt<CrabDomain>
 LlvmCrabDomain("crab-dom",
@@ -62,24 +74,14 @@ LlvmCrabDomain("crab-dom",
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
 
-llvm::cl::opt<unsigned int>
-LlvmCrabWideningThreshold("crab-widening-threshold", 
-   llvm::cl::desc("Max number of fixpoint iterations until widening is triggered"),
-   llvm::cl::init (1),
-   cl::Hidden);
-
-llvm::cl::opt<unsigned int>
-LlvmCrabNarrowingIters("crab-narrowing-iters", 
-                       llvm::cl::desc("Max number of narrowing iterations"),
-                       llvm::cl::init (999999),
-                       cl::Hidden);
-
+// If domain is num
 llvm::cl::opt<unsigned>
 LlvmCrabNumThreshold("crab-dom-num-max-live", 
    llvm::cl::desc("Max number of live vars per block before switching domains"),
    llvm::cl::init (100),
    cl::Hidden);
 
+// If domain is boxes
 llvm::cl::opt<string>
 LlvmCrabBoxesTrackRegex("crab-boxes-track-names", 
                         llvm::cl::desc("Variables names (given as a regex) tracked by boxes"),
@@ -211,15 +213,12 @@ namespace crab_llvm {
         //call
         else if (const CallInst *ci = dyn_cast<CallInst>(instr)) 
         {
-          // XXX AG: We are tracking nondet functions?  XXX AG:
-          // XXX Think if this is necessary. There might be
-          // XXX conditionals based on them.
-        Function *fp = ci->getCalledFunction();
-        // -- track non-void functions, and functions for which there 
-        // -- is no llvm::Function object
-        if(!fp || 
-           (fp->getReturnType() != Type::getVoidTy(fp->getContext ())))
-          vars.insert (s.symVar (*instr));
+          Function *fp = ci->getCalledFunction();
+          // -- track non-void functions, and functions for which there 
+          // -- is no llvm::Function object
+          if(!fp || 
+             (fp->getReturnType() != Type::getVoidTy(fp->getContext ())))
+            vars.insert (s.symVar (*instr));
         }
         //cast
         else if(isa<CastInst>(*instr)) vars.insert (s.symVar (*instr));
@@ -234,28 +233,21 @@ namespace crab_llvm {
       }
     }
 
-    // This is bit ackward but this method assumes that inv has some
-    // global state that can be shared by all instances
+    // This method assumes that inv has some global state that can be
+    // shared by all instances
     template<typename AbsDomain>
     void setGlobalParams (const llvm::Function &F, 
                           VariableFactory& vfac, MemAnalysis& mem, 
                           AbsDomain& inv) {}
 
-    // Again this method assumes that inv has some global state that
-    // can be shared by all instances
+    // This method assumes that inv has some global state that can be
+    // shared by all instances
     template<typename AbsDomain>
     void resetGlobalParams (AbsDomain& inv) {}
 
     bool matchRegex (string s, string re_s){
       try {
         std::regex re (re_s);
-        //std::smatch match;
-        //if (std::regex_search(s, match, re) && match.size() >= 1) {
-        //   return true;
-        //} 
-        //else {
-        //   return false;
-        //} 
         return std::regex_match (s, re);
      } 
       catch (std::regex_error& e) {
@@ -276,7 +268,7 @@ namespace crab_llvm {
           continue;
         inv.addTrackVar (v);
 #ifdef CRABLLVM_DEBUG
-        errs () << "-- Boxes will track " << v.str () << "\n";
+        errs () << "\n-- Boxes will track " << v.str ();
 #endif 
       }
     }

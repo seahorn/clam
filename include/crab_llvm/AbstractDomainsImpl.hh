@@ -28,9 +28,12 @@ namespace crab_llvm {
   typedef interval_domain< z_number, str_varname_t > str_interval_dom_t;
   typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
   typedef anti_unif<idom_info>::anti_unif_t term_domain_t;  
-  // typedef boxes_domain< z_number, varname_t > boxes_domain_t;
-  // use the reduced of intervals with boxes rather than plain boxes
+#if 1
+  // Use the reduced of intervals with boxes rather than plain boxes
   typedef rib_domain< z_number, varname_t > boxes_domain_t;
+#else
+  typedef boxes_domain< z_number, varname_t > boxes_domain_t;
+#endif 
   typedef array_smashing<interval_domain_t,z_number,varname_t> arr_interval_domain_t;
   typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
   typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;

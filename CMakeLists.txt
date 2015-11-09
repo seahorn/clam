@@ -13,7 +13,7 @@ else()
   set (TopLevel FALSE)
 endif()
 
-option (USE_LDD "Enable ldd" ON)
+option (USE_LDD "Enable ldd" OFF)
 
 # put static libraries first
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -110,7 +110,7 @@ endif ()
 include_directories (${LDD_INCLUDE_DIR})
 
 if (GIT_FOUND)
-  set (CRAB_CORE_TAG "origin/boxes" CACHE STRING "crab tag to use")
+  set (CRAB_CORE_TAG "origin/master" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
        CACHE STRING "crab repository")
   ExternalProject_Add(crab
