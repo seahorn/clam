@@ -47,8 +47,8 @@ namespace crab_llvm {
    //////
 
    struct GenericAbsDomWrapper {
-     typedef enum { intv, dbm, term, ric, boxes, 
-                    arr_intv, arr_dbm, arr_term, arr_ric, arr_boxes } id_t;
+     typedef enum { intv, dbm, sdbm, term, ric, boxes, 
+                    arr_intv, arr_dbm, arr_sdbm, arr_term, arr_ric, arr_boxes } id_t;
 
      GenericAbsDomWrapper () { }
 
@@ -140,6 +140,33 @@ namespace crab_llvm {
      }
    };
 
+   class SDbmDomainWrapper: public GenericAbsDomWrapper {
+
+     id_t m_id;       
+     sdbm_domain_t m_abs;
+     
+    public:
+
+     id_t getId () const { return m_id;}
+     
+     SDbmDomainWrapper (sdbm_domain_t abs): 
+         GenericAbsDomWrapper (), m_id (sdbm), m_abs (abs) { }
+     
+     sdbm_domain_t get () const {
+       return m_abs;
+     }
+     
+     z_lin_cst_sys_t to_linear_constraints () const {
+       sdbm_domain_t res (m_abs);
+       return res.to_linear_constraint_system ();
+     }
+     
+     void write (std::ostream& o) const { 
+       sdbm_domain_t res (m_abs);
+       res.write (o);
+     }
+   };
+
    class TermDomainWrapper: public GenericAbsDomWrapper {
 
      id_t m_id;     
@@ -206,6 +233,9 @@ namespace crab_llvm {
    template<> 
    inline GenericAbsDomWrapper::id_t getArrSmashId (arr_dbm_domain_t /*inv*/) 
    { return GenericAbsDomWrapper::arr_dbm;}
+   template<> 
+   inline GenericAbsDomWrapper::id_t getArrSmashId (arr_sdbm_domain_t /*inv*/) 
+   { return GenericAbsDomWrapper::arr_sdbm;}
    template<> 
    inline GenericAbsDomWrapper::id_t getArrSmashId (arr_term_domain_t /*inv*/) 
    { return GenericAbsDomWrapper::arr_term;}
@@ -288,6 +318,12 @@ namespace crab_llvm {
    }
 
    template <> inline GenericAbsDomWrapperPtr
+   mkGenericAbsDomWrapper (sdbm_domain_t abs_dom) {
+     GenericAbsDomWrapperPtr res (new SDbmDomainWrapper (abs_dom));        
+     return res;
+   }
+
+   template <> inline GenericAbsDomWrapperPtr
    mkGenericAbsDomWrapper (term_domain_t abs_dom) {
      GenericAbsDomWrapperPtr res (new TermDomainWrapper (abs_dom));        
      return res;
@@ -332,6 +368,15 @@ namespace crab_llvm {
 
      assert (wrapper->getId () == dbm);
      auto wrappee = boost::static_pointer_cast<DbmDomainWrapper> (wrapper);
+     abs_dom = wrappee->get ();
+   }
+
+   template <> 
+   inline void getAbsDomWrappee (GenericAbsDomWrapperPtr wrapper, 
+                                 sdbm_domain_t &abs_dom) {
+
+     assert (wrapper->getId () == sdbm);
+     auto wrappee = boost::static_pointer_cast<SDbmDomainWrapper> (wrapper);
      abs_dom = wrappee->get ();
    }
 
@@ -385,6 +430,10 @@ namespace crab_llvm {
          dbm_domain_t inv;
          MACRO_FORGET(wrapper, inv, vs);
        }
+       case GenericAbsDomWrapper::sdbm: {
+         sdbm_domain_t inv;
+         MACRO_FORGET(wrapper, inv, vs);
+       }
        case GenericAbsDomWrapper::term: {
          term_domain_t inv;
          MACRO_FORGET(wrapper, inv, vs);
@@ -403,6 +452,10 @@ namespace crab_llvm {
        }
        case GenericAbsDomWrapper::arr_dbm: {
          arr_dbm_domain_t inv;
+         MACRO_FORGET(wrapper, inv, vs);
+       }
+       case GenericAbsDomWrapper::arr_sdbm: {
+         arr_sdbm_domain_t inv;
          MACRO_FORGET(wrapper, inv, vs);
        }
        case GenericAbsDomWrapper::arr_term: {

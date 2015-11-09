@@ -666,56 +666,7 @@ namespace crab_llvm {
     return false;
   }
 
-<<<<<<< HEAD
-  template<typename T1, typename T2, typename Range>
-  inline T2 forget (T2 inv, Range vs) {
-    if (vs.begin () == vs.end ()) 
-      return inv;
-    T1 abs_dom_inv = crab::domain_traits::absdom_to_formula<T1, T2>::unmarshall (inv);
-    if (abs_dom_inv.is_top () || abs_dom_inv.is_bottom ()) 
-      return inv;
-    crab::domain_traits::forget (abs_dom_inv, vs.begin(), vs.end());
-    return crab::domain_traits::absdom_to_formula<T1, T2>::marshall(abs_dom_inv);
-  }
 
-  // It is expensive because it needs to translate from inv_tbl_val_t
-  // to an abstract domain, performs abstract forget operation and
-  // translates back to inv_tbl_val_t.
-  template<typename Range>
-  CrabLlvm::inv_tbl_val_t forget (CrabLlvm::inv_tbl_val_t inv, 
-                                  CrabDomain absdom, Range vs) {
-    switch (absdom) {
-      case INTERVALS_CONGRUENCES: 
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_ric_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<ric_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-      case ZONES: 
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_dbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<dbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-      case SZONES: 
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_sdbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<sdbm_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-      case TERMS:
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_term_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<term_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-      case INTERVALS:  
-      default:  
-        if (LlvmCrabTrackLev == ARR)
-          return forget<arr_interval_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-        else
-          return forget<interval_domain_t, CrabLlvm::inv_tbl_val_t, Range> (inv, vs);
-    }
-  }
-
-=======
->>>>>>> origin/master
   // return invariants that hold at the entry of BB
   GenericAbsDomWrapperPtr 
   CrabLlvm::getPre (const llvm::BasicBlock *BB, bool KeepShadows) const {

@@ -375,6 +375,11 @@ namespace crab_llvm
               getAbsDomWrappee (pre, inv);        
               change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
             }
+            case GenericAbsDomWrapper::sdbm: {
+              sdbm_domain_t inv;
+              getAbsDomWrappee (pre, inv);        
+              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+            }
             case GenericAbsDomWrapper::term: {
               term_domain_t inv;
               getAbsDomWrappee (pre, inv);        
@@ -397,6 +402,11 @@ namespace crab_llvm
             }
             case GenericAbsDomWrapper::arr_dbm: {
               arr_dbm_domain_t inv;
+              getAbsDomWrappee (pre, inv);        
+              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+            }
+            case GenericAbsDomWrapper::arr_sdbm: {
+              arr_sdbm_domain_t inv;
               getAbsDomWrappee (pre, inv);        
               change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
             }
