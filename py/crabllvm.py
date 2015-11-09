@@ -97,9 +97,15 @@ def parseArgs (argv):
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
                     help='Choose abstract domain',
-                    choices=['int','ric','zones','szones','term','num'],
+                    choices=['int','ric','zones','szones','term','num','boxes'],
                     dest='crab_dom', default='int')
     ############ 
+    p.add_argument ('--crab-widening-threshold', 
+                    type=int, dest='widening_threshold', 
+                    help='Max number of iterations until performing widening', default=1)
+    p.add_argument ('--crab-narrowing-iterations', 
+                    type=int, dest='narrowing_iterations', 
+                    help='Max number of narrowing iterations', default=999999)
     p.add_argument ('--crab-dom-num-threshold', 
                     type=int, dest='num_threshold', 
                     help='Max number of live vars per block before switching domains', default=100)
@@ -290,7 +296,9 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     if (args.crab_dom == 'num'):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
-
+    if (args.crab_dom == 'boxes'):
+        crabllvm_cmd.append ('--crab-widening-threshold={0}'.format (args.widening_threshold))
+        crabllvm_cmd.append ('--crab-narrowing-iters={0}'.format (args.narrowing_iterations))
     crabllvm_cmd.append ('--crab-track-lvl={0}'.format (args.track))
     if args.crab_track_only_globals:
         crabllvm_cmd.append ('--crab-track-only-globals')

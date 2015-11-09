@@ -48,6 +48,10 @@ Then, the compilation steps are:
 1. ```mkdir build ; cd build```
 2. ```cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=my_install_dir ../```
 
+If you want to use the boxes domain then type:
+
+2. ```cmake -DUSE_LDD=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=my_install_dir ../```
+
 #Usage#
 
 Crab-llvm provides a python script called `crabllvm.py` to interact
@@ -62,10 +66,22 @@ inferred for each basic block in the `LLVM` bitcode.
 
     - `int`: classical intervals
 	- `ric`: intervals with congruences
-    - `term`: intervals with uninterpreted functions
 	- `zones`: difference-bound matrices
+	- `num`: select dynamically between `int` and `zones`
+    - `term`: intervals with uninterpreted functions
+    - `boxes`: disjunctive intervals (only if `-DUSE_LDD=ON`)
+	
+	   For boxes, we may want also to set the options:
+	   
+       - `--crab-narrowing-iterations=N`
+	   - `--crab-widening-threshold=W`
 
-- We also provide the option `--crab-track-lvl` to indicate the level
+       where `N` is the number of descending iterations and `W` is the
+       number of fixpoint iterations before triggering widening. In
+       particular, a small value for `N` might be needed (e.g.,
+       `n=2`). For `W` it really depends on the program.
+
+- We also provide the option `--crab-track` to indicate the level
 of precision. The possible values are: 
 
     - `int`: reasons about integer scalars (LLVM registers).

@@ -32,10 +32,12 @@ extern llvm::cl::opt<bool> LlvmCrabPrintAns;
 extern llvm::cl::opt<crab_llvm::CrabDomain> LlvmCrabDomain;
 extern llvm::cl::opt<bool> LlvmCrabLive;
 extern llvm::cl::opt<enum crab::cfg::TrackedPrecision> LlvmCrabTrackLev;
+extern llvm::cl::opt<unsigned int> LlvmCrabWideningThreshold;
+extern llvm::cl::opt<unsigned int> LlvmCrabNarrowingIters;
 
 using namespace llvm;
 
-namespace
+namespace crab_llvm
 {
   inline llvm::raw_ostream& operator<< 
   (llvm::raw_ostream& o, 
@@ -56,7 +58,6 @@ namespace crab { namespace conc_impl {
 namespace crab_llvm
 {
   using namespace crab::conc;
-  using namespace domain_impl;
 
   typedef ConcSys< llvm::Function*, cfg_t> conc_sys_t;
   typedef SymEval<VariableFactory, crab::cfg_impl::z_lin_exp_t> sym_eval_t;
@@ -149,7 +150,7 @@ namespace crab_llvm
                        Module& M, MemAnalysis& mem, const DataLayout* dl)
   {
     typedef ConcAnalyzer <llvm::Function*, cfg_t, 
-                          AbsDomain, VariableFactory, AbsDomain> conc_analyzer_t;
+                          AbsDomain, VariableFactory> conc_analyzer_t;
 
 
     /// --- Initialize shared global state
@@ -277,6 +278,9 @@ namespace crab_llvm
           analyzeConcSys <dbm_domain_t> (sys, vfac, M, m_mem, dl); 
         break;
       case TERMS: /*TODO*/
+      case BOXES: /*TODO*/
+        std::cout << "Warning: abstract domain not found."
+                  << "Running intervals ...\n"; 
       case INTERVALS:  
       default:
         if (LlvmCrabTrackLev == ARR)

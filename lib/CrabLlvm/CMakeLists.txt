@@ -5,6 +5,10 @@ set (CRAB_LIBS
   ${GMP_LIB}
   )
 
+if (USE_LDD)
+  set (CRAB_LIBS ${CRAB_LIBS} ${LDD_LIBRARY}) 
+endif ()
+
 add_library (CrabLlvmAnalysis STATIC
   CfgBuilder.cc
   CrabLlvm.cc

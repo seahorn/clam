@@ -3,6 +3,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/InstVisitor.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 #include "llvm/Analysis/CFG.h"
@@ -20,6 +21,7 @@
 #include "crab/analysis/InterFwdAnalyzer.hpp"
 #include "crab/cg/CgBgl.hpp"
 
+#include <regex>
 
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
@@ -41,6 +43,18 @@ LlvmCrabPrintSumm ("crab-print-summaries",
                    llvm::cl::desc ("Print Crab function summaries"),
                    llvm::cl::init (false));
 
+llvm::cl::opt<unsigned int>
+LlvmCrabWideningThreshold("crab-widening-threshold", 
+   llvm::cl::desc("Max number of fixpoint iterations until widening is triggered"),
+   llvm::cl::init (1),
+   cl::Hidden);
+
+llvm::cl::opt<unsigned int>
+LlvmCrabNarrowingIters("crab-narrowing-iters", 
+                       llvm::cl::desc("Max number of narrowing iterations"),
+                       llvm::cl::init (999999),
+                       cl::Hidden);
+
 llvm::cl::opt<CrabDomain>
 LlvmCrabDomain("crab-dom",
        llvm::cl::desc ("Crab abstract domain used to infer invariants"),
@@ -57,13 +71,24 @@ LlvmCrabDomain("crab-dom",
                     "Intervals with uninterpreted functions."),
         clEnumValN (NUM, "num",
                     "Choose automatically the numerical abstract domain."),
+        clEnumValN (BOXES, "boxes",
+                    "Disjunctive intervals"),
         clEnumValEnd),
        llvm::cl::init (INTERVALS));
 
+// If domain is num
 llvm::cl::opt<unsigned>
 LlvmCrabNumThreshold("crab-dom-num-max-live", 
    llvm::cl::desc("Max number of live vars per block before switching domains"),
-   llvm::cl::init (100));
+   llvm::cl::init (100),
+   cl::Hidden);
+
+// If domain is boxes
+llvm::cl::opt<string>
+LlvmCrabBoxesTrackRegex("crab-boxes-track-names", 
+                        llvm::cl::desc("Variables names (given as a regex) tracked by boxes"),
+                        llvm::cl::init (""),
+                        cl::Hidden);
 
 llvm::cl::opt<bool>
 LlvmCrabLive("crab-live", 
@@ -105,12 +130,184 @@ LlvmKeepShadows ("crab-keep-shadows",
                  cl::init (false),
                  cl::Hidden);
 
-namespace crab_llvm
-{
+namespace crab_llvm {
+
+  namespace setup_abs_dom {
+
+    // Some domains can be more effective if the tracked variables are
+    // known in advance.
+    void collectVars(const llvm::Function &f, 
+                     VariableFactory& vfac, MemAnalysis& mem, 
+                     set<varname_t>& vars) {
+      
+      SymEval<VariableFactory, z_lin_exp_t> s (vfac, &mem);
+      for (const_inst_iterator I = inst_begin(f), E = inst_end(f); I != E; ++I)
+      {
+        const Instruction *instr = &*I;
+        
+        //compare
+        if(const CmpInst *ci = dyn_cast<CmpInst>(instr)) 
+        {
+          // -- track all compare instructions except for those
+          // -- that are only used in the terminator of the basic
+          // -- block they are defined in
+          
+          // XXX This includes compare instructions that are only
+          // used in 'select' or 'or/and' statements inside BBs
+          // they are defined in. We can probably get rid of such
+          // compares as well.
+          const llvm::BasicBlock *ciBB = ci->getParent ();
+          const TerminatorInst *term = ciBB->getTerminator ();
+          
+          for (Value::const_use_iterator ut = ci->use_begin (),
+                   ue = ci->use_end (); ut != ue; ++ut)
+          {
+            const User *u = ut->getUser ();
+            const Instruction* uinst = cast<Instruction> (u);
+            // -- use outside of a terminator
+            if (uinst != term)
+            {
+              vars.insert (s.symVar (*ci));
+              break;
+            }
+            // --  use in another BB
+            if (uinst->getParent () != ciBB) 
+            {
+              vars.insert (s.symVar (*ci));
+              break;
+            }
+          }
+          
+        }
+        // -- boolean binary ops
+        else if (isa<BinaryOperator> (*instr) && 
+                 (instr->getType ()->isIntegerTy (1)))
+        {
+          const llvm::BasicBlock *pBB = instr->getParent ();
+          
+          for (Value::const_use_iterator ut = instr->use_begin (),
+                   ue = instr->use_end (); ut != ue; ++ut)
+          {
+            const User *u = ut->getUser ();
+            const Instruction* uinst = cast<Instruction> (u);
+            // -- use outside of a terminator
+            // --  use in another BB
+            if (uinst->getParent () != pBB) 
+            {
+              vars.insert (s.symVar (*instr));
+              break;		    
+            }
+          }
+        }
+        //PHI node
+        else if(isa<PHINode>(*instr)) vars.insert (s.symVar (*instr));
+        //binary operation
+        else if(isa<BinaryOperator>(*instr))
+        { 
+          if (!(instr->getType ()->isIntegerTy (1))) vars.insert (s.symVar (*instr));
+        }
+        //return
+        else if(const ReturnInst *ri = dyn_cast<ReturnInst>(instr)) 
+        {
+          if(ri->getNumOperands() && !(ri->getOperand(0)->getType ()->isIntegerTy ())) 
+            vars.insert (s.symVar (*(ri->getOperand(0))));
+        }
+        //call
+        else if (const CallInst *ci = dyn_cast<CallInst>(instr)) 
+        {
+          Function *fp = ci->getCalledFunction();
+          // -- track non-void functions, and functions for which there 
+          // -- is no llvm::Function object
+          if(!fp || 
+             (fp->getReturnType() != Type::getVoidTy(fp->getContext ())))
+            vars.insert (s.symVar (*instr));
+        }
+        //cast
+        else if(isa<CastInst>(*instr)) vars.insert (s.symVar (*instr));
+        //select
+        else if(isa<SelectInst>(*instr)) { vars.insert (s.symVar (*instr)); }
+        //load
+        else if (isa<LoadInst>(*instr)) {
+          if (instr->getType()->isIntegerTy () && mem.getTrackLevel () == ARR) {
+            vars.insert (s.symVar (*instr));
+          }
+        }
+      }
+    }
+
+    // This method assumes that inv has some global state that can be
+    // shared by all instances
+    template<typename AbsDomain>
+    void setGlobalParams (const llvm::Function &F, 
+                          VariableFactory& vfac, MemAnalysis& mem, 
+                          AbsDomain& inv) {}
+
+    // This method assumes that inv has some global state that can be
+    // shared by all instances
+    template<typename AbsDomain>
+    void resetGlobalParams (AbsDomain& inv) {}
+
+    bool matchRegex (string s, string re_s){
+      try {
+        std::regex re (re_s);
+        return std::regex_match (s, re);
+     } 
+      catch (std::regex_error& e) {
+        errs () << "Syntax error in the regex: " << e.what () << "\n";
+        return false;
+      }
+    }
+  
+    template<>
+    void setGlobalParams (const llvm::Function &F, 
+                          VariableFactory& vfac, MemAnalysis& mem, 
+                          boxes_domain_t& inv) {
+      set<varname_t> tracked_vars;
+      collectVars (F, vfac, mem, tracked_vars);
+      for (auto v: tracked_vars) {
+        if (LlvmCrabBoxesTrackRegex != "" &&
+            !matchRegex(v.str (), LlvmCrabBoxesTrackRegex))
+          continue;
+        inv.addTrackVar (v);
+#ifdef CRABLLVM_DEBUG
+        errs () << "\n-- Boxes will track " << v.str ();
+#endif 
+      }
+    }
+    
+    template<>
+    void setGlobalParams (const llvm::Function &F, 
+                          VariableFactory& vfac, MemAnalysis& mem, 
+                          arr_boxes_domain_t& inv) {
+      set<varname_t> tracked_vars;
+      collectVars (F, vfac, mem, tracked_vars);
+      for (auto v: tracked_vars) {
+        if (LlvmCrabBoxesTrackRegex != "" &&
+            !matchRegex(v.str (), LlvmCrabBoxesTrackRegex))
+          continue;
+        inv.get_base_domain().addTrackVar (v);
+#ifdef CRABLLVM_DEBUG
+        errs () << "-- Boxes will track " << v.str () << "\n";
+#endif 
+      }
+    }
+  
+    template<>
+    void resetGlobalParams (boxes_domain_t& inv){
+      inv.resetTrackVars ();
+    }
+    template<>
+    void resetGlobalParams (arr_boxes_domain_t& inv){
+      inv.get_base_domain().resetTrackVars ();
+    }
+  
+  } // end namespace 
+} // end namespace 
+
+namespace crab_llvm {
 
   using namespace crab::analyzer;
   using namespace crab::cg;
-  using namespace domain_impl;
 
   char crab_llvm::CrabLlvm::ID = 0;
 
@@ -240,11 +437,17 @@ namespace crab_llvm
                     runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
                     runOnCg <dbm_domain_t, term_domain_t> (cg, live_map, M)) ; 
           break;
+        // case BOXES:
+        //   change = (LlvmCrabTrackLev == ARR ? 
+        //             runOnCg <arr_boxes_domain_t, arr_boxes_domain_t> (cg, live_map, M) : 
+        //             runOnCg <boxes_domain_t, boxes_domain_t> (cg, live_map, M)) ; 
+        //   break;
         case INTERVALS:  
         default: 
           if (m_absdom != INTERVALS)
-            std::cout << "Warning: abstract domain not found."
-                      << "Running intervals ...\n"; 
+            std::cerr << "Warning: either abstract domain not found or "
+                      << "inter-procedural version not implemented. "
+                      << "Running intervals inter-procedurally ...\n"; 
           
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_dbm_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
@@ -356,10 +559,15 @@ namespace crab_llvm
                   runOnCfg <arr_term_domain_t> (cfg, *live, F) : 
                   runOnCfg <term_domain_t> (cfg, *live, F)) ; 
         break;
+      case BOXES:
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_boxes_domain_t> (cfg, *live, F) : 
+                  runOnCfg <boxes_domain_t> (cfg, *live, F)) ; 
+        break;
       case INTERVALS:  
       default: 
         if (m_absdom != INTERVALS)
-          std::cout << "Warning: abstract domain not found."
+          std::cerr << "Warning: abstract domain not found."
                     << "Running intervals ...\n"; 
         
         change = (LlvmCrabTrackLev == ARR ? 
@@ -380,8 +588,9 @@ namespace crab_llvm
   {
     // -- run inter-procedural analysis on the whole call graph
     typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
-                              BUAbsDomain, TDAbsDomain, inv_tbl_val_t> analyzer_t;
-    analyzer_t analyzer(cg, m_vfac, (LlvmCrabLive ? &live_map : nullptr));
+                              BUAbsDomain, TDAbsDomain> analyzer_t;
+    analyzer_t analyzer(cg, m_vfac, (LlvmCrabLive ? &live_map : nullptr),
+                        LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
     analyzer.Run (TDAbsDomain::top ());
 
     // -- store invariants     
@@ -392,9 +601,11 @@ namespace crab_llvm
         if (const llvm::Function *F = dyn_cast<llvm::Function> (*v)) {
           for (auto &B : *F) {
             // --- invariants that hold at the entry of the blocks
-            m_pre_map.insert (make_pair (&B, analyzer.get_pre (cfg, &B)));
+            auto pre = analyzer.get_pre (cfg, &B);
+            m_pre_map.insert (make_pair (&B, mkGenericAbsDomWrapper (pre)));
             // --- invariants that hold at the exit of the blocks
-            m_post_map.insert (make_pair (&B, analyzer.get_post (cfg, &B)));
+            auto post = analyzer.get_post (cfg, &B);
+            m_post_map.insert (make_pair (&B, mkGenericAbsDomWrapper (post)));
           }
 
           // -- print invariants and summaries
@@ -417,10 +628,10 @@ namespace crab_llvm
                            const liveness_t& live, 
                            const llvm::Function &F) {
 
-    typedef typename NumFwdAnalyzer <cfg_t, AbsDomain, 
-                                     VariableFactory, 
-                                     inv_tbl_val_t>::type analyzer_t;
-
+    typedef typename NumFwdAnalyzer <cfg_t, 
+                                     AbsDomain, 
+                                     VariableFactory>::type analyzer_t;
+                                     
 #ifdef CRABLLVM_DEBUG
     auto fdecl = cfg.get_func_decl ();            
     assert (fdecl);
@@ -432,9 +643,12 @@ namespace crab_llvm
 #endif 
 
     // -- run intra-procedural analysis
-    analyzer_t analyzer (cfg, m_vfac, &live);
-    analyzer.Run (AbsDomain::top());
-
+    analyzer_t analyzer (cfg, m_vfac, &live, 
+                         LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
+    AbsDomain inv = AbsDomain::top();
+    setup_abs_dom::setGlobalParams (F, m_vfac, m_mem, inv);
+    analyzer.Run (inv);
+    setup_abs_dom::resetGlobalParams (inv);
 #ifdef CRABLLVM_DEBUG
     std::cout << "DONE\n";
 #endif 
@@ -442,14 +656,17 @@ namespace crab_llvm
     // -- store invariants 
     for (auto const &B : F) {
       // --- invariants that hold at the entry of the blocks
-      m_pre_map.insert (make_pair (&B, analyzer.get_pre (&B)));
+      auto pre = analyzer.get_pre (&B);
+      m_pre_map.insert (make_pair (&B, mkGenericAbsDomWrapper (pre)));
       // --- invariants that hold at the exit of the blocks
-      m_post_map.insert (make_pair (&B, analyzer.get_post (&B)));
+      auto post = analyzer.get_post (&B);
+      m_post_map.insert (make_pair (&B, mkGenericAbsDomWrapper (post)));
     }
     
     return false;
   }
 
+<<<<<<< HEAD
   template<typename T1, typename T2, typename Range>
   inline T2 forget (T2 inv, Range vs) {
     if (vs.begin () == vs.end ()) 
@@ -497,29 +714,31 @@ namespace crab_llvm
     }
   }
 
+=======
+>>>>>>> origin/master
   // return invariants that hold at the entry of BB
-  CrabLlvm::inv_tbl_val_t CrabLlvm::getPre (const llvm::BasicBlock *BB, 
-                                            bool KeepShadows) const {
+  GenericAbsDomWrapperPtr 
+  CrabLlvm::getPre (const llvm::BasicBlock *BB, bool KeepShadows) const {
     const_iterator it = m_pre_map.find (BB);
     assert (it != m_pre_map.end ());
     if (KeepShadows)
       return it->second;
     else {
       auto shadows = m_vfac.get_shadow_vars ();
-      return forget (it->second, m_absdom, shadows);
+      return forget (it->second, shadows);
     }
   }   
 
   // return invariants that hold at the exit of BB
-  CrabLlvm::inv_tbl_val_t CrabLlvm::getPost (const llvm::BasicBlock *BB, 
-                                             bool KeepShadows) const {
+  GenericAbsDomWrapperPtr 
+  CrabLlvm::getPost (const llvm::BasicBlock *BB, bool KeepShadows) const {
     const_iterator it = m_post_map.find (BB);
     assert (it != m_post_map.end ());
     if (KeepShadows)
       return it->second;
     else {
       auto shadows = m_vfac.get_shadow_vars ();
-      return forget (it->second, m_absdom, shadows);
+      return forget (it->second, shadows);
     }
   }
 
