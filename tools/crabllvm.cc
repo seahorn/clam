@@ -21,6 +21,7 @@
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/IR/Verifier.h"
 #include "crab_llvm/config.h"
+
 #ifdef HAVE_DSA
 #include "assistDS/Devirt.h"
 #endif 
@@ -28,14 +29,7 @@
 #include "llvm_seahorn/Transforms/Scalar.h"
 #endif 
 
-#include <Transforms/LowerGvInitializers.hh>
-#include <Transforms/NameValues.hh>
-#include <Transforms/MarkInternalInline.hh>
-#include <Transforms/LowerCstExpr.hh>
-#include <Transforms/LowerSelect.hh>
-#include <Transforms/RemoveUnreachableBlocksPass.hh>
-#include <Transforms/SimplifyAssume.hh>
-
+#include "crab_llvm/Passes.hh"
 #include "crab_llvm/CrabLlvm.hh"
 #include <crab_llvm/Transforms/InsertInvariants.hh>
 #include "crab_llvm/ConCrabLlvm.hh"
@@ -63,11 +57,17 @@ DefaultDataLayout("default-data-layout",
 static llvm::cl::opt<bool>
 Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs (experimental)"),
              llvm::cl::init (false),
-             cl::Hidden);
+             llvm::cl::Hidden);
 
 static llvm::cl::opt<bool>
 CrabDevirtualize ("crab-devirt", llvm::cl::desc ("Resolve indirect calls using alias analysis"),
                   llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+CrabUndefNondet ("crab-turn-undef-nondet", 
+                 llvm::cl::desc ("Turn undefined behaviour into non-determinism"),
+                 llvm::cl::init (false),
+                 llvm::cl::Hidden);
 
 using namespace crab_llvm;
 
@@ -168,19 +168,24 @@ int main(int argc, char **argv) {
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   // -- remove unreachable blocks 
-  pass_manager.add (new crab_llvm::RemoveUnreachableBlocksPass ());
+  pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
   // -- remove switch constructions
   pass_manager.add (llvm::createLowerSwitchPass());
   // -- lower constant expressions to instructions
-  pass_manager.add (new crab_llvm::LowerCstExprPass ());   
+  pass_manager.add (crab_llvm::createLowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
+
+#ifdef HAVE_LLVM_SEAHORN
+  if (CrabUndefNondet) 
+    pass_manager.add (llvm_seahorn::createDeadNondetElimPass ());
+#endif 
 
   // -- must be the last ones before running crab.
   //    It is not a must anymore since Crab can handle select
   //    instructions. However, Crab can be more precise if select are
   //    lowered. llvmpp has the option to lower select instructions.
-  //pass_manager.add (new crab_llvm::LowerSelect ());   
-  pass_manager.add (new crab_llvm::NameValues ()); 
+  //pass_manager.add (crab_llvm::createLowerSelectPass ());   
+  pass_manager.add (crab_llvm::createNameValuesPass ()); 
   
   if (Concurrency) {
     // REALLY EXPERIMENTAL ...
@@ -203,7 +208,7 @@ int main(int argc, char **argv) {
 #else
     pass_manager.add (llvm::createInstructionCombiningPass ()); 
 #endif 
-    pass_manager.add (new crab_llvm::SimplifyAssume ());
+    pass_manager.add (crab_llvm::createSimplifyAssumePass ());
   }
       
   if (!OutputFilename.empty ()) 

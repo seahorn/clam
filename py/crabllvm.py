@@ -79,9 +79,12 @@ def parseArgs (argv):
                     help='Compile with debug information')
     p.add_argument ('-m', type=int, dest='machine',
                        help='Machine architecture MACHINE:[32,64]', default=32)
-    p.add_argument ("--only-analyze", dest="only_analyze", 
-                       help='Skip compilation and preprocessing', action='store_true',
-                       default=False)
+    p.add_argument ("--no-preprocess", dest="preprocess", 
+                       help='Skip compilation and preprocessing', action='store_false',
+                       default=True)
+    p.add_argument ("--no-analyze", dest="analyze", 
+                       help='Skip analysis', action='store_false',
+                       default=True)
     p.add_argument ('-O', type=int, dest='L', metavar='INT',
                        help='Optimization level L:[0,1,2,3]', default=0)
     p.add_argument ('--cpu', type=int, dest='cpu', metavar='SEC',
@@ -93,6 +96,9 @@ def parseArgs (argv):
     p.add_argument ('--pp-loops',
                     help='Preprocessing Loops',
                     dest='pp_loops', default=False, action='store_true')
+    p.add_argument ('--turn-undef-nondet',
+                    help='Turn undefined behaviour into non-determinism',
+                    dest='undef_nondet', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
@@ -256,7 +262,10 @@ def optLlvm (in_name, out_name, args, extra_args=[]):
     # They should be optional
     opt_args.append ('--enable-indvar=false')
     opt_args.append ('--enable-loop-idiom=false')
-
+    if args.undef_nondet:
+        opt_args.append ('--enable-nondet-init=true')
+    else:
+        opt_args.append ('--enable-nondet-init=false')
     opt_args.extend (extra_args)
     opt_args.append (in_name)
 
@@ -273,6 +282,8 @@ def crabpp (in_name, out_name, args, extra_args=[]):
         crabpp_args.append ('--crab-inline-all')
     if args.pp_loops: 
         crabpp_args.append ('--crab-pp-loops')
+    if args.undef_nondet:
+        crabpp_args.append( '--crab-turn-undef-nondet')
 
     crabpp_args.extend (extra_args)
 
@@ -293,6 +304,8 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
 
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
 
+    if args.undef_nondet:
+        crabllvm_cmd.append( '--crab-turn-undef-nondet')
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     if (args.crab_dom == 'num'):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
@@ -366,7 +379,7 @@ def main (argv):
     workdir = createWorkDir (args.temp_dir, args.save_temps)
     in_name = args.file
 
-    if not args.only_analyze:
+    if args.preprocess:
         bc_out = defBCName (in_name, workdir)
         if bc_out != in_name:
                 extra_args = []
@@ -392,10 +405,11 @@ def main (argv):
             #stat ('Progress', 'Llvm optimizer')
         in_name = o_out
 
-    pp_out = defOutPPName(in_name, workdir)
-    with stats.timer ('CrabLlvm'):
-        crabllvm (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
-    #stat ('Progress', 'Crab Llvm')
+    if args.analyze:
+        pp_out = defOutPPName(in_name, workdir)
+        with stats.timer ('CrabLlvm'):
+            crabllvm (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
+        #stat ('Progress', 'Crab Llvm')
 
     if args.asm_out_name is not None and args.asm_out_name != pp_out:
         if verbose: print 'cp {0} {1}'.format (pp_out, args.asm_out_name)
