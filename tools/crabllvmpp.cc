@@ -66,6 +66,10 @@ Concurrency ("crab-concur", llvm::cl::desc ("Preprocessing for concurrent analys
              llvm::cl::init (false),
              llvm::cl::Hidden);
 
+static llvm::cl::opt<bool>
+CrabUndefNondet ("crab-turn-undef-nondet", 
+                 llvm::cl::desc ("Turn undefined behaviour into non-determinism"),
+                 llvm::cl::init (false));
 
 static llvm::cl::opt<int>
 SROA_Threshold ("sroa-threshold",
@@ -175,6 +179,13 @@ int main(int argc, char **argv) {
   
   // -- SSA
   pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
+#ifdef HAVE_LLVM_SEAHORN
+  if (CrabUndefNondet) {
+    // -- Turn undef into nondet
+    pass_manager.add (llvm_seahorn::createNondetInitPass ());
+  }
+#endif 
+
   // -- cleanup after SSA
 #ifdef HAVE_LLVM_SEAHORN
   pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
@@ -188,6 +199,13 @@ int main(int argc, char **argv) {
                                                           SROA_StructMemThreshold,
                                                           SROA_ArrayElementThreshold,
                                                           SROA_ScalarLoadThreshold));
+#ifdef HAVE_LLVM_SEAHORN
+  if (CrabUndefNondet) {
+     // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
+     pass_manager.add (llvm_seahorn::createNondetInitPass ());
+  }
+#endif 
+
   // -- global value numbering and redundant load elimination
   pass_manager.add (llvm::createGVNPass());
   
@@ -197,6 +215,13 @@ int main(int argc, char **argv) {
 #endif 
   pass_manager.add (llvm::createCFGSimplificationPass ());
   
+#ifdef HAVE_LLVM_SEAHORN
+  if (CrabUndefNondet) {
+     // eliminate unused calls to verifier.nondet() functions
+     pass_manager.add (llvm_seahorn::createDeadNondetElimPass ());
+  }
+#endif 
+
   // -- lower invoke's
   pass_manager.add(llvm::createLowerInvokePass());
   // cleanup after lowering invoke's

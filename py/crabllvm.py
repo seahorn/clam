@@ -96,6 +96,9 @@ def parseArgs (argv):
     p.add_argument ('--pp-loops',
                     help='Preprocessing Loops',
                     dest='pp_loops', default=False, action='store_true')
+    p.add_argument ('--turn-undef-nondet',
+                    help='Turn undefined behaviour into non-determinism',
+                    dest='undef_nondet', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
@@ -259,7 +262,10 @@ def optLlvm (in_name, out_name, args, extra_args=[]):
     # They should be optional
     opt_args.append ('--enable-indvar=false')
     opt_args.append ('--enable-loop-idiom=false')
-
+    if args.undef_nondet:
+        opt_args.append ('--enable-nondet-init=true')
+    else:
+        opt_args.append ('--enable-nondet-init=false')
     opt_args.extend (extra_args)
     opt_args.append (in_name)
 
@@ -276,6 +282,8 @@ def crabpp (in_name, out_name, args, extra_args=[]):
         crabpp_args.append ('--crab-inline-all')
     if args.pp_loops: 
         crabpp_args.append ('--crab-pp-loops')
+    if args.undef_nondet:
+        crabpp_args.append( '--crab-turn-undef-nondet')
 
     crabpp_args.extend (extra_args)
 
@@ -296,6 +304,8 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
 
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
 
+    if args.undef_nondet:
+        crabllvm_cmd.append( '--crab-turn-undef-nondet')
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     if (args.crab_dom == 'num'):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))

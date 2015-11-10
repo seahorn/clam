@@ -63,6 +63,12 @@ static llvm::cl::opt<bool>
 CrabDevirtualize ("crab-devirt", llvm::cl::desc ("Resolve indirect calls using alias analysis"),
                   llvm::cl::init (false));
 
+static llvm::cl::opt<bool>
+CrabUndefNondet ("crab-turn-undef-nondet", 
+                 llvm::cl::desc ("Turn undefined behaviour into non-determinism"),
+                 llvm::cl::init (false),
+                 llvm::cl::Hidden);
+
 using namespace crab_llvm;
 
 // removes extension from filename if there is one
@@ -168,6 +174,11 @@ int main(int argc, char **argv) {
   // -- lower constant expressions to instructions
   pass_manager.add (crab_llvm::createLowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
+
+#ifdef HAVE_LLVM_SEAHORN
+  if (CrabUndefNondet) 
+    pass_manager.add (llvm_seahorn::createDeadNondetElimPass ());
+#endif 
 
   // -- must be the last ones before running crab.
   //    It is not a must anymore since Crab can handle select

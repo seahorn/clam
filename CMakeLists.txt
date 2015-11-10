@@ -252,7 +252,7 @@ if (TopLevel)
     add_subdirectory(llvm-seahorn/lib)
     add_subdirectory(llvm-seahorn/tools)
     set (HAVE_LLVM_SEAHORN TRUE)
-    set (LLVM_SEAHORN_LIBS SeaInstCombine SeaLoops)
+    set (LLVM_SEAHORN_LIBS SeaInstCombine SeaLoops SeaInstNondet)
   endif()
 endif ()
 
