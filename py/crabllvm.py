@@ -79,9 +79,12 @@ def parseArgs (argv):
                     help='Compile with debug information')
     p.add_argument ('-m', type=int, dest='machine',
                        help='Machine architecture MACHINE:[32,64]', default=32)
-    p.add_argument ("--only-analyze", dest="only_analyze", 
-                       help='Skip compilation and preprocessing', action='store_true',
-                       default=False)
+    p.add_argument ("--no-preprocess", dest="preprocess", 
+                       help='Skip compilation and preprocessing', action='store_false',
+                       default=True)
+    p.add_argument ("--no-analyze", dest="analyze", 
+                       help='Skip analysis', action='store_false',
+                       default=True)
     p.add_argument ('-O', type=int, dest='L', metavar='INT',
                        help='Optimization level L:[0,1,2,3]', default=0)
     p.add_argument ('--cpu', type=int, dest='cpu', metavar='SEC',
@@ -366,7 +369,7 @@ def main (argv):
     workdir = createWorkDir (args.temp_dir, args.save_temps)
     in_name = args.file
 
-    if not args.only_analyze:
+    if args.preprocess:
         bc_out = defBCName (in_name, workdir)
         if bc_out != in_name:
                 extra_args = []
@@ -392,10 +395,11 @@ def main (argv):
             #stat ('Progress', 'Llvm optimizer')
         in_name = o_out
 
-    pp_out = defOutPPName(in_name, workdir)
-    with stats.timer ('CrabLlvm'):
-        crabllvm (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
-    #stat ('Progress', 'Crab Llvm')
+    if args.analyze:
+        pp_out = defOutPPName(in_name, workdir)
+        with stats.timer ('CrabLlvm'):
+            crabllvm (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
+        #stat ('Progress', 'Crab Llvm')
 
     if args.asm_out_name is not None and args.asm_out_name != pp_out:
         if verbose: print 'cp {0} {1}'.format (pp_out, args.asm_out_name)
