@@ -1,5 +1,6 @@
-#include "Transforms/NameValues.hh"
-
+#include "llvm/Pass.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/IR/Instructions.h"
@@ -13,38 +14,43 @@ using namespace llvm;
 
 namespace crab_llvm
 {
-  char NameValues::ID = 0;
-    
-  bool NameValues::runOnModule (Module &M)
+
+  struct NameValues : public ModulePass
   {
-    for (Module::iterator FI = M.begin (), E = M.end (); FI != E; ++FI)
-      runOnFunction (*FI);
-    return false;
-  }
-    
-  bool NameValues::runOnFunction (Function &F)
-  {
-    // -- print to string 
-    std::string funcAsm;
-    raw_string_ostream out (funcAsm);
-    out << F;
-    out.flush ();
+    static char ID;
+
+    NameValues () : ModulePass (ID) {}
+
+    bool runOnModule (Module &M)
+    {
+      for (Module::iterator FI = M.begin (), E = M.end (); FI != E; ++FI)
+        runOnFunction (*FI);
+      return false;
+    }
+
+    bool runOnFunction (Function &F)
+    {
+      // -- print to string 
+      std::string funcAsm;
+      raw_string_ostream out (funcAsm);
+      out << F;
+      out.flush ();
       
-    typedef boost::tokenizer<boost::char_separator<char> > tokenizer;
-    boost::char_separator<char> nl_sep ("\n");
-    boost::char_separator<char> sp_sep (" :\t%@");
-
-    tokenizer lines (funcAsm, nl_sep);
-    tokenizer::iterator line_iter = lines.begin ();
-
-    // -- skip function attributes
-    if (boost::starts_with(*line_iter, "; Function Attrs:"))
+      typedef boost::tokenizer<boost::char_separator<char> > tokenizer;
+      boost::char_separator<char> nl_sep ("\n");
+      boost::char_separator<char> sp_sep (" :\t%@");
+    
+      tokenizer lines (funcAsm, nl_sep);
+      tokenizer::iterator line_iter = lines.begin ();
+      
+      // -- skip function attributes
+      if (boost::starts_with(*line_iter, "; Function Attrs:"))
+        ++line_iter;
+      
+      // -- skip function definition line
       ++line_iter;
-     
-    // -- skip function definition line
-    ++line_iter;
-     
-    for (Function::iterator BI = F.begin (), BE = F.end (); 
+      
+      for (Function::iterator BI = F.begin (), BE = F.end (); 
 	 BI != BE && line_iter != lines.end (); ++BI)
       {
         BasicBlock &BB = *BI;
@@ -73,11 +79,17 @@ namespace crab_llvm
           ++line_iter;
         }
       }
-    
-    return false;
-  }    
-  
-}
+      return false;
+    }    
 
-static llvm::RegisterPass<crab_llvm::NameValues> 
-X ("name-values", "Names all unnamed values");
+
+    void getAnalysisUsage (AnalysisUsage &AU) const { AU.setPreservesAll (); }
+
+    virtual const char* getPassName () const {return "NameValues";}
+    
+  };
+
+  char NameValues::ID = 0;
+  Pass* createNameValuesPass () { return new NameValues (); }
+  
+} // namespace

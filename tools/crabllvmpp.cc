@@ -6,6 +6,7 @@
 #include "llvm/PassManager.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/CommandLine.h"
@@ -20,16 +21,8 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 
-#include "llvm/IR/Verifier.h"
-
-#include <Transforms/LowerGvInitializers.hh>
-#include <Transforms/NameValues.hh>
-#include <Transforms/MarkInternalInline.hh>
-#include <Transforms/LowerCstExpr.hh>
-#include <Transforms/LowerSelect.hh>
-#include <Transforms/RemoveUnreachableBlocksPass.hh>
-
 #include "crab_llvm/config.h"
+#include "crab_llvm/Passes.hh"
 
 #ifdef HAVE_LLVM_SEAHORN
 #include "llvm_seahorn/Transforms/Scalar.h"
@@ -71,7 +64,7 @@ OptimizeLoops ("crab-pp-loops",
 static llvm::cl::opt<bool>
 Concurrency ("crab-concur", llvm::cl::desc ("Preprocessing for concurrent analysis"),
              llvm::cl::init (false),
-             cl::Hidden);
+             llvm::cl::Hidden);
 
 
 static llvm::cl::opt<int>
@@ -170,13 +163,13 @@ int main(int argc, char **argv) {
     module->setDataLayout (DefaultDataLayout);
     dl = module->getDataLayout ();
   }
-  if (dl) pass_manager.add (new DataLayoutPass ());
+  if (dl) pass_manager.add (new llvm::DataLayoutPass ());
   
   // -- turn all functions internal so that we can apply some global
   // -- optimizations inline them if requested
   pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
   pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global  
-  pass_manager.add (new crab_llvm::RemoveUnreachableBlocksPass ());
+  pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
   // -- global optimizations
   pass_manager.add (llvm::createGlobalOptimizerPass());
   
@@ -211,12 +204,12 @@ int main(int argc, char **argv) {
   
   if (InlineAll)
   {
-    pass_manager.add (new crab_llvm::MarkInternalInline ());   
+    pass_manager.add (crab_llvm::createMarkInternalInlinePass ());   
     pass_manager.add (llvm::createAlwaysInlinerPass ());
     pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global
   }
   
-  pass_manager.add (new crab_llvm::RemoveUnreachableBlocksPass ());
+  pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
   pass_manager.add(llvm::createDeadInstEliminationPass());
   
   if (OptimizeLoops) {
@@ -240,26 +233,26 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createCFGSimplificationPass ()); // cleanup unnecessary blocks 
   
   // -- lower initializers of global variables
-  pass_manager.add (new crab_llvm::LowerGvInitializers ());   
+  pass_manager.add (crab_llvm::createLowerGvInitializersPass ());   
 
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   pass_manager.add (llvm::createGlobalDCEPass ()); 
   pass_manager.add (llvm::createDeadCodeEliminationPass());
   // -- remove unreachable blocks also dead cycles
-  pass_manager.add (new crab_llvm::RemoveUnreachableBlocksPass ());
+  pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
 
   // -- remove switch constructions
   pass_manager.add (llvm::createLowerSwitchPass());
   
   // -- lower constant expressions to instructions
-  pass_manager.add (new crab_llvm::LowerCstExprPass ());   
+  pass_manager.add (crab_llvm::createLowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
   // -- must be the last ones:
   if (LowerSelect)
-    pass_manager.add (new crab_llvm::LowerSelect ());   
-  pass_manager.add (new crab_llvm::NameValues ()); 
+    pass_manager.add (crab_llvm::createLowerSelectPass ());   
+  pass_manager.add (crab_llvm::createNameValuesPass ()); 
 
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (asmOutput->os ()));
