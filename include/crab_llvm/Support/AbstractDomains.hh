@@ -8,6 +8,8 @@
 #include <crab/domains/intervals_congruences.hpp>                      
 #include <crab/domains/dbm.hpp>
 #include <crab/domains/split_dbm.hpp>
+#include <crab/domains/split_dbm.hpp>
+#include <crab/domains/var_packing_naive_dbm.hpp>
 #include <crab/domains/array_smashing.hpp>
 #include <crab/domains/term_equiv.hpp>
 #include <crab/domains/boxes.hpp>
@@ -81,6 +83,16 @@ namespace llvm
   template <typename Number, typename VariableName>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         crab::domains::SplitDBM<Number,VariableName>& inv)
+  {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  template <typename Number, typename VariableName>
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        ikos::var_packing_naive_dbm<Number,VariableName>& inv)
   {
     ostringstream s;
     s << inv;

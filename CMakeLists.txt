@@ -110,7 +110,7 @@ endif ()
 include_directories (${LDD_INCLUDE_DIR})
 
 if (GIT_FOUND)
-  set (CRAB_CORE_TAG "origin/dbm-dev" CACHE STRING "crab tag to use")
+  set (CRAB_CORE_TAG "origin/dbm-paper" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
        CACHE STRING "crab repository")
   ExternalProject_Add(crab
@@ -135,6 +135,13 @@ if (GIT_FOUND)
 else ()
     message (STATUS "Could not find git. Not downloading crab")
 endif()
+
+# find_package(Apron)
+# if (APRON_FOUND)
+#   include_directories (${APRON_INCLUDE_DIR})
+# else()
+#   set (APRON_LIBRARY "")
+# endif()
   
 find_package (Crab)
 if (NOT CRAB_FOUND)

@@ -67,6 +67,8 @@ LlvmCrabDomain("crab-dom",
                     "Difference-Bounds Matrix (or Zones) domain"),
         clEnumValN (SZONES, "szones",
                     "Split difference-Bounds Matrix domain"),
+        clEnumValN (VZONES, "vzones",
+                    "Difference-Bounds Matrix with variable packing domain"),
         clEnumValN (TERMS, "term",
                     "Intervals with uninterpreted functions."),
         clEnumValN (NUM, "num",
@@ -432,6 +434,11 @@ namespace crab_llvm {
                     runOnCg <arr_sdbm_domain_t, arr_sdbm_domain_t> (cg, live_map, M) :  
                     runOnCg <sdbm_domain_t, sdbm_domain_t> (cg, live_map, M)) ; 
           break;
+        case VZONES: 
+          change = (LlvmCrabTrackLev == ARR ? 
+                    runOnCg <arr_vdbm_domain_t, arr_vdbm_domain_t> (cg, live_map, M) :  
+                    runOnCg <vdbm_domain_t, vdbm_domain_t> (cg, live_map, M)) ; 
+          break;
         case TERMS:
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
@@ -553,6 +560,11 @@ namespace crab_llvm {
         change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_sdbm_domain_t> (cfg, *live, F) :  
                   runOnCfg <sdbm_domain_t> (cfg, *live, F)) ; 
+        break;
+      case VZONES: 
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_vdbm_domain_t> (cfg, *live, F) :  
+                  runOnCfg <vdbm_domain_t> (cfg, *live, F)) ; 
         break;
       case TERMS:
         change = (LlvmCrabTrackLev == ARR ? 

@@ -69,6 +69,8 @@ namespace crab_llvm {
   typedef DBM< z_number, varname_t > dbm_domain_t;
   /// -- split DBM
   typedef SplitDBM<z_number, varname_t> sdbm_domain_t;
+  /// -- var packing DBM
+  typedef var_packing_naive_dbm<z_number, varname_t> vdbm_domain_t;
   /// -- Terms 
   typedef crab::cfg::var_factory_impl::StrVarAlloc_col::varname_t str_varname_t;
   typedef interval_domain< z_number, str_varname_t > str_interval_dom_t;
@@ -86,6 +88,7 @@ namespace crab_llvm {
   typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
   typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;
   typedef array_smashing<sdbm_domain_t,z_number,varname_t> arr_sdbm_domain_t;
+  typedef array_smashing<vdbm_domain_t,z_number,varname_t> arr_vdbm_domain_t;
   typedef array_smashing<term_domain_t,z_number,varname_t> arr_term_domain_t;
   typedef array_smashing<boxes_domain_t,z_number,varname_t> arr_boxes_domain_t;
 
@@ -98,12 +101,14 @@ namespace crab_llvm {
      typedef enum { intv, 
                     dbm, 
                     sdbm,
+                    vdbm,
                     term, 
                     ric, 
                     boxes, 
                     arr_intv, 
                     arr_dbm, 
                     arr_sdbm,
+                    arr_vdbm,
                     arr_term, 
                     arr_ric, 
                     arr_boxes } id_t;
@@ -144,6 +149,7 @@ namespace crab_llvm {
    DEFINE_BASE_DOMAIN(RicDomainWrapper,ric_domain_t,ric)
    DEFINE_BASE_DOMAIN(DbmDomainWrapper,dbm_domain_t,dbm)
    DEFINE_BASE_DOMAIN(SDbmDomainWrapper,sdbm_domain_t,sdbm)
+   DEFINE_BASE_DOMAIN(VDbmDomainWrapper,vdbm_domain_t,vdbm)
    DEFINE_BASE_DOMAIN(TermDomainWrapper,term_domain_t,term)
    DEFINE_BASE_DOMAIN(BoxesDomainWrapper,boxes_domain_t,boxes)
 
@@ -152,6 +158,7 @@ namespace crab_llvm {
    REGISTER_DOMAIN_ID(arr_ric_domain_t,arr_ric)
    REGISTER_DOMAIN_ID(arr_dbm_domain_t,arr_dbm)
    REGISTER_DOMAIN_ID(arr_sdbm_domain_t,arr_sdbm)
+   REGISTER_DOMAIN_ID(arr_vdbm_domain_t,arr_vdbm)
    REGISTER_DOMAIN_ID(arr_term_domain_t,arr_term)
    REGISTER_DOMAIN_ID(arr_boxes_domain_t,arr_boxes)
 
@@ -215,6 +222,8 @@ namespace crab_llvm {
          FORGET_MACRO(dbm_domain_t)
        case GenericAbsDomWrapper::sdbm: 
          FORGET_MACRO(sdbm_domain_t)
+       case GenericAbsDomWrapper::vdbm: 
+         FORGET_MACRO(vdbm_domain_t)
        case GenericAbsDomWrapper::term:
          FORGET_MACRO(term_domain_t)
        case GenericAbsDomWrapper::boxes: 
@@ -227,6 +236,8 @@ namespace crab_llvm {
          FORGET_MACRO(arr_dbm_domain_t) 
        case GenericAbsDomWrapper::arr_sdbm: 
          FORGET_MACRO(arr_sdbm_domain_t) 
+       case GenericAbsDomWrapper::arr_vdbm: 
+         FORGET_MACRO(arr_vdbm_domain_t) 
        case GenericAbsDomWrapper::arr_term: 
          FORGET_MACRO(arr_term_domain_t) 
        case GenericAbsDomWrapper::arr_boxes: 
