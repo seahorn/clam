@@ -251,7 +251,12 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     sub.check_call (clang_args)
 
 # Run llvm optimizer
-def optLlvm (in_name, out_name, args, extra_args=[]):
+def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
+    def set_limits ():
+        if mem > 0:
+            mem_bytes = mem * 1024 * 1024
+            resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
+
     if out_name == '' or out_name == None:
         out_name = defOptName (in_name)
 
@@ -270,10 +275,28 @@ def optLlvm (in_name, out_name, args, extra_args=[]):
     opt_args.append (in_name)
 
     if verbose: print ' '.join (opt_args)
-    sub.check_call (opt_args)
+    p = sub.Popen (opt_args, preexec_fn=set_limits)
+    global running_process
+    running_process = p
+    timer = threading.Timer (cpu, kill, [p])
+    if cpu > 0: timer.start ()
+    try:
+        (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
+        running_process = None
+    finally:
+        ## kill the timer if the process has terminated already
+        if timer.isAlive (): timer.cancel ()
+    ## if opt did not terminate properly, propagate this error code
+    if returnvalue != 0: sys.exit (returnvalue)
+
 
 # Run crabpp
-def crabpp (in_name, out_name, args, extra_args=[]):
+def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
+    def set_limits ():
+        if mem > 0:
+            mem_bytes = mem * 1024 * 1024
+            resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
+
     if out_name == '' or out_name == None:
         out_name = defPPName (in_name)
 
@@ -288,7 +311,20 @@ def crabpp (in_name, out_name, args, extra_args=[]):
     crabpp_args.extend (extra_args)
 
     if verbose: print ' '.join (crabpp_args)
-    sub.check_call (crabpp_args)
+    p = sub.Popen (crabpp_args, preexec_fn=set_limits)
+    global running_process
+    running_process = p
+    timer = threading.Timer (cpu, kill, [p])
+    if cpu > 0: timer.start ()
+    try:
+        (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
+        running_process = None
+    finally:
+        ## kill the timer if the process has terminated already
+        if timer.isAlive (): timer.cancel ()
+    ## if crabpp did not terminate properly, propagate this error code
+    if returnvalue != 0: sys.exit (returnvalue)
+
 
 def sharedLib (base):
     ext = '.so'
@@ -392,7 +428,7 @@ def main (argv):
         pp_out = defPPName (in_name, workdir)
         if pp_out != in_name:
             with stats.timer ('CrabLlvmPP'):
-                crabpp (in_name, pp_out, args=args)
+                crabpp (in_name, pp_out, args=args, cpu=args.cpu, mem=args.mem)
             #stat ('Progress', 'Crab Llvm preprocessor')
         in_name = pp_out
 
@@ -401,7 +437,7 @@ def main (argv):
         if o_out != in_name:
             extra_args = []
             with stats.timer ('CrabOptLlvm'):
-                optLlvm (in_name, o_out, args, extra_args)
+                optLlvm (in_name, o_out, args, extra_args, cpu=args.cpu, mem=args.mem)
             #stat ('Progress', 'Llvm optimizer')
         in_name = o_out
 

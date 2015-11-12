@@ -37,6 +37,10 @@ install(TARGETS crabllvm RUNTIME DESTINATION bin)
 
 if (CRABLLVM_STATIC_EXE)
   set (CMAKE_EXE_LINKER_FLAGS "-static -static-libgcc -static-libstdc++")
+  set_target_properties (crabllvm PROPERTIES LINK_SEARCH_START_STATIC ON)
+  set_target_properties (crabllvm PROPERTIES LINK_SEARCH_END_STATIC ON)
+
+  set (CMAKE_EXE_LINKER_FLAGS "-static -static-libgcc -static-libstdc++")
   set_target_properties (crabllvmpp PROPERTIES LINK_SEARCH_START_STATIC ON)
   set_target_properties (crabllvmpp PROPERTIES LINK_SEARCH_END_STATIC ON)
 endif()
