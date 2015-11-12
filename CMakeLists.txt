@@ -1,5 +1,11 @@
 project(CrabLlvm)
+
 cmake_minimum_required(VERSION 2.8.11)
+
+set (CrabLlvm_VERSION_MAJOR 0)
+set (CrabLlvm_VERSION_MINOR 1)
+set (CrabLlvm_VERSION_PATCH 0)
+#set (CrabLlvm_VERSION_TWEAK "rc1")
 
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
   message (FATAL_ERROR
@@ -12,6 +18,17 @@ if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
 else()
   set (TopLevel FALSE)
 endif()
+
+if (TopLevel)
+  if (NOT PACKAGE_VERSION)
+     set(PACKAGE_VERSION
+       "${CrabLlvm_VERSION_MAJOR}.${CrabLlvm_VERSION_MINOR}.${CrabLlvm_VERSION_PATCH}")
+     if (DEFINED CrabLlvm_VERSION_TWEAK)
+       set (PACKAGE_VERSION "${PACKAGE_VERSION}-${CrabLlvm_VERSION_TWEAK}")
+     endif()
+     set (CrabLlvm_VERSION_INFO ${PACKAGE_VERSION})
+  endif()
+endif ()
 
 option (USE_LDD "Enable ldd" OFF)
 
@@ -29,15 +46,19 @@ if (TopLevel)
     
   endif()
 
-  # put static libraries first
-  #set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
+  option (CRABLLVM_STATIC_EXE "Static executable." OFF)
 
   set (Boost_USE_STATIC_LIBS ON)
   find_package (Boost 1.55 REQUIRED COMPONENTS system unit_test_framework)
   IF (Boost_FOUND)
     include_directories (${Boost_INCLUDE_DIRS})
   endif ()
+
+  # put static libraries first
+  set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
+
 endif ()
+
 
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
@@ -135,6 +156,7 @@ if (GIT_FOUND)
 else ()
     message (STATUS "Could not find git. Not downloading crab")
 endif()
+
   
 find_package (Crab)
 if (NOT CRAB_FOUND)
@@ -268,7 +290,95 @@ endif()
 configure_file( include/crab_llvm/config.h.cmake
                 ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h )
 
-install(DIRECTORY include/crab_llvm DESTINATION include)
 
-# License
-install(FILES LICENSE.txt DESTINATION share/doc)       
+if (TopLevel)
+   set (PACKAGE_NAME CrabLlvm)
+   set (PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
+
+   # Configure CPack.
+   include(TargetArch)
+   target_architecture(CMAKE_TARGET_ARCH)
+   message ("-- arch: ${CMAKE_TARGET_ARCH}")
+   set(CPACK_PACKAGE_INSTALL_DIRECTORY "CrabLlvm")
+   set(CPACK_PACKAGE_VENDOR "CrabLlvm")
+   set(CPACK_PACKAGE_VERSION_MAJOR ${CrabLlvm_VERSION_MAJOR})
+   set(CPACK_PACKAGE_VERSION_MINOR ${CrabLlvm_VERSION_MINOR})
+   set(CPACK_PACKAGE_VERSION_PATCH ${CrabLlvm_VERSION_PATCH})
+   set(CPACK_PACKAGE_VERSION ${PACKAGE_VERSION})
+   set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.txt")
+   set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+   set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+   if(CMAKE_BUILD_TYPE STREQUAL Release)
+     set(CPACK_PACKAGE_FILE_NAME
+         "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_TARGET_ARCH}")
+   else()
+     set(CPACK_PACKAGE_FILE_NAME
+         "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_TARGET_ARCH}-${CMAKE_BUILD_TYPE}")
+   endif()
+   if(WIN32 AND NOT UNIX)
+     set(CPACK_NSIS_MODIFY_PATH "ON")
+     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL "ON")
+     set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+       "ExecWait '$INSTDIR/tools/msbuild/install.bat'")
+     set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
+       "ExecWait '$INSTDIR/tools/msbuild/uninstall.bat'")
+   endif()
+   include(CPack)
+
+   # install all the header files
+   install(DIRECTORY include/crab_llvm DESTINATION include)
+
+   ## config.h
+   install(DIRECTORY ${CMAKE_BINARY_DIR}/include/crab DESTINATION include
+     FILES_MATCHING
+     PATTERN "*.hpp"
+     PATTERN "*.hh"
+     PATTERN "*.h"
+     PATTERN "CMakeFiles" EXCLUDE
+     PATTERN ".svn" EXCLUDE
+   )
+
+   ## config.h
+   install(DIRECTORY ${CMAKE_BINARY_DIR}/include/crab_llvm DESTINATION include
+     FILES_MATCHING
+     PATTERN "*.hpp"
+     PATTERN "*.hh"
+     PATTERN "*.h"
+     PATTERN "CMakeFiles" EXCLUDE
+     PATTERN ".svn" EXCLUDE
+   )
+
+   install(DIRECTORY ${CMAKE_BINARY_DIR}/run/include/crab DESTINATION include
+     FILES_MATCHING
+     PATTERN "*.hpp"
+     PATTERN "*.hh"
+     PATTERN "CMakeFiles" EXCLUDE
+     PATTERN ".svn" EXCLUDE
+   )
+
+   # install all the licenses
+   install(FILES LICENSE.txt DESTINATION share/doc
+           RENAME crabllvm_license.txt)       
+
+   if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ext/llvm/LICENSE.TXT)
+       install (FILES ext/llvm/LICENSE.TXT
+         DESTINATION share/doc
+         RENAME llvm_license.txt)
+   endif()
+   
+   if (EXISTS ${CMAKE_CURRENT_BINARY_DIR}/crab/src/crab/Ikos_LICENSE.pdf)
+       install (
+         FILES
+         ${CMAKE_CURRENT_BINARY_DIR}/crab/src/crab/Ikos_LICENSE.pdf
+         DESTINATION share/doc
+         RENAME ikos_license.pdf)
+   endif()
+  
+   if (EXISTS ${CMAKE_CURRENT_BINARY_DIR}/crab/src/crab/Crab_LICENSE.txt)
+       install (
+         FILES
+         ${CMAKE_CURRENT_BINARY_DIR}/crab/src/crab/Crab_LICENSE.txt
+         DESTINATION share/doc
+         RENAME crab_license.txt)
+   endif()
+endif ()
