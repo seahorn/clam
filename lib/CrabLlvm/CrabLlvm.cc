@@ -31,7 +31,7 @@ using namespace llvm;
 using namespace crab_llvm;
 
 // for debugging
-// #define CRABLLVM_DEBUG
+#define CRABLLVM_DEBUG
 
 llvm::cl::opt<bool>
 LlvmCrabPrintAns ("crab-print-invariants", 
@@ -136,137 +136,27 @@ namespace crab_llvm {
 
   namespace setup_abs_dom {
 
-    // Some domains can be more effective if the tracked variables are
-    // known in advance.
-    void collectVars(const llvm::Function &f, 
-                     VariableFactory& vfac, MemAnalysis& mem, 
-                     set<varname_t>& vars) {
-      
-      SymEval<VariableFactory, z_lin_exp_t> s (vfac, &mem);
-      for (const_inst_iterator I = inst_begin(f), E = inst_end(f); I != E; ++I)
-      {
-        const Instruction *instr = &*I;
-        
-        //compare
-        if(const CmpInst *ci = dyn_cast<CmpInst>(instr)) 
-        {
-          // -- track all compare instructions except for those
-          // -- that are only used in the terminator of the basic
-          // -- block they are defined in
-          
-          // XXX This includes compare instructions that are only
-          // used in 'select' or 'or/and' statements inside BBs
-          // they are defined in. We can probably get rid of such
-          // compares as well.
-          const llvm::BasicBlock *ciBB = ci->getParent ();
-          const TerminatorInst *term = ciBB->getTerminator ();
-          
-          for (Value::const_use_iterator ut = ci->use_begin (),
-                   ue = ci->use_end (); ut != ue; ++ut)
-          {
-            const User *u = ut->getUser ();
-            const Instruction* uinst = cast<Instruction> (u);
-            // -- use outside of a terminator
-            if (uinst != term)
-            {
-              vars.insert (s.symVar (*ci));
-              break;
-            }
-            // --  use in another BB
-            if (uinst->getParent () != ciBB) 
-            {
-              vars.insert (s.symVar (*ci));
-              break;
-            }
-          }
-          
-        }
-        // -- boolean binary ops
-        else if (isa<BinaryOperator> (*instr) && 
-                 (instr->getType ()->isIntegerTy (1)))
-        {
-          const llvm::BasicBlock *pBB = instr->getParent ();
-          
-          for (Value::const_use_iterator ut = instr->use_begin (),
-                   ue = instr->use_end (); ut != ue; ++ut)
-          {
-            const User *u = ut->getUser ();
-            const Instruction* uinst = cast<Instruction> (u);
-            // -- use outside of a terminator
-            // --  use in another BB
-            if (uinst->getParent () != pBB) 
-            {
-              vars.insert (s.symVar (*instr));
-              break;		    
-            }
-          }
-        }
-        //PHI node
-        else if(isa<PHINode>(*instr)) vars.insert (s.symVar (*instr));
-        //binary operation
-        else if(isa<BinaryOperator>(*instr))
-        { 
-          if (!(instr->getType ()->isIntegerTy (1))) vars.insert (s.symVar (*instr));
-        }
-        //return
-        else if(const ReturnInst *ri = dyn_cast<ReturnInst>(instr)) 
-        {
-          if(ri->getNumOperands() && !(ri->getOperand(0)->getType ()->isIntegerTy ())) 
-            vars.insert (s.symVar (*(ri->getOperand(0))));
-        }
-        //call
-        else if (const CallInst *ci = dyn_cast<CallInst>(instr)) 
-        {
-          Function *fp = ci->getCalledFunction();
-          // -- track non-void functions, and functions for which there 
-          // -- is no llvm::Function object
-          if(!fp || 
-             (fp->getReturnType() != Type::getVoidTy(fp->getContext ())))
-            vars.insert (s.symVar (*instr));
-        }
-        //cast
-        else if(isa<CastInst>(*instr)) vars.insert (s.symVar (*instr));
-        //select
-        else if(isa<SelectInst>(*instr)) { vars.insert (s.symVar (*instr)); }
-        //load
-        else if (isa<LoadInst>(*instr)) {
-          if (instr->getType()->isIntegerTy () && mem.getTrackLevel () == ARR) {
-            vars.insert (s.symVar (*instr));
-          }
-        }
-      }
-    }
-
-    // This method assumes that inv has some global state that can be
-    // shared by all instances
     template<typename AbsDomain>
-    void setGlobalParams (const llvm::Function &F, 
-                          VariableFactory& vfac, MemAnalysis& mem, 
-                          AbsDomain& inv) {}
+    void setGlobalParams (const cfg_t& cfg, AbsDomain& inv) { }
 
-    // This method assumes that inv has some global state that can be
-    // shared by all instances
     template<typename AbsDomain>
-    void resetGlobalParams (AbsDomain& inv) {}
+    void resetGlobalParams (AbsDomain &inv) {}
 
+  
     bool matchRegex (string s, string re_s){
       try {
         std::regex re (re_s);
         return std::regex_match (s, re);
-     } 
+      } 
       catch (std::regex_error& e) {
-        errs () << "Syntax error in the regex: " << e.what () << "\n";
+        errs () << "Warning: syntax error in the regex: " << e.what () << "\n";
         return false;
       }
     }
   
     template<>
-    void setGlobalParams (const llvm::Function &F, 
-                          VariableFactory& vfac, MemAnalysis& mem, 
-                          boxes_domain_t& inv) {
-      set<varname_t> tracked_vars;
-      collectVars (F, vfac, mem, tracked_vars);
-      for (auto v: tracked_vars) {
+    void setGlobalParams (const cfg_t& cfg, boxes_domain_t &inv) {
+      for (auto v: boost::make_iterator_range (cfg.get_vars ())) {
         if (LlvmCrabBoxesTrackRegex != "" &&
             !matchRegex(v.str (), LlvmCrabBoxesTrackRegex))
           continue;
@@ -276,32 +166,27 @@ namespace crab_llvm {
 #endif 
       }
     }
-    
+ 
     template<>
-    void setGlobalParams (const llvm::Function &F, 
-                          VariableFactory& vfac, MemAnalysis& mem, 
-                          arr_boxes_domain_t& inv) {
-      set<varname_t> tracked_vars;
-      collectVars (F, vfac, mem, tracked_vars);
-      for (auto v: tracked_vars) {
+    void setGlobalParams (const cfg_t& cfg, arr_boxes_domain_t &inv) {
+      for (auto v: boost::make_iterator_range (cfg.get_vars ())) {
         if (LlvmCrabBoxesTrackRegex != "" &&
             !matchRegex(v.str (), LlvmCrabBoxesTrackRegex))
           continue;
-        inv.get_base_domain().addTrackVar (v);
+        inv.get_base_domain ().addTrackVar (v);
 #ifdef CRABLLVM_DEBUG
-        errs () << "-- Boxes will track " << v.str () << "\n";
+        errs () << "\n-- Boxes will track " << v.str ();
 #endif 
       }
     }
   
     template<>
-    void resetGlobalParams (boxes_domain_t& inv){
-      inv.resetTrackVars ();
-    }
+    void resetGlobalParams (boxes_domain_t& inv) 
+    { inv.resetTrackVars (); }
+  
     template<>
-    void resetGlobalParams (arr_boxes_domain_t& inv){
-      inv.get_base_domain().resetTrackVars ();
-    }
+    void resetGlobalParams (arr_boxes_domain_t &inv) 
+    { inv.get_base_domain ().resetTrackVars (); }
   
   } // end namespace 
 } // end namespace 
@@ -658,9 +543,10 @@ namespace crab_llvm {
     analyzer_t analyzer (cfg, m_vfac, &live, 
                          LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
     AbsDomain inv = AbsDomain::top();
-    setup_abs_dom::setGlobalParams (F, m_vfac, m_mem, inv);
+    setup_abs_dom::setGlobalParams (cfg, inv);
     analyzer.Run (inv);
     setup_abs_dom::resetGlobalParams (inv);
+
 #ifdef CRABLLVM_DEBUG
     std::cout << "DONE\n";
 #endif 

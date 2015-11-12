@@ -41,16 +41,17 @@ Another optional component used by `crabllvmpp` is:
 
 * [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
 
-`llvm-seahorn` provides specialized versions of `InstCombine` and `IndVarSimplify` LLVM passes.
+`llvm-seahorn` provides specialized versions of `InstCombine` and
+`IndVarSimplify` LLVM passes as well as a LLVM pass to convert
+undefined values into nondeterministic calls.
 
 Then, the compilation steps are:
 
 1. ```mkdir build ; cd build```
 2. ```cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=my_install_dir ../```
 
-If you want to use the boxes domain then type:
+If you want to use the boxes domain then add to step 2 the option `-DUSE_LDD=ON`.
 
-2. ```cmake -DUSE_LDD=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=my_install_dir ../```
 
 #Usage#
 
