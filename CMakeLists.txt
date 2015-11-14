@@ -30,7 +30,8 @@ if (TopLevel)
   endif()
 endif ()
 
-option (USE_LDD "Enable ldd" OFF)
+option (USE_LDD   "Enable ldd" OFF)
+option (USE_APRON "Enable Apron library" OFF)
 
 # put static libraries first
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -58,7 +59,6 @@ if (TopLevel)
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
 endif ()
-
 
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
@@ -130,6 +130,55 @@ endif ()
 
 include_directories (${LDD_INCLUDE_DIR})
 
+if (USE_APRON)
+  if (GIT_FOUND)
+
+    find_package(Gmp REQUIRED)
+    get_filename_component (GMP_SEARCH_PATH ${GMP_INCLUDE_DIR} PATH)
+
+    find_package(MPFR REQUIRED)
+    if (MPFR_FOUND)
+      get_filename_component (MPFR_SEARCH_PATH ${MPFR_INCLUDES} PATH)
+    endif ()
+
+    ExternalProject_Add(apron
+      GIT_REPOSITORY https://arieg@bitbucket.org/arieg/apron.git
+      GIT_TAG 708af3860585ffb747668c4deb34bccc111cf687
+      CONFIGURE_COMMAND echo "Apron does not need a configure"
+      BUILD_IN_SOURCE 1
+      BUILD_COMMAND make CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} 
+      APRON_PREFIX=<INSTALL_DIR> GMP_PREFIX=${GMP_SEARCH_PATH} MPFR_PREFIX=${MPFR_SEARCH_PATH} 
+      INSTALL_COMMAND 
+      make APRON_PREFIX=<INSTALL_DIR> GMP_PREFIX=${GMP_SEARCH_PATH} MPFR_PREFIX=${MPFR_SEARCH_PATH} install
+      LOG_CONFIGURE 1
+      LOG_INSTALL 1
+      LOG_BUILD 1)
+    else ()
+    message (STATUS "Could not find git. Not downloading apron")
+  endif()
+
+  find_package(Apron)
+  if (APRON_FOUND)
+    #include_directories (${APRON_INCLUDE_DIR})
+    set (APRON_LIBS ${APRON_LIBRARY} ${MPFR_LIBRARIES})
+    set (HAVE_APRON TRUE)
+    message(STATUS "Found Apron ${APRON_INCLUDE_DIR}")
+    if (NOT TopLevel)
+      # propagate variables to the caller
+      set (HAVE_APRON TRUE PARENT_SCOPE)
+      set (APRON_INCLUDE_DIR ${APRON_INCLUDE_DIR} PARENT_SCOPE)
+      set (APRON_LIBS ${APRON_LIBS} PARENT_SCOPE)
+    endif()
+  else()
+    ExternalProject_Get_Property (apron INSTALL_DIR)
+    set (APRON_ROOT ${INSTALL_DIR} CACHE FILEPATH "Forced location of apron" FORCE)
+    message (WARNING "No apron found. Run \n\tcmake --build . --target apron && cmake ${CMAKE_SOURCE_DIR}")
+    return()
+  endif()
+endif()
+
+include_directories (${APRON_INCLUDE_DIR})
+
 if (GIT_FOUND)
   set (CRAB_CORE_TAG "origin/dbm-paper" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
@@ -147,6 +196,9 @@ if (GIT_FOUND)
     -DCMAKE_LDD_INCLUDE_DIR=${LDD_INCLUDE_DIR}
     -DCMAKE_LDD_LIBRARY=${LDD_LIBRARY}
     -DCMAKE_CUDD_FOUND=${CUDD_FOUND}
+    -DCMAKE_USE_APRON=${USE_APRON}
+    -DCMAKE_APRON_INCLUDE_DIR=${APRON_INCLUDE_DIR}
+    -DCMAKE_APRON_LIBRARY=${APRON_LIBRARY}
     TEST_AFTER_INSTALL 1
     TEST_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
     LOG_DOWNLOAD 1
@@ -157,12 +209,6 @@ else ()
     message (STATUS "Could not find git. Not downloading crab")
 endif()
 
-# find_package(Apron)
-# if (APRON_FOUND)
-#   include_directories (${APRON_INCLUDE_DIR})
-# else()
-#   set (APRON_LIBRARY "")
-# endif()
   
 find_package (Crab)
 if (NOT CRAB_FOUND)

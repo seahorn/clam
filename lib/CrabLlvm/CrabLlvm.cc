@@ -57,26 +57,32 @@ LlvmCrabNarrowingIters("crab-narrowing-iters",
 
 llvm::cl::opt<CrabDomain>
 LlvmCrabDomain("crab-dom",
-       llvm::cl::desc ("Crab abstract domain used to infer invariants"),
-       llvm::cl::values 
-       (clEnumValN (INTERVALS, "int",
-                    "Classical interval domain (default)"),
-        clEnumValN (INTERVALS_CONGRUENCES, "ric",
-                    "Reduced product of intervals with congruences"),
-        clEnumValN (ZONES , "zones",
-                    "Difference-Bounds Matrix (or Zones) domain"),
-        clEnumValN (SZONES, "szones",
-                    "Split difference-Bounds Matrix domain"),
-        clEnumValN (VZONES, "vzones",
-                    "Difference-Bounds Matrix with variable packing domain"),
-        clEnumValN (TERMS, "term",
-                    "Intervals with uninterpreted functions."),
-        clEnumValN (NUM, "num",
-                    "Choose automatically the numerical abstract domain."),
-        clEnumValN (BOXES, "boxes",
-                    "Disjunctive intervals"),
-        clEnumValEnd),
-       llvm::cl::init (INTERVALS));
+               llvm::cl::desc ("Crab abstract domain used to infer invariants"),
+               llvm::cl::values 
+               (clEnumValN (INTERVALS, "int",
+                            "Classical interval domain (default)"),
+                clEnumValN (INTERVALS_CONGRUENCES, "ric",
+                            "Reduced product of intervals with congruences"),
+                clEnumValN (ZONES , "zones",
+                            "Difference-Bounds Matrix (or Zones) domain"),
+                clEnumValN (SZONES, "szones",
+                            "Split difference-Bounds Matrix domain"),
+                clEnumValN (VZONES, "vzones",
+                            "Difference-Bounds Matrix with variable packing domain"),
+                clEnumValN (TERMS, "term",
+                            "Intervals with uninterpreted functions."),
+                clEnumValN (NUM, "num",
+                            "Choose automatically the numerical abstract domain."),
+                clEnumValN (BOXES, "boxes",
+                            "Disjunctive intervals"),
+                clEnumValN (INTV_APRON, "int-apron",
+                            "Intervals using Apron library"),
+                clEnumValN (OCT_APRON, "oct-apron",
+                            "Octagons using Apron library"),
+                clEnumValN (PK_APRON, "pk-apron",
+                            "New polka using Apron library"),
+                clEnumValEnd),
+               llvm::cl::init (INTERVALS));
 
 // If domain is num
 llvm::cl::opt<unsigned>
@@ -316,6 +322,21 @@ namespace crab_llvm {
                     runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
                     runOnCg <dbm_domain_t, term_domain_t> (cg, live_map, M)) ; 
           break;
+        case INTV_APRON:
+          change = (LlvmCrabTrackLev == ARR ? 
+                    runOnCg <arr_dbm_domain_t, arr_box_apron_domain_t> (cg, live_map, M) : 
+                    runOnCg <dbm_domain_t, box_apron_domain_t> (cg, live_map, M)) ; 
+          break;
+        case OCT_APRON:
+          change = (LlvmCrabTrackLev == ARR ? 
+                    runOnCg <arr_oct_apron_domain_t, arr_oct_apron_domain_t> (cg, live_map, M) : 
+                    runOnCg <oct_apron_domain_t, oct_apron_domain_t> (cg, live_map, M)) ; 
+          break;
+        case PK_APRON:
+          change = (LlvmCrabTrackLev == ARR ? 
+                    runOnCg <arr_pk_apron_domain_t, arr_pk_apron_domain_t> (cg, live_map, M) : 
+                    runOnCg <pk_apron_domain_t, pk_apron_domain_t> (cg, live_map, M)) ; 
+          break;
         // case BOXES:
         //   change = (LlvmCrabTrackLev == ARR ? 
         //             runOnCg <arr_boxes_domain_t, arr_boxes_domain_t> (cg, live_map, M) : 
@@ -447,6 +468,21 @@ namespace crab_llvm {
         change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_boxes_domain_t> (cfg, *live, F) : 
                   runOnCfg <boxes_domain_t> (cfg, *live, F)) ; 
+        break;
+      case INTV_APRON:
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_box_apron_domain_t> (cfg, *live, F) : 
+                  runOnCfg <box_apron_domain_t> (cfg, *live, F)) ; 
+        break;
+      case OCT_APRON:
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_oct_apron_domain_t> (cfg, *live, F) : 
+                  runOnCfg <oct_apron_domain_t> (cfg, *live, F)) ; 
+        break;
+      case PK_APRON:
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_pk_apron_domain_t> (cfg, *live, F) : 
+                  runOnCfg <pk_apron_domain_t> (cfg, *live, F)) ; 
         break;
       case INTERVALS:  
       default: 

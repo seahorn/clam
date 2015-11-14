@@ -9,6 +9,10 @@ if (USE_LDD)
   set (CRAB_LIBS ${CRAB_LIBS} ${LDD_LIBRARY}) 
 endif ()
 
+if (USE_APRON)
+  set (CRAB_LIBS ${CRAB_LIBS} ${APRON_LIBS}) 
+endif ()
+
 add_library (CrabLlvmAnalysis STATIC
   CfgBuilder.cc
   CrabLlvm.cc

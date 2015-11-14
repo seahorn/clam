@@ -52,6 +52,7 @@ Then, the compilation steps are:
 
 If you want to use the boxes domain then add to step 2 the option `-DUSE_LDD=ON`.
 
+If you want to use the apron domains then add to step 2 the option `-DUSE_APRON=ON`.
 
 #Usage#
 

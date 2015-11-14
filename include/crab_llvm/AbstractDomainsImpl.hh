@@ -83,6 +83,10 @@ namespace crab_llvm {
   #else
   typedef boxes_domain< z_number, varname_t > boxes_domain_t;
   #endif 
+  /// -- Apron domains
+  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_INT > box_apron_domain_t;
+  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OCT > oct_apron_domain_t;
+  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_PK > pk_apron_domain_t;
   /// -- Array Smashing parameterized with above abstract domains
   typedef array_smashing<interval_domain_t,z_number,varname_t> arr_interval_domain_t;
   typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
@@ -91,6 +95,9 @@ namespace crab_llvm {
   typedef array_smashing<vdbm_domain_t,z_number,varname_t> arr_vdbm_domain_t;
   typedef array_smashing<term_domain_t,z_number,varname_t> arr_term_domain_t;
   typedef array_smashing<boxes_domain_t,z_number,varname_t> arr_boxes_domain_t;
+  typedef array_smashing<box_apron_domain_t,z_number,varname_t> arr_box_apron_domain_t;
+  typedef array_smashing<oct_apron_domain_t,z_number,varname_t> arr_oct_apron_domain_t;
+  typedef array_smashing<pk_apron_domain_t,z_number,varname_t> arr_pk_apron_domain_t;
 
   //////
   // Generic wrapper to encapsulate the abstract domain
@@ -105,13 +112,20 @@ namespace crab_llvm {
                     term, 
                     ric, 
                     boxes, 
+                    intv_apron,
+                    oct_apron,
+                    pk_apron,
                     arr_intv, 
                     arr_dbm, 
                     arr_sdbm,
                     arr_vdbm,
                     arr_term, 
                     arr_ric, 
-                    arr_boxes } id_t;
+                    arr_boxes,
+                    arr_intv_apron,
+                    arr_oct_apron,
+                    arr_pk_apron
+                  } id_t;
 
      GenericAbsDomWrapper () { }
 
@@ -152,6 +166,9 @@ namespace crab_llvm {
    DEFINE_BASE_DOMAIN(VDbmDomainWrapper,vdbm_domain_t,vdbm)
    DEFINE_BASE_DOMAIN(TermDomainWrapper,term_domain_t,term)
    DEFINE_BASE_DOMAIN(BoxesDomainWrapper,boxes_domain_t,boxes)
+   DEFINE_BASE_DOMAIN(BoxApronDomainWrapper,box_apron_domain_t,intv_apron)
+   DEFINE_BASE_DOMAIN(OctApronDomainWrapper,oct_apron_domain_t,oct_apron)
+   DEFINE_BASE_DOMAIN(PkApronDomainWrapper,pk_apron_domain_t,pk_apron)
 
    // Required only for array versions
    REGISTER_DOMAIN_ID(arr_interval_domain_t,arr_intv)
@@ -161,6 +178,9 @@ namespace crab_llvm {
    REGISTER_DOMAIN_ID(arr_vdbm_domain_t,arr_vdbm)
    REGISTER_DOMAIN_ID(arr_term_domain_t,arr_term)
    REGISTER_DOMAIN_ID(arr_boxes_domain_t,arr_boxes)
+   REGISTER_DOMAIN_ID(arr_box_apron_domain_t,arr_intv_apron)
+   REGISTER_DOMAIN_ID(arr_oct_apron_domain_t,arr_oct_apron)
+   REGISTER_DOMAIN_ID(arr_pk_apron_domain_t,arr_pk_apron)
 
    template<typename B>
    class ArraySmashingDomainWrapper: public GenericAbsDomWrapper {
@@ -228,6 +248,12 @@ namespace crab_llvm {
          FORGET_MACRO(term_domain_t)
        case GenericAbsDomWrapper::boxes: 
          FORGET_MACRO(boxes_domain_t)
+       case GenericAbsDomWrapper::intv_apron: 
+         FORGET_MACRO(box_apron_domain_t)
+       case GenericAbsDomWrapper::oct_apron: 
+         FORGET_MACRO(oct_apron_domain_t)
+       case GenericAbsDomWrapper::pk_apron: 
+         FORGET_MACRO(pk_apron_domain_t)
        case GenericAbsDomWrapper::arr_intv:
          FORGET_MACRO(arr_interval_domain_t)
        case GenericAbsDomWrapper::arr_ric:
@@ -242,6 +268,12 @@ namespace crab_llvm {
          FORGET_MACRO(arr_term_domain_t) 
        case GenericAbsDomWrapper::arr_boxes: 
          FORGET_MACRO(arr_boxes_domain_t) 
+       case GenericAbsDomWrapper::arr_intv_apron: 
+         FORGET_MACRO(arr_box_apron_domain_t) 
+       case GenericAbsDomWrapper::arr_oct_apron: 
+         FORGET_MACRO(arr_oct_apron_domain_t) 
+       case GenericAbsDomWrapper::arr_pk_apron: 
+         FORGET_MACRO(arr_pk_apron_domain_t) 
        default: assert (false && "unreachable");
      }
    }

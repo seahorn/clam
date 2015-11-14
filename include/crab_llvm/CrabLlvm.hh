@@ -27,7 +27,11 @@ namespace crab_llvm
                      SZONES,
                      VZONES, 
                      TERMS,
-                     NUM};
+                     NUM,
+                     INTV_APRON,
+                     OCT_APRON,
+                     PK_APRON };
+                   
 }
 
 namespace crab_llvm
