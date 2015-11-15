@@ -79,6 +79,8 @@ LlvmCrabDomain("crab-dom",
                             "Intervals using Apron library"),
                 clEnumValN (OCT_APRON, "oct-apron",
                             "Octagons using Apron library"),
+                clEnumValN (OPT_OCT_APRON, "opt-oct-apron",
+                            "Optimized octagons using Elina"),
                 clEnumValN (PK_APRON, "pk-apron",
                             "New polka using Apron library"),
                 clEnumValEnd),
@@ -332,6 +334,11 @@ namespace crab_llvm {
                     runOnCg <arr_oct_apron_domain_t, arr_oct_apron_domain_t> (cg, live_map, M) : 
                     runOnCg <oct_apron_domain_t, oct_apron_domain_t> (cg, live_map, M)) ; 
           break;
+        case OPT_OCT_APRON:
+          change = (LlvmCrabTrackLev == ARR ? 
+                    runOnCg <arr_opt_oct_apron_domain_t, arr_opt_oct_apron_domain_t> (cg, live_map, M) : 
+                    runOnCg <opt_oct_apron_domain_t, opt_oct_apron_domain_t> (cg, live_map, M)) ; 
+          break;
         case PK_APRON:
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_pk_apron_domain_t, arr_pk_apron_domain_t> (cg, live_map, M) : 
@@ -478,6 +485,11 @@ namespace crab_llvm {
         change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_oct_apron_domain_t> (cfg, *live, F) : 
                   runOnCfg <oct_apron_domain_t> (cfg, *live, F)) ; 
+        break;
+      case OPT_OCT_APRON:
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_opt_oct_apron_domain_t> (cfg, *live, F) : 
+                  runOnCfg <opt_oct_apron_domain_t> (cfg, *live, F)) ; 
         break;
       case PK_APRON:
         change = (LlvmCrabTrackLev == ARR ? 

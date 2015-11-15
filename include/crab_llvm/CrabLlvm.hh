@@ -30,6 +30,7 @@ namespace crab_llvm
                      NUM,
                      INTV_APRON,
                      OCT_APRON,
+                     OPT_OCT_APRON,
                      PK_APRON };
                    
 }

@@ -128,8 +128,19 @@ namespace llvm
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         crab::domains::apron_domain
                                         <Number,VariableName, 
+                                        crab::domains::apron_domain_id_t::APRON_OPT_OCT>& inv)
+  {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  template <typename Number, typename VariableName>
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab::domains::apron_domain
+                                        <Number,VariableName, 
                                         crab::domains::apron_domain_id_t::APRON_PK>& inv)
-                                        
   {
     ostringstream s;
     s << inv;

@@ -131,7 +131,6 @@ endif ()
 include_directories (${LDD_INCLUDE_DIR})
 
 if (USE_APRON)
- if (NOT HAVE_APRON)
    if (GIT_FOUND)
 
      find_package(Gmp REQUIRED)
@@ -155,23 +154,26 @@ if (USE_APRON)
        endif ()
      endif ()
 
-     set (APRON_TAG "origin/elina" CACHE STRING "apron tag to use")
-     ExternalProject_Add(apron
-       GIT_REPOSITORY git@bitbucket.org:jorgenavas/apron.git 
-       GIT_TAG ${APRON_TAG}
-       CONFIGURE_COMMAND echo "Apron does not need a configure"
-       BUILD_IN_SOURCE 1
-        BUILD_COMMAND make CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ${IS_VECTOR} ${IS_SSE}
-       APRON_PREFIX=<INSTALL_DIR> GMP_PREFIX=${GMP_SEARCH_PATH} MPFR_PREFIX=${MPFR_SEARCH_PATH} 
-       INSTALL_COMMAND 
-       make APRON_PREFIX=<INSTALL_DIR> GMP_PREFIX=${GMP_SEARCH_PATH} MPFR_PREFIX=${MPFR_SEARCH_PATH} install
-       LOG_CONFIGURE 1
-       LOG_INSTALL 1
-       LOG_BUILD 1)
-    else ()
-      message (STATUS "Could not find git. Not downloading apron")
+     if (NOT HAVE_APRON)
+       set (APRON_TAG "origin/elina" CACHE STRING "apron tag to use")
+       ExternalProject_Add(apron
+         GIT_REPOSITORY git@bitbucket.org:jorgenavas/apron.git 
+         GIT_TAG ${APRON_TAG}
+         INSTALL_DIR ${CMAKE_BINARY_DIR}/run/apron
+         CONFIGURE_COMMAND echo "Apron does not need a configure"
+         BUILD_IN_SOURCE 1
+         BUILD_COMMAND make CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ${IS_VECTOR} ${IS_SSE}
+         APRON_PREFIX=<INSTALL_DIR> GMP_PREFIX=${GMP_SEARCH_PATH} MPFR_PREFIX=${MPFR_SEARCH_PATH} 
+         INSTALL_COMMAND 
+         make APRON_PREFIX=<INSTALL_DIR> GMP_PREFIX=${GMP_SEARCH_PATH} MPFR_PREFIX=${MPFR_SEARCH_PATH} install
+         LOG_CONFIGURE 1
+         LOG_INSTALL 1
+         LOG_BUILD 1)
+     endif ()
+   else ()
+     message (STATUS "Could not find git. Not downloading apron")
    endif()
-    
+   
    find_package(Apron)
    if (APRON_FOUND)
      #include_directories (${APRON_INCLUDE_DIR})
@@ -190,7 +192,6 @@ if (USE_APRON)
      message (WARNING "No apron found. Run \n\tcmake --build . --target apron && cmake ${CMAKE_SOURCE_DIR}")
      return()
    endif()
-  endif ()
 endif()
 
 include_directories (${APRON_INCLUDE_DIR})
