@@ -99,6 +99,9 @@ def parseArgs (argv):
     p.add_argument ('--turn-undef-nondet',
                     help='Turn undefined behaviour into non-determinism',
                     dest='undef_nondet', default=False, action='store_true')
+    p.add_argument ('--lower-select',
+                    help='Lower select instructions',
+                    dest='lower_select', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
@@ -342,12 +345,16 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
 
     if args.undef_nondet:
         crabllvm_cmd.append( '--crab-turn-undef-nondet')
+    if args.lower_select:
+        crabllvm_cmd.append( '--crab-lower-select')
+
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     if (args.crab_dom == 'num'):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
-    if (args.crab_dom == 'boxes'):
-        crabllvm_cmd.append ('--crab-widening-threshold={0}'.format (args.widening_threshold))
-        crabllvm_cmd.append ('--crab-narrowing-iters={0}'.format (args.narrowing_iterations))
+
+    crabllvm_cmd.append ('--crab-widening-threshold={0}'.format (args.widening_threshold))
+    crabllvm_cmd.append ('--crab-narrowing-iters={0}'.format (args.narrowing_iterations))
+
     crabllvm_cmd.append ('--crab-track-lvl={0}'.format (args.track))
     if args.crab_track_only_globals:
         crabllvm_cmd.append ('--crab-track-only-globals')

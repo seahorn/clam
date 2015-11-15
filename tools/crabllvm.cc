@@ -69,6 +69,11 @@ CrabUndefNondet ("crab-turn-undef-nondet",
                  llvm::cl::init (false),
                  llvm::cl::Hidden);
 
+static llvm::cl::opt<bool>
+LowerSelect ("crab-lower-select", 
+             llvm::cl::desc ("Lower all select instructions"),
+             llvm::cl::init (false));
+
 using namespace crab_llvm;
 
 // removes extension from filename if there is one
@@ -181,10 +186,8 @@ int main(int argc, char **argv) {
 #endif 
 
   // -- must be the last ones before running crab.
-  //    It is not a must anymore since Crab can handle select
-  //    instructions. However, Crab can be more precise if select are
-  //    lowered. llvmpp has the option to lower select instructions.
-  //pass_manager.add (crab_llvm::createLowerSelectPass ());   
+  if (LowerSelect)
+    pass_manager.add (crab_llvm::createLowerSelectPass ());   
   pass_manager.add (crab_llvm::createNameValuesPass ()); 
   
   if (Concurrency) {
