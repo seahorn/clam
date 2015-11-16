@@ -100,7 +100,7 @@ def parseArgs (argv):
                     help='Turn undefined behaviour into non-determinism',
                     dest='undef_nondet', default=False, action='store_true')
     p.add_argument ('--lower-select',
-                    help='Lower select instrutions',
+                    help='Lower select instructions',
                     dest='lower_select', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
@@ -349,6 +349,9 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
 
     if args.undef_nondet:
         crabllvm_cmd.append( '--crab-turn-undef-nondet')
+
+    if args.lower_select:
+        crabllvm_cmd.append( '--crab-lower-select')
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
 
