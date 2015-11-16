@@ -132,60 +132,47 @@ LlvmKeepShadows ("crab-keep-shadows",
 
 namespace crab_llvm {
 
-  namespace setup_abs_dom {
+  // this namespace is temporary for the boxes domain
+  namespace setup_if_boxes_dom {
 
     template<typename AbsDomain>
-    void setGlobalParams (const cfg_t& cfg, AbsDomain& inv) { }
+    void setGlobalParams (const cfg_t& cfg) { }
 
     template<typename AbsDomain>
-    void resetGlobalParams (AbsDomain &inv) {}
-
+    void resetGlobalParams () {}
   
-    bool matchRegex (string s, string re_s){
-      try {
-        std::regex re (re_s);
-        return std::regex_match (s, re);
-      } 
-      catch (std::regex_error& e) {
-        errs () << "Warning: syntax error in the regex: " << e.what () << "\n";
-        return false;
+    struct MatchRegex : public std::unary_function<cfg_t::varname_t,bool> {
+      boost::optional <std::regex> m_re;
+      MatchRegex (string s) { 
+        if (s != "") {
+          try  { m_re = std::regex (s); }
+          catch (std::regex_error& e) {
+            errs () << "Warning: syntax error in the regex: " << e.what () << "\n";
+          }
+        }
       }
-    }
+      bool operator() (cfg_t::varname_t s)  {
+        if (!m_re) return true; 
+        else return std::regex_match (s.str (), *m_re);
+      }
+    };
   
-    template<>
-    void setGlobalParams (const cfg_t& cfg, boxes_domain_t &inv) {
-      for (auto v: boost::make_iterator_range (cfg.get_vars ())) {
-        if (LlvmCrabBoxesTrackRegex != "" &&
-            !matchRegex(v.str (), LlvmCrabBoxesTrackRegex))
-          continue;
-        inv.addTrackVar (v);
-#ifdef CRABLLVM_DEBUG
-        errs () << "\n-- Boxes will track " << v.str ();
-#endif 
-      }
+    template<> void setGlobalParams <boxes_domain_t> (const cfg_t& cfg) {
+      MatchRegex filter (LlvmCrabBoxesTrackRegex);
+      boxes_domain_t::create_global (cfg.get_vars (), filter);
     }
  
-    template<>
-    void setGlobalParams (const cfg_t& cfg, arr_boxes_domain_t &inv) {
-      for (auto v: boost::make_iterator_range (cfg.get_vars ())) {
-        if (LlvmCrabBoxesTrackRegex != "" &&
-            !matchRegex(v.str (), LlvmCrabBoxesTrackRegex))
-          continue;
-        inv.get_base_domain ().addTrackVar (v);
-#ifdef CRABLLVM_DEBUG
-        errs () << "\n-- Boxes will track " << v.str ();
-#endif 
-      }
+    template<> void setGlobalParams <arr_boxes_domain_t> (const cfg_t& cfg) {
+      MatchRegex filter (LlvmCrabBoxesTrackRegex);
+      boxes_domain_t::create_global (cfg.get_vars (), filter);
     }
   
-    template<>
-    void resetGlobalParams (boxes_domain_t& inv) 
-    { inv.resetTrackVars (); }
-  
-    template<>
-    void resetGlobalParams (arr_boxes_domain_t &inv) 
-    { inv.get_base_domain ().resetTrackVars (); }
-  
+    template<> void resetGlobalParams <boxes_domain_t> () 
+    { boxes_domain_t::destroy_global (); }
+
+    template<> void resetGlobalParams <arr_boxes_domain_t> () 
+    { boxes_domain_t::destroy_global (); }
+    
   } // end namespace 
 } // end namespace 
 
@@ -530,10 +517,11 @@ namespace crab_llvm {
     // -- run intra-procedural analysis
     analyzer_t analyzer (cfg, m_vfac, &live, 
                          LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
+
+    setup_if_boxes_dom::setGlobalParams<AbsDomain> (cfg);
     AbsDomain inv = AbsDomain::top();
-    setup_abs_dom::setGlobalParams (cfg, inv);
     analyzer.Run (inv);
-    setup_abs_dom::resetGlobalParams (inv);
+    setup_if_boxes_dom::resetGlobalParams<AbsDomain> ();
 
 #ifdef CRABLLVM_DEBUG
     std::cout << "DONE\n";
