@@ -344,9 +344,6 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
 
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
 
-    if args.lower_select:
-        crabllvm_cmd.append( '--crab-lower-select')
-
     if args.undef_nondet:
         crabllvm_cmd.append( '--crab-turn-undef-nondet')
 
