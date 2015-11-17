@@ -250,6 +250,7 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
 
     clang_args = [getClang (), '-emit-llvm', '-o', out_name, '-c', in_name ]
     clang_args.extend (extra_args)
+    clang_args.append ('-m{0}'.format (arch))
 
     if verbose: print ' '.join (clang_args)
     sub.check_call (clang_args)
