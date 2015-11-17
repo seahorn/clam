@@ -249,6 +249,7 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
 
     clang_args = [getClang (), '-emit-llvm', '-o', out_name, '-c', in_name ]
     clang_args.extend (extra_args)
+    clang_args.append ('-m{0}'.format (arch))
 
     if verbose: print ' '.join (clang_args)
     sub.check_call (clang_args)
@@ -345,10 +346,12 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
 
     if args.undef_nondet:
         crabllvm_cmd.append( '--crab-turn-undef-nondet')
+
     if args.lower_select:
         crabllvm_cmd.append( '--crab-lower-select')
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
+
     if (args.crab_dom == 'num'):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
 
