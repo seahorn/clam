@@ -9,7 +9,9 @@ if (NOT APRON_FOUND)
    find_path(APRON_INCLUDE_DIR NAMES ap_abstract0.h PATHS ${APRON_ROOT}/include)
 
    find_library(Apron_Polka_Lib NAMES polkaMPQ PATHS ${APRON_ROOT}/lib)
-   find_library(Apron_Oct_Lib NAMES octMPQ PATHS ${APRON_ROOT}/lib)
+   ## octD is faster than octMPQ
+   find_library(Apron_Oct_Lib NAMES octD PATHS ${APRON_ROOT}/lib)
+   # find_library(Apron_Oct_Lib NAMES octMPQ PATHS ${APRON_ROOT}/lib)
    find_library(Apron_Opt_Oct_Lib NAMES optoct PATHS ${APRON_ROOT}/lib)
    find_library(Apron_Opt_Oct_utils_Lib NAMES linkedlistapi PATHS ${APRON_ROOT}/lib)
    find_library(Apron_Apron_Lib NAMES apron PATHS ${APRON_ROOT}/lib)
