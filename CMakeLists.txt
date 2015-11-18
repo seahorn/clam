@@ -356,6 +356,7 @@ if (TopLevel)
      PATTERN ".svn" EXCLUDE
    )
 
+   install (FILES ${CMAKE_CURRENT_SOURCE_DIR}/README.md DESTINATION .)
    # install all the licenses
    install(FILES LICENSE.txt DESTINATION share/doc
            RENAME crabllvm_license.txt)       
