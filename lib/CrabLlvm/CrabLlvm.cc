@@ -32,6 +32,8 @@ using namespace crab_llvm;
 
 // for debugging
 #define CRABLLVM_DEBUG
+// for stats
+#define CRABLLVM_STATS
 
 llvm::cl::opt<bool>
 LlvmCrabPrintAns ("crab-print-invariants", 
@@ -63,18 +65,20 @@ LlvmCrabDomain("crab-dom",
                             "Classical interval domain (default)"),
                 clEnumValN (INTERVALS_CONGRUENCES, "ric",
                             "Reduced product of intervals with congruences"),
-                clEnumValN (ZONES , "zones",
-                            "Difference-Bounds Matrix (or Zones) domain"),
-                clEnumValN (SZONES, "szones",
-                            "Split difference-Bounds Matrix domain"),
-                clEnumValN (VZONES, "vzones",
-                            "Difference-Bounds Matrix with variable packing domain"),
                 clEnumValN (TERMS, "term",
                             "Intervals with uninterpreted functions."),
-                clEnumValN (NUM, "num",
-                            "Choose automatically the numerical abstract domain."),
                 clEnumValN (BOXES, "boxes",
                             "Disjunctive intervals"),
+                clEnumValN (NUM, "num",
+                            "Choose automatically the numerical abstract domain."),
+                clEnumValN (ZONES , "zones",
+                            "Sparse Difference-Bounds Matrix (or Zones) domain"),
+                clEnumValN (SZONES, "szones",
+                            "Split difference-Bounds Matrix domain"),
+                clEnumValN (DZONES, "dzones",
+                            "Dense Difference-Bounds Matrix"),
+                clEnumValN (VZONES, "vzones",
+                            "Dense Difference-Bounds Matrix with variable packing domain"),
                 clEnumValN (INTV_APRON, "int-apron",
                             "Intervals using Apron library"),
                 clEnumValN (OCT_APRON, "oct-apron",
@@ -266,6 +270,10 @@ namespace crab_llvm {
                     << avg_live_per_blk << "\n";
           std::cout.flush ();
 #endif 
+#ifdef CRABLLVM_STATS
+          std::cerr << "BRUNCH_STAT maxlive " << max_live_per_blk << "\n";
+#endif 
+
           live_map.insert (make_pair (cfg, live));
         }
       }
@@ -313,6 +321,11 @@ namespace crab_llvm {
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_sdbm_domain_t, arr_sdbm_domain_t> (cg, live_map, M) :  
                     runOnCg <sdbm_domain_t, sdbm_domain_t> (cg, live_map, M)) ; 
+          break;
+        case DZONES: 
+          change = (LlvmCrabTrackLev == ARR ? 
+                    runOnCg <arr_ddbm_domain_t, arr_ddbm_domain_t> (cg, live_map, M) :  
+                    runOnCg <ddbm_domain_t, ddbm_domain_t> (cg, live_map, M)) ; 
           break;
         case VZONES: 
           change = (LlvmCrabTrackLev == ARR ? 
@@ -420,6 +433,9 @@ namespace crab_llvm {
                 << avg_live_per_blk << "\n";
       std::cout.flush ();
 #endif 
+#ifdef CRABLLVM_STATS
+      std::cerr << "BRUNCH_STAT maxlive " << max_live_per_blk << "\n";
+#endif 
       live = &ls;
     }
 
@@ -460,6 +476,11 @@ namespace crab_llvm {
         change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_sdbm_domain_t> (cfg, *live, F) :  
                   runOnCfg <sdbm_domain_t> (cfg, *live, F)) ; 
+        break;
+      case DZONES: 
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_ddbm_domain_t> (cfg, *live, F) :  
+                  runOnCfg <ddbm_domain_t> (cfg, *live, F)) ; 
         break;
       case VZONES: 
         change = (LlvmCrabTrackLev == ARR ? 

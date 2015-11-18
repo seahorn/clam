@@ -25,6 +25,7 @@ namespace crab_llvm
                      BOXES,
                      ZONES, 
                      SZONES,
+                     DZONES,
                      VZONES, 
                      TERMS,
                      NUM,
