@@ -294,7 +294,7 @@ namespace crab_llvm
     MemAnalysis (): m_tracklev (INT) { }
     TrackedPrecision getTrackLevel () const { return m_tracklev; }
     int getArrayId (llvm::Function&, llvm::Value*) { return -1; }
-    const Value* getSingleton (int) { return nullptr;}
+    const llvm::Value* getSingleton (int) { return nullptr;}
     boost::tuple<set<int>,set<int>, set<int> > 
     getRefModNewArrays (llvm::Function&) {  
       return boost::make_tuple (set<int> (), set<int> (), set<int> ()); 
