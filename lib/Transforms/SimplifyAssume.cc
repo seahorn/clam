@@ -80,6 +80,10 @@ namespace crab_llvm
     // It might not preserve the call graph ...
     void getAnalysisUsage (AnalysisUsage &AU) const
     {AU.setPreservesAll ();}
+
+    virtual const char * getPassName() const {
+      return "Simplify assume instructions";
+    }
     
   };
 

@@ -47,6 +47,10 @@ namespace crab_llvm
     
     void getAnalysisUsage (AnalysisUsage &AU) const 
     {AU.setPreservesAll ();}
+
+    virtual const char * getPassName() const {
+      return "Lower global variable initialization into main";
+    }
     
   };
 
