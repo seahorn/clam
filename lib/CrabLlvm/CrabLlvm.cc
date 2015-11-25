@@ -52,7 +52,7 @@ LlvmCrabWideningThreshold("crab-widening-threshold",
    cl::Hidden);
 
 llvm::cl::opt<unsigned int>
-LlvmCrabNarrowingIters("crab-narrowing-iters", 
+LlvmCrabNarrowingIters("crab-narrowing-iterations", 
                        llvm::cl::desc("Max number of narrowing iterations"),
                        llvm::cl::init (999999),
                        cl::Hidden);
@@ -115,7 +115,7 @@ LlvmCrabInter ("crab-inter",
                cl::init (false));
 
 llvm::cl::opt<enum TrackedPrecision>
-LlvmCrabTrackLev("crab-track-lvl",
+LlvmCrabTrackLev("crab-track",
    llvm::cl::desc ("Track precision level of the Crab Cfg"),
    cl::values (clEnumValN (INT, "int", "Integer registers only"),
                clEnumValN (PTR, "ptr", "INT + pointer addresses"),

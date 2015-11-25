@@ -114,7 +114,9 @@ namespace crab_llvm
       return modified;
     }
         
-    virtual const char* getPassName () const {return "LowerSelect";}
+    virtual const char * getPassName() const {
+      return "Lower select instructions";
+    }
 
     virtual void getAnalysisUsage (AnalysisUsage &AU) const
     { AU.setPreservesAll (); }

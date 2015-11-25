@@ -14,7 +14,14 @@ namespace crab_llvm
     bool runOnFunction (Function &F)
     {return removeUnreachableBlocks (F);}
     
-    void getAnalysisUsage (AnalysisUsage &AU) const {}
+    void getAnalysisUsage (AnalysisUsage &AU) const {
+      AU.setPreservesAll ();
+    }
+    
+    virtual const char * getPassName() const {
+      return "Remove unreachable blocks";
+    }
+
   };
 
   char RemoveUnreachableBlocksPass::ID = 0;

@@ -85,7 +85,9 @@ namespace crab_llvm
 
     void getAnalysisUsage (AnalysisUsage &AU) const { AU.setPreservesAll (); }
 
-    virtual const char* getPassName () const {return "NameValues";}
+    virtual const char * getPassName() const {
+      return "Name values";
+    }
     
   };
 

@@ -21,6 +21,10 @@ namespace crab_llvm {
           F.addFnAttr (Attribute::AlwaysInline);
       return true;
     }
+
+    virtual const char * getPassName() const {
+      return "Mark internal functions with AlwaysInline attribute";
+    }
     
   };
 
