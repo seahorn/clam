@@ -356,9 +356,9 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
 
     crabllvm_cmd.append ('--crab-widening-threshold={0}'.format (args.widening_threshold))
-    crabllvm_cmd.append ('--crab-narrowing-iters={0}'.format (args.narrowing_iterations))
+    crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format (args.narrowing_iterations))
 
-    crabllvm_cmd.append ('--crab-track-lvl={0}'.format (args.track))
+    crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
     if args.crab_track_only_globals:
         crabllvm_cmd.append ('--crab-track-only-globals')
     if args.crab_track_only_singletons:
