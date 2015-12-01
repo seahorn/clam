@@ -12,9 +12,9 @@
 #include "llvm/Support/Debug.h"
 
 #include "crab_llvm/config.h"
+#include "crab_llvm/AbstractDomains.hh"
 #include "crab_llvm/CrabLlvm.hh"
 #include "crab_llvm/SymEval.hh"
-#include "crab_llvm/AbstractDomainsImpl.hh"
 
 #include "crab/domains/domain_traits.hpp"
 #include "crab/analysis/FwdAnalyzer.hpp"
@@ -302,10 +302,10 @@ namespace crab_llvm {
         case INTERVALS_CONGRUENCES: 
           switch (LlvmCrabSummDomain){
             case TERMS:
-              // change = (LlvmCrabTrackLev == ARR ? 
-              //           runOnCg <arr_term_domain_t, arr_ric_domain_t> (cg, live_map, M) : 
-              //           runOnCg <term_domain_t, ric_domain_t> (cg, live_map, M)) ; 
-              // break;
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_term_domain_t, arr_ric_domain_t> (cg, live_map, M) : 
+                        runOnCg <term_domain_t, ric_domain_t> (cg, live_map, M)) ; 
+              break;
             default:
               change = (LlvmCrabTrackLev == ARR ? 
                         runOnCg <arr_dbm_domain_t, arr_ric_domain_t> (cg, live_map, M) : 
@@ -315,10 +315,10 @@ namespace crab_llvm {
         case ZONES: 
           switch (LlvmCrabSummDomain){
             case TERMS:
-              // change = (LlvmCrabTrackLev == ARR ? 
-              //           runOnCg <arr_term_domain_t, arr_dbm_domain_t> (cg, live_map, M) :  
-              //           runOnCg <term_domain_t, dbm_domain_t> (cg, live_map, M)) ; 
-              // break;
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_term_domain_t, arr_dbm_domain_t> (cg, live_map, M) :  
+                        runOnCg <term_domain_t, dbm_domain_t> (cg, live_map, M)) ; 
+              break;
             default:
               change = (LlvmCrabTrackLev == ARR ? 
                         runOnCg <arr_dbm_domain_t, arr_dbm_domain_t> (cg, live_map, M) :  
@@ -328,10 +328,10 @@ namespace crab_llvm {
         case TERMS:
           switch (LlvmCrabSummDomain){
             case TERMS:
-              // change = (LlvmCrabTrackLev == ARR ? 
-              //           runOnCg <arr_term_domain_t, arr_term_domain_t> (cg, live_map, M) : 
-              //           runOnCg <term_domain_t, term_domain_t> (cg, live_map, M)) ; 
-              // break;
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_term_domain_t, arr_term_domain_t> (cg, live_map, M) : 
+                        runOnCg <term_domain_t, term_domain_t> (cg, live_map, M)) ; 
+              break;
             default:
               change = (LlvmCrabTrackLev == ARR ? 
                         runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
@@ -346,11 +346,11 @@ namespace crab_llvm {
                       << "Running intervals inter-procedurally ...\n"; 
           
           switch (LlvmCrabSummDomain){
-            // case TERMS:
-            //   change = (LlvmCrabTrackLev == ARR ? 
-            //             runOnCg <arr_term_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
-            //             runOnCg <term_domain_t, interval_domain_t> (cg, live_map, M)) ; 
-            //   break;
+            case TERMS:
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_term_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
+                        runOnCg <term_domain_t, interval_domain_t> (cg, live_map, M)) ; 
+              break;
             default:
               change = (LlvmCrabTrackLev == ARR ? 
                         runOnCg <arr_dbm_domain_t, arr_interval_domain_t> (cg, live_map, M) : 

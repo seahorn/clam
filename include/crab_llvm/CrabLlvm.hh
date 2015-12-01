@@ -10,7 +10,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
 
-#include <crab_llvm/AbstractDomainsImpl.hh>
+#include <crab_llvm/AbstractDomains.hh>
 #include <crab_llvm/CfgBuilder.hh>
 #include <crab_llvm/MemAnalysis.hh>
 

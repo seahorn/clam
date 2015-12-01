@@ -62,11 +62,6 @@ OptimizeLoops ("crab-pp-loops",
                llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-Concurrency ("crab-concur", llvm::cl::desc ("Preprocessing for concurrent analysis"),
-             llvm::cl::init (false),
-             llvm::cl::Hidden);
-
-static llvm::cl::opt<bool>
 CrabUndefNondet ("crab-turn-undef-nondet", 
                  llvm::cl::desc ("Turn undefined behaviour into non-determinism"),
                  llvm::cl::init (false));

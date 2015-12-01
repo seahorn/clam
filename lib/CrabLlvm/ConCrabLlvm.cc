@@ -15,7 +15,7 @@
 #include "crab_llvm/CfgBuilder.hh"
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/ConCrabLlvm.hh"
-#include "crab_llvm/AbstractDomainsImpl.hh"
+#include "crab_llvm/AbstractDomains.hh"
 
 #include <crab/cfg/ConcSys.hpp>
 #include <crab/analysis/ConcAnalyzer.hpp>
