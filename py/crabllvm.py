@@ -148,6 +148,10 @@ def parseArgs (argv):
     p.add_argument ('--crab-inter',
                     help='Run inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
+    p.add_argument ('--crab-inter-sum-dom',
+                    help='Choose abstract domain for computing summaries',
+                    choices=['term', 'zones', 'szones', 'vzones', 'opt-oct-apron'],
+                    dest='crab_inter_sum_dom', default='szones')
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        
@@ -364,6 +368,7 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
         crabllvm_cmd.append( '--crab-lower-select')
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
+    crabllvm_cmd.append ('--crab-inter-sum-dom={0}'.format (args.crab_inter_sum_dom))
 
     if (args.crab_dom == 'num'):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))

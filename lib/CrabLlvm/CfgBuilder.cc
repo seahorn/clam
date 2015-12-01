@@ -20,8 +20,9 @@
 #include "llvm/Support/CommandLine.h"
 
 #include "boost/tuple/tuple.hpp"
-#include <boost/range/iterator_range.hpp>
+#include "boost/range/iterator_range.hpp"
 #include "boost/range/algorithm/set_algorithm.hpp"
+#include "boost/optional.hpp"
 
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/CfgBuilder.hh"
@@ -83,6 +84,7 @@ namespace crab_llvm
 {
 
   using namespace crab::cfg_impl;
+  using namespace boost;
 
   VariableType getType (Type * ty)
   {

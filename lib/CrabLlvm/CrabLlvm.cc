@@ -12,9 +12,9 @@
 #include "llvm/Support/Debug.h"
 
 #include "crab_llvm/config.h"
+#include "crab_llvm/AbstractDomains.hh"
 #include "crab_llvm/CrabLlvm.hh"
 #include "crab_llvm/SymEval.hh"
-#include "crab_llvm/AbstractDomainsImpl.hh"
 
 #include "crab/domains/domain_traits.hpp"
 #include "crab/analysis/FwdAnalyzer.hpp"
@@ -74,11 +74,11 @@ LlvmCrabDomain("crab-dom",
                 clEnumValN (ZONES , "zones",
                             "Sparse Difference-Bounds Matrix (or Zones) domain"),
                 clEnumValN (SZONES, "szones",
-                            "Split difference-Bounds Matrix domain"),
+                            "Split Difference-Bounds Matrix domain"),
                 clEnumValN (DZONES, "dzones",
                             "Dense Difference-Bounds Matrix"),
                 clEnumValN (VZONES, "vzones",
-                            "Dense Difference-Bounds Matrix with variable packing domain"),
+                            "Dense Difference-Bounds Matrix with variable packing"),
                 clEnumValN (INTV_APRON, "int-apron",
                             "Intervals using Apron library"),
                 clEnumValN (OCT_APRON, "oct-apron",
@@ -113,6 +113,25 @@ llvm::cl::opt<bool>
 LlvmCrabInter ("crab-inter",
                cl::desc ("Crab Inter-procedural analysis"), 
                cl::init (false));
+
+// if crab-inter enabled. It does not make much sense to have
+// non-relational domains.
+llvm::cl::opt<CrabDomain>
+LlvmCrabSummDomain("crab-inter-sum-dom",
+       llvm::cl::desc ("Crab abstract domain used to generate function summaries"),
+       llvm::cl::values 
+       (clEnumValN (TERMS, "term",
+                    "Intervals with uninterpreted functions."),
+        clEnumValN (ZONES , "zones",
+                    "Sparse Difference-Bounds Matrix (or Zones) domain"),
+        clEnumValN (SZONES, "szones",
+                    "Split Zones domain"),
+        clEnumValN (VZONES, "vzones",
+                    "Dense Zones with variable packing"),
+        clEnumValN (OPT_OCT_APRON, "opt-oct-apron",
+                    "Optimized octagons using Elina"),
+        clEnumValEnd),
+       llvm::cl::init (ZONES));
 
 llvm::cl::opt<enum TrackedPrecision>
 LlvmCrabTrackLev("crab-track",
@@ -305,63 +324,112 @@ namespace crab_llvm {
             
       bool change = false;
       switch (m_absdom) {
-        // TODO: make an user option the abstract domain used
-        // for the bottom-up phase of the interprocedural analysis
+
         case INTERVALS_CONGRUENCES: 
-          change = (LlvmCrabTrackLev == ARR ? 
-                    runOnCg <arr_dbm_domain_t, arr_ric_domain_t> (cg, live_map, M) : 
-                    runOnCg <dbm_domain_t, ric_domain_t> (cg, live_map, M)) ; 
+          switch (LlvmCrabSummDomain) {
+            case TERMS:
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_term_domain_t, arr_ric_domain_t> (cg, live_map, M) : 
+                        runOnCg <term_domain_t, ric_domain_t> (cg, live_map, M)) ; 
+              break;
+            case VZONES: // temporary
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_vdbm_domain_t, arr_ric_domain_t> (cg, live_map, M) : 
+                        runOnCg <vdbm_domain_t, ric_domain_t> (cg, live_map, M)) ; 
+              break;
+            case ZONES: // temporary
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_dbm_domain_t, arr_ric_domain_t> (cg, live_map, M) : 
+                        runOnCg <dbm_domain_t, ric_domain_t> (cg, live_map, M)) ; 
+              break;
+            case OPT_OCT_APRON: 
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_opt_oct_apron_domain_t, arr_ric_domain_t> (cg, live_map, M) : 
+                        runOnCg <opt_oct_apron_domain_t, ric_domain_t> (cg, live_map, M)) ; 
+              break;
+            default:    // szones              
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_sdbm_domain_t, arr_ric_domain_t> (cg, live_map, M) : 
+                        runOnCg <sdbm_domain_t, ric_domain_t> (cg, live_map, M)) ; 
+          }
           break;
         case ZONES: 
+          if (LlvmCrabSummDomain != ZONES)
+            std::cerr << "Warning: choosing zones to compute summaries\n";
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_dbm_domain_t, arr_dbm_domain_t> (cg, live_map, M) :  
                     runOnCg <dbm_domain_t, dbm_domain_t> (cg, live_map, M)) ; 
           break;
         case SZONES: 
+          if (LlvmCrabSummDomain != SZONES)
+            std::cerr << "Warning: choosing szones to compute summaries\n";
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_sdbm_domain_t, arr_sdbm_domain_t> (cg, live_map, M) :  
                     runOnCg <sdbm_domain_t, sdbm_domain_t> (cg, live_map, M)) ; 
           break;
         case DZONES: 
+          if (LlvmCrabSummDomain != DZONES)
+            std::cerr << "Warning: choosing dzones to compute summaries\n";
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_ddbm_domain_t, arr_ddbm_domain_t> (cg, live_map, M) :  
                     runOnCg <ddbm_domain_t, ddbm_domain_t> (cg, live_map, M)) ; 
           break;
         case VZONES: 
+          if (LlvmCrabSummDomain != VZONES)
+            std::cerr << "Warning: choosing vzones to compute summaries\n";
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_vdbm_domain_t, arr_vdbm_domain_t> (cg, live_map, M) :  
                     runOnCg <vdbm_domain_t, vdbm_domain_t> (cg, live_map, M)) ; 
           break;
         case TERMS:
-          change = (LlvmCrabTrackLev == ARR ? 
-                    runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
-                    runOnCg <dbm_domain_t, term_domain_t> (cg, live_map, M)) ; 
-          break;
-        case INTV_APRON:
-          change = (LlvmCrabTrackLev == ARR ? 
-                    runOnCg <arr_dbm_domain_t, arr_box_apron_domain_t> (cg, live_map, M) : 
-                    runOnCg <dbm_domain_t, box_apron_domain_t> (cg, live_map, M)) ; 
+          switch (LlvmCrabSummDomain){
+            case TERMS:
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_term_domain_t, arr_term_domain_t> (cg, live_map, M) : 
+                        runOnCg <term_domain_t, term_domain_t> (cg, live_map, M)) ; 
+              break;
+            case VZONES: // temporary
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_vdbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
+                        runOnCg <vdbm_domain_t, term_domain_t> (cg, live_map, M)) ; 
+              break;
+            case ZONES: // temporary
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_dbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
+                        runOnCg <dbm_domain_t, term_domain_t> (cg, live_map, M)) ; 
+              break;
+            case OPT_OCT_APRON: 
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_opt_oct_apron_domain_t, arr_term_domain_t> (cg, live_map, M) : 
+                        runOnCg <opt_oct_apron_domain_t, term_domain_t> (cg, live_map, M)) ; 
+              break;
+            default:    // szones              
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_sdbm_domain_t, arr_term_domain_t> (cg, live_map, M) : 
+                        runOnCg <sdbm_domain_t, term_domain_t> (cg, live_map, M)) ; 
+          }
           break;
         case OCT_APRON:
+          if (LlvmCrabSummDomain != OCT_APRON)
+            std::cerr << "Warning: choosing oct-apron to compute summaries\n";
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_oct_apron_domain_t, arr_oct_apron_domain_t> (cg, live_map, M) : 
                     runOnCg <oct_apron_domain_t, oct_apron_domain_t> (cg, live_map, M)) ; 
           break;
         case OPT_OCT_APRON:
+          if (LlvmCrabSummDomain != OPT_OCT_APRON)
+            std::cerr << "Warning: choosing opt-oct-apron to compute summaries\n";
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_opt_oct_apron_domain_t, arr_opt_oct_apron_domain_t> (cg, live_map, M) : 
                     runOnCg <opt_oct_apron_domain_t, opt_oct_apron_domain_t> (cg, live_map, M)) ; 
           break;
         case PK_APRON:
+          if (LlvmCrabSummDomain != PK_APRON)
+            std::cerr << "Warning: choosing pk-apron to compute summaries\n";
           change = (LlvmCrabTrackLev == ARR ? 
                     runOnCg <arr_pk_apron_domain_t, arr_pk_apron_domain_t> (cg, live_map, M) : 
                     runOnCg <pk_apron_domain_t, pk_apron_domain_t> (cg, live_map, M)) ; 
           break;
-        // case BOXES:
-        //   change = (LlvmCrabTrackLev == ARR ? 
-        //             runOnCg <arr_boxes_domain_t, arr_boxes_domain_t> (cg, live_map, M) : 
-        //             runOnCg <boxes_domain_t, boxes_domain_t> (cg, live_map, M)) ; 
-        //   break;
         case INTERVALS:  
         default: 
           if (m_absdom != INTERVALS)
@@ -369,9 +437,32 @@ namespace crab_llvm {
                       << "inter-procedural version not implemented. "
                       << "Running intervals inter-procedurally ...\n"; 
           
-          change = (LlvmCrabTrackLev == ARR ? 
-                    runOnCg <arr_dbm_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
-                    runOnCg <dbm_domain_t, interval_domain_t> (cg, live_map, M)) ; 
+          switch (LlvmCrabSummDomain){
+            case TERMS:
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_term_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
+                        runOnCg <term_domain_t, interval_domain_t> (cg, live_map, M)) ; 
+              break;
+            case VZONES: // temporary
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_vdbm_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
+                        runOnCg <vdbm_domain_t, interval_domain_t> (cg, live_map, M)) ; 
+              break;
+            case ZONES: // temporary
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_dbm_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
+                        runOnCg <dbm_domain_t, interval_domain_t> (cg, live_map, M)) ; 
+              break;
+            case OPT_OCT_APRON: 
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_opt_oct_apron_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
+                        runOnCg <opt_oct_apron_domain_t, interval_domain_t> (cg, live_map, M)) ; 
+              break;
+            default:    // szones              
+              change = (LlvmCrabTrackLev == ARR ? 
+                        runOnCg <arr_sdbm_domain_t, arr_interval_domain_t> (cg, live_map, M) : 
+                        runOnCg <sdbm_domain_t, interval_domain_t> (cg, live_map, M)) ; 
+          }
       }      
       
       if (LlvmCrabLive) {

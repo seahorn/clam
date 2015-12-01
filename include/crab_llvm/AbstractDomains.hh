@@ -1,18 +1,209 @@
-#ifndef __ABSTRACT_DOMAINS_IMPL_HH__
-#define __ABSTRACT_DOMAINS_IMPL_HH__
+#ifndef __ABSTRACT_DOMAINS_HH__
+#define __ABSTRACT_DOMAINS_HH__
 
 #include "crab_llvm/config.h"
 #include "crab_llvm/CfgBuilder.hh"
-#include "crab_llvm/Support/AbstractDomains.hh"
+
+#include "crab/domains/linear_constraints.hpp"                     
+#include "crab/domains/intervals.hpp"                      
+#include "crab/domains/intervals_congruences.hpp"
+#include "crab/domains/dbm.hpp"
+#include "crab/domains/split_dbm.hpp"
+#include "crab/domains/naive_dbm.hpp"
+#include "crab/domains/var_packing_naive_dbm.hpp"
+#include "crab/domains/array_smashing.hpp"
+#include "crab/domains/term_equiv.hpp"
+#include "crab/domains/boxes.hpp"
+#include "crab/domains/apron_domains.hpp"
 
 /*
-   Definition of the supported abstract domains and generic wrapper
-   class that contains an arbitrary abstract domain.
+   Definition of the abstract domains and a generic wrapper class (for
+   crab-llvm clients) to contain an arbitrary abstract domain.  
 */
 
 namespace crab_llvm {
-// some macros
-#define DEFINE_BASE_DOMAIN(WRAPPER,ABS_DOM,ID)                                    \
+
+  //////
+  /// Definition of the abstract domains
+  //////
+
+  using namespace crab::cfg_impl;
+  using namespace crab::domains;
+  using namespace ikos;
+
+  /// --- Types for linear constraints and expressions
+  typedef ikos::linear_expression<z_number, varname_t> z_lin_exp_t;
+  typedef ikos::linear_constraint<z_number, varname_t> z_lin_cst_t;
+  typedef ikos::linear_constraint_system<z_number, varname_t> z_lin_cst_sys_t;
+
+  /// -- Intervals
+  typedef interval_domain< z_number, varname_t> interval_domain_t;
+  /// -- RIC: reduced product of intervals with congruences
+  typedef interval_congruence_domain<z_number, varname_t> ric_domain_t;
+  /// -- Sparse DBM (zones)
+  typedef DBM<z_number, varname_t> dbm_domain_t;
+  /// -- split DBM
+  typedef SplitDBM<z_number, varname_t> sdbm_domain_t;
+  /// -- dense DBM
+  typedef naive_dbm< z_number, varname_t > ddbm_domain_t;
+  /// -- var packing DBM
+  typedef var_packing_naive_dbm<z_number, varname_t> vdbm_domain_t;
+  /// -- Terms: reduced product of intervals with uninterpreted functions 
+  typedef crab::cfg::var_factory_impl::StrVarAlloc_col::varname_t str_varname_t;
+  typedef interval_domain<z_number, str_varname_t> str_interval_dom_t;
+  typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t /*interval_domain_t*/> idom_info;
+  typedef anti_unif<idom_info>::anti_unif_t term_domain_t;  
+  /// -- Boxes
+  #if 1
+  // use the reduced of intervals with boxes rather than plain boxes
+  typedef rib_domain<z_number, varname_t> boxes_domain_t;
+  #else
+  typedef boxes_domain<z_number, varname_t> boxes_domain_t;
+  #endif 
+  /// -- Apron domains
+  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_INT > box_apron_domain_t;
+  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OCT > oct_apron_domain_t;
+  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OPT_OCT > opt_oct_apron_domain_t;
+  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_PK > pk_apron_domain_t;
+  /// -- Array smashing functor domain parameterized with above
+  ///    abstract domains
+  typedef array_smashing<interval_domain_t,z_number,varname_t> arr_interval_domain_t;
+  typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
+  typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;
+  typedef array_smashing<sdbm_domain_t,z_number,varname_t> arr_sdbm_domain_t;
+  typedef array_smashing<vdbm_domain_t,z_number,varname_t> arr_vdbm_domain_t;
+  typedef array_smashing<ddbm_domain_t,z_number,varname_t> arr_ddbm_domain_t;
+  typedef array_smashing<term_domain_t,z_number,varname_t> arr_term_domain_t;
+  typedef array_smashing<boxes_domain_t,z_number,varname_t> arr_boxes_domain_t;
+  typedef array_smashing<box_apron_domain_t,z_number,varname_t> arr_box_apron_domain_t;
+  typedef array_smashing<oct_apron_domain_t,z_number,varname_t> arr_oct_apron_domain_t;
+  typedef array_smashing<opt_oct_apron_domain_t,z_number,varname_t> arr_opt_oct_apron_domain_t;
+  typedef array_smashing<pk_apron_domain_t,z_number,varname_t> arr_pk_apron_domain_t;
+}
+
+namespace llvm {
+
+  using namespace std;
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::z_lin_exp_t& e) {
+    ostringstream s;
+    s << e;
+    o << s.str ();
+    return o;
+  }
+
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::z_lin_cst_t& cst) {
+    ostringstream s;
+    s << cst;
+    o << s.str ();
+    return o;
+  }
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::z_lin_cst_sys_t& csts) {
+    ostringstream s;
+    s << csts;
+    o << s.str ();
+    return o;
+  }
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::interval_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+  
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::ric_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::dbm_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::sdbm_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::vdbm_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::ddbm_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::term_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::boxes_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  template <typename N, typename V, crab::domains::apron_domain_id_t D>
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab::domains::apron_domain 
+                                        <N,V,D> & inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  template <typename Base, typename N, typename V>
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab::domains::array_smashing
+                                        <Base,N,V> & inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+} // end namespace llvm
+
+
+namespace crab_llvm {
+
+   //////
+   /// Definition of macros
+   //////
+
+   #define DEFINE_BASE_DOMAIN(WRAPPER,ABS_DOM,ID)                                 \
    class WRAPPER: public GenericAbsDomWrapper {                                   \
      id_t m_id;                                                                   \
      ABS_DOM m_abs;                                                               \
@@ -37,75 +228,22 @@ namespace crab_llvm {
      auto wrappee = boost::static_pointer_cast<WRAPPER> (wrapper);                \
      abs_dom = wrappee->get (); }                                                 
 
-#define REGISTER_DOMAIN_ID(ABS_DOMAIN,ID)                     \
+   #define REGISTER_DOMAIN_ID(ABS_DOMAIN,ID)                  \
    template<>                                                 \
    inline GenericAbsDomWrapper::id_t getAbsDomId(ABS_DOMAIN)  \
    {return GenericAbsDomWrapper::ID;}                        
 
-#define FORGET_MACRO(ABS_DOMAIN)                                \
-  do {                                                          \
-    ABS_DOMAIN inv;                                             \
-    getAbsDomWrappee (wrapper, inv);                            \
-    crab::domain_traits::forget (inv, vs.begin (), vs.end ());  \
-    return mkGenericAbsDomWrapper (inv);                        \
-  } while (0) ;;
-} // end namespace
+   #define FORGET_MACRO(ABS_DOMAIN)                              \
+   do {                                                          \
+     ABS_DOMAIN inv;                                             \
+     getAbsDomWrappee (wrapper, inv);                            \
+     crab::domain_traits::forget (inv, vs.begin (), vs.end ());  \
+     return mkGenericAbsDomWrapper (inv);                        \
+   } while (0) ;;
 
-namespace crab_llvm {
-
-  using namespace crab::cfg_impl;
-  using namespace crab::domains;
-  using namespace ikos;
-
-  typedef ikos::linear_expression<z_number, varname_t> z_lin_exp_t;
-  typedef ikos::linear_constraint<z_number, varname_t> z_lin_cst_t;
-  typedef ikos::linear_constraint_system<z_number, varname_t> z_lin_cst_sys_t;
-
-  /// -- Intervals
-  typedef interval_domain< z_number, varname_t > interval_domain_t;
-  /// -- RIC
-  typedef interval_congruence_domain< z_number, varname_t > ric_domain_t;
-  /// -- sparse DBM
-  typedef DBM< z_number, varname_t > dbm_domain_t;
-  /// -- split DBM
-  typedef SplitDBM<z_number, varname_t> sdbm_domain_t;
-  /// -- dense DBM
-  typedef naive_dbm< z_number, varname_t > ddbm_domain_t;
-  /// -- var packing DBM
-  typedef var_packing_naive_dbm<z_number, varname_t> vdbm_domain_t;
-  /// -- Terms 
-  typedef crab::cfg::var_factory_impl::StrVarAlloc_col::varname_t str_varname_t;
-  typedef interval_domain< z_number, str_varname_t > str_interval_dom_t;
-  typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t /*interval_domain_t*/> idom_info;
-  typedef anti_unif<idom_info>::anti_unif_t term_domain_t;  
-  /// -- Boxes
-  #if 1
-  // use the reduced of intervals with boxes rather than plain boxes
-  typedef rib_domain< z_number, varname_t > boxes_domain_t;
-  #else
-  typedef boxes_domain< z_number, varname_t > boxes_domain_t;
-  #endif 
-  /// -- Apron domains
-  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_INT > box_apron_domain_t;
-  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OCT > oct_apron_domain_t;
-  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OPT_OCT > opt_oct_apron_domain_t;
-  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_PK > pk_apron_domain_t;
-  /// -- Array Smashing parameterized with above abstract domains
-  typedef array_smashing<interval_domain_t,z_number,varname_t> arr_interval_domain_t;
-  typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
-  typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;
-  typedef array_smashing<sdbm_domain_t,z_number,varname_t> arr_sdbm_domain_t;
-  typedef array_smashing<vdbm_domain_t,z_number,varname_t> arr_vdbm_domain_t;
-  typedef array_smashing<ddbm_domain_t,z_number,varname_t> arr_ddbm_domain_t;
-  typedef array_smashing<term_domain_t,z_number,varname_t> arr_term_domain_t;
-  typedef array_smashing<boxes_domain_t,z_number,varname_t> arr_boxes_domain_t;
-  typedef array_smashing<box_apron_domain_t,z_number,varname_t> arr_box_apron_domain_t;
-  typedef array_smashing<oct_apron_domain_t,z_number,varname_t> arr_oct_apron_domain_t;
-  typedef array_smashing<opt_oct_apron_domain_t,z_number,varname_t> arr_opt_oct_apron_domain_t;
-  typedef array_smashing<pk_apron_domain_t,z_number,varname_t> arr_pk_apron_domain_t;
 
   //////
-  // Generic wrapper to encapsulate the abstract domain
+  // Generic wrapper to encapsulate an arbitrary abstract domain
   //////
 
   struct GenericAbsDomWrapper {
