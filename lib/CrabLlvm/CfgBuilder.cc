@@ -1,19 +1,37 @@
 /* 
  * Translate a LLVM function to a CFG language understood by Crab
  * 
- * If the precision level includes memory contents both load and
- * stores as well as other memory builtins (malloc-like functions) and
- * llvm intrinsics (memset, memcpy, etc) will be translated using a
- * memory abstraction based on DSA. 
+ * - If the precision level includes only integers the translation
+ *   will cover only instructions with operands of integer type.
  *
- * The memory translation without abstraction is not implemented
- * although it should not be hard since Crab CFG language has support
- * for it.
+ * - If the precision level includes pointers then in addition to
+ *   integer scalars it will translate instructions that compute
+ *   pointer offsets.
+ *
+ * - If the precision level includes memory contents both load and
+ *   stores as well as other memory builtins (malloc-like functions)
+ *   and llvm intrinsics (memset, memcpy, etc) will be also translated
+ *   using a memory abstraction based on DSA.
+ *
+ *   This memory abstraction consists basically of partitioning the
+ *   heap into a finite set of disjoint arrays using DSA (a heap
+ *   analysis) so that an array abstract domain can be used to reason
+ *   about heap contents.
+ *
+ * IMPORTANT: the current translation is therefore focused on
+ * reasoning only about integer scalars and memory contents of integer
+ * type so that a *numerical* abstract domain can be later
+ * used. Therefore, it does not have in mind the later use of symbolic
+ * abstract domains (e.g., pointer analyses). This means that the
+ * translation will not generate Crab pointer statements such as
+ * ptr_store, ptr_load, ptr_assign, new_object, and new_ptr_func.
+ *
  */
 
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
@@ -86,44 +104,13 @@ namespace crab_llvm
   using namespace crab::cfg_impl;
   using namespace boost;
 
-  VariableType getType (Type * ty)
-  {
+  inline VariableType getType (Type * ty) {
     if (ty->isIntegerTy ())
       return INT_TYPE;
     else if (ty->isPointerTy ())
       return PTR_TYPE;
     else
       return UNK_TYPE;
-  }
-
-  // Return true if all uses of V are non-trackable memory accesses.
-  bool AllUsesAreNonTrackMem (Value* V) {
-    // strip cast if there is one
-    if (CastInst *CI = dyn_cast<CastInst> (V)) {
-      V = CI;
-    }
-    
-    for (auto &U: V->uses ()) {
-      if (StoreInst *SI = dyn_cast<StoreInst> (U.getUser())) {
-        Type* ty = SI->getOperand (0)->getType ();
-        if (ty->isIntegerTy ()) return false;
-      }
-      else if (LoadInst *LI = dyn_cast<LoadInst> (U.getUser())) {
-        Type *ty = LI->getType();
-        if (ty->isIntegerTy ()) return false;
-      }
-      else if (CallInst *CI = dyn_cast<CallInst> (U.getUser())) { 
-        CallSite CS (CI);
-        Function* callee = CS.getCalledFunction ();
-        if (callee && 
-            ( callee->getName().startswith ("llvm.dbg") || 
-              callee->getName().startswith ("shadow.mem")))
-          continue;
-      }
-      else
-        return false;
-    }
-    return true;
   }
   
   //! Translate flag conditions 
@@ -148,8 +135,7 @@ namespace crab_llvm
         m_mem (mem)
     { }
     
-    void normalizeCmpInst(CmpInst &I)
-    {
+    void normalizeCmpInst(CmpInst &I) {
       switch (I.getPredicate()){
         case ICmpInst::ICMP_UGT:	
         case ICmpInst::ICMP_SGT: I.swapOperands(); break; 
@@ -159,9 +145,8 @@ namespace crab_llvm
       }
     }
 
-    z_lin_cst_sys_t gen_assertion (CmpInst &I)
-    {
-      
+    z_lin_cst_sys_t gen_assertion (CmpInst &I) {
+
       normalizeCmpInst(I);
       
       const Value& v0 = *I.getOperand (0);
@@ -172,10 +157,8 @@ namespace crab_llvm
       
       z_lin_cst_sys_t res;
       
-      if (op1 && op2) 
-      {
-        switch (I.getPredicate ())
-        {
+      if (op1 && op2) { 
+        switch (I.getPredicate ()) {
           case CmpInst::ICMP_EQ:
             if (!m_is_negated)
               res += z_lin_cst_t (*op1 == *op2);
@@ -241,9 +224,8 @@ namespace crab_llvm
       }
     }
 
-    void visitBinaryOperator(BinaryOperator &I)
-    { 
-#if 0
+    void visitBinaryOperator(BinaryOperator &I) {
+      #if 0
       // It searches only for this particular pattern:
       //   %o1 = icmp ...
       //   %o2 = icmp ...
@@ -261,11 +243,10 @@ namespace crab_llvm
       //    that.
       if (!m_is_negated)
         translateBitwiseBranchTrueCond (I);      
-#endif 
+     #endif 
     }
 
-    void visitCmpInst (CmpInst &I) 
-    {
+    void visitCmpInst (CmpInst &I) {
       if (LlvmCrabNoPtrArith && 
           (!I.getOperand (0)->getType ()->isIntegerTy () ||
            !I.getOperand (1)->getType ()->isIntegerTy ())) 
@@ -291,8 +272,8 @@ namespace crab_llvm
   //! Translate PHI nodes
   struct SymExecPhiVisitor : 
       public InstVisitor<SymExecPhiVisitor>, 
-      private SymEval<VariableFactory, z_lin_exp_t>
-  {
+      private SymEval<VariableFactory, z_lin_exp_t> {
+
     // block where assignment/havoc will be inserted
     basic_block_t& m_bb; 
     // incoming block of the PHI instruction
@@ -371,8 +352,8 @@ namespace crab_llvm
   //! Translate the rest of instructions
   struct SymExecVisitor : 
       public InstVisitor<SymExecVisitor>, 
-      private SymEval<VariableFactory, z_lin_exp_t>
-  {
+      private SymEval<VariableFactory, z_lin_exp_t> {
+
     const DataLayout* m_dl;
     basic_block_t& m_bb;
     MemAnalysis* m_mem;
@@ -387,8 +368,37 @@ namespace crab_llvm
         m_is_inter_proc (isInterProc)  
     { }
 
-    bool isLogicalOp(const Instruction &I) const 
-    {
+    // Return true if all uses of V are non-trackable memory accesses.
+    static bool AllUsesAreNonTrackMem (Value* V) {
+      // strip cast if there is one
+      if (CastInst *CI = dyn_cast<CastInst> (V)) {
+        V = CI;
+      }
+      
+      for (auto &U: V->uses ()) {
+        if (StoreInst *SI = dyn_cast<StoreInst> (U.getUser())) {
+          Type* ty = SI->getOperand (0)->getType ();
+          if (ty->isIntegerTy ()) return false;
+        }
+        else if (LoadInst *LI = dyn_cast<LoadInst> (U.getUser())) {
+          Type *ty = LI->getType();
+          if (ty->isIntegerTy ()) return false;
+        }
+        else if (CallInst *CI = dyn_cast<CallInst> (U.getUser())) { 
+          CallSite CS (CI);
+          Function* callee = CS.getCalledFunction ();
+          if (callee && 
+              ( callee->getName().startswith ("llvm.dbg") || 
+                callee->getName().startswith ("shadow.mem")))
+            continue;
+        }
+        else
+          return false;
+      }
+      return true;
+    }
+    
+    bool isLogicalOp(const Instruction &I) const {
       return (I.getOpcode() >= Instruction::And && 
               I.getOpcode() <= Instruction::Xor);
     }
@@ -402,12 +412,12 @@ namespace crab_llvm
     /// CmpInst's are translated only if they feed the terminator of a
     /// block (execBr) or a select.    
     void visitCmpInst (CmpInst &I) {
-#if 0
+     #if 0
       /// --- We cover the cases where it feeds a binary operator
       /// (e.g., bitwise operator).
 
-      /// TODO: this is a overkill if there are many cases because
-      /// Crab select statements perform joins. A solution would be to
+      /// TODO: this is overkill if there are many cases because Crab
+      /// select statements perform joins. A solution would be to
       /// perform multiple select's together so the number of join
       /// operations can be reduced. This would be require to change
       /// Crab CFG language.
@@ -431,15 +441,13 @@ namespace crab_llvm
         else if (LlvmIncludeHavoc) 
           m_bb.havoc(symVar(I));
       }
-#endif       
+     #endif       
     }
       
-    void visitBinaryOperator(BinaryOperator &I)
-    {
+    void visitBinaryOperator(BinaryOperator &I) {
       if (!isTracked (I)) return;
       
       varname_t lhs = symVar(I);
-      
       switch (I.getOpcode ())
       {
         case BinaryOperator::Add:
@@ -465,8 +473,7 @@ namespace crab_llvm
       }
     }
     
-    void doArithmetic (varname_t lhs, BinaryOperator &i)
-    {
+    void doArithmetic (varname_t lhs, BinaryOperator &i) {
       const Value& v1 = *i.getOperand(0);
       const Value& v2 = *i.getOperand(1);
       
@@ -482,7 +489,7 @@ namespace crab_llvm
           break;
         case BinaryOperator::Sub:
           if ((*op1).is_constant())            
-          { // cfg does not support subtraction of a constant by a
+          { // Crab cfg does not support subtraction of a constant by a
             // variable because the crab api for abstract domains
             // does not support it.
             m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
@@ -496,7 +503,7 @@ namespace crab_llvm
           break;
         case BinaryOperator::SDiv:
           if ((*op1).is_constant())            
-          { // cfg does not support division of a constant by a
+          { // Crab cfg does not support division of a constant by a
             // variable because the crab api for abstract domains
             // does not support it.
             m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
@@ -507,7 +514,7 @@ namespace crab_llvm
           break;
         case BinaryOperator::UDiv:
           if ((*op1).is_constant() && (*op2).is_constant ()) {
-            // cfg api does not support unsigned arithmetic operations
+            // Crab cfg api does not support unsigned arithmetic operations
             // with both constant operands. Llvm frontend should get
             // rid of them.
             errs () << "Warning: ignored udiv with both constant operands\n";
@@ -515,7 +522,7 @@ namespace crab_llvm
               m_bb.havoc(lhs);
           }
           else if ((*op1).is_constant()) {           
-            // cfg does not support division of a constant by a
+            // Crab cfg does not support division of a constant by a
             // variable because the crab api for abstract domains
             // does not support it.
             m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
@@ -526,7 +533,7 @@ namespace crab_llvm
           break;
         case BinaryOperator::SRem:
           if ((*op1).is_constant()) {           
-            // cfg does not support rem of a constant by a
+            // Crab cfg does not support rem of a constant by a
             // variable because the crab api for abstract domains
             // does not support it.
             m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
@@ -537,17 +544,17 @@ namespace crab_llvm
           break;
         case BinaryOperator::URem:
           if ((*op1).is_constant() && (*op2).is_constant ()) {
-            // cfg api does not support unsigned arithmetic operations
-            // with both constant operands. Llvm frontend should get
-            // rid of them.
+            // Crab cfg does not support unsigned arithmetic
+            // operations with both constant operands. Llvm frontend
+            // should get rid of them.
             errs () << "Warning: ignored urem with constant operands\n";
             if (LlvmCrabIncludeHavoc)
               m_bb.havoc(lhs);
           }
           else if ((*op1).is_constant()) {           
-            // cfg does not support rem of a constant by a
-            // variable because the crab api for abstract domains
-            // does not support it.
+            // Crab cfg does not support rem of a constant by a
+            // variable because the crab api for abstract domains does
+            // not support it.
             m_bb.assign (lhs, z_lin_exp_t ((*op1).constant ()));
             m_bb.urem (lhs, z_lin_exp_t (lhs), *op2);
           }
@@ -587,8 +594,7 @@ namespace crab_llvm
       }
     }
 
-    void doBitwise (varname_t lhs, BinaryOperator &i)
-    {
+    void doBitwise (varname_t lhs, BinaryOperator &i) {
       const Value& v1 = *i.getOperand(0);
       const Value& v2 = *i.getOperand(1);
       
@@ -597,8 +603,7 @@ namespace crab_llvm
       
       if (!(op1 && op2)) return;
 
-      switch(i.getOpcode())
-      {
+      switch(i.getOpcode()) {
         case BinaryOperator::And:
           m_bb.bitwise_and (lhs, *op1, *op2);
           break;
@@ -615,8 +620,7 @@ namespace crab_llvm
       }
     }
     
-    void doCast(CastInst &I)
-    {
+    void doCast(CastInst &I) {
       if (!isTracked (I)) 
         return;
 
@@ -631,8 +635,9 @@ namespace crab_llvm
 
       optional<z_lin_exp_t> src = lookup (v);
 
-      if (src)
+      if (src) {
         m_bb.assign(dst, *src);
+      }
       else {
         if (v.getType ()->isIntegerTy (1)) {
           m_bb.assume ( z_lin_exp_t (dst) >= z_lin_exp_t (0) );
@@ -688,8 +693,10 @@ namespace crab_llvm
       return m_dl->getTypeStoreSize (const_cast<Type*> (t));
     }
 
-    void visitGetElementPtrInst (GetElementPtrInst &I)
-    {
+    void visitGetElementPtrInst (GetElementPtrInst &I) {
+      /// Note that it translates only the computation of offsets not
+      /// aliasing between pointers.
+
       if (!isTracked (I)) {
         return;
       }
@@ -698,7 +705,7 @@ namespace crab_llvm
         if (LlvmCrabIncludeHavoc) m_bb.havoc (symVar (I)); 
         return;
       }
-        
+
       optional<z_lin_exp_t> ptr = lookup (*I.getPointerOperand ());
       if (!ptr)  {
         if (LlvmCrabIncludeHavoc) m_bb.havoc (symVar (I));
@@ -715,8 +722,7 @@ namespace crab_llvm
         return;
       }
 
-      // XXX: this should be probably ptr_assign. For offset purposes
-      // I think it can be zero.
+      // XXX JN: for offset purposes it might be zero
       m_bb.assign (res, *ptr);
       SmallVector<const Value*, 4> ps;
       SmallVector<const Type*, 4> ts;
@@ -752,9 +758,8 @@ namespace crab_llvm
       }
     }
 
-    void visitLoadInst (LoadInst &I)
-    { 
-      /// --- Track only loads into integer variables
+    void visitLoadInst (LoadInst &I) {
+      /// --- Translate only loads into integer variables
 
       // FIXME: since only few store instructions will be modelled we
       // may produce a big chunk of dead code (e.g., sequence of
@@ -786,9 +791,8 @@ namespace crab_llvm
       }
     }
     
-    void visitStoreInst (StoreInst &I)
-    {
-      /// --- Track only stores of integer values
+    void visitStoreInst (StoreInst &I) {
+      /// --- Translate only stores of integer values
 
       // FIXME: since only few store instructions will be modelled we
       // may produce a big chunk of dead code (e.g., sequence of
@@ -821,7 +825,6 @@ namespace crab_llvm
     }
 
     void visitAllocaInst (AllocaInst &I) {
-
       if (m_mem->getTrackLevel () == ARR) {        
         int arr_idx = m_mem->getArrayId (*(I.getParent ()->getParent ()), 
                                          &I);
@@ -842,9 +845,7 @@ namespace crab_llvm
       }
     }
 
-    void visitSelectInst(SelectInst &I)
-    {
-      
+    void visitSelectInst(SelectInst &I) {
       if (!isTracked (I)) return;
 
       if (LlvmCrabNoPtrArith && 
@@ -859,15 +860,12 @@ namespace crab_llvm
       if (!(op0 && op1)) return;
 
       varname_t lhs = symVar(I);      
-      if (ConstantInt *ci = dyn_cast<ConstantInt> (&cond))
-      {
-        if (ci->isOne ())
-        {
+      if (ConstantInt *ci = dyn_cast<ConstantInt> (&cond)) {
+        if (ci->isOne ()) {
           m_bb.assign (lhs, *op0);
           return;
         }
-        else if (ci->isZero ())
-        {
+        else if (ci->isZero ()) {
           m_bb.assign (lhs, *op1);
           return;
         }
@@ -889,8 +887,7 @@ namespace crab_llvm
       m_bb.select(lhs, symVar (cond),  *op0, *op1);
     }
 
-    void visitReturnInst (ReturnInst &I)
-    {
+    void visitReturnInst (ReturnInst &I) {
       if (!m_is_inter_proc) return;
 
       // -- skip return argument of main
@@ -911,16 +908,12 @@ namespace crab_llvm
       }
     }
 
-    pair<varname_t, VariableType> normalizeParam (Value& V)
-    {
-      if (Constant *cst = dyn_cast< Constant> (&V))
-      { 
+    pair<varname_t, VariableType> normalizeParam (Value& V) {
+      if (Constant *cst = dyn_cast< Constant> (&V)) {
         varname_t v = m_vfac.get ();
-        if (ConstantInt * intCst = dyn_cast<ConstantInt> (cst))
-        {
+        if (ConstantInt * intCst = dyn_cast<ConstantInt> (cst)) {
           auto e = lookup (*intCst);
-          if (e)
-          {
+          if (e) {
             m_bb.assign (v, *e);
             return make_pair (v, INT_TYPE);
           }
@@ -932,8 +925,7 @@ namespace crab_llvm
         return make_pair (symVar (V), getType (V.getType ()));
     }
     
-    void visitCallInst (CallInst &I) 
-    {
+    void visitCallInst (CallInst &I) {
       CallSite CS (&I);
       Function * callee = CS.getCalledFunction ();
 
@@ -1128,8 +1120,7 @@ namespace crab_llvm
     }
 
     /// base case. if all else fails.
-    void visitInstruction (Instruction &I)
-    {
+    void visitInstruction (Instruction &I) {
       if (!isTracked (I)) return;
 
       if (isa<AllocaInst> (I)) return;
@@ -1149,19 +1140,11 @@ namespace crab_llvm
         m_cfg (&m_func.getEntryBlock (), (mem->getTrackLevel ())),
         m_mem (mem),
         m_is_inter_proc (isInterProc),
-        m_dl (func.getParent ()->getDataLayout ()){ }    
+        m_dl (func.getParent ()->getDataLayout ()) { }    
 
-  CfgBuilder::~CfgBuilder () {
-    // These extra blocks are not linked to a builder so llvm will not
-    // free them.
-    for (auto bb: m_extra_blks) {
-      delete bb;
-    }
-  }
+  CfgBuilder::~CfgBuilder () { }
 
-  CfgBuilder::opt_basic_block_t 
-  CfgBuilder::lookup (const llvm::BasicBlock &B)  
-  {
+  CfgBuilder::opt_basic_block_t CfgBuilder::lookup (const llvm::BasicBlock &B) {  
     llvm::BasicBlock* BB = const_cast<llvm::BasicBlock*> (&B);
     llvm_bb_map_t::iterator it = m_bb_map.find (BB);
     if (it == m_bb_map.end ())
@@ -1178,30 +1161,13 @@ namespace crab_llvm
     m_bb_map.insert (llvm_bb_map_t::value_type (BB, bb));
   }  
 
-  // basic_block_t& 
-  // CfgBuilder::split_block (basic_block_t & bb) 
-  // {
-  //   static unsigned id = 0;
-  //   std::string new_bb_id_str(bb.name().str() + "_split_" + lexical_cast<string>(id));    
-  //   basic_block_label_t new_bb_id(new_bb_id_str.str ());
-  //   ++id;
-  //   assert (m_bb_map.find (new_bb_id) == m_bb_map.end ()); 
-  //   basic_block_t &new_bb = m_cfg.insert (new_bb_id);
-  //   for (auto succ: bb.next_blocks ()) 
-  //     new_bb >> lookup (succ);
-  //   bb.reset_next_blocks ();
-  //   bb >> new_bb ;
-  //   return new_bb;
-  // }
-
   basic_block_t& CfgBuilder::add_block_in_between (basic_block_t &src, 
                                                    basic_block_t &dst,
-                                                   basic_block_label_t bb_id)
-  {
+                                                   const llvm::BasicBlock* BB) {
 
-    assert (m_bb_map.find(bb_id) == m_bb_map.end()); 
+    assert (m_bb_map.find (BB) == m_bb_map.end()); 
 
-    basic_block_t &bb = m_cfg.insert (bb_id);
+    basic_block_t &bb = m_cfg.insert (BB);
 
     src -= dst;
     src >> bb;
@@ -1211,47 +1177,53 @@ namespace crab_llvm
   }  
 
 
-  void CfgBuilder::add_edge (llvm::BasicBlock &S, 
-                             const llvm::BasicBlock &D)
-  {
+  void CfgBuilder::add_edge (llvm::BasicBlock &S, const llvm::BasicBlock &D) {
     opt_basic_block_t SS = lookup(S);
     opt_basic_block_t DD = lookup(D);
     assert (SS && DD);
     *SS >> *DD;
   }  
 
+  // add a fake llvm BasicBlock into the function: this BasicBlock is
+  // needed because the translation cannot generate a Crab basic block
+  // without being associated with a llvm BasicBlock.
+  // 
+  // IMPORTANT: we attach it to m_func so llvm takes care of freeing
+  // it later. This means that we need to be careful because passes
+  // like removeUnreachableBloks would remove it.
+  const llvm::BasicBlock* createFakeBlock (LLVMContext &ctx, 
+                                           const Twine &name,
+                                           Function *parent) {
+
+    llvm::BasicBlock* B = llvm::BasicBlock::Create (ctx, name, parent);
+    IRBuilder<> Builder (B);
+    Builder.CreateUnreachable (); // to make the block well formed.
+    return B;
+  }
+
   //! return the new block inserted between src and dest if any
   CfgBuilder::opt_basic_block_t CfgBuilder::execBr (llvm::BasicBlock &src, 
-                                                    const llvm::BasicBlock &dst)
-  {
+                                                    const llvm::BasicBlock &dst) {
     // -- the branch condition
-    if (const BranchInst *br = dyn_cast<const BranchInst> (src.getTerminator ()))
-    {
-      if (br->isConditional ())
-      {
+    if (const BranchInst *br = dyn_cast<const BranchInst> (src.getTerminator ())) {
+      if (br->isConditional ()) {
         opt_basic_block_t Src = lookup(src);
         opt_basic_block_t Dst = lookup(dst);
         assert (Src && Dst);
 
-        // -- dummy BasicBlock 
-        basic_block_label_t bb_id = llvm::BasicBlock::Create(m_func.getContext (),
-                                                             create_bb_name ());
-        
-        // -- remember this block to free it later because llvm will
-        //    not do it.
-        m_extra_blks.push_back (bb_id);
-
-        basic_block_t &bb = add_block_in_between (*Src, *Dst, bb_id);
+        const llvm::BasicBlock* BB = createFakeBlock (m_func.getContext (),
+                                                      create_bb_name (),
+                                                      &m_func);
+                                                                      
+        basic_block_t &bb = add_block_in_between (*Src, *Dst, BB);
         
         const Value &c = *br->getCondition ();
-        if (const ConstantInt *ci = dyn_cast<const ConstantInt> (&c))
-        {
+        if (const ConstantInt *ci = dyn_cast<const ConstantInt> (&c)) {
           if ((ci->isOne ()  && br->getSuccessor (0) != &dst) ||
               (ci->isZero () && br->getSuccessor (1) != &dst))
             bb.unreachable();
         }
-        else 
-        {
+        else {
           if (llvm::Instruction *I = 
               dyn_cast<llvm::Instruction> (& const_cast<llvm::Value&>(c))) {
             SymExecConditionVisitor v (m_vfac, bb, br->getSuccessor (1) == &dst, m_mem);
@@ -1303,80 +1275,73 @@ namespace crab_llvm
     }
   }
 
-  void CfgBuilder::build_cfg()
-  {
+  void CfgBuilder::build_cfg() {
 
-    for (auto &B : m_func) 
-      add_block(B); 
+    std::vector<llvm::BasicBlock*> blks;
+    for (auto &B : m_func) { 
+      add_block (B); 
+      blks.push_back (&B);
+    }
 
-    std::vector<basic_block_t*> rets;
-
-    for (auto &B : m_func)
+    std::vector<basic_block_t*> retBlks;
+    // execBr can add new BasicBlock's in m_func and we do not want to
+    // iterate over them.
+    for (llvm::BasicBlock* B : blks)
     {
-      const llvm::BasicBlock *bb = &B;
-      if (isa<ReturnInst> (B.getTerminator ()))
-      {
-        opt_basic_block_t BB = lookup (B);
+      if (isa<ReturnInst> (B->getTerminator ())) {
+        opt_basic_block_t BB = lookup (*B);
         assert (BB);
+        if (!BB) continue;
+
         basic_block_t& bb = *BB;
-        rets.push_back (&bb);
+        retBlks.push_back (&bb);
         SymExecVisitor v (m_dl, m_vfac, *BB, m_mem, m_is_inter_proc);
-        v.visit (B);
+        v.visit (*B);
       }
-      else
-      {
-        opt_basic_block_t BB = lookup (B);
+      else {
+        opt_basic_block_t BB = lookup (*B);
         assert (BB);
+        if (!BB) continue;
 
         // -- build an initial CFG block from bb but ignoring branches
         //    and phi-nodes
-        {
-          SymExecVisitor v (m_dl, m_vfac, *BB, m_mem, m_is_inter_proc);
-          v.visit (B);
-        }
+        SymExecVisitor v (m_dl, m_vfac, *BB, m_mem, m_is_inter_proc);
+        v.visit (*B);
         
-        for (const llvm::BasicBlock *dst : succs (*bb))
-        {
+        for (const llvm::BasicBlock *dst : succs (*B)) {
           // -- move branch condition in bb to a new block inserted
           //    between bb and dst
-          opt_basic_block_t mid_bb = execBr (B, *dst);
+          opt_basic_block_t mid_bb = execBr (*B, *dst);
 
           // -- phi nodes in dst are translated into assignments in
           //    the predecessor
-          {            
-            SymExecPhiVisitor v (m_vfac, (mid_bb ? *mid_bb : *BB), B, m_mem);
-            v.visit (const_cast<llvm::BasicBlock &>(*dst));
-          }
+          SymExecPhiVisitor v (m_vfac, (mid_bb ? *mid_bb : *BB), *B, m_mem);
+          v.visit (const_cast<llvm::BasicBlock &>(*dst));
         }
       }
     }
     
     // -- unify multiple return blocks
-    if (rets.size () == 1) { 
-      m_cfg.set_exit (rets [0]->label ());
+    if (retBlks.size () == 1) { 
+      m_cfg.set_exit (retBlks [0]->label ());
     }
-    else if (rets.size () > 1) {
-      // -- insert dummy BasicBlock 
-      basic_block_label_t unified_ret_id = 
-          llvm::BasicBlock::Create(m_func.getContext (),
-                                   create_bb_name ());
+    else if (retBlks.size () > 1) {
 
-      // -- remember this block to free it later because llvm will not do it.
-      m_extra_blks.push_back (unified_ret_id);
+      const llvm::BasicBlock* singleRetBlk = createFakeBlock (m_func.getContext (),
+                                                              create_bb_name (),
+                                                              &m_func);
+      
+      basic_block_t &unified_ret = m_cfg.insert (singleRetBlk);
 
-      basic_block_t &unified_ret = m_cfg.insert (unified_ret_id);
-
-      for(unsigned int i=0; i<rets.size (); i++)
-        *(rets [i]) >> unified_ret;
+      for(unsigned int i=0; i<retBlks.size (); i++)
+        *(retBlks [i]) >> unified_ret;
       m_cfg.set_exit (unified_ret.label ());
     }
 
     SymEval<VariableFactory, z_lin_exp_t> s (m_vfac, m_mem);
 
+    /// Allocate arrays with initial values 
     if (m_mem->getTrackLevel () == ARR) {
-
-      /// Allocate arrays with initial values 
-      
       if (m_func.getName ().equals ("main")) {
         Module*M = m_func.getParent ();
         basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
@@ -1411,8 +1376,8 @@ namespace crab_llvm
       }
     }
 
+    /// Add function declaration
     if (m_is_inter_proc) {
-      // -- add function declaration
       assert (!m_func.isVarArg ());
 
       vector<pair<varname_t,VariableType> > params;
