@@ -130,7 +130,6 @@ namespace crab_llvm
     MemAnalysis*      m_mem;
     bool              m_is_inter_proc;
     const DataLayout* m_dl;
-    vector<basic_block_label_t> m_extra_blks;
 
    public:
     
@@ -167,7 +166,7 @@ namespace crab_llvm
 
     basic_block_t& add_block_in_between (basic_block_t &src, 
                                          basic_block_t &dst, 
-                                         basic_block_label_t bb_id) ;
+                                         const llvm::BasicBlock* B) ;
 
   }; // end class CfgBuilder
 
