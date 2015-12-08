@@ -55,6 +55,12 @@ LlvmCrabNarrowingIters("crab-narrowing-iterations",
                        llvm::cl::init (999999),
                        cl::Hidden);
 
+llvm::cl::opt<unsigned int>
+LlvmCrabWideningJumpSet("crab-widening-jump-set", 
+                        llvm::cl::desc("Size of the jump set used for widening"),
+                        llvm::cl::init (0),
+                        cl::Hidden);
+
 llvm::cl::opt<CrabDomain>
 LlvmCrabDomain("crab-dom",
        llvm::cl::desc ("Crab abstract domain used to infer invariants"),
@@ -489,7 +495,8 @@ namespace crab_llvm {
     typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
                               BUAbsDomain, TDAbsDomain> analyzer_t;
     analyzer_t analyzer(cg, m_vfac, (LlvmCrabLive ? &live_map : nullptr),
-                        LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
+                        LlvmCrabWideningThreshold, LlvmCrabNarrowingIters, 
+                        LlvmCrabWideningJumpSet);
     analyzer.Run (TDAbsDomain::top ());
 
     // -- store invariants     
@@ -543,7 +550,8 @@ namespace crab_llvm {
 
     // -- run intra-procedural analysis
     analyzer_t analyzer (cfg, m_vfac, &live, 
-                         LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
+                         LlvmCrabWideningThreshold, LlvmCrabNarrowingIters, 
+                         LlvmCrabWideningJumpSet);
 
     setup_if_boxes_dom::setGlobalParams<AbsDomain> (cfg);
     AbsDomain inv = AbsDomain::top();

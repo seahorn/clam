@@ -112,6 +112,9 @@ def parseArgs (argv):
     p.add_argument ('--crab-widening-threshold', 
                     type=int, dest='widening_threshold', 
                     help='Max number of iterations until performing widening', default=1)
+    p.add_argument ('--crab-widening-jump-set', 
+                    type=int, dest='widening_jump_set', 
+                    help='Size of the jump set used in widening', default=0)
     p.add_argument ('--crab-narrowing-iterations', 
                     type=int, dest='narrowing_iterations', 
                     help='Max number of narrowing iterations', default=999999)
@@ -356,6 +359,7 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
 
     crabllvm_cmd.append ('--crab-widening-threshold={0}'.format (args.widening_threshold))
+    crabllvm_cmd.append ('--crab-widening-jump-set={0}'.format (args.widening_jump_set))
     crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format (args.narrowing_iterations))
 
     crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
