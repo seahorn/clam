@@ -57,6 +57,12 @@ LlvmCrabNarrowingIters("crab-narrowing-iterations",
                        llvm::cl::init (999999),
                        cl::Hidden);
 
+llvm::cl::opt<unsigned int>
+LlvmCrabWideningJumpSet("crab-widening-jump-set", 
+                        llvm::cl::desc("Size of the jump set used for widening"),
+                        llvm::cl::init (0),
+                        cl::Hidden);
+
 llvm::cl::opt<CrabDomain>
 LlvmCrabDomain("crab-dom",
                llvm::cl::desc ("Crab abstract domain used to infer invariants"),
@@ -633,9 +639,25 @@ namespace crab_llvm {
     // -- run inter-procedural analysis on the whole call graph
     typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
                               BUAbsDomain, TDAbsDomain> analyzer_t;
+
+#ifdef CRABLLVM_DEBUG
+    std::cout << "Running inter-procedural analysis with " 
+              << "forward domain:" 
+              << "\"" << TDAbsDomain::getDomainName () << "\""
+              << " and backward domain:" 
+              << "\"" << BUAbsDomain::getDomainName () << "\"" 
+              << "  ... ";
+    std::cout.flush ();
+#endif 
+
     analyzer_t analyzer(cg, m_vfac, (LlvmCrabLive ? &live_map : nullptr),
-                        LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
+                        LlvmCrabWideningThreshold, LlvmCrabNarrowingIters, 
+                        LlvmCrabWideningJumpSet);
     analyzer.Run (TDAbsDomain::top ());
+
+#ifdef CRABLLVM_DEBUG
+    std::cout << "DONE\n";
+#endif 
 
     // -- store invariants     
     for (auto &n: boost::make_iterator_range (vertices (cg))) {
@@ -679,16 +701,17 @@ namespace crab_llvm {
 #ifdef CRABLLVM_DEBUG
     auto fdecl = cfg.get_func_decl ();            
     assert (fdecl);
-    AbsDomain tmp;
-    std::cout << "Running " << tmp.getDomainName () << " analysis for " 
-              << (*fdecl).get_func_name ()
+    std::cout << "Running intra-procedural analysis with " 
+              << "\"" << AbsDomain::getDomainName ()  << "\""
+              << " for "  << (*fdecl).get_func_name ()
               << "  ... ";
     std::cout.flush ();
 #endif 
 
     // -- run intra-procedural analysis
     analyzer_t analyzer (cfg, m_vfac, &live, 
-                         LlvmCrabWideningThreshold, LlvmCrabNarrowingIters);
+                         LlvmCrabWideningThreshold, LlvmCrabNarrowingIters, 
+                         LlvmCrabWideningJumpSet);
 
     setup_if_boxes_dom::setGlobalParams<AbsDomain> (cfg);
     AbsDomain inv = AbsDomain::top();

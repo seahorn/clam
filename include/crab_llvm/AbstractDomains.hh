@@ -6,7 +6,7 @@
 
 #include "crab/domains/linear_constraints.hpp"                     
 #include "crab/domains/intervals.hpp"                      
-#include "crab/domains/intervals_congruences.hpp"
+#include "crab/domains/numerical_with_congruences.hpp"
 #include "crab/domains/dbm.hpp"
 #include "crab/domains/split_dbm.hpp"
 #include "crab/domains/naive_dbm.hpp"
@@ -39,7 +39,7 @@ namespace crab_llvm {
   /// -- Intervals
   typedef interval_domain< z_number, varname_t> interval_domain_t;
   /// -- RIC: reduced product of intervals with congruences
-  typedef interval_congruence_domain<z_number, varname_t> ric_domain_t;
+  typedef numerical_congruence_domain<interval_domain_t> ric_domain_t;
   /// -- Sparse DBM (zones)
   typedef DBM<z_number, varname_t> dbm_domain_t;
   /// -- split DBM
@@ -48,7 +48,7 @@ namespace crab_llvm {
   typedef naive_dbm< z_number, varname_t > ddbm_domain_t;
   /// -- var packing DBM
   typedef var_packing_naive_dbm<z_number, varname_t> vdbm_domain_t;
-  /// -- Terms: reduced product of intervals with uninterpreted functions 
+  /// -- Terms: Term functor domain with intervals
   typedef crab::cfg::var_factory_impl::StrVarAlloc_col::varname_t str_varname_t;
   typedef interval_domain<z_number, str_varname_t> str_interval_dom_t;
   typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t /*interval_domain_t*/> idom_info;
@@ -65,20 +65,20 @@ namespace crab_llvm {
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OCT > oct_apron_domain_t;
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OPT_OCT > opt_oct_apron_domain_t;
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_PK > pk_apron_domain_t;
-  /// -- Array smashing functor domain parameterized with above
+  /// -- Array smashing functor domain parameterized with the above
   ///    abstract domains
-  typedef array_smashing<interval_domain_t,z_number,varname_t> arr_interval_domain_t;
-  typedef array_smashing<ric_domain_t,z_number,varname_t> arr_ric_domain_t;
-  typedef array_smashing<dbm_domain_t,z_number,varname_t> arr_dbm_domain_t;
-  typedef array_smashing<sdbm_domain_t,z_number,varname_t> arr_sdbm_domain_t;
-  typedef array_smashing<vdbm_domain_t,z_number,varname_t> arr_vdbm_domain_t;
-  typedef array_smashing<ddbm_domain_t,z_number,varname_t> arr_ddbm_domain_t;
-  typedef array_smashing<term_domain_t,z_number,varname_t> arr_term_domain_t;
-  typedef array_smashing<boxes_domain_t,z_number,varname_t> arr_boxes_domain_t;
-  typedef array_smashing<box_apron_domain_t,z_number,varname_t> arr_box_apron_domain_t;
-  typedef array_smashing<oct_apron_domain_t,z_number,varname_t> arr_oct_apron_domain_t;
-  typedef array_smashing<opt_oct_apron_domain_t,z_number,varname_t> arr_opt_oct_apron_domain_t;
-  typedef array_smashing<pk_apron_domain_t,z_number,varname_t> arr_pk_apron_domain_t;
+  typedef array_smashing<interval_domain_t> arr_interval_domain_t;
+  typedef array_smashing<ric_domain_t> arr_ric_domain_t;
+  typedef array_smashing<dbm_domain_t> arr_dbm_domain_t;
+  typedef array_smashing<sdbm_domain_t> arr_sdbm_domain_t;
+  typedef array_smashing<vdbm_domain_t> arr_vdbm_domain_t;
+  typedef array_smashing<ddbm_domain_t> arr_ddbm_domain_t;
+  typedef array_smashing<term_domain_t> arr_term_domain_t;
+  typedef array_smashing<boxes_domain_t> arr_boxes_domain_t;
+  typedef array_smashing<box_apron_domain_t> arr_box_apron_domain_t;
+  typedef array_smashing<oct_apron_domain_t> arr_oct_apron_domain_t;
+  typedef array_smashing<opt_oct_apron_domain_t> arr_opt_oct_apron_domain_t;
+  typedef array_smashing<pk_apron_domain_t> arr_pk_apron_domain_t;
 }
 
 namespace llvm {
@@ -184,10 +184,9 @@ namespace llvm {
     return o;
   }
 
-  template <typename Base, typename N, typename V>
+  template <typename Base>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab::domains::array_smashing
-                                        <Base,N,V> & inv) {
+                                        crab::domains::array_smashing <Base> & inv) {
     ostringstream s;
     s << inv;
     o << s.str ();
@@ -342,7 +341,7 @@ namespace crab_llvm {
      
     private:
      
-     typedef array_smashing<B,N,V> array_smashing_t;       
+     typedef array_smashing<B> array_smashing_t;       
 
      id_t m_id;     
      array_smashing_t m_abs;
@@ -369,14 +368,14 @@ namespace crab_llvm {
      }
    };
    template <typename B> inline GenericAbsDomWrapperPtr
-   mkGenericAbsDomWrapper (array_smashing<B, typename B::number_t, typename B::varname_t> abs_dom) {
+   mkGenericAbsDomWrapper (array_smashing<B> abs_dom) {
      GenericAbsDomWrapperPtr res (new ArraySmashingDomainWrapper<B> (abs_dom));        
      return res;
    }
 
    template <typename B> 
    inline void getAbsDomWrappee (GenericAbsDomWrapperPtr wrapper, 
-                                 array_smashing<B, typename B::number_t, typename B::varname_t>&abs_dom) {
+                                 array_smashing<B>&abs_dom) {
      auto wrappee = boost::static_pointer_cast<ArraySmashingDomainWrapper<B> > (wrapper);
      abs_dom = wrappee->get ();
    }
