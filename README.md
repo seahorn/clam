@@ -76,15 +76,22 @@ inferred for each basic block in the `LLVM` bitcode.
 	- `pk-apron`: polyhedra (only if `-DUSE_APRON=ON`)
     - `boxes`: disjunctive intervals based on ldds (only if `-DUSE_LDD=ON`)
 	- `dis-int`: disjunctive intervals based on disjunctive completion
-	
-	For `boxes` and `dis-int`, you may want also to set the options:
-       - `--crab-narrowing-iterations=N`
-	   - `--crab-widening-threshold=W`
 
-       where `N` is the number of descending iterations and `W` is the
-       number of fixpoint iterations before triggering widening. In
-       particular, a small value for `N` might be needed (e.g.,
-       `n=2`). For `W` it really depends on the program.
+	For domains without narrowing operator (for instance currently
+    `boxes`, `dis-int`, and `pk-apron`), you need to set the option:
+	
+       - `--crab-narrowing-iterations=N`
+
+       where `N` is the number of descending iterations (e.g., `N=2`).
+
+	You may want also to set the option:
+	
+	   - `--crab-widening-threshold=N`
+
+       where `N` is the number of fixpoint iterations before
+       triggering widening. This option is specially important (for
+       precision) for disjunctive domains.
+	   
 
 - We also provide the option `--crab-track` to indicate the level
 of precision. The possible values are: 
