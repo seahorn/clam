@@ -68,11 +68,12 @@ inferred for each basic block in the `LLVM` bitcode.
     - `int`: classical intervals
 	- `ric`: intervals with congruences
 	- `zones`: difference-bound matrices
-	- `num`: select dynamically between `int` and `zones`
     - `term`: intervals with uninterpreted functions
-    - `boxes`: disjunctive intervals (only if `-DUSE_LDD=ON`)
+	- `num`: select dynamically (based on the number of live variables) between `int` and `zones`
+    - `boxes`: disjunctive intervals based on ldds (only if `-DUSE_LDD=ON`)
+	- `dis-int`: disjunctive intervals based on disjunctive completion 
 	
-	   For boxes, we may want also to set the options:
+	   For `boxes` and `dis-int`, you may want also to set the options:
 	   
        - `--crab-narrowing-iterations=N`
 	   - `--crab-widening-threshold=W`

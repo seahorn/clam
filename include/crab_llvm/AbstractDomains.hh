@@ -6,6 +6,7 @@
 
 #include "crab/domains/linear_constraints.hpp"                     
 #include "crab/domains/intervals.hpp"                      
+#include "crab/domains/dis_intervals.hpp"                      
 #include "crab/domains/numerical_with_congruences.hpp"
 #include "crab/domains/dbm.hpp"
 #include "crab/domains/array_smashing.hpp"
@@ -26,6 +27,7 @@ namespace crab_llvm {
   enum CrabDomain { INTERVALS, 
                     INTERVALS_CONGRUENCES, 
                     BOXES,
+                    DIS_INTERVALS,
                     ZONES, 
                     TERMS,
                     NUM};
@@ -61,6 +63,8 @@ namespace crab_llvm {
   #else
   typedef boxes_domain<z_number, varname_t> boxes_domain_t;
   #endif 
+  /// -- DisIntervals
+  typedef dis_interval_domain <z_number, varname_t> dis_interval_domain_t;
   /// -- Array smashing functor domain parameterized with the above
   ///    abstract domains
   typedef array_smashing<interval_domain_t> arr_interval_domain_t;
@@ -68,6 +72,7 @@ namespace crab_llvm {
   typedef array_smashing<dbm_domain_t> arr_dbm_domain_t;
   typedef array_smashing<term_domain_t> arr_term_domain_t;
   typedef array_smashing<boxes_domain_t> arr_boxes_domain_t;
+  typedef array_smashing<dis_interval_domain_t> arr_dis_interval_domain_t;
 }
 
 namespace llvm {
@@ -133,6 +138,14 @@ namespace llvm {
 
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         crab_llvm::boxes_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::dis_interval_domain_t& inv) {
     ostringstream s;
     s << inv;
     o << s.str ();
@@ -207,11 +220,13 @@ namespace crab_llvm {
                     term, 
                     ric, 
                     boxes, 
+                    dis_intv,
                     arr_intv, 
                     arr_dbm, 
                     arr_term, 
                     arr_ric, 
-                    arr_boxes } id_t;
+                    arr_boxes,
+                    arr_dis_intv} id_t;
 
      GenericAbsDomWrapper () { }
 
@@ -250,6 +265,7 @@ namespace crab_llvm {
    DEFINE_BASE_DOMAIN(DbmDomainWrapper,dbm_domain_t,dbm)
    DEFINE_BASE_DOMAIN(TermDomainWrapper,term_domain_t,term)
    DEFINE_BASE_DOMAIN(BoxesDomainWrapper,boxes_domain_t,boxes)
+   DEFINE_BASE_DOMAIN(DisIntervalDomainWrapper,dis_interval_domain_t,dis_intv)
 
    // Required only for array versions
    REGISTER_DOMAIN_ID(arr_interval_domain_t,arr_intv)
@@ -257,6 +273,7 @@ namespace crab_llvm {
    REGISTER_DOMAIN_ID(arr_dbm_domain_t,arr_dbm)
    REGISTER_DOMAIN_ID(arr_term_domain_t,arr_term)
    REGISTER_DOMAIN_ID(arr_boxes_domain_t,arr_boxes)
+   REGISTER_DOMAIN_ID(arr_dis_interval_domain_t,arr_dis_intv)
 
    template<typename B>
    class ArraySmashingDomainWrapper: public GenericAbsDomWrapper {
@@ -321,6 +338,8 @@ namespace crab_llvm {
          FORGET_MACRO(term_domain_t)
        case GenericAbsDomWrapper::boxes: 
          FORGET_MACRO(boxes_domain_t)
+       case GenericAbsDomWrapper::dis_intv: 
+         FORGET_MACRO(dis_interval_domain_t)
        case GenericAbsDomWrapper::arr_intv:
          FORGET_MACRO(arr_interval_domain_t)
        case GenericAbsDomWrapper::arr_ric:
@@ -331,6 +350,8 @@ namespace crab_llvm {
          FORGET_MACRO(arr_term_domain_t) 
        case GenericAbsDomWrapper::arr_boxes: 
          FORGET_MACRO(arr_boxes_domain_t) 
+       case GenericAbsDomWrapper::arr_dis_intv: 
+         FORGET_MACRO(arr_dis_interval_domain_t) 
        default: assert (false && "unreachable");
      }
    }

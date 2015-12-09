@@ -72,7 +72,9 @@ LlvmCrabDomain("crab-dom",
         clEnumValN (ZONES , "zones",
                     "Difference-Bounds Matrix (or Zones) domain"),
         clEnumValN (BOXES, "boxes",
-                    "Disjunctive intervals"),
+                    "Disjunctive intervals based on ldds"),
+        clEnumValN (DIS_INTERVALS, "dis-int",
+                    "Disjunctive intervals based on disjunction completion"),
         clEnumValN (TERMS, "term",
                     "Intervals with uninterpreted functions."),
         clEnumValN (NUM, "num",
@@ -468,6 +470,11 @@ namespace crab_llvm {
         change = (LlvmCrabTrackLev == ARR ? 
                   runOnCfg <arr_boxes_domain_t> (cfg, *live, F) : 
                   runOnCfg <boxes_domain_t> (cfg, *live, F)) ; 
+        break;
+      case DIS_INTERVALS:
+        change = (LlvmCrabTrackLev == ARR ? 
+                  runOnCfg <arr_dis_interval_domain_t> (cfg, *live, F) : 
+                  runOnCfg <dis_interval_domain_t> (cfg, *live, F)) ; 
         break;
       case INTERVALS:  
       default: 
