@@ -18,25 +18,6 @@
 #include <crab/analysis/Liveness.hpp>
 
 namespace crab_llvm
-{  
-   //! Base numerical domains
-   enum CrabDomain { INTERVALS, 
-                     INTERVALS_CONGRUENCES, 
-                     BOXES,
-                     ZONES, 
-                     SZONES,
-                     DZONES,
-                     VZONES, 
-                     TERMS,
-                     NUM,
-                     INTV_APRON,
-                     OCT_APRON,
-                     OPT_OCT_APRON,
-                     PK_APRON };
-                   
-}
-
-namespace crab_llvm
 {
 
   using namespace llvm;

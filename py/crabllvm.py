@@ -106,7 +106,7 @@ def parseArgs (argv):
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
                     help='Choose abstract domain',
-                    choices=['int','ric', 'term', 'boxes',
+                    choices=['int','ric', 'term', 'boxes', 'dis-int',
                              # choose dynamically between int and zones
                              'num',
                              ## Zones variants

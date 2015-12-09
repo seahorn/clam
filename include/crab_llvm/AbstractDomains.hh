@@ -6,6 +6,7 @@
 
 #include "crab/domains/linear_constraints.hpp"                     
 #include "crab/domains/intervals.hpp"                      
+#include "crab/domains/dis_intervals.hpp"                      
 #include "crab/domains/numerical_with_congruences.hpp"
 #include "crab/domains/dbm.hpp"
 #include "crab/domains/split_dbm.hpp"
@@ -21,7 +22,26 @@
    crab-llvm clients) to contain an arbitrary abstract domain.  
 */
 
+
 namespace crab_llvm {
+
+   ////
+   // Base numerical domains for user options
+   ////
+   enum CrabDomain { INTERVALS, 
+                     INTERVALS_CONGRUENCES, 
+                     BOXES,
+                     DIS_INTERVALS,
+                     ZONES, 
+                     SZONES,
+                     DZONES,
+                     VZONES, 
+                     TERMS,
+                     NUM,
+                     INTV_APRON,
+                     OCT_APRON,
+                     OPT_OCT_APRON,
+                     PK_APRON };
 
   //////
   /// Definition of the abstract domains
@@ -60,6 +80,8 @@ namespace crab_llvm {
   #else
   typedef boxes_domain<z_number, varname_t> boxes_domain_t;
   #endif 
+  /// -- DisIntervals
+  typedef dis_interval_domain <z_number, varname_t> dis_interval_domain_t;
   /// -- Apron domains
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_INT > box_apron_domain_t;
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OCT > oct_apron_domain_t;
@@ -75,6 +97,7 @@ namespace crab_llvm {
   typedef array_smashing<ddbm_domain_t> arr_ddbm_domain_t;
   typedef array_smashing<term_domain_t> arr_term_domain_t;
   typedef array_smashing<boxes_domain_t> arr_boxes_domain_t;
+  typedef array_smashing<dis_interval_domain_t> arr_dis_interval_domain_t;
   typedef array_smashing<box_apron_domain_t> arr_box_apron_domain_t;
   typedef array_smashing<oct_apron_domain_t> arr_oct_apron_domain_t;
   typedef array_smashing<opt_oct_apron_domain_t> arr_opt_oct_apron_domain_t;
@@ -174,6 +197,14 @@ namespace llvm {
     return o;
   }
 
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab_llvm::dis_interval_domain_t& inv) {
+    ostringstream s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
   template <typename N, typename V, crab::domains::apron_domain_id_t D>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         crab::domains::apron_domain 
@@ -255,6 +286,7 @@ namespace crab_llvm {
                     term, 
                     ric, 
                     boxes, 
+                    dis_intv,
                     intv_apron,
                     oct_apron,
                     opt_oct_apron,
@@ -267,6 +299,7 @@ namespace crab_llvm {
                     arr_term, 
                     arr_ric, 
                     arr_boxes,
+                    arr_dis_intv,
                     arr_intv_apron,
                     arr_oct_apron,
                     arr_opt_oct_apron,
@@ -313,6 +346,7 @@ namespace crab_llvm {
    DEFINE_BASE_DOMAIN(DDbmDomainWrapper,ddbm_domain_t,ddbm)
    DEFINE_BASE_DOMAIN(TermDomainWrapper,term_domain_t,term)
    DEFINE_BASE_DOMAIN(BoxesDomainWrapper,boxes_domain_t,boxes)
+   DEFINE_BASE_DOMAIN(DisIntervalDomainWrapper,dis_interval_domain_t,dis_intv)
    DEFINE_BASE_DOMAIN(BoxApronDomainWrapper,box_apron_domain_t,intv_apron)
    DEFINE_BASE_DOMAIN(OctApronDomainWrapper,oct_apron_domain_t,oct_apron)
    DEFINE_BASE_DOMAIN(OptOctApronDomainWrapper,opt_oct_apron_domain_t,opt_oct_apron)
@@ -327,6 +361,7 @@ namespace crab_llvm {
    REGISTER_DOMAIN_ID(arr_ddbm_domain_t,arr_ddbm)
    REGISTER_DOMAIN_ID(arr_term_domain_t,arr_term)
    REGISTER_DOMAIN_ID(arr_boxes_domain_t,arr_boxes)
+   REGISTER_DOMAIN_ID(arr_dis_interval_domain_t,arr_dis_intv)
    REGISTER_DOMAIN_ID(arr_box_apron_domain_t,arr_intv_apron)
    REGISTER_DOMAIN_ID(arr_oct_apron_domain_t,arr_oct_apron)
    REGISTER_DOMAIN_ID(arr_opt_oct_apron_domain_t,arr_opt_oct_apron)
@@ -400,6 +435,8 @@ namespace crab_llvm {
          FORGET_MACRO(term_domain_t)
        case GenericAbsDomWrapper::boxes: 
          FORGET_MACRO(boxes_domain_t)
+       case GenericAbsDomWrapper::dis_intv: 
+         FORGET_MACRO(dis_interval_domain_t)
        case GenericAbsDomWrapper::intv_apron: 
          FORGET_MACRO(box_apron_domain_t)
        case GenericAbsDomWrapper::oct_apron: 
@@ -424,6 +461,8 @@ namespace crab_llvm {
          FORGET_MACRO(arr_term_domain_t) 
        case GenericAbsDomWrapper::arr_boxes: 
          FORGET_MACRO(arr_boxes_domain_t) 
+       case GenericAbsDomWrapper::arr_dis_intv: 
+         FORGET_MACRO(arr_dis_interval_domain_t) 
        case GenericAbsDomWrapper::arr_intv_apron: 
          FORGET_MACRO(arr_box_apron_domain_t) 
        case GenericAbsDomWrapper::arr_oct_apron: 
