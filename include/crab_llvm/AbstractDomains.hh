@@ -17,7 +17,18 @@
    crab-llvm clients) to contain an arbitrary abstract domain.  
 */
 
+
 namespace crab_llvm {
+
+  ////
+  // Base numerical domains for user options
+  ////
+  enum CrabDomain { INTERVALS, 
+                    INTERVALS_CONGRUENCES, 
+                    BOXES,
+                    ZONES, 
+                    TERMS,
+                    NUM};
 
   //////
   /// Definition of the abstract domains
