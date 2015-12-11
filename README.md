@@ -85,9 +85,15 @@ inferred for each basic block in the `LLVM` bitcode.
 	   - `--crab-widening-threshold=N`
 
        where `N` is the number of fixpoint iterations before
-       triggering widening. This option is specially important (for
-       precision) for disjunctive domains.
+       triggering widening (e.g., `N=1`). This option is specially
+       important for disjunctive domains to increase precision.
 	   
+    The widening operators do not use thresholds by default. To use
+    them, type the option:
+
+       - `--crab-widening-jump-set=N`
+
+       where `N` is the maximum number of thresholds. 
 
 - We also provide the option `--crab-track` to indicate the level
 of precision. The possible values are: 
