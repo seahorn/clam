@@ -74,12 +74,7 @@ namespace crab_llvm {
   typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t /*interval_domain_t*/> idom_info;
   typedef anti_unif<idom_info>::anti_unif_t term_domain_t;  
   /// -- Boxes
-  #if 1
-  // use the reduced of intervals with boxes rather than plain boxes
-  typedef rib_domain<z_number, varname_t> boxes_domain_t;
-  #else
   typedef boxes_domain<z_number, varname_t> boxes_domain_t;
-  #endif 
   /// -- DisIntervals
   typedef dis_interval_domain <z_number, varname_t> dis_interval_domain_t;
   /// -- Apron domains

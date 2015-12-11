@@ -105,13 +105,6 @@ LlvmCrabNumThreshold("crab-dom-num-max-live",
    llvm::cl::init (100),
    cl::Hidden);
 
-// If domain is boxes
-llvm::cl::opt<string>
-LlvmCrabBoxesTrackRegex("crab-boxes-track-names", 
-                        llvm::cl::desc("Variables names (given as a regex) tracked by boxes"),
-                        llvm::cl::init (""),
-                        cl::Hidden);
-
 llvm::cl::opt<bool>
 LlvmCrabLive("crab-live", 
         llvm::cl::desc("Run Crab with live ranges"),
@@ -170,52 +163,6 @@ LlvmKeepShadows ("crab-keep-shadows",
                  cl::desc ("Preserve shadow variables in invariants and summaries"), 
                  cl::init (false),
                  cl::Hidden);
-
-namespace crab_llvm {
-
-  // this namespace is temporary for the boxes domain
-  namespace setup_if_boxes_dom {
-
-    template<typename AbsDomain>
-    void setGlobalParams (const cfg_t& cfg) { }
-
-    template<typename AbsDomain>
-    void resetGlobalParams () {}
-  
-    struct MatchRegex : public std::unary_function<cfg_t::varname_t,bool> {
-      boost::optional <std::regex> m_re;
-      MatchRegex (string s) { 
-        if (s != "") {
-          try  { m_re = std::regex (s); }
-          catch (std::regex_error& e) {
-            errs () << "Warning: syntax error in the regex: " << e.what () << "\n";
-          }
-        }
-      }
-      bool operator() (cfg_t::varname_t s)  {
-        if (!m_re) return true; 
-        else return std::regex_match (s.str (), *m_re);
-      }
-    };
-  
-    template<> void setGlobalParams <boxes_domain_t> (const cfg_t& cfg) {
-      MatchRegex filter (LlvmCrabBoxesTrackRegex);
-      boxes_domain_t::create_global (cfg.get_vars (), filter);
-    }
- 
-    template<> void setGlobalParams <arr_boxes_domain_t> (const cfg_t& cfg) {
-      MatchRegex filter (LlvmCrabBoxesTrackRegex);
-      boxes_domain_t::create_global (cfg.get_vars (), filter);
-    }
-  
-    template<> void resetGlobalParams <boxes_domain_t> () 
-    { boxes_domain_t::destroy_global (); }
-
-    template<> void resetGlobalParams <arr_boxes_domain_t> () 
-    { boxes_domain_t::destroy_global (); }
-    
-  } // end namespace 
-} // end namespace 
 
 namespace crab_llvm {
 
@@ -720,10 +667,7 @@ namespace crab_llvm {
                          LlvmCrabWideningThreshold, LlvmCrabNarrowingIters, 
                          LlvmCrabWideningJumpSet);
 
-    setup_if_boxes_dom::setGlobalParams<AbsDomain> (cfg);
-    AbsDomain inv = AbsDomain::top();
-    analyzer.Run (inv);
-    setup_if_boxes_dom::resetGlobalParams<AbsDomain> ();
+    analyzer.Run (AbsDomain::top());
 
 #ifdef CRABLLVM_DEBUG
     std::cout << "DONE\n";
@@ -798,7 +742,8 @@ namespace crab_llvm {
 static llvm::RegisterPass<crab_llvm::CrabLlvm> 
 X ("crab-llvm",
    "Infer invariants using Crab", 
-   false, false);
+   false, 
+   false);
    
 
 
