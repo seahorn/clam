@@ -102,6 +102,9 @@ def parseArgs (argv):
     p.add_argument ('--lower-select',
                     help='Lower select instructions',
                     dest='lower_select', default=False, action='store_true')
+    p.add_argument ('--lower-gv',
+                    help='Lower global variable initializers into main',
+                    dest='lower_gv', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
@@ -352,6 +355,9 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
 
     if args.lower_select:
         crabllvm_cmd.append( '--crab-lower-select')
+
+    if args.lower_gv:
+        crabllvm_cmd.append( '--crab-lower-gv')
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
 
