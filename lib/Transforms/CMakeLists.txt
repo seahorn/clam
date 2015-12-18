@@ -6,6 +6,7 @@ add_library(LlvmPasses STATIC
   RemoveUnreachableBlocksPass.cc
   MarkInternalInline.cc
   SimplifyAssume.cc
+  DevirtFunctions.cc
   )
 
 install(TARGETS LlvmPasses ARCHIVE DESTINATION lib)

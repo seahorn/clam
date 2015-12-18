@@ -141,7 +141,7 @@ def parseArgs (argv):
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        
     p.add_argument ('--crab-devirt',
-                    help='Resolve indirect calls using alias analysis',
+                    help='Resolve indirect calls',
                     dest='crab_devirt', default=False, action='store_true')
     p.add_argument ('--crab-add-invariants-at-entries',
                     help='Instrument code with invariants at each block entry',

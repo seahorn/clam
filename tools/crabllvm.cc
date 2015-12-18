@@ -22,9 +22,6 @@
 #include "llvm/IR/Verifier.h"
 #include "crab_llvm/config.h"
 
-#ifdef HAVE_DSA
-#include "assistDS/Devirt.h"
-#endif 
 #ifdef HAVE_LLVM_SEAHORN
 #include "llvm_seahorn/Transforms/Scalar.h"
 #endif 
@@ -60,7 +57,8 @@ Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs (ex
              llvm::cl::Hidden);
 
 static llvm::cl::opt<bool>
-CrabDevirtualize ("crab-devirt", llvm::cl::desc ("Resolve indirect calls using alias analysis"),
+CrabDevirtualize ("crab-devirt", 
+                  llvm::cl::desc ("Resolve indirect calls"),
                   llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
@@ -163,12 +161,10 @@ int main(int argc, char **argv) {
   // -- promote alloca's to registers
   pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
 
-#ifdef HAVE_DSA
   if (CrabDevirtualize) {
     // -- resolve indirect calls
-    pass_manager.add (new llvm::Devirtualize ());
+    pass_manager.add (crab_llvm::createDevirtualizeFunctionsPass ());
   }
-#endif 
 
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
