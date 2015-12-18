@@ -6,8 +6,7 @@
  * crab.
  *
  * WARNING: the translation is, in general, an abstraction of the
- * concrete semantics of the input program. In particular, if the
- * level of precision is ARR.
+ * concrete semantics of the input program. 
  */
 
 #include <boost/optional.hpp>
@@ -20,10 +19,11 @@
 #include "llvm/IR/DataLayout.h"
 
 #include "crab_llvm/MemAnalysis.hh"
+#include "crab_llvm/SymEval.hh"
 
-#include <crab/cfg/Cfg.hpp>
-#include <crab/cfg/VarFactory.hpp>
-#include <crab/common/bignums.hpp>
+#include "crab/cfg/Cfg.hpp"
+#include "crab/cfg/VarFactory.hpp"
+#include "crab/common/bignums.hpp"
 
 namespace crab { namespace cfg { 
    namespace var_factory_impl {
@@ -45,8 +45,7 @@ namespace crab {
      { return B->getName (); }
   
      // Variable factory from llvm::Value's
-     class LlvmVariableFactory : public boost::noncopyable  
-     {
+     class LlvmVariableFactory : public boost::noncopyable  {
        typedef var_factory_impl::VariableFactory< const llvm::Value* > LlvmVariableFactory_t;
        std::unique_ptr< LlvmVariableFactory_t > m_factory; 
        
@@ -57,25 +56,21 @@ namespace crab {
        
        LlvmVariableFactory(): m_factory (new LlvmVariableFactory_t()){ }
 
-       const_var_range get_shadow_vars () const 
-       {
+       const_var_range get_shadow_vars () const {
          return m_factory->get_shadow_vars ();
        }
        
        // to generate fresh varname_t without having a Value
-       varname_t get ()  
-       {
+       varname_t get () { 
          return m_factory->get ();
        }
        
        // to generate varname_t without having a Value
-       varname_t get (int k)  
-       {
+       varname_t get (int k) {
          return m_factory->get (k);
        }
        
-       varname_t operator[](const llvm::Value &v)
-       {
+       varname_t operator[](const llvm::Value &v) {
          const llvm::Value *V = &v;
          return (*m_factory)[V];			      
        }
@@ -91,13 +86,14 @@ namespace crab {
      typedef typename cfg_t::basic_block_t::z_lin_exp_t z_lin_exp_t;
      typedef typename cfg_t::basic_block_t::z_lin_cst_t z_lin_cst_t;
      typedef ikos::linear_constraint_system<ikos::z_number, varname_t> z_lin_cst_sys_t;
+
   } // end namespace cfg_impl
 } // end namespace crab
 
 namespace
 {
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, crab::cfg_impl::cfg_t cfg)
-  {
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab::cfg_impl::cfg_t cfg) {
     std::ostringstream s;
     s << cfg;
     o << s.str ();
@@ -111,9 +107,9 @@ namespace crab_llvm
   using namespace crab::cfg_impl;
   using namespace llvm;
 
-  class CfgBuilder: public boost::noncopyable
-  {
-    
+  typedef SymEval<VariableFactory, z_lin_exp_t> sym_eval_t;
+
+  class CfgBuilder: public boost::noncopyable {
    public:
 
     typedef boost::optional<basic_block_t&> opt_basic_block_t;
@@ -122,31 +118,62 @@ namespace crab_llvm
     
     typedef boost::unordered_map< basic_block_label_t, 
                                   basic_block_t& > llvm_bb_map_t;
-    Function&         m_func;
-    VariableFactory&  m_vfac;
-    unsigned          m_id;
-    cfg_t             m_cfg;
-    llvm_bb_map_t     m_bb_map;
-    MemAnalysis*      m_mem;
-    bool              m_is_inter_proc;
+
+    bool m_is_cfg_built;
+    Function& m_func;
+    sym_eval_t m_sev;
+    unsigned m_id;
+    cfg_t m_cfg;
+    llvm_bb_map_t m_bb_map;
+    bool m_is_inter_proc;
     const DataLayout* m_dl;
+    // Special blocks added *temporary* to the LLVM bitecode for
+    // translating Branch instructions into Crab assume statements
+    vector<llvm::BasicBlock*> m_fake_assume_blocks;
 
    public:
     
-    CfgBuilder (Function &func, VariableFactory &vfac, MemAnalysis* mem, 
-                bool isInterProc);
-        
-    ~CfgBuilder ();
-
-    cfg_t & makeCfg () { 
-      build_cfg ();
-      return m_cfg; 
+    CfgBuilder (Function& func, 
+                VariableFactory& vfac, MemAnalysis& mem, 
+                bool isInterProc): 
+        m_is_cfg_built (false),                          
+        m_func (func), 
+        m_sev (vfac, mem),
+        m_id (0),
+        m_cfg (&m_func.getEntryBlock (), (mem.getTrackLevel ())),
+        m_is_inter_proc (isInterProc),
+        m_dl (func.getParent ()->getDataLayout ()) {
+    }    
+    
+    ~CfgBuilder () { 
+      for (llvm::BasicBlock* B: m_fake_assume_blocks) {
+        delete B; // B->eraseFromParent ();
+      }
     }
 
+    cfg_t& getCfg () { 
+      if (!m_is_cfg_built) {
+        build_cfg ();
+        m_is_cfg_built = true;
+      }
+      return m_cfg;
+    }
+
+    const Function& getFunction () {
+      return m_func;
+    }
+
+    sym_eval_t& getSymEval () { 
+      return m_sev; 
+    }
+    
    private:
     
-    string create_bb_name(string prefix = "")
-    {
+    const llvm::BasicBlock* createFakeBlock (LLVMContext &ctx, 
+                                             const Twine &name,
+                                             Function *parent);
+
+    string create_bb_name(string prefix = "") {
       if (prefix == "") prefix = string("_crab_bb_");
       ++m_id;
       string id_str = std::to_string(m_id);

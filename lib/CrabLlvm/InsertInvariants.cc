@@ -7,6 +7,7 @@
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/ADT/Statistic.h"
@@ -16,10 +17,6 @@
 #include "crab_llvm/AbstractDomains.hh"
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/CfgBuilder.hh"
-
-#ifdef HAVE_DSA
-#include "dsa/Steensgaard.hh"
-#endif 
 
 #include "crab/analysis/AbsTransformer.hpp"
 #include "crab/analysis/InterDS.hpp"
@@ -37,19 +34,19 @@ using namespace crab_llvm;
 
 
 static llvm::cl::opt<bool>
-LlvmCrabInsertEntries ("crab-add-invariants-at-entries", 
-                       llvm::cl::desc ("Instrument basic block entries with invariants"),
-                       llvm::cl::init (false));
+CrabInsertEntries ("crab-add-invariants-at-entries", 
+                   llvm::cl::desc ("Instrument basic block entries with invariants"),
+                   llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-LlvmCrabInsertLoads ("crab-add-invariants-after-loads", 
-                     llvm::cl::desc ("Instrument load instructions with invariants"),
-                     llvm::cl::init (false));
+CrabInsertLoads ("crab-add-invariants-after-loads", 
+                 llvm::cl::desc ("Instrument load instructions with invariants"),
+                 llvm::cl::init (false));
 
 #define DEBUG_TYPE "crab-insert-invars"
 
-STATISTIC(NumInstrBlocks  , "Number of basic blocks instrumented with invariants");
-STATISTIC(NumInstrLoads   , "Number of load instructions instrumented with invariants");
+STATISTIC(NumInstrBlocks, "Number of basic blocks instrumented with invariants");
+STATISTIC(NumInstrLoads, "Number of load instructions instrumented with invariants");
 
 namespace crab_llvm
 {
@@ -86,8 +83,7 @@ namespace crab_llvm
         case SUB: return  B.CreateSub ( LHS1, RHS1, Name);
         case MUL: return  B.CreateMul ( LHS1, RHS1, Name);
         default:
-          llvm::errs () << "Unreachable\n";
-          assert (0); exit (1); 
+          llvm_unreachable ("Code expander only understands add, sub, and mul operations");
       }
     }
        
@@ -110,6 +106,8 @@ namespace crab_llvm
     }
 
     //! Generate llvm bitecode from a set of linear constraints    
+    //  TODO: generate bitecode from the underlying representation of
+    //  the abstract domain so disjunctive formulas can be inserted.
     bool gen_code (z_lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
                    Function* assumeFn, CallGraph* cg, const Function* insertFun,
                    const Twine &Name = "")
@@ -263,7 +261,8 @@ namespace crab_llvm
       
       // -- Remove array shadow variables otherwise llvm will
       //    get choked
-      VariableFactory &vfac = m_crab->getVariableFactory ();
+      CrabLlvm* crab = &getAnalysis<CrabLlvm> ();
+      VariableFactory &vfac = crab->getVariableFactory ();
       auto shadows = vfac.get_shadow_vars ();
       crab::domain_traits::forget (inv, shadows.begin(), shadows.end());            
 
@@ -294,12 +293,10 @@ namespace crab_llvm
 
   bool InsertInvariants::runOnModule (llvm::Module &M)
   {
-    if (!LlvmCrabInsertEntries && 
-        !LlvmCrabInsertLoads)
+    if (!CrabInsertEntries && 
+        !CrabInsertLoads)
       return false;
 
-    m_crab = &getAnalysis<CrabLlvm> ();
-    
     LLVMContext& ctx = M.getContext ();
     AttrBuilder B;
     AttributeSet as = AttributeSet::get (ctx, 
@@ -312,18 +309,14 @@ namespace crab_llvm
                                                Type::getInt1Ty (ctx),
                                                NULL));
     
-#ifdef HAVE_DSA
-    m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (),
-                         m_crab->getTrackLevel ());
-#endif     
-
     CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
     if (CallGraph *cg = cgwp ? &cgwp->getCallGraph () : nullptr)
       cg->getOrInsertFunction (m_assumeFn);
 
     bool change=false;
-    for (auto &f : M) 
+    for (auto &f : M) {
       change |= runOnFunction (f); 
+    }
     
     return change;
   }
@@ -333,30 +326,29 @@ namespace crab_llvm
     if (F.isDeclaration () || F.empty () || F.isVarArg ()) 
       return false;
 
+    CrabLlvm* crab = &getAnalysis<CrabLlvm> ();
+    if (!crab->hasCfg (&F)) return false;
+
     CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
     CallGraph* cg = cgwp ? &cgwp->getCallGraph () : nullptr;
 
-    VariableFactory &vfac = m_crab->getVariableFactory ();
-
-    // FIXME: only used if InsertLoads is enabled
-    CfgBuilder builder (F, vfac, &m_mem, false);
-    cfg_t &cfg = builder.makeCfg ();
- 
     bool change = false;
     for (auto &B : F) {
 
-      if (LlvmCrabInsertEntries) {
+      if (CrabInsertEntries) {
         // --- Instrument basic block entry
-        auto pre = m_crab->getPre (&B, false /*remove shadows*/);
+        auto pre = crab->getPre (&B, false /*remove shadows*/);
         auto csts = pre->to_linear_constraints ();
         change |= instrument_entries (csts, &B, F.getContext(), cg);
       }
 
-      if (LlvmCrabInsertLoads) {
+      if (CrabInsertLoads) {
         // --- We only instrument Load instructions
         if (reads_memory (B)) {
 
-          auto pre = m_crab->getPre (&B, true /*keep shadows*/);
+          cfg_t& cfg = crab->getCfg (&F);
+          auto pre = crab->getPre (&B, true /*keep shadows*/);
+
           // --- Figure out the type of the wrappee
           switch (pre->getId ()) {
             case GenericAbsDomWrapper::intv:{
@@ -419,7 +411,8 @@ namespace crab_llvm
               change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
               break;
             }
-            default : assert (false && "unreachable");
+            default :
+              report_fatal_error ("Abstract domain not supported by InsertInvariants");
           }
         }
       }
@@ -431,9 +424,6 @@ namespace crab_llvm
   {
     AU.setPreservesAll ();
     AU.addRequired<crab_llvm::CrabLlvm>();
-#ifdef HAVE_DSA
-    AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
-#endif 
     AU.addRequired<llvm::DataLayoutPass>();
     AU.addRequired<llvm::UnifyFunctionExitNodes> ();
     AU.addRequired<llvm::CallGraphWrapperPass> ();
@@ -445,4 +435,5 @@ namespace crab_llvm
 static llvm::RegisterPass<crab_llvm::InsertInvariants> 
 X ("insert-crab-invs",
    "Insert invariants inferred by crab", 
-   false, false);
+   false, 
+   false);
