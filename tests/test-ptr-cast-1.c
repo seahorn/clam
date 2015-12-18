@@ -13,5 +13,5 @@ int main() {
 
   // kills a[0] but not a[1] but array abstraction will ignore the
   // whole thing.
-  return a[0];
+  return a[1];
 }

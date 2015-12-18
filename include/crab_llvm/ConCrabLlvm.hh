@@ -3,6 +3,7 @@
 
 /* 
  * Infer invariants using Crab for concurrent programs.
+ * Really experimental ...
  */
 
 #include "llvm/Pass.h"
@@ -11,7 +12,7 @@
 #include "crab_llvm/MemAnalysis.hh"
 #include "crab_llvm/CrabLlvm.hh"
 
-#include <crab/cfg/ConcSys.hpp>
+#include "crab/cfg/ConcSys.hpp"
 
 namespace crab_llvm
 {
@@ -22,7 +23,7 @@ namespace crab_llvm
   class ConCrabLlvm : public llvm::ModulePass
   {
     // --- used by the builder of each cfg
-    MemAnalysis m_mem;    
+    boost::shared_ptr<MemAnalysis> m_mem;    
 
     // --- threads in the programs
     set<Function*> m_threads;
@@ -34,15 +35,15 @@ namespace crab_llvm
 
     static char ID;        
     
-    ConCrabLlvm (): llvm::ModulePass (ID) { }
+    ConCrabLlvm (): 
+        llvm::ModulePass (ID), 
+        m_mem (new DummyMemAnalysis ()) { }
 
-    ~ConCrabLlvm () { }
+    virtual bool runOnModule (llvm::Module& M);
+
+    virtual const char* getPassName () const {return "ConCrabLlvm";}
 
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const ;
-
-    virtual void releaseMemory () {}
-    
-    virtual bool runOnModule (llvm::Module& M);
 
    private:
 

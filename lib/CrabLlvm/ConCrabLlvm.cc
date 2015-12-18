@@ -28,13 +28,13 @@
 /* 
    user-definable options in CrabLlvm.cc 
 */
-extern llvm::cl::opt<bool> LlvmCrabPrintAns;
-extern llvm::cl::opt<crab_llvm::CrabDomain> LlvmCrabDomain;
-extern llvm::cl::opt<bool> LlvmCrabLive;
-extern llvm::cl::opt<enum crab::cfg::TrackedPrecision> LlvmCrabTrackLev;
-extern llvm::cl::opt<unsigned int> LlvmCrabWideningThreshold;
-extern llvm::cl::opt<unsigned int> LlvmCrabNarrowingIters;
-extern llvm::cl::opt<unsigned int> LlvmCrabWideningJumpSet;
+extern llvm::cl::opt<bool> CrabPrintAns;
+extern llvm::cl::opt<crab_llvm::CrabDomain> CrabLlvmDomain;
+extern llvm::cl::opt<bool> CrabLive;
+extern llvm::cl::opt<enum crab::cfg::TrackedPrecision> CrabTrackLev;
+extern llvm::cl::opt<unsigned int> CrabWideningThreshold;
+extern llvm::cl::opt<unsigned int> CrabNarrowingIters;
+extern llvm::cl::opt<unsigned int> CrabWideningJumpSet;
 
 using namespace llvm;
 
@@ -156,7 +156,7 @@ namespace crab_llvm
 
     /// --- Initialize shared global state
     AbsDomain init_gv_inv = AbsDomain::top ();
-    sym_eval_t sym_eval (vfac, &mem);
+    sym_eval_t sym_eval (vfac, mem);
     for (auto p: sys)
     {
       // TODO: we should add only the initialization of the global
@@ -172,20 +172,20 @@ namespace crab_llvm
           Value * gv_value = M.getNamedValue (gv.getName ());
           assert (gv_value);
 
-          int arr_id = mem.getArrayId (*(p.first), gv_value); 
-          if (arr_id < 0) continue;
+          auto region = mem.getRegion (*(p.first), gv_value); 
+          if (region.isUnknown ()) continue;
 
           crab::domain_traits::array_store (init_gv_inv,
-                                            sym_eval.symVar (arr_id), 
+                                            sym_eval.symVar (region), 
                                             (*((*idx).get_variable ())).name (), 
                                             *val, 
                                             ikos::z_number (dl->getTypeAllocSize (gv.getType ())),
-                                            mem.getSingleton (arr_id) != nullptr);  
+                                            region.getSingleton () != nullptr);  
         }
       }
     }
 
-    if (LlvmCrabPrintAns)
+    if (CrabPrintAns)
     {
       errs () << "=========================\n";
       errs () << "Concurrent system\n";
@@ -195,13 +195,13 @@ namespace crab_llvm
     }
 
     /// --- Global fixpoint 
-    conc_analyzer_t a (sys, vfac, LlvmCrabLive, 
-                       LlvmCrabWideningThreshold, LlvmCrabNarrowingIters,
-                       LlvmCrabWideningJumpSet);
+    conc_analyzer_t a (sys, vfac, CrabLive, 
+                       CrabWideningThreshold, CrabNarrowingIters,
+                       CrabWideningJumpSet);
 
     a.Run (init_gv_inv);
     
-    if (LlvmCrabPrintAns)
+    if (CrabPrintAns)
     {
       errs () << "=========================\n";
       errs () << "Invariants\n";
@@ -221,15 +221,16 @@ namespace crab_llvm
   bool ConCrabLlvm::runOnModule (llvm::Module &M)
   {
 
-#ifdef HAVE_DSA
-    m_mem = MemAnalysis (&getAnalysis<SteensgaardDataStructures> (), ARR);
-#endif     
+    #ifdef HAVE_DSA
+    m_mem.reset (new DSAMemAnalysis (M, &getAnalysis<SteensgaardDataStructures> (), ARR)); 
+    #endif     
 
     /// --- Identify threads and shared global variables
     bool change = false;
     for (auto &f : M) 
       change |= processFunction (f); 
-#if 0
+
+    #if 0
     // Filter out variables that are not shared by two or more threads
     auto it = m_shared_vars.begin ();
     for(; it != m_shared_vars.end (); ) {
@@ -238,27 +239,26 @@ namespace crab_llvm
       else 
         ++it;
     }
-#endif 
+    #endif 
 
     conc_sys_t sys;
     VariableFactory vfac;
 
     /// --- Build the system with all the threads and their shared
     /// --- variables
-    sym_eval_t sym_eval (vfac, &m_mem);
     for (auto f : m_threads)
     {
-      CfgBuilder builder (*f, vfac, &m_mem, true);
-      auto cfg = builder.makeCfg ();
+      CfgBuilder builder (*f, vfac, *m_mem, true);
+      cfg_t& cfg = builder.getCfg ();
                            
       vector<varname_t> shared_vars;
       for (auto v : m_shared_vars)
       {
         /// --- we must pass the array associated to the global
         ///     variable.
-        int arr_id = m_mem.getArrayId (*f, const_cast<Value*> (v.first));
-        if (arr_id < 0) continue;
-        shared_vars.push_back (sym_eval.symVar (arr_id));
+        auto region = m_mem->getRegion (*f, const_cast<Value*> (v.first));
+        if (region.isUnknown ()) continue;
+        shared_vars.push_back (builder.getSymEval ().symVar (region));
       }
 
       sys.add_thread (f, cfg, shared_vars.begin (), shared_vars.end ());
@@ -267,19 +267,19 @@ namespace crab_llvm
     const DataLayout* dl = M.getDataLayout ();
 
     /// --- Analyze the concurrent system
-    switch (LlvmCrabDomain)
+    switch (CrabLlvmDomain)
     {
       case INTERVALS_CONGRUENCES: 
-        if (LlvmCrabTrackLev == ARR)
-          analyzeConcSys <arr_ric_domain_t> (sys, vfac, M, m_mem, dl); 
+        if (CrabTrackLev == ARR)
+          analyzeConcSys <arr_ric_domain_t> (sys, vfac, M, *m_mem, dl); 
         else
-          analyzeConcSys <ric_domain_t> (sys, vfac, M, m_mem, dl); 
+          analyzeConcSys <ric_domain_t> (sys, vfac, M, *m_mem, dl); 
         break;
       case ZONES: 
-        if (LlvmCrabTrackLev == ARR)
-          analyzeConcSys <arr_dbm_domain_t> (sys, vfac, M, m_mem, dl); 
+        if (CrabTrackLev == ARR)
+          analyzeConcSys <arr_dbm_domain_t> (sys, vfac, M, *m_mem, dl); 
         else
-          analyzeConcSys <dbm_domain_t> (sys, vfac, M, m_mem, dl); 
+          analyzeConcSys <dbm_domain_t> (sys, vfac, M, *m_mem, dl); 
         break;
       case TERMS: /*TODO*/
       case BOXES: /*TODO*/
@@ -287,10 +287,10 @@ namespace crab_llvm
                   << "Running intervals ...\n"; 
       case INTERVALS:  
       default:
-        if (LlvmCrabTrackLev == ARR)
-          analyzeConcSys <arr_interval_domain_t> (sys, vfac, M, m_mem, dl); 
+        if (CrabTrackLev == ARR)
+          analyzeConcSys <arr_interval_domain_t> (sys, vfac, M, *m_mem, dl); 
         else
-          analyzeConcSys <interval_domain_t> (sys, vfac, M, m_mem, dl); 
+          analyzeConcSys <interval_domain_t> (sys, vfac, M, *m_mem, dl); 
     }
     return change;
   }
@@ -341,11 +341,11 @@ namespace crab_llvm
   void ConCrabLlvm::getAnalysisUsage (llvm::AnalysisUsage &AU) const
   {
     AU.setPreservesAll ();
-#ifdef HAVE_DSA
+    #ifdef HAVE_DSA
     AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
     AU.addRequired<llvm::DataLayoutPass>();
     AU.addRequired<llvm::UnifyFunctionExitNodes> ();
-#endif 
+    #endif 
   } 
 
 } // end namespace 

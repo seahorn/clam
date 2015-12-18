@@ -13,6 +13,7 @@ namespace crab_llvm
   llvm::Pass* createNameValuesPass ();
   llvm::Pass* createRemoveUnreachableBlocksPass ();
   llvm::Pass* createSimplifyAssumePass ();
+  llvm::Pass* createDevirtualizeFunctionsPass ();
 }
 
 #endif /* CRABLLVM_PASSES__HH_ */

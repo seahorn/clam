@@ -57,6 +57,10 @@ LowerSelect ("crab-lower-select", llvm::cl::desc ("Lower all select instructions
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
+CrabLowerGv ("crab-lower-gv", llvm::cl::desc ("Lower global initializers in main"),
+         llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
 OptimizeLoops ("crab-pp-loops", 
                llvm::cl::desc ("Perform loop optimizations"),
                llvm::cl::init (false));
@@ -252,8 +256,10 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createLoopDeletionPass());
   pass_manager.add (llvm::createCFGSimplificationPass ()); // cleanup unnecessary blocks 
   
-  // -- lower initializers of global variables
-  pass_manager.add (crab_llvm::createLowerGvInitializersPass ());   
+  if (CrabLowerGv) {
+    // -- lower initializers of global variables
+    pass_manager.add (crab_llvm::createLowerGvInitializersPass ());   
+  }
 
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());

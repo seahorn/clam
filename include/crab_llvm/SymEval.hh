@@ -16,19 +16,26 @@ namespace crab_llvm
   using namespace std;
   using namespace crab::cfg;
 
-  //! Map llvm values to integer linear expressions
+  //! Map llvm values to symbolic integer linear expressions
   template<typename VariableFactory, typename ZLinExp>
-  struct SymEval {
+  class SymEval {
 
     VariableFactory& m_vfac;
-    TrackedPrecision m_track_lvl;
-    MemAnalysis *m_mem;
+    MemAnalysis& m_mem;
+
+   public:
 
     typedef typename VariableFactory::varname_t varname_t;
 
-    SymEval (VariableFactory &vfac, MemAnalysis *mem): 
-        m_vfac (vfac), m_track_lvl (mem->getTrackLevel ()), m_mem (mem)
+   public:
+
+    SymEval (VariableFactory &vfac, MemAnalysis& mem): 
+        m_vfac (vfac), m_mem (mem)
     { }
+
+    MemAnalysis& getMem () { return m_mem;}
+
+    VariableFactory& getVarFac () { return m_vfac; }
 
     bool isTracked (const llvm::Value &v) {
       
@@ -38,7 +45,7 @@ namespace crab_llvm
 
       // -- a pointer
       if (v.getType ()->isPointerTy ()) 
-        return (m_track_lvl >= PTR); 
+        return (m_mem.getTrackLevel () >= PTR); 
 
       // -- always track integer registers
       return v.getType ()->isIntegerTy ();
@@ -49,14 +56,8 @@ namespace crab_llvm
       return m_vfac [v];
     }
 
-    varname_t symVar (int v) {
-      // // if the array id maps to a unique scalar value we preserve its name
-      // const Value* s = m_mem->getSingleton (v);
-      // if (s)
-      //   return symVar (*s);
-      // else
-      //   return m_vfac.get (v);
-      return m_vfac.get (v);
+    varname_t symVar (const region_t& r) {
+      return m_vfac.get (r.get_id ());
     }
   
     bool isVar (ZLinExp e) {
@@ -67,11 +68,13 @@ namespace crab_llvm
 
     boost::optional<ZLinExp> lookup (const Value &v) {
 
-      if (isa<const UndefValue> (&v))
-        return boost::optional<ZLinExp> ();
+      if (isa<const UndefValue> (&v)) {
+        return ZLinExp ();
+      }
 
-      if (isa<ConstantPointerNull> (&v))
-        return boost::optional<ZLinExp> (0);
+      if (isa<ConstantPointerNull> (&v)) {
+        return ZLinExp (0);
+      }
       
       if (const ConstantInt *c = dyn_cast<const ConstantInt> (&v)) {
         if (c->getType ()->isIntegerTy(1)) {
@@ -87,15 +90,15 @@ namespace crab_llvm
         }
       }
 
-      if (isTracked(v) && !isa<ConstantExpr> (v))
+      if (isTracked(v) && !isa<ConstantExpr> (v)) {
         return ZLinExp (symVar (v));
+      }
       
-      return boost::optional<ZLinExp>();
+      return ZLinExp ();
     }
         
     /** Converts v to mpz_class. Assumes that v is signed */
-    inline mpz_class toMpz (const APInt &v)
-    {
+    inline mpz_class toMpz (const APInt &v) {
       // Based on:
       // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
       // return v.getSExtValue ();

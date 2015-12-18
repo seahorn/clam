@@ -37,6 +37,9 @@ download the following package at the root directory:
 
 * [dsa-seahorn](https://github.com/seahorn/dsa-seahorn): ``` git clone https://github.com/seahorn/dsa-seahorn.git ```
 
+DSA (Data Structure Analysis) is a heap analysis described
+[here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps).
+
 Another optional component used by `crabllvmpp` is:
 
 * [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
@@ -53,6 +56,57 @@ Then, the compilation steps are:
 If you want to use the boxes domain then add to step 2 the option `-DUSE_LDD=ON`.
 
 If you want to use the apron domains then add to step 2 the option `-DUSE_APRON=ON`.
+
+#How Crab-llvm works#
+
+At its core, Crab-llvm is simply a translator from LLVM bitecode to
+the CFG language understood by
+[Crab](https://github.com/seahorn/crab). The actual analysis work is
+delegated to Crab.
+
+The main task of the translation is to replace PHI nodes with Crab
+assignments and LLVM Branch instructions into Crab assume
+statements. This part of the translation is quite standard in abstract
+interpreters which are usually unaware of PHI nodes.
+
+What it is probably not so standard in common static analyzers is that
+the translation also performs *code abstractions* using the neat idea
+of *Abstract Compilation* described in the paper
+[Global Flow Analysis as Practical Compilation Tool](http://oa.upm.es/14288/1/HERME_A_1992-1.pdf). Abstract
+compilation is an application of Abstract Interpretation where instead
+of analyzing a program by executing its concrete code over abstract
+data the code itself is abstracted into *abstract code*.
+
+The main benefit of abstract compilation is that part of the reasoning
+can be done at compile time instead of analysis time. This sometimes
+produces shorter analysis time and it can also simplify the
+implementation of the underlying static analyzer. The main code
+abstractions done by Crab-llvm can be chosen by the user through the
+option `crab-track` (see next section for details) and are:
+
+- If the abstraction level includes only integers the translation will
+  cover only instructions with operands of integer type.
+
+- If the abstraction level includes pointers then in addition to
+  integer scalars it will translate instructions that compute pointer
+  numerical offsets. All pointers are abstracted to their numerical
+  offsets *ignoring* their addresses.
+	  
+- Finally, if the abstraction level includes memory contents, in
+  addition to the previous abstractions, load and stores are
+  translated using a memory abstraction based on DSA. This abstraction
+  consists of partitioning the heap into a finite set of disjoint
+  heaplets so that an array abstract domain can be used to reason
+  about heaplets by mapping each heaplet to an array.
+
+Note that these code abstractions complement to abstract domains so
+they are not replacements. Note also that the code abstraction for
+memory contents can be as powerful as DSA is. For instance, DSA is
+less powerful than a shape analysis. Moreover, DSA is
+flow-insensitive. Therefore, any flow-sensitive pointer abstract
+domain can produce more precise results. Another important restriction
+of this code abstraction is that heaplets that have only compatible
+types and are aligned are translated.
 
 #Usage#
 
@@ -89,8 +143,7 @@ inferred for each basic block in the `LLVM` bitcode.
 	   - `--crab-widening-threshold=N`
 
        where `N` is the number of fixpoint iterations before
-       triggering widening (e.g., `N=1`). This option is specially
-       important for disjunctive domains to increase precision.
+       triggering widening (e.g., `N=1`). 
 	   
     The widening operators do not use thresholds by default. To use
     them, type the option:
@@ -99,32 +152,24 @@ inferred for each basic block in the `LLVM` bitcode.
 
        where `N` is the maximum number of thresholds. 
 
-- We also provide the option `--crab-track` to indicate the level
-of precision. The possible values are: 
+- We also provide the option `--crab-track` to indicate the level of
+abstraction. The possible values are:
 
     - `int`: reasons about integer scalars (LLVM registers).
-	- `ptr`: reasons about pointer addresses.	
-    - `arr`: reasons about the contents of pointers and arrays.
+	- `ptr`: reasons about integers and pointer offsets.	
+    - `arr`: reasons about integers, offsets, and contents of pointers and arrays.
 
    If the level is `ptr` then Crab-llvm reasons about pointer
-   arithmetic but it does not translate neither LLVM loads nor stores.
+   offsets but it will abstract away pointer addresses.
    
    If the level is `arr` then Crab-llvm uses the heap analysis
    provided by `dsa-seahorn` to partition the heap into disjoint
-   arrays (i.e., sequence of consecutive bytes). Each LLVM load and
-   store is translated to an array read and write operation,
+   heaplets. Each heaplet is mapped to an array, and each LLVM load
+   and store is translated to an array read and write operation,
    respectively. Then, it will use an array domain provided by Crab
-   whose base domain is the one selected by option
-   `--crab-domain`. Unlike `int` and `ptr` which produce a concrete
-   semantics (up to the selected level of precision), the level `arr`
-   produces an abstract semantics where all memory contents are
-   already over-approximated. Nevertheless, Crab's analyses can always
-   refine this abstract semantics by using more precise pointer and/or
-   value analyses.
+   whose base domain is the one selected by option `--crab-domain`.
 
-   Regardless the level of precision, Crab-llvm can try to resolve
-   indirect calls if `dsa-seahorn` is installed and enable option
-   `--crab-devirt`.
+- Crab-llvm can resolve indirect calls by enabling option `--crab-devirt`.
 
 - By default, all the analyses are run in an intra-procedural
   manner. Enable the option `--crab-inter` to run the inter-procedural
@@ -214,6 +259,10 @@ between 0 and 5.
 
 - Variadic functions are ignored.
 - Floating point operations are ignored.
+- Pointer addresses are abstracted by their numerical offsets. This
+  means that if a shape/pointer abstract domain (e.g., Crab provides a
+  pointer abstract domain) wants to be used the translation must be
+  extended.
 - ...
 
 #People#

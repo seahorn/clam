@@ -102,6 +102,9 @@ def parseArgs (argv):
     p.add_argument ('--lower-select',
                     help='Lower select instructions',
                     dest='lower_select', default=False, action='store_true')
+    p.add_argument ('--lower-gv',
+                    help='Lower global variable initializers into main',
+                    dest='lower_gv', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
@@ -135,18 +138,14 @@ def parseArgs (argv):
                     type=int, dest='num_threshold', 
                     help='Max number of live vars per block before switching domains', default=100)
     p.add_argument ('--crab-track',
-                    help='Track integers, pointers, and memory',
+                    help='Track integers, pointer offsets, and memory contents',
                     choices=['int', 'ptr', 'arr'], dest='track', default='int')
-    # these three options refine crab-track=arr
-    p.add_argument ('--crab-track-only-globals',
-                    help='Track memory contents but only global variables',
-                    dest='crab_track_only_globals', default=False, action='store_true')
-    p.add_argument ('--crab-track-only-singletons',
-                    help='Track memory contents but only singleton cells',
-                    dest='crab_track_only_singletons', default=False, action='store_true')
-    p.add_argument ('--crab-disable-ptr',
-                    help='Track memory contents but ignoring pointer arithmetic',
-                    dest='crab_disable_ptr', default=False, action='store_true')
+    p.add_argument ('--crab-singleton-as-scalars',
+                    help='Treat singleton alias sets as scalar values',
+                    dest='crab_singleton_as_scalars', default=False, action='store_true')
+    p.add_argument ('--crab-disable-offsets',
+                    help='Track memory contents but ignoring pointer offsets',
+                    dest='crab_disable_offsets', default=False, action='store_true')
     ############
     p.add_argument ('--crab-inter',
                     help='Run inter-procedural analysis',
@@ -159,7 +158,7 @@ def parseArgs (argv):
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        
     p.add_argument ('--crab-devirt',
-                    help='Resolve indirect calls using alias analysis',
+                    help='Resolve indirect calls',
                     dest='crab_devirt', default=False, action='store_true')
     p.add_argument ('--crab-add-invariants-at-entries',
                     help='Instrument code with invariants at each block entry',
@@ -370,6 +369,9 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     if args.lower_select:
         crabllvm_cmd.append( '--crab-lower-select')
 
+    if args.lower_gv:
+        crabllvm_cmd.append( '--crab-lower-gv')
+
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     crabllvm_cmd.append ('--crab-inter-sum-dom={0}'.format (args.crab_inter_sum_dom))
 
@@ -381,12 +383,10 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format (args.narrowing_iterations))
 
     crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
-    if args.crab_track_only_globals:
-        crabllvm_cmd.append ('--crab-track-only-globals')
-    if args.crab_track_only_singletons:
-        crabllvm_cmd.append ('--crab-track-only-singletons')
-    if args.crab_disable_ptr:
-        crabllvm_cmd.append ('--crab-disable-ptr')
+    if args.crab_disable_offsets:
+        crabllvm_cmd.append ('--crab-disable-offsets')
+    if args.crab_singleton_as_scalars:
+        crabllvm_cmd.append ('--crab-singleton-aliases')
 
     if args.crab_inter:
         crabllvm_cmd.append ('--crab-inter')

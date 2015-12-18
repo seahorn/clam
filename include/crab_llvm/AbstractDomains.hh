@@ -1,6 +1,8 @@
 #ifndef __ABSTRACT_DOMAINS_HH__
 #define __ABSTRACT_DOMAINS_HH__
 
+#include "llvm/Support/ErrorHandling.h"
+
 #include "crab_llvm/config.h"
 #include "crab_llvm/CfgBuilder.hh"
 
@@ -466,7 +468,7 @@ namespace crab_llvm {
          FORGET_MACRO(arr_opt_oct_apron_domain_t) 
        case GenericAbsDomWrapper::arr_pk_apron: 
          FORGET_MACRO(arr_pk_apron_domain_t) 
-       default: assert (false && "unreachable");
+       default: llvm_unreachable("unreachable");
      }
    }
 
