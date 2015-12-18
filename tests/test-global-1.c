@@ -20,7 +20,7 @@ int main () {
     }
     else if (s == 4){
       if (e == 3) {
-        exit (1); // __VERIFIER_error();
+        __VERIFIER_error();
       }
       s=5;
     }
