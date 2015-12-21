@@ -8,9 +8,9 @@
 #include "llvm/Support/raw_ostream.h"
 #include "boost/range.hpp"
 
-namespace crab_llvm
-{
-  using namespace llvm;
+using namespace llvm;
+
+namespace crab_llvm {
   
   struct LowerGvInitializers : public ModulePass
   {
@@ -20,6 +20,8 @@ namespace crab_llvm
     
     virtual bool runOnModule (Module &M)
     {
+      const DataLayout* DL = &getAnalysis<DataLayoutPass>().getDataLayout ();
+
       Function *f = M.getFunction ("main");
       if (!f) return false;
       
@@ -27,7 +29,8 @@ namespace crab_llvm
       
       Builder.SetInsertPoint (&f->getEntryBlock (), 
                               f->getEntryBlock ().begin ());
-    
+
+      bool change=false;
       for (GlobalVariable &gv : boost::make_iterator_range (M.global_begin (),
                                                             M.global_end ()))
       {
@@ -36,25 +39,35 @@ namespace crab_llvm
         if (!ty) continue;
         Type *ety = ty->getElementType ();
         // only deal with scalars for now
-        if (!ety->isIntegerTy () &&  !ety->isPointerTy ()) continue;
+        if (!ety->isIntegerTy ()) continue;
+        
+        IntegerType* ity = cast<IntegerType> (ety);
         
         // -- create a store instruction
-        Builder.CreateStore (gv.getInitializer (), &gv);
+        Builder.CreateAlignedStore (gv.getInitializer (), &gv, 
+                                    DL->getABITypeAlignment (ity));
+        change=true;
       }
       
-      return false;
+      return change;
+      
     }
     
-    void getAnalysisUsage (AnalysisUsage &AU) const 
-    {AU.setPreservesAll ();}
+    void getAnalysisUsage (AnalysisUsage &AU) const {
+      AU.setPreservesAll ();
+      AU.addRequired<llvm::DataLayoutPass>();
+    }
 
     virtual const char * getPassName() const {
-      return "Lower global variable initialization into main";
+      return "LowerGvInitializers";
     }
     
   };
 
   char LowerGvInitializers::ID = 0;
   Pass* createLowerGvInitializersPass () { return new LowerGvInitializers (); }  
+
 } 
+
+
 
