@@ -15,6 +15,7 @@
 #include "crab_llvm/AbstractDomains.hh"
 #include "crab_llvm/CrabLlvm.hh"
 #include "crab_llvm/SymEval.hh"
+#include "crab_llvm/Support/NameValues.hh"
 
 #include "crab/domains/domain_traits.hpp"
 #include "crab/analysis/FwdAnalyzer.hpp"
@@ -581,11 +582,13 @@ namespace crab_llvm {
   void CrabLlvm::getAnalysisUsage (llvm::AnalysisUsage &AU) const
   {
     AU.setPreservesAll ();
+
     #ifdef HAVE_DSA
     AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
     #endif 
     AU.addRequired<llvm::DataLayoutPass>();
     AU.addRequired<llvm::UnifyFunctionExitNodes> ();
+    AU.addRequired<crab_llvm::NameValues>();
   } 
 
 } // end namespace 

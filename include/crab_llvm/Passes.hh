@@ -10,7 +10,6 @@ namespace crab_llvm
   llvm::Pass* createLowerGvInitializersPass ();
   llvm::Pass* createLowerSelectPass ();
   llvm::Pass* createMarkInternalInlinePass ();
-  llvm::Pass* createNameValuesPass ();
   llvm::Pass* createRemoveUnreachableBlocksPass ();
   llvm::Pass* createSimplifyAssumePass ();
   llvm::Pass* createDevirtualizeFunctionsPass ();

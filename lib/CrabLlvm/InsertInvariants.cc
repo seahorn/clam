@@ -17,6 +17,7 @@
 #include "crab_llvm/AbstractDomains.hh"
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/CfgBuilder.hh"
+#include "crab_llvm/Support/NameValues.hh"
 
 #include "crab/analysis/AbsTransformer.hpp"
 #include "crab/analysis/InterDS.hpp"
@@ -423,6 +424,7 @@ namespace crab_llvm
   void InsertInvariants::getAnalysisUsage (llvm::AnalysisUsage &AU) const
   {
     AU.setPreservesAll ();
+
     AU.addRequired<crab_llvm::CrabLlvm>();
     AU.addRequired<llvm::DataLayoutPass>();
     AU.addRequired<llvm::UnifyFunctionExitNodes> ();

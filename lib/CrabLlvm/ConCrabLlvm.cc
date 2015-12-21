@@ -16,6 +16,7 @@
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/ConCrabLlvm.hh"
 #include "crab_llvm/AbstractDomains.hh"
+#include "crab_llvm/Support/NameValues.hh"
 
 #include <crab/cfg/ConcSys.hpp>
 #include <crab/analysis/ConcAnalyzer.hpp>
@@ -341,11 +342,14 @@ namespace crab_llvm
   void ConCrabLlvm::getAnalysisUsage (llvm::AnalysisUsage &AU) const
   {
     AU.setPreservesAll ();
+
     #ifdef HAVE_DSA
     AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
+    #endif 
     AU.addRequired<llvm::DataLayoutPass>();
     AU.addRequired<llvm::UnifyFunctionExitNodes> ();
-    #endif 
+    AU.addRequired<crab_llvm::NameValues>();
+
   } 
 
 } // end namespace 
