@@ -184,7 +184,6 @@ int main(int argc, char **argv) {
   // -- must be the last ones before running crab.
   if (LowerSelect)
     pass_manager.add (crab_llvm::createLowerSelectPass ());   
-  pass_manager.add (crab_llvm::createNameValuesPass ()); 
   
   if (Concurrency) {
     // REALLY EXPERIMENTAL ...

@@ -17,6 +17,7 @@ add_library (CrabLlvmAnalysis STATIC
   CfgBuilder.cc
   CrabLlvm.cc
   ConCrabLlvm.cc
+  NameValues.cc
   )
 
 target_link_libraries (CrabLlvmAnalysis ${CRAB_LIBS})
