@@ -313,6 +313,8 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append ('--crab-pp-loops')
     if args.undef_nondet:
         crabpp_args.append( '--crab-turn-undef-nondet')
+    if args.lower_gv:
+        crabpp_args.append( '--crab-lower-gv')
 
     crabpp_args.extend (extra_args)
 
@@ -352,8 +354,6 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     if args.lower_select:
         crabllvm_cmd.append( '--crab-lower-select')
 
-    if args.lower_gv:
-        crabllvm_cmd.append( '--crab-lower-gv')
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
 
