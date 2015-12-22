@@ -336,10 +336,11 @@ namespace crab_llvm {
     // the new nodes are disjoint from mod nodes.
     void cacheReadModNewNodes (Function& f) {
 
-      // if (cached_functions.count (&f) > 0) return;
-      // cached_functions.insert (&f);
-
       if (!m_dsa) return;
+
+      // hook: skip shadow mem functions created by SeaHorn
+      // We treat them as readnone functions
+      if (f.getName().startswith ("shadow.mem")) return;
 
       std::set<const DSNode*> reach, retReach;
       argReachableNodes (f, reach, retReach);
@@ -371,18 +372,19 @@ namespace crab_llvm {
     // callsite such that mod nodes are a subset of the read nodes and
     // the new nodes are disjoint from mod nodes.
     void cacheReadModNewNodesFromCallSite (CallInst& I) {
-
-      // if (cached_callsites.count (&I) > 0) return;
-      // cached_callsites.insert (&I);
-
+      
       if (!m_dsa) return;
-
-      region_set_t reads, mods, news;
 
       /// ignore inline assembly
       if (I.isInlineAsm ())
         return; 
       
+      // hook: skip shadow mem functions created by SeaHorn
+      // We treat them as readnone functions
+      if (Function* Called = CallSite(&I).getCalledFunction ())
+        if (Called->getName ().startswith ("shadow.mem"))
+          return;
+        
       DSGraph *dsg = m_dsa->getDSGraph (*(I.getParent ()->getParent ()));
       DSCallSite CS = dsg->getDSCallSiteForCallSite (CallSite (&I));
       
@@ -405,6 +407,7 @@ namespace crab_llvm {
       //DSGraph::NodeMapTy nodeMap;
       //dsg->computeCalleeCallerMapping (CS, CF, *cdsg, nodeMap);
       
+      region_set_t reads, mods, news;
       for (const DSNode* n : reach) {
 
         if (!isTrackable (n))
