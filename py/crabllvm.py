@@ -127,9 +127,9 @@ def parseArgs (argv):
     p.add_argument ('--crab-track',
                     help='Track integers, pointer offsets, and memory contents',
                     choices=['int', 'ptr', 'arr'], dest='track', default='int')
-    p.add_argument ('--crab-singleton-as-scalars',
+    p.add_argument ('--crab-singleton-aliases',
                     help='Treat singleton alias sets as scalar values',
-                    dest='crab_singleton_as_scalars', default=False, action='store_true')
+                    dest='crab_singleton_aliases', default=False, action='store_true')
     p.add_argument ('--crab-disable-offsets',
                     help='Track memory contents but ignoring pointer offsets',
                     dest='crab_disable_offsets', default=False, action='store_true')
@@ -367,7 +367,7 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
     if args.crab_disable_offsets:
         crabllvm_cmd.append ('--crab-disable-offsets')
-    if args.crab_singleton_as_scalars:
+    if args.crab_singleton_aliases:
         crabllvm_cmd.append ('--crab-singleton-aliases')
 
     if args.crab_inter:
