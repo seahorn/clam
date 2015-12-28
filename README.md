@@ -67,13 +67,12 @@ assignments and LLVM Branch instructions into Crab assume
 statements. This part of the translation is quite standard in abstract
 interpreters which are usually unaware of PHI nodes.
 
-What it is probably not so standard in common static analyzers is that
-the translation also performs *code abstractions* using the neat idea
-of *Abstract Compilation* described in the paper
-[Global Flow Analysis as Practical Compilation Tool](http://oa.upm.es/14288/1/HERME_A_1992-1.pdf). Abstract
-compilation is an application of Abstract Interpretation where instead
-of analyzing a program by executing its concrete code over abstract
-data the code itself is abstracted into *abstract code*.
+The translation also performs *code abstractions* based on the neat
+idea of *Abstract Compilation*
+[Global Flow Analysis as Practical Compilation Tool](http://oa.upm.es/14288/1/HERME_A_1992-1.pdf),
+an application of Abstract Interpretation where instead of analyzing a
+program by executing its concrete code over abstract data the code
+itself is abstracted into *abstract code*.
 
 The main benefit of abstract compilation is that part of the reasoning
 can be done at compile time instead of analysis time. This sometimes
@@ -97,10 +96,10 @@ option `crab-track` (see next section for details) and are:
   heaplets so that an array abstract domain can be used to reason
   about heaplets by mapping each heaplet to an array.
 
-Note that these code abstractions complement to abstract domains so
-they are not replacements. Note also that the code abstraction for
-memory contents can be as powerful as DSA is. For instance, DSA is
-less powerful than a shape analysis. Moreover, DSA is
+Note that these code abstractions complement to existing abstract
+domains so they are not replacements. Note also that the code
+abstraction for memory contents can be as powerful as DSA is. For
+instance, DSA is less powerful than a shape analysis. Moreover, DSA is
 flow-insensitive. Therefore, any flow-sensitive pointer abstract
 domain can produce more precise results. Another important restriction
 of this code abstraction is that heaplets that have only compatible
@@ -162,7 +161,9 @@ abstraction. The possible values are:
    heaplets. Each heaplet is mapped to an array, and each LLVM load
    and store is translated to an array read and write operation,
    respectively. Then, it will use an array domain provided by Crab
-   whose base domain is the one selected by option `--crab-domain`.
+   whose base domain is the one selected by option `--crab-domain`. If
+   option `--crab-singleton-aliases` is enabled then Crab-Llvm
+   translates global singleton heaplets to scalar variables.
 
 - Crab-llvm can resolve indirect calls by enabling option `--crab-devirt`.
 
