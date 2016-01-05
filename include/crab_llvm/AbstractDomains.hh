@@ -28,8 +28,9 @@
 namespace crab_llvm {
 
    ////
-   // Base numerical domains for user options
+   // Base (non-array) numerical domains for user options
    ////
+
    enum CrabDomain { INTERVALS, 
                      INTERVALS_CONGRUENCES, 
                      BOXES,
@@ -38,7 +39,8 @@ namespace crab_llvm {
                      SZONES,
                      DZONES,
                      VZONES, 
-                     TERMS,
+                     TERMS_INTERVALS,
+                     TERMS_DIS_INTERVALS,
                      NUM,
                      INTV_APRON,
                      OCT_APRON,
@@ -58,23 +60,20 @@ namespace crab_llvm {
   typedef ikos::linear_constraint<z_number, varname_t> z_lin_cst_t;
   typedef ikos::linear_constraint_system<z_number, varname_t> z_lin_cst_sys_t;
 
+  //////
+  //// Base domains
+  //////
+
   /// -- Intervals
   typedef interval_domain< z_number, varname_t> interval_domain_t;
-  /// -- RIC: reduced product of intervals with congruences
-  typedef numerical_congruence_domain<interval_domain_t> ric_domain_t;
-  /// -- Sparse DBM (zones)
+  /// -- Zones with sparse DBM
   typedef DBM<z_number, varname_t> dbm_domain_t;
-  /// -- split DBM
+  /// -- Zones with split DBM
   typedef SplitDBM<z_number, varname_t> sdbm_domain_t;
-  /// -- dense DBM
+  /// -- Zones with dense DBM
   typedef naive_dbm< z_number, varname_t > ddbm_domain_t;
-  /// -- var packing DBM
+  /// -- Zones with var packing DBM
   typedef var_packing_naive_dbm<z_number, varname_t> vdbm_domain_t;
-  /// -- Terms: Term functor domain with intervals
-  typedef crab::cfg::var_factory_impl::StrVarAlloc_col::varname_t str_varname_t;
-  typedef interval_domain<z_number, str_varname_t> str_interval_dom_t;
-  typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t /*interval_domain_t*/> idom_info;
-  typedef anti_unif<idom_info>::anti_unif_t term_domain_t;  
   /// -- Boxes
   typedef boxes_domain<z_number, varname_t> boxes_domain_t;
   /// -- DisIntervals
@@ -84,15 +83,32 @@ namespace crab_llvm {
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OCT > oct_apron_domain_t;
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OPT_OCT > opt_oct_apron_domain_t;
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_PK > pk_apron_domain_t;
-  /// -- Array smashing functor domain parameterized with the above
-  ///    abstract domains
+
+
+  //////
+  /// Combination of domains
+  //////
+
+  /// -- Reduced product of intervals with congruences
+  typedef numerical_congruence_domain<interval_domain_t> ric_domain_t;
+  /// -- Terms functor domain with Intervals
+  typedef crab::cfg::var_factory_impl::StrVarAlloc_col::varname_t str_varname_t;
+  typedef interval_domain<z_number, str_varname_t> str_interval_dom_t;
+  typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
+  typedef anti_unif<idom_info>::anti_unif_t term_int_domain_t;  
+  /// -- Terms functor domain with DisIntervals
+  typedef dis_interval_domain<z_number, str_varname_t> str_dis_interval_dom_t;
+  typedef term::TDomInfo<z_number, varname_t, str_dis_interval_dom_t> dis_idom_info;
+  typedef anti_unif<dis_idom_info>::anti_unif_t term_dis_int_domain_t;  
+  /// -- Array smashing functor domain with arbitrary domain
   typedef array_smashing<interval_domain_t> arr_interval_domain_t;
   typedef array_smashing<ric_domain_t> arr_ric_domain_t;
   typedef array_smashing<dbm_domain_t> arr_dbm_domain_t;
   typedef array_smashing<sdbm_domain_t> arr_sdbm_domain_t;
   typedef array_smashing<vdbm_domain_t> arr_vdbm_domain_t;
   typedef array_smashing<ddbm_domain_t> arr_ddbm_domain_t;
-  typedef array_smashing<term_domain_t> arr_term_domain_t;
+  typedef array_smashing<term_int_domain_t> arr_term_int_domain_t;
+  typedef array_smashing<term_dis_int_domain_t> arr_term_dis_int_domain_t;
   typedef array_smashing<boxes_domain_t> arr_boxes_domain_t;
   typedef array_smashing<dis_interval_domain_t> arr_dis_interval_domain_t;
   typedef array_smashing<box_apron_domain_t> arr_box_apron_domain_t;
@@ -178,8 +194,9 @@ namespace llvm {
     return o;
   }
 
+  template <typename DomInfo>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::term_domain_t& inv) {
+                                        crab::domains::anti_unif<DomInfo>& inv) {
     ostringstream s;
     s << inv;
     o << s.str ();
@@ -260,7 +277,7 @@ namespace crab_llvm {
    inline GenericAbsDomWrapper::id_t getAbsDomId(ABS_DOMAIN)  \
    {return GenericAbsDomWrapper::ID;}                        
 
-   #define FORGET_MACRO(ABS_DOMAIN)                              \
+   #define FORGET(ABS_DOMAIN)                                    \
    do {                                                          \
      ABS_DOMAIN inv;                                             \
      getAbsDomWrappee (wrapper, inv);                            \
@@ -280,7 +297,8 @@ namespace crab_llvm {
                     sdbm,
                     vdbm,
                     ddbm,
-                    term, 
+                    term_intv, 
+                    term_dis_intv, 
                     ric, 
                     boxes, 
                     dis_intv,
@@ -293,7 +311,8 @@ namespace crab_llvm {
                     arr_sdbm,
                     arr_vdbm,
                     arr_ddbm,
-                    arr_term, 
+                    arr_term_intv, 
+                    arr_term_dis_intv, 
                     arr_ric, 
                     arr_boxes,
                     arr_dis_intv,
@@ -341,7 +360,8 @@ namespace crab_llvm {
    DEFINE_BASE_DOMAIN(SDbmDomainWrapper,sdbm_domain_t,sdbm)
    DEFINE_BASE_DOMAIN(VDbmDomainWrapper,vdbm_domain_t,vdbm)
    DEFINE_BASE_DOMAIN(DDbmDomainWrapper,ddbm_domain_t,ddbm)
-   DEFINE_BASE_DOMAIN(TermDomainWrapper,term_domain_t,term)
+   DEFINE_BASE_DOMAIN(TermIntDomainWrapper,term_int_domain_t,term_intv)
+   DEFINE_BASE_DOMAIN(TermDisIntDomainWrapper,term_dis_int_domain_t,term_dis_intv)
    DEFINE_BASE_DOMAIN(BoxesDomainWrapper,boxes_domain_t,boxes)
    DEFINE_BASE_DOMAIN(DisIntervalDomainWrapper,dis_interval_domain_t,dis_intv)
    DEFINE_BASE_DOMAIN(BoxApronDomainWrapper,box_apron_domain_t,intv_apron)
@@ -356,7 +376,8 @@ namespace crab_llvm {
    REGISTER_DOMAIN_ID(arr_sdbm_domain_t,arr_sdbm)
    REGISTER_DOMAIN_ID(arr_vdbm_domain_t,arr_vdbm)
    REGISTER_DOMAIN_ID(arr_ddbm_domain_t,arr_ddbm)
-   REGISTER_DOMAIN_ID(arr_term_domain_t,arr_term)
+   REGISTER_DOMAIN_ID(arr_term_int_domain_t,arr_term_intv)
+   REGISTER_DOMAIN_ID(arr_term_dis_int_domain_t,arr_term_dis_intv)
    REGISTER_DOMAIN_ID(arr_boxes_domain_t,arr_boxes)
    REGISTER_DOMAIN_ID(arr_dis_interval_domain_t,arr_dis_intv)
    REGISTER_DOMAIN_ID(arr_box_apron_domain_t,arr_intv_apron)
@@ -416,58 +437,34 @@ namespace crab_llvm {
    inline GenericAbsDomWrapperPtr 
    forget (GenericAbsDomWrapperPtr wrapper, Range vs) {
      switch (wrapper->getId ()) {
-       case GenericAbsDomWrapper::intv:
-         FORGET_MACRO(interval_domain_t)
-       case GenericAbsDomWrapper::ric: 
-         FORGET_MACRO(ric_domain_t)
-       case GenericAbsDomWrapper::dbm: 
-         FORGET_MACRO(dbm_domain_t)
-       case GenericAbsDomWrapper::sdbm: 
-         FORGET_MACRO(sdbm_domain_t)
-       case GenericAbsDomWrapper::vdbm: 
-         FORGET_MACRO(vdbm_domain_t)
-       case GenericAbsDomWrapper::ddbm: 
-         FORGET_MACRO(ddbm_domain_t)
-       case GenericAbsDomWrapper::term:
-         FORGET_MACRO(term_domain_t)
-       case GenericAbsDomWrapper::boxes: 
-         FORGET_MACRO(boxes_domain_t)
-       case GenericAbsDomWrapper::dis_intv: 
-         FORGET_MACRO(dis_interval_domain_t)
-       case GenericAbsDomWrapper::intv_apron: 
-         FORGET_MACRO(box_apron_domain_t)
-       case GenericAbsDomWrapper::oct_apron: 
-         FORGET_MACRO(oct_apron_domain_t)
-       case GenericAbsDomWrapper::opt_oct_apron: 
-         FORGET_MACRO(opt_oct_apron_domain_t)
-       case GenericAbsDomWrapper::pk_apron: 
-         FORGET_MACRO(pk_apron_domain_t)
-       case GenericAbsDomWrapper::arr_intv:
-         FORGET_MACRO(arr_interval_domain_t)
-       case GenericAbsDomWrapper::arr_ric:
-         FORGET_MACRO(arr_ric_domain_t) 
-       case GenericAbsDomWrapper::arr_dbm: 
-         FORGET_MACRO(arr_dbm_domain_t) 
-       case GenericAbsDomWrapper::arr_sdbm: 
-         FORGET_MACRO(arr_sdbm_domain_t) 
-       case GenericAbsDomWrapper::arr_vdbm: 
-         FORGET_MACRO(arr_vdbm_domain_t) 
-       case GenericAbsDomWrapper::arr_ddbm: 
-         FORGET_MACRO(arr_ddbm_domain_t) 
-       case GenericAbsDomWrapper::arr_term: 
-         FORGET_MACRO(arr_term_domain_t) 
-       case GenericAbsDomWrapper::arr_boxes: 
-         FORGET_MACRO(arr_boxes_domain_t) 
-       case GenericAbsDomWrapper::arr_dis_intv: 
-         FORGET_MACRO(arr_dis_interval_domain_t) 
-       case GenericAbsDomWrapper::arr_intv_apron: 
-         FORGET_MACRO(arr_box_apron_domain_t) 
-       case GenericAbsDomWrapper::arr_oct_apron: 
-         FORGET_MACRO(arr_oct_apron_domain_t) 
-       case GenericAbsDomWrapper::arr_opt_oct_apron: 
-         FORGET_MACRO(arr_opt_oct_apron_domain_t) 
-       case GenericAbsDomWrapper::arr_pk_apron: 
-         FORGET_MACRO(arr_pk_apron_domain_t) 
+       case GenericAbsDomWrapper::intv: FORGET(interval_domain_t)
+       case GenericAbsDomWrapper::ric: FORGET(ric_domain_t)
+       case GenericAbsDomWrapper::dbm: FORGET(dbm_domain_t)
+       case GenericAbsDomWrapper::sdbm: FORGET(sdbm_domain_t)
+       case GenericAbsDomWrapper::vdbm: FORGET(vdbm_domain_t)
+       case GenericAbsDomWrapper::ddbm: FORGET(ddbm_domain_t)
+       case GenericAbsDomWrapper::term_intv: FORGET(term_int_domain_t)
+       case GenericAbsDomWrapper::term_dis_intv: FORGET(term_dis_int_domain_t)
+       case GenericAbsDomWrapper::boxes: FORGET(boxes_domain_t)
+       case GenericAbsDomWrapper::intv_apron: FORGET(box_apron_domain_t)
+       case GenericAbsDomWrapper::oct_apron: FORGET(oct_apron_domain_t)
+       case GenericAbsDomWrapper::opt_oct_apron: FORGET(opt_oct_apron_domain_t)
+       case GenericAbsDomWrapper::pk_apron: FORGET(pk_apron_domain_t)
+       case GenericAbsDomWrapper::dis_intv: FORGET(dis_interval_domain_t)
+       case GenericAbsDomWrapper::arr_intv: FORGET(arr_interval_domain_t)
+       case GenericAbsDomWrapper::arr_ric: FORGET(arr_ric_domain_t) 
+       case GenericAbsDomWrapper::arr_dbm: FORGET(arr_dbm_domain_t) 
+       case GenericAbsDomWrapper::arr_sdbm: FORGET(arr_sdbm_domain_t) 
+       case GenericAbsDomWrapper::arr_vdbm: FORGET(arr_vdbm_domain_t) 
+       case GenericAbsDomWrapper::arr_ddbm:  FORGET(arr_ddbm_domain_t) 
+       case GenericAbsDomWrapper::arr_term_intv: FORGET(arr_term_int_domain_t) 
+       case GenericAbsDomWrapper::arr_term_dis_intv: FORGET(arr_term_dis_int_domain_t) 
+       case GenericAbsDomWrapper::arr_boxes: FORGET(arr_boxes_domain_t) 
+       case GenericAbsDomWrapper::arr_dis_intv: FORGET(arr_dis_interval_domain_t) 
+       case GenericAbsDomWrapper::arr_intv_apron: FORGET(arr_box_apron_domain_t) 
+       case GenericAbsDomWrapper::arr_oct_apron: FORGET(arr_oct_apron_domain_t) 
+       case GenericAbsDomWrapper::arr_opt_oct_apron: FORGET(arr_opt_oct_apron_domain_t) 
+       case GenericAbsDomWrapper::arr_pk_apron:  FORGET(arr_pk_apron_domain_t) 
        default: llvm_unreachable("unreachable");
      }
    }

@@ -78,5 +78,5 @@ namespace crab_llvm {
 } // end namespace
 
 static llvm::RegisterPass<crab_llvm::NameValues> 
-Y ("name-values", "Names all unnamed values");
+Y ("crab-name-values", "Names all unnamed values");
 

@@ -67,9 +67,8 @@ namespace crab_llvm
     }
 
     boost::optional<ZLinExp> lookup (const Value &v) {
-
       if (isa<const UndefValue> (&v)) {
-        return ZLinExp ();
+        return boost::optional<ZLinExp> ();
       }
 
       if (isa<ConstantPointerNull> (&v)) {
@@ -94,7 +93,7 @@ namespace crab_llvm
         return ZLinExp (symVar (v));
       }
       
-      return ZLinExp ();
+      return boost::optional<ZLinExp> ();
     }
         
     /** Converts v to mpz_class. Assumes that v is signed */

@@ -158,6 +158,11 @@ int main(int argc, char **argv) {
   // Here only passes that are necessary or very recommended for Crab
   /////
 
+  // -- turn all functions internal so that we can use DSA
+  pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
+  pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global  
+  pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
+
   // -- promote alloca's to registers
   pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
 

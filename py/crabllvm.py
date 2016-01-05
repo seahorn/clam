@@ -109,7 +109,7 @@ def parseArgs (argv):
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
                     help='Choose abstract domain',
-                    choices=['int','ric', 'term', 'boxes', 'dis-int',
+                    choices=['int','ric', 'boxes', 'dis-int', 'term-int', 'term-dis-int', 
                              # choose dynamically between int and zones
                              'num',
                              ## Zones variants
@@ -140,9 +140,9 @@ def parseArgs (argv):
     p.add_argument ('--crab-track',
                     help='Track integers, pointer offsets, and memory contents',
                     choices=['int', 'ptr', 'arr'], dest='track', default='int')
-    p.add_argument ('--crab-singleton-as-scalars',
+    p.add_argument ('--crab-singleton-aliases',
                     help='Treat singleton alias sets as scalar values',
-                    dest='crab_singleton_as_scalars', default=False, action='store_true')
+                    dest='crab_singleton_aliases', default=False, action='store_true')
     p.add_argument ('--crab-disable-offsets',
                     help='Track memory contents but ignoring pointer offsets',
                     dest='crab_disable_offsets', default=False, action='store_true')
@@ -330,6 +330,8 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append ('--crab-pp-loops')
     if args.undef_nondet:
         crabpp_args.append( '--crab-turn-undef-nondet')
+    if args.lower_gv:
+        crabpp_args.append( '--crab-lower-gv')
 
     crabpp_args.extend (extra_args)
 
@@ -369,8 +371,6 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     if args.lower_select:
         crabllvm_cmd.append( '--crab-lower-select')
 
-    if args.lower_gv:
-        crabllvm_cmd.append( '--crab-lower-gv')
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     crabllvm_cmd.append ('--crab-inter-sum-dom={0}'.format (args.crab_inter_sum_dom))
@@ -385,7 +385,7 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
     if args.crab_disable_offsets:
         crabllvm_cmd.append ('--crab-disable-offsets')
-    if args.crab_singleton_as_scalars:
+    if args.crab_singleton_aliases:
         crabllvm_cmd.append ('--crab-singleton-aliases')
 
     if args.crab_inter:

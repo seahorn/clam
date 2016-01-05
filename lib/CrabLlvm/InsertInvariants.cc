@@ -322,6 +322,11 @@ namespace crab_llvm
     return change;
   }
 
+  #define INSTR_LOAD(DOM,PRE,BB,CTX,CG,RES)  \
+  DOM inv;                                   \
+  getAbsDomWrappee (PRE, inv);               \
+  RES |= instrument_loads (inv, BB, CTX, CG);
+   
   bool InsertInvariants::runOnFunction (llvm::Function &F)
   {
     if (F.isDeclaration () || F.empty () || F.isVarArg ()) 
@@ -353,73 +358,59 @@ namespace crab_llvm
           // --- Figure out the type of the wrappee
           switch (pre->getId ()) {
             case GenericAbsDomWrapper::intv:{
-              interval_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(interval_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::ric: {
-              ric_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(ric_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::dbm: {
-              dbm_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(dbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::sdbm: {
-              sdbm_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(sdbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              break;
             }
-            case GenericAbsDomWrapper::term: {
-              term_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+            case GenericAbsDomWrapper::term_intv: {
+              INSTR_LOAD(term_int_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              break;
+            }
+            case GenericAbsDomWrapper::term_dis_intv: {
+              INSTR_LOAD(term_dis_int_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::boxes: {
-              boxes_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(boxes_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_intv: {
-              arr_interval_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(arr_interval_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_ric: {
-              arr_ric_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(arr_ric_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_dbm: {
-              arr_dbm_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(arr_dbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_sdbm: {
-              arr_sdbm_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(arr_sdbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              break;
             }
-            case GenericAbsDomWrapper::arr_term: {
-              arr_term_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+            case GenericAbsDomWrapper::arr_term_intv: {
+              INSTR_LOAD(arr_term_int_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              break;
+            }
+            case GenericAbsDomWrapper::arr_term_dis_intv: {
+              INSTR_LOAD(arr_term_dis_int_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_boxes: {
-              arr_boxes_domain_t inv;
-              getAbsDomWrappee (pre, inv);        
-              change |= instrument_loads (inv, cfg.get_node (&B), F.getContext (), cg);
+              INSTR_LOAD(arr_boxes_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             default :
