@@ -219,6 +219,12 @@ namespace crab_llvm
     }
   }
 
+  #define ANALYZE(TRACK,BASE_DOM,ARR_DOM,P,VFAC,M,MEM,DL) \
+  if (TRACK == ARR)                                       \
+    analyzeConcSys <ARR_DOM> (P, VFAC, M, MEM, DL);       \
+  else                                                    \
+    analyzeConcSys <BASE_DOM> (P, VFAC, M, MEM, DL);   
+
   bool ConCrabLlvm::runOnModule (llvm::Module &M)
   {
 
@@ -268,30 +274,24 @@ namespace crab_llvm
     const DataLayout* dl = M.getDataLayout ();
 
     /// --- Analyze the concurrent system
-    switch (CrabLlvmDomain)
-    {
+   switch (CrabLlvmDomain) {
       case INTERVALS_CONGRUENCES: 
-        if (CrabTrackLev == ARR)
-          analyzeConcSys <arr_ric_domain_t> (sys, vfac, M, *m_mem, dl); 
-        else
-          analyzeConcSys <ric_domain_t> (sys, vfac, M, *m_mem, dl); 
+        ANALYZE(CrabTrackLev, ric_domain_t, arr_ric_domain_t, sys, vfac, M, *m_mem, dl); 
         break;
       case ZONES: 
-        if (CrabTrackLev == ARR)
-          analyzeConcSys <arr_dbm_domain_t> (sys, vfac, M, *m_mem, dl); 
-        else
-          analyzeConcSys <dbm_domain_t> (sys, vfac, M, *m_mem, dl); 
+        ANALYZE(CrabTrackLev, dbm_domain_t, arr_dbm_domain_t, sys, vfac, M, *m_mem, dl); 
         break;
-      case TERMS: /*TODO*/
-      case BOXES: /*TODO*/
-        std::cout << "Warning: abstract domain not found."
-                  << "Running intervals ...\n"; 
-      case INTERVALS:  
+      case TERMS_INTERVALS: 
+        ANALYZE(CrabTrackLev, term_int_domain_t, arr_term_int_domain_t, sys, vfac, M, *m_mem, dl); 
+        break;
+      case TERMS_DIS_INTERVALS: 
+        ANALYZE(CrabTrackLev, term_dis_int_domain_t, arr_term_dis_int_domain_t, sys, vfac, M, *m_mem, dl); 
+        break;
+      case BOXES: 
+        ANALYZE(CrabTrackLev, boxes_domain_t, arr_boxes_domain_t, sys, vfac, M, *m_mem, dl); 
+        break;
       default:
-        if (CrabTrackLev == ARR)
-          analyzeConcSys <arr_interval_domain_t> (sys, vfac, M, *m_mem, dl); 
-        else
-          analyzeConcSys <interval_domain_t> (sys, vfac, M, *m_mem, dl); 
+        ANALYZE(CrabTrackLev, interval_domain_t, arr_interval_domain_t, sys, vfac, M, *m_mem, dl); 
     }
     return change;
   }

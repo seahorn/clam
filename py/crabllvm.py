@@ -109,7 +109,7 @@ def parseArgs (argv):
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
                     help='Choose abstract domain',
-                    choices=['int','ric','zones','term','num','boxes','dis-int'],
+                    choices=['int','ric','zones','num','boxes','dis-int','term-int','term-dis-int'],
                     dest='crab_dom', default='int')
     ############ 
     p.add_argument ('--crab-widening-threshold', 

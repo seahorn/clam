@@ -69,7 +69,7 @@ interpreters which are usually unaware of PHI nodes.
 
 The translation also performs *code abstractions* based on the neat
 idea of *Abstract Compilation*
-[Global Flow Analysis as Practical Compilation Tool](http://oa.upm.es/14288/1/HERME_A_1992-1.pdf),
+([Global Flow Analysis as Practical Compilation Tool](http://oa.upm.es/14288/1/HERME_A_1992-1.pdf)),
 an application of Abstract Interpretation where instead of analyzing a
 program by executing its concrete code over abstract data the code
 itself is abstracted into *abstract code*.
@@ -120,10 +120,11 @@ inferred for each basic block in the `LLVM` bitcode.
     - `int`: classical intervals
 	- `ric`: intervals with congruences
 	- `zones`: difference-bound matrices
-    - `term`: intervals with uninterpreted functions
-	- `num`: select dynamically (based on the number of live variables) between `int` and `zones`
-    - `boxes`: disjunctive intervals based on ldds (only if `-DUSE_LDD=ON`)
+	- `boxes`: disjunctive intervals based on ldds (only if `-DUSE_LDD=ON`)
 	- `dis-int`: disjunctive intervals based on disjunctive completion
+    - `term-int`: intervals with uninterpreted functions
+	- `term-dis-int`: disjunctive intervals with uninterpreted functions
+	- `num`: choose (based on the number of live variables) between `int` and `zones`
 
 	For domains without narrowing operator (for instance currently
     `boxes` and `dis-int`), you need to set the option:
