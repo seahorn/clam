@@ -1,4 +1,4 @@
-add_library(LlvmPasses STATIC
+add_library(LlvmPasses 
   LowerCstExpr.cc
   LowerGvInitializers.cc
   LowerSelect.cc
