@@ -71,11 +71,11 @@ namespace crab_llvm {
   typedef crab::cfg::var_factory_impl::StrVarAlloc_col::varname_t str_varname_t;
   typedef interval_domain<z_number, str_varname_t> str_interval_dom_t;
   typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
-  typedef anti_unif<idom_info>::anti_unif_t term_int_domain_t;  
+  typedef term_domain<idom_info> term_int_domain_t;  
   /// -- Terms functor domain with DisIntervals
   typedef dis_interval_domain<z_number, str_varname_t> str_dis_interval_dom_t;
   typedef term::TDomInfo<z_number, varname_t, str_dis_interval_dom_t> dis_idom_info;
-  typedef anti_unif<dis_idom_info>::anti_unif_t term_dis_int_domain_t;  
+  typedef term_domain<dis_idom_info> term_dis_int_domain_t;  
   /// -- Array smashing functor domain with arbitrary domain
   typedef array_smashing<interval_domain_t> arr_interval_domain_t;
   typedef array_smashing<ric_domain_t> arr_ric_domain_t;
@@ -141,7 +141,7 @@ namespace llvm {
 
   template <typename DomInfo>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab::domains::anti_unif<DomInfo>& inv) {
+                                        crab::domains::term_domain<DomInfo>& inv) {
     ostringstream s;
     s << inv;
     o << s.str ();
