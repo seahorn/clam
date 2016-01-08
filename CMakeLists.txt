@@ -32,18 +32,37 @@ endif ()
 
 option (USE_LDD "Enable ldd" OFF)
 
-# put static libraries first
-set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-
 # Add path for custom modules
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# Whether crabllvm libraries are built shared or statically
+option(BUILD_CRABLLVM_LIBS_SHARED "Build all CrabLlvm libraries shared." OFF)
+
+# Temporary fix because ldd provides only static libraries
+if (USE_LDD)
+  message (STATUS "ldd provides only static libraries. Forced CrabLlvm static building.")
+  set (BUILD_CRABLLVM_LIBS_SHARED OFF)
+endif ()
+
+if (BUILD_CRABLLVM_LIBS_SHARED)
+  message (STATUS "All crabllvm libraries will be built as shared libraries")
+  set(CRABLLVM_LIBS_TYPE SHARED)
+  # so that executables outside the build tree can find later shared
+  # libraries
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+  if (NOT CMAKE_INSTALL_RPATH)
+    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+  endif ()
+else()
+  message (STATUS "All crabllvm libraries will be built statically")
+  set(CRABLLVM_LIBS_TYPE STATIC)
+endif ()
 
 if (TopLevel)
   set (CUSTOM_BOOST_ROOT "" CACHE PATH "Path to custom boost installation.")
   if (CUSTOM_BOOST_ROOT)
     set (BOOST_ROOT ${CUSTOM_BOOST_ROOT})
     set (Boost_NO_SYSTEM_PATHS "ON")
-    
   endif()
 
   option (CRABLLVM_STATIC_EXE "Static executable." OFF)
@@ -54,9 +73,10 @@ if (TopLevel)
     include_directories (${Boost_INCLUDE_DIRS})
   endif ()
 
-  # put static libraries first
-  set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-
+  # put static libraries first unless we want shared libraries
+  if (NOT BUILD_CRABLLVM_LIBS_SHARED)
+     set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
+  endif ()   
 endif ()
 
 
@@ -143,6 +163,7 @@ if (GIT_FOUND)
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
     -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+    -DBUILD_CRAB_LIBS_SHARED=${BUILD_CRABLLVM_LIBS_SHARED}
     -DCMAKE_USE_LDD=${USE_LDD}
     -DCMAKE_LDD_INCLUDE_DIR=${LDD_INCLUDE_DIR}
     -DCMAKE_LDD_LIBRARY=${LDD_LIBRARY}

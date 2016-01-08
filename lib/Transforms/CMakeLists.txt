@@ -1,4 +1,4 @@
-add_library(LlvmPasses 
+add_library(LlvmPasses ${CRABLLVM_LIBS_TYPE}
   LowerCstExpr.cc
   LowerGvInitializers.cc
   LowerSelect.cc
@@ -8,4 +8,6 @@ add_library(LlvmPasses
   DevirtFunctions.cc
   )
 
-install(TARGETS LlvmPasses ARCHIVE DESTINATION lib)
+install(TARGETS LlvmPasses 
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib)
