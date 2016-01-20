@@ -9,15 +9,15 @@
 #include "crab/domains/linear_constraints.hpp"                     
 #include "crab/domains/intervals.hpp"                      
 #include "crab/domains/dis_intervals.hpp"                      
-#include "crab/domains/numerical_with_congruences.hpp"
 #include "crab/domains/dbm.hpp"
 #include "crab/domains/split_dbm.hpp"
 #include "crab/domains/naive_dbm.hpp"
 #include "crab/domains/var_packing_naive_dbm.hpp"
-#include "crab/domains/array_smashing.hpp"
-#include "crab/domains/term_equiv.hpp"
 #include "crab/domains/boxes.hpp"
 #include "crab/domains/apron_domains.hpp"
+#include "crab/domains/array_smashing.hpp"
+#include "crab/domains/term_equiv.hpp"
+#include "crab/domains/combined_domains.hpp"
 
 /*
    Definition of the abstract domains and a generic wrapper class (for
@@ -86,7 +86,7 @@ namespace crab_llvm {
 
 
   //////
-  /// Combination of domains
+  /// Combination/functor of domains 
   //////
 
   /// -- Reduced product of intervals with congruences
@@ -100,6 +100,8 @@ namespace crab_llvm {
   typedef dis_interval_domain<z_number, str_varname_t> str_dis_interval_dom_t;
   typedef term::TDomInfo<z_number, varname_t, str_dis_interval_dom_t> dis_idom_info;
   typedef term_domain<dis_idom_info> term_dis_int_domain_t;  
+  /// -- Reduced product of terms(DisIntervals) with split zones
+  typedef reduced_numerical_domain_product2<term_dis_int_domain_t, sdbm_domain_t> num_domain_t; 
   /// -- Array smashing functor domain with arbitrary domain
   typedef array_smashing<interval_domain_t> arr_interval_domain_t;
   typedef array_smashing<ric_domain_t> arr_ric_domain_t;
@@ -111,88 +113,38 @@ namespace crab_llvm {
   typedef array_smashing<term_dis_int_domain_t> arr_term_dis_int_domain_t;
   typedef array_smashing<boxes_domain_t> arr_boxes_domain_t;
   typedef array_smashing<dis_interval_domain_t> arr_dis_interval_domain_t;
+  typedef array_smashing<num_domain_t> arr_num_domain_t;
   typedef array_smashing<box_apron_domain_t> arr_box_apron_domain_t;
   typedef array_smashing<oct_apron_domain_t> arr_oct_apron_domain_t;
   typedef array_smashing<opt_oct_apron_domain_t> arr_opt_oct_apron_domain_t;
   typedef array_smashing<pk_apron_domain_t> arr_pk_apron_domain_t;
+
 }
 
 namespace llvm {
 
   using namespace std;
 
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::z_lin_exp_t& e) {
-    ostringstream s;
-    s << e;
-    o << s.str ();
-    return o;
-  }
+  #define DUMP_TO_LLVM_STREAM(T)  \
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, \
+                                        T& e) {               \
+    ostringstream s;                                          \
+    s << e;                                                   \
+    o << s.str ();                                            \
+    return o; }                                                        
 
-
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::z_lin_cst_t& cst) {
-    ostringstream s;
-    s << cst;
-    o << s.str ();
-    return o;
-  }
-
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::z_lin_cst_sys_t& csts) {
-    ostringstream s;
-    s << csts;
-    o << s.str ();
-    return o;
-  }
-
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::interval_domain_t& inv) {
-    ostringstream s;
-    s << inv;
-    o << s.str ();
-    return o;
-  }
-  
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::ric_domain_t& inv) {
-    ostringstream s;
-    s << inv;
-    o << s.str ();
-    return o;
-  }
-
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::dbm_domain_t& inv) {
-    ostringstream s;
-    s << inv;
-    o << s.str ();
-    return o;
-  }
-
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::sdbm_domain_t& inv) {
-    ostringstream s;
-    s << inv;
-    o << s.str ();
-    return o;
-  }
-
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::vdbm_domain_t& inv) {
-    ostringstream s;
-    s << inv;
-    o << s.str ();
-    return o;
-  }
-
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::ddbm_domain_t& inv) {
-    ostringstream s;
-    s << inv;
-    o << s.str ();
-    return o;
-  }
+  DUMP_TO_LLVM_STREAM(crab_llvm::z_lin_exp_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::z_lin_cst_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::z_lin_cst_sys_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::interval_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::ric_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::dbm_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::sdbm_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::ddbm_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::vdbm_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::boxes_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::dis_interval_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::num_domain_t)
 
   template <typename DomInfo>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
@@ -203,21 +155,6 @@ namespace llvm {
     return o;
   }
 
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::boxes_domain_t& inv) {
-    ostringstream s;
-    s << inv;
-    o << s.str ();
-    return o;
-  }
-
-  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
-                                        crab_llvm::dis_interval_domain_t& inv) {
-    ostringstream s;
-    s << inv;
-    o << s.str ();
-    return o;
-  }
 
   template <typename N, typename V, crab::domains::apron_domain_id_t D>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
@@ -269,20 +206,25 @@ namespace crab_llvm {
    template <>                                                                    \
    inline void getAbsDomWrappee (GenericAbsDomWrapperPtr wrapper,                 \
                                  ABS_DOM &abs_dom) {                              \
-     auto wrappee = boost::static_pointer_cast<WRAPPER> (wrapper);                \
+     auto wrappee = boost::dynamic_pointer_cast<WRAPPER> (wrapper);               \
+     if (!wrappee) {                                                              \
+       CRAB_ERROR("Could not cast wrapper to an instance of ",                    \
+                  ABS_DOM::getDomainName ());                                     \
+     }                                                                            \
      abs_dom = wrappee->get (); }                                                 
+
 
    #define REGISTER_DOMAIN_ID(ABS_DOMAIN,ID)                  \
    template<>                                                 \
    inline GenericAbsDomWrapper::id_t getAbsDomId(ABS_DOMAIN)  \
    {return GenericAbsDomWrapper::ID;}                        
 
-   #define FORGET(ABS_DOMAIN)                                    \
-   do {                                                          \
-     ABS_DOMAIN inv;                                             \
-     getAbsDomWrappee (wrapper, inv);                            \
-     crab::domain_traits::forget (inv, vs.begin (), vs.end ());  \
-     return mkGenericAbsDomWrapper (inv);                        \
+   #define FORGET(ABS_DOMAIN, WRAPPER, VARS)                        \
+   do {                                                             \
+     ABS_DOMAIN inv;                                                \
+     getAbsDomWrappee (WRAPPER, inv);                               \
+     crab::domain_traits::forget (inv, VARS.begin (), VARS.end ()); \
+     return mkGenericAbsDomWrapper (inv);                           \
    } while (0) ;;
 
 
@@ -306,6 +248,7 @@ namespace crab_llvm {
                     oct_apron,
                     opt_oct_apron,
                     pk_apron,
+                    num,
                     arr_intv, 
                     arr_dbm, 
                     arr_sdbm,
@@ -319,7 +262,8 @@ namespace crab_llvm {
                     arr_intv_apron,
                     arr_oct_apron,
                     arr_opt_oct_apron,
-                    arr_pk_apron
+                    arr_pk_apron,
+                    arr_num
                   } id_t;
 
      GenericAbsDomWrapper () { }
@@ -368,6 +312,7 @@ namespace crab_llvm {
    DEFINE_BASE_DOMAIN(OctApronDomainWrapper,oct_apron_domain_t,oct_apron)
    DEFINE_BASE_DOMAIN(OptOctApronDomainWrapper,opt_oct_apron_domain_t,opt_oct_apron)
    DEFINE_BASE_DOMAIN(PkApronDomainWrapper,pk_apron_domain_t,pk_apron)
+   DEFINE_BASE_DOMAIN(NumDomainWrapper,num_domain_t,num)
 
    // Required only for array versions
    REGISTER_DOMAIN_ID(arr_interval_domain_t,arr_intv)
@@ -384,6 +329,7 @@ namespace crab_llvm {
    REGISTER_DOMAIN_ID(arr_oct_apron_domain_t,arr_oct_apron)
    REGISTER_DOMAIN_ID(arr_opt_oct_apron_domain_t,arr_opt_oct_apron)
    REGISTER_DOMAIN_ID(arr_pk_apron_domain_t,arr_pk_apron)
+   REGISTER_DOMAIN_ID(arr_num_domain_t,arr_num)
 
    template<typename B>
    class ArraySmashingDomainWrapper: public GenericAbsDomWrapper {
@@ -429,7 +375,9 @@ namespace crab_llvm {
    template <typename B> 
    inline void getAbsDomWrappee (GenericAbsDomWrapperPtr wrapper, 
                                  array_smashing<B>&abs_dom) {
-     auto wrappee = boost::static_pointer_cast<ArraySmashingDomainWrapper<B> > (wrapper);
+     auto wrappee = boost::dynamic_pointer_cast<ArraySmashingDomainWrapper<B> > (wrapper);
+     if (!wrappee)
+       CRAB_ERROR("Could not cast wrapper to an instance of ArraySmashingDomainWrapper");
      abs_dom = wrappee->get ();
    }
 
@@ -437,34 +385,36 @@ namespace crab_llvm {
    inline GenericAbsDomWrapperPtr 
    forget (GenericAbsDomWrapperPtr wrapper, Range vs) {
      switch (wrapper->getId ()) {
-       case GenericAbsDomWrapper::intv: FORGET(interval_domain_t)
-       case GenericAbsDomWrapper::ric: FORGET(ric_domain_t)
-       case GenericAbsDomWrapper::dbm: FORGET(dbm_domain_t)
-       case GenericAbsDomWrapper::sdbm: FORGET(sdbm_domain_t)
-       case GenericAbsDomWrapper::vdbm: FORGET(vdbm_domain_t)
-       case GenericAbsDomWrapper::ddbm: FORGET(ddbm_domain_t)
-       case GenericAbsDomWrapper::term_intv: FORGET(term_int_domain_t)
-       case GenericAbsDomWrapper::term_dis_intv: FORGET(term_dis_int_domain_t)
-       case GenericAbsDomWrapper::boxes: FORGET(boxes_domain_t)
-       case GenericAbsDomWrapper::intv_apron: FORGET(box_apron_domain_t)
-       case GenericAbsDomWrapper::oct_apron: FORGET(oct_apron_domain_t)
-       case GenericAbsDomWrapper::opt_oct_apron: FORGET(opt_oct_apron_domain_t)
-       case GenericAbsDomWrapper::pk_apron: FORGET(pk_apron_domain_t)
-       case GenericAbsDomWrapper::dis_intv: FORGET(dis_interval_domain_t)
-       case GenericAbsDomWrapper::arr_intv: FORGET(arr_interval_domain_t)
-       case GenericAbsDomWrapper::arr_ric: FORGET(arr_ric_domain_t) 
-       case GenericAbsDomWrapper::arr_dbm: FORGET(arr_dbm_domain_t) 
-       case GenericAbsDomWrapper::arr_sdbm: FORGET(arr_sdbm_domain_t) 
-       case GenericAbsDomWrapper::arr_vdbm: FORGET(arr_vdbm_domain_t) 
-       case GenericAbsDomWrapper::arr_ddbm:  FORGET(arr_ddbm_domain_t) 
-       case GenericAbsDomWrapper::arr_term_intv: FORGET(arr_term_int_domain_t) 
-       case GenericAbsDomWrapper::arr_term_dis_intv: FORGET(arr_term_dis_int_domain_t) 
-       case GenericAbsDomWrapper::arr_boxes: FORGET(arr_boxes_domain_t) 
-       case GenericAbsDomWrapper::arr_dis_intv: FORGET(arr_dis_interval_domain_t) 
-       case GenericAbsDomWrapper::arr_intv_apron: FORGET(arr_box_apron_domain_t) 
-       case GenericAbsDomWrapper::arr_oct_apron: FORGET(arr_oct_apron_domain_t) 
-       case GenericAbsDomWrapper::arr_opt_oct_apron: FORGET(arr_opt_oct_apron_domain_t) 
-       case GenericAbsDomWrapper::arr_pk_apron:  FORGET(arr_pk_apron_domain_t) 
+       case GenericAbsDomWrapper::intv: FORGET(interval_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::ric: FORGET(ric_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::dbm: FORGET(dbm_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::sdbm: FORGET(sdbm_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::vdbm: FORGET(vdbm_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::ddbm: FORGET(ddbm_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::term_intv: FORGET(term_int_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::term_dis_intv: FORGET(term_dis_int_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::boxes: FORGET(boxes_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::intv_apron: FORGET(box_apron_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::oct_apron: FORGET(oct_apron_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::opt_oct_apron: FORGET(opt_oct_apron_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::pk_apron: FORGET(pk_apron_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::dis_intv: FORGET(dis_interval_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::num: FORGET(num_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::arr_intv: FORGET(arr_interval_domain_t, wrapper, vs)
+       case GenericAbsDomWrapper::arr_ric: FORGET(arr_ric_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_dbm: FORGET(arr_dbm_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_sdbm: FORGET(arr_sdbm_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_vdbm: FORGET(arr_vdbm_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_ddbm:  FORGET(arr_ddbm_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_term_intv: FORGET(arr_term_int_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_term_dis_intv: FORGET(arr_term_dis_int_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_boxes: FORGET(arr_boxes_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_dis_intv: FORGET(arr_dis_interval_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_intv_apron: FORGET(arr_box_apron_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_oct_apron: FORGET(arr_oct_apron_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_opt_oct_apron: FORGET(arr_opt_oct_apron_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_pk_apron:  FORGET(arr_pk_apron_domain_t, wrapper, vs) 
+       case GenericAbsDomWrapper::arr_num: FORGET(arr_num_domain_t, wrapper, vs) 
        default: llvm_unreachable("unreachable");
      }
    }

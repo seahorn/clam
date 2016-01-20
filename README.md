@@ -126,13 +126,14 @@ inferred for each basic block in the `LLVM` bitcode.
 	- `opt-oct-apron`: octagons (only if `-DUSE_APRON=ON`)
 	- `pk-apron`: polyhedra (only if `-DUSE_APRON=ON`)
 	- `boxes`: disjunctive intervals based on ldds (only if `-DUSE_LDD=ON`)
-	- `dis-int`: disjunctive intervals based on disjunctive completion
+	- `dis-int`: disjunctive intervals based on abstracted disjunctive completion
     - `term-int`: intervals with uninterpreted functions
 	- `term-dis-int`: disjunctive intervals with uninterpreted functions
-	- `num`: choose (based on the number of live variables) between `int` and `zones`
+    - `num`: choose, based on the number of live variables, between `int`
+       and the reduced product of `term-dis-int` with `szones`. 
 
-	For domains without narrowing operator (for instance currently
-    `boxes`, `dis-int`, and `pk-apron`), you need to set the option:
+	For domains without narrowing operator (for instance `boxes`,
+    `dis-int`, and `pk-apron`), you need to set the option:
 	
        - `--crab-narrowing-iterations=N`
 

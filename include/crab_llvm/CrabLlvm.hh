@@ -116,12 +116,12 @@ namespace crab_llvm {
    private:
 
     template<typename AbsDomain> 
-    bool runOnCfg (cfg_t& cfg, const Function& F, const liveness_t& live);
+    bool analyzeCfg (cfg_t& cfg, const Function& F, const liveness_t& live);
 
     template<typename BUAbsDomain, typename TDAbsDomain> 
-    bool runOnCg (const crab::cg::CallGraph<cfg_t>& cg, 
-                  const liveness_map_t& live_map,
-                  const llvm::Module &M);
+    bool analyzeCg (const crab::cg::CallGraph<cfg_t>& cg, 
+                    const liveness_map_t& live_map,
+                    const llvm::Module &M);
 
     void writeInvariants (llvm::raw_ostream& o, const llvm::Function& F);
 

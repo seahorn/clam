@@ -109,9 +109,7 @@ def parseArgs (argv):
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
                     help='Choose abstract domain',
-                    choices=['int','ric', 'boxes', 'dis-int', 'term-int', 'term-dis-int', 
-                             # choose dynamically between int and zones
-                             'num',
+                    choices=['int','ric', 'boxes', 'dis-int', 'term-int', 'term-dis-int', 'num',
                              ## Zones variants
                              #  sparse zones
                              'zones',
@@ -152,7 +150,7 @@ def parseArgs (argv):
                     dest='crab_inter', default=False, action='store_true')
     p.add_argument ('--crab-inter-sum-dom',
                     help='Choose abstract domain for computing summaries',
-                    choices=['term', 'zones', 'szones', 'vzones', 'opt-oct-apron'],
+                    choices=['term-int', 'zones', 'szones', 'vzones', 'opt-oct-apron','num'],
                     dest='crab_inter_sum_dom', default='szones')
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
