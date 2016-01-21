@@ -216,7 +216,7 @@ namespace crab_llvm {
    do {                                                          \
      ABS_DOMAIN inv;                                             \
      getAbsDomWrappee (wrapper, inv);                            \
-     crab::domain_traits::forget (inv, vs.begin (), vs.end ());  \
+     crab::domains::domain_traits<ABS_DOMAIN>::forget (inv, vs.begin (), vs.end ()); \
      return mkGenericAbsDomWrapper (inv);                        \
    } while (0) ;;
 

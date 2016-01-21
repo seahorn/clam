@@ -21,6 +21,7 @@
 
 #include "crab/analysis/AbsTransformer.hpp"
 #include "crab/analysis/InterDS.hpp"
+#include "crab/domains/domain_traits.hpp"
 
 #include "boost/lexical_cast.hpp"
 
@@ -265,7 +266,7 @@ namespace crab_llvm
       CrabLlvm* crab = &getAnalysis<CrabLlvm> ();
       VariableFactory &vfac = crab->getVariableFactory ();
       auto shadows = vfac.get_shadow_vars ();
-      crab::domain_traits::forget (inv, shadows.begin(), shadows.end());            
+      crab::domains::domain_traits<AbsDomain>::forget (inv, shadows.begin(), shadows.end());            
 
       if (inv.is_top ())
         continue;
