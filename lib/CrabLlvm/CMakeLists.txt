@@ -30,6 +30,8 @@ add_library (CrabLlvmInstrumentation ${CRABLLVM_LIBS_TYPE}
   InsertInvariants.cc
   )
 
+target_link_libraries (CrabLlvmInstrumentation ${CRAB_LIBS})
+
 install(TARGETS CrabLlvmInstrumentation 
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
