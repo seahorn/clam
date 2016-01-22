@@ -219,12 +219,12 @@ namespace crab_llvm {
    inline GenericAbsDomWrapper::id_t getAbsDomId(ABS_DOMAIN)  \
    {return GenericAbsDomWrapper::ID;}                        
 
-   #define FORGET(ABS_DOMAIN, WRAPPER, VARS)                        \
-   do {                                                             \
-     ABS_DOMAIN inv;                                                \
-     getAbsDomWrappee (WRAPPER, inv);                               \
-     crab::domain_traits::forget (inv, VARS.begin (), VARS.end ()); \
-     return mkGenericAbsDomWrapper (inv);                           \
+   #define FORGET(ABS_DOMAIN)                                    \
+   do {                                                          \
+     ABS_DOMAIN inv;                                             \
+     getAbsDomWrappee (wrapper, inv);                            \
+     crab::domains::domain_traits<ABS_DOMAIN>::forget (inv, vs.begin (), vs.end ()); \
+     return mkGenericAbsDomWrapper (inv);                        \
    } while (0) ;;
 
 

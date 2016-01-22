@@ -17,7 +17,6 @@
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/Support/NameValues.hh"
 
-#include "crab/domains/domain_traits.hpp"
 #include "crab/analysis/FwdAnalyzer.hpp"
 #include "crab/analysis/InterFwdAnalyzer.hpp"
 #include "crab/cg/CgBgl.hpp"

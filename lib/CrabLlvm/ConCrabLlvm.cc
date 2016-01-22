@@ -154,7 +154,6 @@ namespace crab_llvm
     typedef ConcAnalyzer <llvm::Function*, cfg_t, 
                           AbsDomain, VariableFactory> conc_analyzer_t;
 
-
     /// --- Initialize shared global state
     AbsDomain init_gv_inv = AbsDomain::top ();
     sym_eval_t sym_eval (vfac, mem);
@@ -176,12 +175,13 @@ namespace crab_llvm
           auto region = mem.getRegion (*(p.first), gv_value); 
           if (region.isUnknown ()) continue;
 
-          crab::domain_traits::array_store (init_gv_inv,
-                                            sym_eval.symVar (region), 
-                                            (*((*idx).get_variable ())).name (), 
-                                            *val, 
-                                            ikos::z_number (dl->getTypeAllocSize (gv.getType ())),
-                                            region.getSingleton () != nullptr);  
+          crab::domains::array_domain_traits<AbsDomain>::array_store 
+              (init_gv_inv,
+               sym_eval.symVar (region), 
+               (*((*idx).get_variable ())).name (), 
+               *val, 
+               ikos::z_number (dl->getTypeAllocSize (gv.getType ())),
+               region.getSingleton () != nullptr);  
         }
       }
     }
