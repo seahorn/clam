@@ -33,8 +33,8 @@ using namespace crab_llvm;
 // for stats
 #define CRABLLVM_STATS
 
-// Template instantiation takes really long time ...
-// so we don't include all the domains by default
+// FIXME: template instantiation takes really long time ... so we
+// don't include all the domains by default
 // #define INCLUDE_ALL_DOMAINS
 
 llvm::cl::opt<bool>
@@ -660,8 +660,10 @@ namespace crab_llvm {
     if (KeepShadows)
       return it->second;
     else {
-      auto shadows = m_vfac.get_shadow_vars ();
-      return forget (it->second, shadows);
+      vector<varname_t> shadows (m_vfac.get_shadow_vars ().begin (),
+                                 m_vfac.get_shadow_vars ().end ());
+      it->second->forget (shadows); 
+      return it->second;
     }
   }   
 
@@ -673,8 +675,10 @@ namespace crab_llvm {
     if (KeepShadows)
       return it->second;
     else {
-      auto shadows = m_vfac.get_shadow_vars ();
-      return forget (it->second, shadows);
+      vector<varname_t> shadows (m_vfac.get_shadow_vars ().begin (),
+                                 m_vfac.get_shadow_vars ().end ());
+      it->second->forget (shadows); 
+      return it->second;
     }
   }
 

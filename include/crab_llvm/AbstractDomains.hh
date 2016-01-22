@@ -72,7 +72,7 @@ namespace crab_llvm {
   typedef SplitDBM<z_number, varname_t> sdbm_domain_t;
   /// -- Zones with dense DBM
   typedef naive_dbm< z_number, varname_t > ddbm_domain_t;
-  /// -- Zones with var packing DBM
+  /// -- Zones with dense DBM + var packing 
   typedef var_packing_naive_dbm<z_number, varname_t> vdbm_domain_t;
   /// -- Boxes
   typedef boxes_domain<z_number, varname_t> boxes_domain_t;
@@ -91,18 +91,18 @@ namespace crab_llvm {
 
   /// -- Reduced product of intervals with congruences
   typedef numerical_congruence_domain<interval_domain_t> ric_domain_t;
-  /// -- Terms functor domain with Intervals
+  /// -- Term functor domain with Intervals
   typedef crab::cfg::var_factory_impl::StrVarAlloc_col::varname_t str_varname_t;
   typedef interval_domain<z_number, str_varname_t> str_interval_dom_t;
   typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
   typedef term_domain<idom_info> term_int_domain_t;  
-  /// -- Terms functor domain with DisIntervals
+  /// -- Term functor domain with DisIntervals
   typedef dis_interval_domain<z_number, str_varname_t> str_dis_interval_dom_t;
   typedef term::TDomInfo<z_number, varname_t, str_dis_interval_dom_t> dis_idom_info;
   typedef term_domain<dis_idom_info> term_dis_int_domain_t;  
-  /// -- Reduced product of terms(DisIntervals) with split zones
+  /// -- Reduced product of Term(DisIntervals) with split zones
   typedef reduced_numerical_domain_product2<term_dis_int_domain_t, sdbm_domain_t> num_domain_t; 
-  /// -- Array smashing functor domain with arbitrary domain
+  /// -- Array smashing functor domain 
   typedef array_smashing<interval_domain_t> arr_interval_domain_t;
   typedef array_smashing<ric_domain_t> arr_ric_domain_t;
   typedef array_smashing<dbm_domain_t> arr_dbm_domain_t;
@@ -184,49 +184,53 @@ namespace crab_llvm {
    /// Definition of macros
    //////
 
-   #define DEFINE_BASE_DOMAIN(WRAPPER,ABS_DOM,ID)                                 \
-   class WRAPPER: public GenericAbsDomWrapper {                                   \
-     id_t m_id;                                                                   \
-     ABS_DOM m_abs;                                                               \
-    public:                                                                       \
-     id_t getId () const { return m_id;}                                          \
-     WRAPPER (ABS_DOM abs): GenericAbsDomWrapper (), m_id (ID), m_abs (abs) { }   \
-     ABS_DOM get () const { return m_abs; }                                       \
-     virtual z_lin_cst_sys_t to_linear_constraints () const {                     \
-       ABS_DOM res (m_abs);                                                       \
-       return res.to_linear_constraint_system ();}                                \
-     virtual void write (std::ostream& o) const {                                 \
-       ABS_DOM res (m_abs);                                                       \
-       res.write (o); }                                                           \
-   };                                                                             \
-   template <> inline GenericAbsDomWrapperPtr                                     \
-   mkGenericAbsDomWrapper (ABS_DOM abs_dom) {                                     \
-     GenericAbsDomWrapperPtr res (new WRAPPER(abs_dom));                          \
-     return res; }                                                                \
-   template <>                                                                    \
-   inline void getAbsDomWrappee (GenericAbsDomWrapperPtr wrapper,                 \
-                                 ABS_DOM &abs_dom) {                              \
-     auto wrappee = boost::dynamic_pointer_cast<WRAPPER> (wrapper);               \
-     if (!wrappee) {                                                              \
-       CRAB_ERROR("Could not cast wrapper to an instance of ",                    \
-                  ABS_DOM::getDomainName ());                                     \
-     }                                                                            \
-     abs_dom = wrappee->get (); }                                                 
+   #define DEFINE_BASE_DOMAIN(WRAPPER,ABS_DOM,ID)                              \
+   class WRAPPER: public GenericAbsDomWrapper {                                \
+     id_t m_id;                                                                \
+     ABS_DOM m_abs;                                                            \
+    public:                                                                    \
+     id_t getId () const { return m_id;}                                       \
+                                                                               \
+     WRAPPER (ABS_DOM abs): GenericAbsDomWrapper (), m_id (ID), m_abs (abs) { }\
+                                                                               \
+     ABS_DOM& get () { return m_abs; }                                         \
+                                                                               \
+     z_lin_cst_sys_t to_linear_constraints () {                                \
+       return m_abs.to_linear_constraint_system ();                            \
+     }                                                                         \
+                                                                               \
+     void write (std::ostream& o) {                                            \
+       m_abs.write (o);                                                        \
+     }                                                                         \
+                                                                               \
+     void forget (const vector<varname_t>& vars) {                             \
+       crab::domains::domain_traits<ABS_DOM>::forget (m_abs,                   \
+                                                      vars.begin (),           \
+                                                      vars.end ());            \
+     }                                                                         \
+   };                                                                          \
+                                                                               \
+   template <> inline GenericAbsDomWrapperPtr                                  \
+   mkGenericAbsDomWrapper (ABS_DOM abs_dom) {                                  \
+     GenericAbsDomWrapperPtr res (new WRAPPER(abs_dom));                       \
+     return res;                                                               \
+   }                                                                           \
+                                                                               \
+   template <>                                                                 \
+   inline void getAbsDomWrappee (GenericAbsDomWrapperPtr wrapper,              \
+                                 ABS_DOM &abs_dom) {                           \
+     auto wrappee = boost::dynamic_pointer_cast<WRAPPER> (wrapper);            \
+     if (!wrappee) {                                                           \
+       CRAB_ERROR("Could not cast wrapper to an instance of ",                 \
+                  ABS_DOM::getDomainName ());                                  \
+     }                                                                         \
+     abs_dom = wrappee->get ();                                                \
+   }                                                 
 
-
-   #define REGISTER_DOMAIN_ID(ABS_DOMAIN,ID)                  \
-   template<>                                                 \
-   inline GenericAbsDomWrapper::id_t getAbsDomId(ABS_DOMAIN)  \
+   #define REGISTER_DOMAIN_ID(ABS_DOMAIN,ID)                                   \
+   template<>                                                                  \
+   inline GenericAbsDomWrapper::id_t getAbsDomId(ABS_DOMAIN)                   \
    {return GenericAbsDomWrapper::ID;}                        
-
-   #define FORGET(ABS_DOMAIN)                                    \
-   do {                                                          \
-     ABS_DOMAIN inv;                                             \
-     getAbsDomWrappee (wrapper, inv);                            \
-     crab::domains::domain_traits<ABS_DOMAIN>::forget (inv, vs.begin (), vs.end ()); \
-     return mkGenericAbsDomWrapper (inv);                        \
-   } while (0) ;;
-
 
   //////
   // Generic wrapper to encapsulate an arbitrary abstract domain
@@ -234,43 +238,30 @@ namespace crab_llvm {
 
   struct GenericAbsDomWrapper {
 
-     typedef enum { intv, 
-                    dbm, 
-                    sdbm,
-                    vdbm,
-                    ddbm,
-                    term_intv, 
-                    term_dis_intv, 
+     typedef enum { intv, dbm, sdbm, vdbm, ddbm,
+                    term_intv, term_dis_intv, 
                     ric, 
-                    boxes, 
-                    dis_intv,
-                    intv_apron,
-                    oct_apron,
-                    opt_oct_apron,
-                    pk_apron,
+                    boxes, dis_intv,
+                    intv_apron, oct_apron, opt_oct_apron, pk_apron,
                     num,
                     arr_intv, 
-                    arr_dbm, 
-                    arr_sdbm,
-                    arr_vdbm,
-                    arr_ddbm,
-                    arr_term_intv, 
-                    arr_term_dis_intv, 
+                    arr_dbm, arr_sdbm, arr_vdbm, arr_ddbm,
+                    arr_term_intv, arr_term_dis_intv, 
                     arr_ric, 
-                    arr_boxes,
-                    arr_dis_intv,
-                    arr_intv_apron,
-                    arr_oct_apron,
-                    arr_opt_oct_apron,
-                    arr_pk_apron,
+                    arr_boxes, arr_dis_intv,
+                    arr_intv_apron, arr_oct_apron, arr_opt_oct_apron, arr_pk_apron,
                     arr_num
                   } id_t;
 
      GenericAbsDomWrapper () { }
 
      virtual id_t getId () const = 0;
-     virtual void write (std::ostream& o) const = 0;
-     virtual z_lin_cst_sys_t to_linear_constraints () const = 0;
+
+     virtual void write (std::ostream& o) = 0;
+
+     virtual z_lin_cst_sys_t to_linear_constraints () = 0;
+
+     virtual void forget(const vector<varname_t>& vars) = 0;
    };
 
    typedef boost::shared_ptr<GenericAbsDomWrapper> GenericAbsDomWrapperPtr;
@@ -352,21 +343,27 @@ namespace crab_llvm {
      ArraySmashingDomainWrapper(array_smashing_t abs):  
          GenericAbsDomWrapper (), m_id (getAbsDomId(abs)), m_abs (abs) { }
      
-     array_smashing_t get () const {
+     array_smashing_t& get () {
        return m_abs;
      }
      
-     z_lin_cst_sys_t to_linear_constraints () const {
-       array_smashing_t res (m_abs);
-       return res.to_linear_constraint_system ();
+     z_lin_cst_sys_t to_linear_constraints () {
+       return m_abs.to_linear_constraint_system ();
      }
      
-     void write (std::ostream& o) const { 
-       array_smashing_t res (m_abs);
-       res.write (o);
+     void write (std::ostream& o) { 
+       m_abs.write (o);
      }
+
+     void forget (const vector<varname_t>& vars) { 
+       crab::domains::domain_traits<array_smashing_t>::forget (m_abs,          
+                                                               vars.begin (),  
+                                                               vars.end ());   
+     }                                                                   
    };
-   template <typename B> inline GenericAbsDomWrapperPtr
+
+   template <typename B> 
+   inline GenericAbsDomWrapperPtr 
    mkGenericAbsDomWrapper (array_smashing<B> abs_dom) {
      GenericAbsDomWrapperPtr res (new ArraySmashingDomainWrapper<B> (abs_dom));        
      return res;
@@ -377,46 +374,8 @@ namespace crab_llvm {
                                  array_smashing<B>&abs_dom) {
      auto wrappee = boost::dynamic_pointer_cast<ArraySmashingDomainWrapper<B> > (wrapper);
      if (!wrappee)
-       CRAB_ERROR("Could not cast wrapper to an instance of ArraySmashingDomainWrapper");
+       CRAB_ERROR("Could not cast to instance of ArraySmashingDomainWrapper");
      abs_dom = wrappee->get ();
-   }
-
-   template<typename Range>
-   inline GenericAbsDomWrapperPtr 
-   forget (GenericAbsDomWrapperPtr wrapper, Range vs) {
-     switch (wrapper->getId ()) {
-       case GenericAbsDomWrapper::intv: FORGET(interval_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::ric: FORGET(ric_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::dbm: FORGET(dbm_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::sdbm: FORGET(sdbm_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::vdbm: FORGET(vdbm_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::ddbm: FORGET(ddbm_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::term_intv: FORGET(term_int_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::term_dis_intv: FORGET(term_dis_int_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::boxes: FORGET(boxes_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::intv_apron: FORGET(box_apron_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::oct_apron: FORGET(oct_apron_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::opt_oct_apron: FORGET(opt_oct_apron_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::pk_apron: FORGET(pk_apron_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::dis_intv: FORGET(dis_interval_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::num: FORGET(num_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::arr_intv: FORGET(arr_interval_domain_t, wrapper, vs)
-       case GenericAbsDomWrapper::arr_ric: FORGET(arr_ric_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_dbm: FORGET(arr_dbm_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_sdbm: FORGET(arr_sdbm_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_vdbm: FORGET(arr_vdbm_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_ddbm:  FORGET(arr_ddbm_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_term_intv: FORGET(arr_term_int_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_term_dis_intv: FORGET(arr_term_dis_int_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_boxes: FORGET(arr_boxes_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_dis_intv: FORGET(arr_dis_interval_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_intv_apron: FORGET(arr_box_apron_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_oct_apron: FORGET(arr_oct_apron_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_opt_oct_apron: FORGET(arr_opt_oct_apron_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_pk_apron:  FORGET(arr_pk_apron_domain_t, wrapper, vs) 
-       case GenericAbsDomWrapper::arr_num: FORGET(arr_num_domain_t, wrapper, vs) 
-       default: llvm_unreachable("unreachable");
-     }
    }
 
 } // end namespace
