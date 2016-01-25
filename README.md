@@ -141,7 +141,7 @@ inferred for each basic block in the `LLVM` bitcode.
 
 	You may want also to set the option:
 	
-	   - `--crab-widening-threshold=N`
+	   - `--crab-widening-delay=N`
 
        where `N` is the number of fixpoint iterations before
        triggering widening (e.g., `N=1`). 

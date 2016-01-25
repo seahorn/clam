@@ -33,7 +33,7 @@ extern llvm::cl::opt<bool> CrabPrintAns;
 extern llvm::cl::opt<crab_llvm::CrabDomain> CrabLlvmDomain;
 extern llvm::cl::opt<bool> CrabLive;
 extern llvm::cl::opt<enum crab::cfg::TrackedPrecision> CrabTrackLev;
-extern llvm::cl::opt<unsigned int> CrabWideningThreshold;
+extern llvm::cl::opt<unsigned int> CrabWideningDelay;
 extern llvm::cl::opt<unsigned int> CrabNarrowingIters;
 extern llvm::cl::opt<unsigned int> CrabWideningJumpSet;
 
@@ -197,7 +197,8 @@ namespace crab_llvm
 
     /// --- Global fixpoint 
     conc_analyzer_t a (sys, vfac, CrabLive, 
-                       CrabWideningThreshold, CrabNarrowingIters,
+                       CrabWideningDelay, 
+                       CrabNarrowingIters,
                        CrabWideningJumpSet);
 
     a.Run (init_gv_inv);

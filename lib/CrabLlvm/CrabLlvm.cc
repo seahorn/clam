@@ -48,7 +48,7 @@ CrabPrintSumm ("crab-print-summaries",
                llvm::cl::init (false));
 
 llvm::cl::opt<unsigned int>
-CrabWideningThreshold("crab-widening-threshold", 
+CrabWideningDelay("crab-widening-delay", 
    llvm::cl::desc("Max number of fixpoint iterations until widening is triggered"),
    llvm::cl::init (1));
 
@@ -569,7 +569,7 @@ namespace crab_llvm {
     #endif 
 
     analyzer_t analyzer(cg, m_vfac, (CrabLive ? &live_map : nullptr),
-                        CrabWideningThreshold, CrabNarrowingIters, 
+                        CrabWideningDelay, CrabNarrowingIters, 
                         CrabWideningJumpSet);
     analyzer.Run (TDAbsDomain::top ());
 
@@ -628,7 +628,7 @@ namespace crab_llvm {
 
     // -- run intra-procedural analysis
     analyzer_t analyzer (cfg, m_vfac, &live, 
-                         CrabWideningThreshold, CrabNarrowingIters, 
+                         CrabWideningDelay, CrabNarrowingIters, 
                          CrabWideningJumpSet);
 
     analyzer.Run (AbsDomain::top());

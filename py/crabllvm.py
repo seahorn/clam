@@ -123,8 +123,8 @@ def parseArgs (argv):
                              'int-apron','oct-apron','opt-oct-apron','pk-apron'],
                     dest='crab_dom', default='int')
     ############ 
-    p.add_argument ('--crab-widening-threshold', 
-                    type=int, dest='widening_threshold', 
+    p.add_argument ('--crab-widening-delay', 
+                    type=int, dest='widening_delay', 
                     help='Max number of iterations until performing widening', default=1)
     p.add_argument ('--crab-widening-jump-set', 
                     type=int, dest='widening_jump_set', 
@@ -376,7 +376,7 @@ def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
     if (args.crab_dom == 'num'):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
 
-    crabllvm_cmd.append ('--crab-widening-threshold={0}'.format (args.widening_threshold))
+    crabllvm_cmd.append ('--crab-widening-delay={0}'.format (args.widening_delay))
     crabllvm_cmd.append ('--crab-widening-jump-set={0}'.format (args.widening_jump_set))
     crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format (args.narrowing_iterations))
 
