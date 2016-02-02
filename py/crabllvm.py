@@ -355,13 +355,14 @@ def sharedLib (base):
     return base + ext
 
 # Run crabllvm
-def crabllvm (in_name, out_name, args, cpu = -1, mem = -1):
+def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     def set_limits ():
         if mem > 0:
             mem_bytes = mem * 1024 * 1024
             resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
 
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
+    crabllvm_cmd = crabllvm_cmd + extra_opts
 
     if args.undef_nondet:
         crabllvm_cmd.append( '--crab-turn-undef-nondet')
@@ -471,11 +472,13 @@ def main (argv):
             #stat ('Progress', 'Llvm optimizer')
         in_name = o_out
 
-    if args.analyze:
-        pp_out = defOutPPName(in_name, workdir)
-        with stats.timer ('CrabLlvm'):
-            crabllvm (in_name, pp_out, args, cpu=args.cpu, mem=args.mem)
-        #stat ('Progress', 'Crab Llvm')
+    pp_out = defOutPPName(in_name, workdir)
+    with stats.timer ('CrabLlvm'):
+        extra_opts = []
+        if not args.analyze:
+            extra_opts.append ('-no-crab')
+        crabllvm (in_name, pp_out, args, extra_opts, cpu=args.cpu, mem=args.mem)
+    #stat ('Progress', 'Crab Llvm')
 
     if args.asm_out_name is not None and args.asm_out_name != pp_out:
         if verbose: print 'cp {0} {1}'.format (pp_out, args.asm_out_name)

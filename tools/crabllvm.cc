@@ -52,6 +52,12 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
 static llvm::cl::opt<bool>
+NoCrab ("no-crab", 
+        llvm::cl::desc ("Output bitecode but disable Crab analysis (debugging)"),
+        llvm::cl::init (false),
+        llvm::cl::Hidden);
+
+static llvm::cl::opt<bool>
 Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs (experimental)"),
              llvm::cl::init (false),
              llvm::cl::Hidden);
@@ -189,20 +195,22 @@ int main(int argc, char **argv) {
   // -- must be the last ones before running crab.
   if (LowerSelect)
     pass_manager.add (crab_llvm::createLowerSelectPass ());   
-  
-  if (Concurrency) {
-    // REALLY EXPERIMENTAL ...
-    pass_manager.add (new crab_llvm::ConCrabLlvm ());
-  }
-  else {
-    /// -- run the crab analyzer
-    pass_manager.add (new crab_llvm::CrabLlvm ());
+
+  if (!NoCrab) {
+    if (Concurrency) {
+      // REALLY EXPERIMENTAL ...
+      pass_manager.add (new crab_llvm::ConCrabLlvm ());
+    }
+    else {
+      /// -- run the crab analyzer
+      pass_manager.add (new crab_llvm::CrabLlvm ());
+    }
   }
 
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (asmOutput->os ()));
-
-  if (!Concurrency) {
+ 
+  if (!NoCrab && !Concurrency) {
     /// -- insert invariants as assume instructions
     pass_manager.add (new crab_llvm::InsertInvariants ());
     /// -- simplify invariants added in the bytecode.
