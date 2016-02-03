@@ -172,7 +172,8 @@ abstraction. The possible values are:
    option `--crab-singleton-aliases` is enabled then Crab-Llvm
    translates global singleton heaplets to scalar variables.
 
-- Crab-llvm can resolve indirect calls by enabling option `--crab-devirt`.
+- Crab-llvm can resolve indirect calls by enabling option
+  `--devirt-functions`.
 
 - By default, all the analyses are run in an intra-procedural
   manner. Enable the option `--crab-inter` to run the inter-procedural

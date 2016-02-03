@@ -63,12 +63,7 @@ Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs (ex
              llvm::cl::Hidden);
 
 static llvm::cl::opt<bool>
-CrabDevirtualize ("crab-devirt", 
-                  llvm::cl::desc ("Resolve indirect calls"),
-                  llvm::cl::init (false));
-
-static llvm::cl::opt<bool>
-CrabUndefNondet ("crab-turn-undef-nondet", 
+TurnUndefNondet ("crab-turn-undef-nondet", 
                  llvm::cl::desc ("Turn undefined behaviour into non-determinism"),
                  llvm::cl::init (false),
                  llvm::cl::Hidden);
@@ -171,12 +166,6 @@ int main(int argc, char **argv) {
 
   // -- promote alloca's to registers
   pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
-
-  if (CrabDevirtualize) {
-    // -- resolve indirect calls
-    pass_manager.add (crab_llvm::createDevirtualizeFunctionsPass ());
-  }
-
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   // -- remove unreachable blocks 
@@ -187,10 +176,10 @@ int main(int argc, char **argv) {
   pass_manager.add (crab_llvm::createLowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
-#ifdef HAVE_LLVM_SEAHORN
-  if (CrabUndefNondet) 
+  #ifdef HAVE_LLVM_SEAHORN
+  if (TurnUndefNondet) 
     pass_manager.add (llvm_seahorn::createDeadNondetElimPass ());
-#endif 
+  #endif 
 
   // -- must be the last ones before running crab.
   if (LowerSelect)
@@ -214,11 +203,11 @@ int main(int argc, char **argv) {
     /// -- insert invariants as assume instructions
     pass_manager.add (new crab_llvm::InsertInvariants ());
     /// -- simplify invariants added in the bytecode.
-#ifdef HAVE_LLVM_SEAHORN
+    #ifdef HAVE_LLVM_SEAHORN
     pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
-#else
+    #else
     pass_manager.add (llvm::createInstructionCombiningPass ()); 
-#endif 
+    #endif 
     pass_manager.add (crab_llvm::createSimplifyAssumePass ());
   }
       

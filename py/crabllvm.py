@@ -108,6 +108,9 @@ def parseArgs (argv):
     p.add_argument ('--lower-invoke',
                     help='Lower invoke instructions',
                     dest='lower_invoke', default=False, action='store_true')
+    p.add_argument ('--devirt-functions',
+                    help='Resolve indirect calls',
+                    dest='devirt', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
@@ -158,9 +161,6 @@ def parseArgs (argv):
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        
-    p.add_argument ('--crab-devirt',
-                    help='Resolve indirect calls',
-                    dest='crab_devirt', default=False, action='store_true')
     p.add_argument ('--crab-add-invariants-at-entries',
                     help='Instrument code with invariants at each block entry',
                     dest='insert_invs_entries', default=False, action='store_true')
@@ -289,8 +289,8 @@ def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     opt_args.append('-O{0}'.format (args.L))
 
     # They should be optional
-    opt_args.append ('--enable-indvar=false')
-    opt_args.append ('--enable-loop-idiom=false')
+    opt_args.append ('--enable-indvar=true')
+    opt_args.append ('--enable-loop-idiom=true')
     if args.undef_nondet:
         opt_args.append ('--enable-nondet-init=true')
     else:
@@ -335,6 +335,8 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append( '--crab-lower-gv')
     if args.lower_invoke:
         crabpp_args.append( '--crab-lower-invoke')
+    if args.devirt:
+        crabpp_args.append ('--crab-devirt')
 
     crabpp_args.extend (extra_args)
 
@@ -371,31 +373,24 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
 
     if args.undef_nondet:
         crabllvm_cmd.append( '--crab-turn-undef-nondet')
-
     if args.lower_select:
         crabllvm_cmd.append( '--crab-lower-select')
 
 
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     crabllvm_cmd.append ('--crab-inter-sum-dom={0}'.format (args.crab_inter_sum_dom))
-
     if (args.crab_dom == 'num'):
         crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
-
     crabllvm_cmd.append ('--crab-widening-delay={0}'.format (args.widening_delay))
     crabllvm_cmd.append ('--crab-widening-jump-set={0}'.format (args.widening_jump_set))
     crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format (args.narrowing_iterations))
-
     crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
     if args.crab_disable_offsets:
         crabllvm_cmd.append ('--crab-disable-offsets')
     if args.crab_singleton_aliases:
         crabllvm_cmd.append ('--crab-singleton-aliases')
-
     if args.crab_inter:
         crabllvm_cmd.append ('--crab-inter')
-    if args.crab_devirt:
-        crabllvm_cmd.append ('--crab-devirt')
     if args.crab_live:
         crabllvm_cmd.append ('--crab-live')
     if args.insert_invs_entries:
