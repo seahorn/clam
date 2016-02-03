@@ -264,6 +264,11 @@ def defOutPPName (name, wd=None):
 
 # Run Clang
 def clang (in_name, out_name, arch=32, extra_args=[]):
+    if os.path.splitext (in_name)[1] == '.bc':
+        print '--- Clang skipped: input file is already bitecode'
+        shutil.copy2 (in_name, out_name)
+        return
+
     if out_name == '' or out_name == None:
         out_name = defBCName (in_name)
 
