@@ -313,29 +313,26 @@ namespace crab_llvm {
       CallGraph<cfg_t> cg (cfgs);
 
       // -- run the interprocedural analysis
-      
-      if (m_absdom == NUM) {
+
+      // FIXME: the selection of the final domain between NUM and a
+      //        cheaper domain is fixed for the whole program. That
+      //        is, if there is one function that exceeds the
+      //        threshold then the cheaper domain will be used for all
+      //        functions. We should be able to change from one
+      //        function to another.
+      CrabDomain absdom = m_absdom;
+      if (absdom == NUM) {
         #ifdef CRABLLVM_DEBUG
         cout << "Max live per block: " << max_live_per_blk << endl;
         cout << "Threshold: " << CrabNumThreshold << endl;
         #endif               
-        if (max_live_per_blk < CrabNumThreshold) {
-          #ifdef CRABLLVM_DEBUG
-          cout << "Choosen for forward analysis: " 
-               << num_domain_t::getDomainName () << "\n";
-          #endif 
-        }
-        else {
-          #ifdef CRABLLVM_DEBUG
-          cout << "Choosen for forward analysis: "
-               << interval_domain_t::getDomainName () << "\n";
-          #endif 
-          m_absdom = INTERVALS;
+        if (max_live_per_blk > CrabNumThreshold) {
+          absdom = DIS_INTERVALS;
         }
       }
             
       bool change = false;
-      switch (m_absdom) {
+      switch (absdom) {
         case INTERVALS_CONGRUENCES: 
           INTER_ANALYZE (CrabSummDomain,ric_domain_t,arr_ric_domain_t,
                          CrabTrackLev,cg,M,live_map,change); 
@@ -389,7 +386,7 @@ namespace crab_llvm {
                          CrabTrackLev,cg,M,live_map,change); 
           break;
         default: 
-          if (m_absdom != INTERVALS)
+          if (absdom != INTERVALS)
             cout << "Warning: either abstract domain not found or "
                  << "inter-procedural version not implemented. "
                  << "Running intervals ...\n"; 
@@ -466,29 +463,20 @@ namespace crab_llvm {
       live = &ls;
     }
 
-    if (m_absdom == NUM) {
+    CrabDomain absdom = m_absdom;
+    if (absdom == NUM) {
       #ifdef CRABLLVM_DEBUG
       cout << "Max live per block: " << max_live_per_blk << endl;
       cout << "Threshold: " << CrabNumThreshold << endl;
       #endif               
-      if (max_live_per_blk < CrabNumThreshold) {
-        #ifdef CRABLLVM_DEBUG
-          cout << "Choosen for forward analysis: " 
-               << num_domain_t::getDomainName () << "\n";
-        #endif 
-      }
-      else {
-        #ifdef CRABLLVM_DEBUG
-          cout << "Choosen for forward analysis: " 
-               << interval_domain_t::getDomainName () << "\n";
-        #endif
-        m_absdom = INTERVALS;
+      if (max_live_per_blk > CrabNumThreshold) {
+        absdom = DIS_INTERVALS;
       }
     }
     
     // -- run invariant generator
     bool change=false;
-    switch (m_absdom) {
+    switch (absdom) {
       case INTERVALS_CONGRUENCES: 
         ANALYZE(CrabTrackLev, ric_domain_t, arr_ric_domain_t, cfg, F, *live, change);
         break;
@@ -536,7 +524,7 @@ namespace crab_llvm {
         ANALYZE(CrabTrackLev,num_domain_t,arr_num_domain_t,cfg,F,*live,change);
         break;
       default: 
-        if (m_absdom != INTERVALS)
+        if (absdom != INTERVALS)
           cout << "Warning: abstract domain not found. Running intervals ...\n"; 
         ANALYZE(CrabTrackLev,interval_domain_t,arr_interval_domain_t,cfg,F,*live,change);
     }
