@@ -105,6 +105,9 @@ def parseArgs (argv):
     p.add_argument ('--lower-gv',
                     help='Lower global variable initializers into main',
                     dest='lower_gv', default=False, action='store_true')
+    p.add_argument ('--lower-invoke',
+                    help='Lower invoke instructions',
+                    dest='lower_invoke', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
@@ -220,8 +223,8 @@ def getCrabLlvmPP ():
     if 'CRABLLVMPP' in os.environ:
         crabpp = os.environ ['CRABLLVMPP']
     if not isexec (crabpp):
-        crabpp = os.path.join (root, "bin/crabllvmpp")
-    if not isexec (crabpp): crabpp = which ('crabllvmpp')
+        crabpp = os.path.join (root, "bin/crabllvm-pp")
+    if not isexec (crabpp): crabpp = which ('crabllvm-pp')
     if not isexec (crabpp):
         raise IOError ("Cannot find crabllvm pre-processor")
     return crabpp
@@ -330,6 +333,8 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append( '--crab-turn-undef-nondet')
     if args.lower_gv:
         crabpp_args.append( '--crab-lower-gv')
+    if args.lower_invoke:
+        crabpp_args.append( '--crab-lower-invoke')
 
     crabpp_args.extend (extra_args)
 

@@ -1,5 +1,5 @@
 ///
-// LlvmPP-- LLVM bitcode Pre-Processor for static analysis
+// crabllvm-pp -- LLVM bitcode Pre-Processor for static analysis
 ///
 
 #include "llvm/LinkAllPasses.h"
@@ -54,11 +54,15 @@ InlineAll ("crab-inline-all", llvm::cl::desc ("Inline all functions"),
 
 static llvm::cl::opt<bool>
 LowerSelect ("crab-lower-select", llvm::cl::desc ("Lower all select instructions"),
-           llvm::cl::init (false));
+             llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+LowerInvoke ("crab-lower-invoke", llvm::cl::desc ("Lower all invoke instructions"),
+             llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
 CrabLowerGv ("crab-lower-gv", llvm::cl::desc ("Lower global initializers in main"),
-         llvm::cl::init (false));
+             llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
 OptimizeLoops ("crab-pp-loops", 
@@ -221,10 +225,13 @@ int main(int argc, char **argv) {
   }
 #endif 
 
-  // -- lower invoke's
-  pass_manager.add(llvm::createLowerInvokePass());
-  // cleanup after lowering invoke's
-  pass_manager.add (llvm::createCFGSimplificationPass ());  
+  if (LowerInvoke) 
+  {
+    // -- lower invoke's
+    pass_manager.add(llvm::createLowerInvokePass());
+    // cleanup after lowering invoke's
+    pass_manager.add (llvm::createCFGSimplificationPass ());  
+  }
   
   if (InlineAll)
   {

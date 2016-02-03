@@ -9,15 +9,15 @@ Crab-llvm is a static analyzer that computes inductive invariants
 based on [Crab](https://github.com/seahorn/crab) for LLVM-based
 languages.
 
-Crab-llvm provides two standalone tools: `crabllvmpp` and `crabllvm`:
+Crab-llvm provides two standalone tools: `crabllvm-pp` and `crabllvm`:
 
-- `crabllvmpp`: is a LLVM bytecode preprocessor that applies optimizations
+- `crabllvm-pp`: is a LLVM bytecode preprocessor that applies optimizations
 to make easier the task of static analysis.
 
 - `crabllvm`: converts LLVM bitcode into a language-independent CFG
   and computes invariants from it.
 
-The use of `crabllvmpp` is optional but highly recommended with large
+The use of `crabllvm-pp` is optional but highly recommended with large
 programs.
 
 #License#
@@ -40,7 +40,7 @@ download the following package at the root directory:
 DSA (Data Structure Analysis) is a heap analysis described
 [here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps).
 
-Another optional component used by `crabllvmpp` is:
+Another optional component used by `crabllvm-pp` is:
 
 * [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
 
