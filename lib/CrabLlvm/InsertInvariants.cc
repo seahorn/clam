@@ -218,7 +218,7 @@ namespace crab_llvm
   // work but it's more efficient than storing all invariants at each
   // program point.
   template<typename AbsDomain>
-  bool InsertInvariants::instrument_loads (AbsDomain pre, 
+  bool InsertInvariants::instrument_loads (AbsDomain inv, 
                                            basic_block_t& bb, 
                                            LLVMContext &ctx,
                                            CallGraph* cg) {
@@ -230,9 +230,9 @@ namespace crab_llvm
     IRBuilder<> Builder (ctx);
     bool change=false;
 
-    // FIXME: it will propagate forward pre through the basic block
+    // FIXME: it will propagate forward inv through the basic block
     //        but ignoring callsites
-    num_abs_tr_t vis (pre, nullptr, nullptr); 
+    num_abs_tr_t vis (inv, nullptr, nullptr); 
     for (auto &s: bb) {
 
       s.accept (&vis); //propagate the invariant one statement forward
@@ -259,8 +259,6 @@ namespace crab_llvm
       if (!I)
         continue;
 
-      AbsDomain inv = vis.inv ();
-      
       // -- Remove array shadow variables otherwise llvm will
       //    get choked
       CrabLlvm* crab = &getAnalysis<CrabLlvm> ();
