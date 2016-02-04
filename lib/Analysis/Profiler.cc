@@ -130,12 +130,19 @@ namespace crab_llvm {
     friend class InstVisitor<AnalysisProfiler>;
 
     boost::unordered_map <unsigned int, Counter> counters;
-    void incrementCounter (unsigned id, const char* name, unsigned val) {
+    unsigned CounterId;
+
+    void incrCounter (unsigned id, const char* name, unsigned val) {
       auto it = counters.find (id);
       if (it != counters.end ())
         it->second += val;
       else
         counters.insert (std::make_pair (id, Counter (id, name)));
+    }
+
+    Counter mkCounter (const char* name) {
+      Counter res (CounterId++, name);
+      return res;
     }
 
     const DataLayout* DL;
@@ -154,7 +161,8 @@ namespace crab_llvm {
     unsigned int SafeFPDiv;
     unsigned int UnsafeIntDiv;
     unsigned int UnsafeFPDiv;
-    unsigned int DivUnknown;
+    unsigned int DivIntUnknown;
+    unsigned int DivFPUnknown;
     /// 
     unsigned int TotalMemAccess;
     unsigned int MemUnknownSize;
@@ -243,7 +251,13 @@ namespace crab_llvm {
         }
         else {
           // cannot figure out statically
-          DivUnknown++;
+          if (BI->getOpcode () == BinaryOperator::SDiv ||
+              BI->getOpcode () == BinaryOperator::UDiv ||
+              BI->getOpcode () == BinaryOperator::SRem ||
+              BI->getOpcode () == BinaryOperator::URem)
+            DivIntUnknown++;
+          else 
+            DivFPUnknown++;
         }
       }
       else if (BI->getOpcode () == BinaryOperator::Shl) {
@@ -267,7 +281,7 @@ namespace crab_llvm {
 
     #define HANDLE_INST(N, OPCODE, CLASS)                    \
     void visit##OPCODE(CLASS &I) {                           \
-      incrementCounter (N, #OPCODE, 1);                      \
+      incrCounter (N, #OPCODE, 1);                           \
       ++TotalInsts;                                          \
       if (CallInst* CI = dyn_cast<CallInst>(&I)) {           \
          CallSite CS (CI);                                   \
@@ -301,12 +315,13 @@ namespace crab_llvm {
 
     AnalysisProfiler() : 
         ModulePass(ID),
+        CounterId (0),
         DL (nullptr), TLI (nullptr),
         TotalFuncs (0), TotalBlocks (0), TotalJoins (0), TotalInsts (0),
         TotalDirectCalls (0), TotalExternalCalls (0), TotalIndirectCalls (0),
         ////////
         SafeIntDiv (0), SafeFPDiv (0), 
-        UnsafeIntDiv (0), UnsafeFPDiv (0), DivUnknown (0),
+        UnsafeIntDiv (0), UnsafeFPDiv (0), DivIntUnknown (0), DivFPUnknown (0),
         /////////
         TotalMemAccess (0), MemUnknownSize (0), 
         SafeMemAccess (0), UnsafeMemAccess (0), MemUnknown (0),
@@ -315,14 +330,7 @@ namespace crab_llvm {
     { }
 
     bool runOnFunction(Function &F)  {
-       // unsigned StartMemInsts =
-       //     NumGetElementPtrInst + NumLoadInst + NumStoreInst + NumCallInst +
-       //     NumInvokeInst + NumAllocaInst;
        visit(F);
-       // unsigned EndMemInsts =
-       //     NumGetElementPtrInst + NumLoadInst + NumStoreInst + NumCallInst +
-       //     NumInvokeInst + NumAllocaInst;
-       // TotalMemInst += EndMemInsts-StartMemInsts;
        return false;
     }
 
@@ -378,19 +386,19 @@ namespace crab_llvm {
 
       { 
         // Global counters
-        Counter c1 (1,"Number of instructions");
+        Counter c1  = mkCounter("Number of instructions");
         c1 += TotalInsts;
-        Counter c2 (2,"Number of basic blocks");
+        Counter c2  = mkCounter("Number of basic blocks");
         c2 += TotalBlocks;
-        Counter c3 (3,"Number of joins");
+        Counter c3  = mkCounter("Number of joins");
         c3 += TotalJoins;
-        Counter c4 (4,"Number of non-external functions");
+        Counter c4 = mkCounter("Number of non-external functions");
         c4 += TotalFuncs;
-        Counter c5 (5,"Number of (non-external) direct calls");
+        Counter c5 = mkCounter("Number of (non-external) direct calls");
         c5 += TotalDirectCalls;
-        Counter c6 (6,"Number of (non-external) indirect calls");
+        Counter c6 = mkCounter("Number of (non-external) indirect calls");
         c6 += TotalIndirectCalls;
-        Counter c7 (7,"Number of external calls");
+        Counter c7 = mkCounter("Number of external calls");
         c7 += TotalExternalCalls;
 
        std::vector<Counter> global_counters {c1, c2, c3, c4, c5, c6, c7};
@@ -424,17 +432,20 @@ namespace crab_llvm {
 
       { // Division counters
         MaxNameLen = MaxValLen = 0;
-        Counter c1 (1,"Number of safe integer div/rem");
+        Counter c1 = mkCounter("Number of safe integer div/rem");
         c1 += SafeIntDiv;
-        Counter c2 (2,"Number of definite unsafe integer div/rem");
+        Counter c2 = mkCounter("Number of definite unsafe integer div/rem");
         c2 += UnsafeIntDiv;
-        Counter c3 (3,"Number of safe FP div/rem");
+        Counter c3 = mkCounter("Number of safe FP div/rem");
         c3 += SafeFPDiv;
-        Counter c4 (4,"Number of definite unsafe FP div/rem");
+        Counter c4 = mkCounter("Number of definite unsafe FP div/rem");
         c4 += UnsafeFPDiv;
-        Counter c5 (5,"Number of non-static div/rem");
-        c5 += DivUnknown;
-        std::vector<Counter> div_counters {c1, c2, c3, c4, c5};
+        Counter c5 = mkCounter("Number of unknown integer div/rem");
+        c5 += DivIntUnknown;
+        Counter c6 = mkCounter("Number of unknown FP div/rem");
+        c6 += DivFPUnknown;
+
+        std::vector<Counter> div_counters {c1, c2, c3, c4, c5, c6};
         formatCounters (div_counters, MaxNameLen, MaxValLen,false);
         O << " ======================== \n";
         O << "   Division by zero       \n";
@@ -450,11 +461,11 @@ namespace crab_llvm {
 
       { // left shift
         MaxNameLen = MaxValLen = 0;
-        Counter c1 (1,"Number of safe left shifts");
+        Counter c1 = mkCounter("Number of safe left shifts");
         c1 += SafeLeftShift;
-        Counter c2 (2,"Number of definite unsafe left shifts");
+        Counter c2 = mkCounter("Number of definite unsafe left shifts");
         c2 += UnsafeLeftShift;
-        Counter c3 (3,"Number of unknown left shifts");
+        Counter c3 = mkCounter("Number of unknown left shifts");
         c3 += UnknownLeftShift;
         std::vector<Counter> lsh_counters {c1, c2, c3};
         formatCounters (lsh_counters, MaxNameLen, MaxValLen,false);
@@ -473,15 +484,15 @@ namespace crab_llvm {
 
       { // Memory counters
         MaxNameLen = MaxValLen = 0;
-        Counter c1 (1,"Total Number of memory accesses (only via Load/Store)");
+        Counter c1 = mkCounter("Total Number of memory accesses (only via Load/Store)");
         c1 += TotalMemAccess;
-        Counter c2 (2,"Number of safe memory accesses");
+        Counter c2 = mkCounter("Number of safe memory accesses");
         c2 += SafeMemAccess;
-        Counter c3 (3,"Number of definite unsafe memory accesses");
+        Counter c3 = mkCounter("Number of definite unsafe memory accesses");
         c3 += UnsafeMemAccess;
-        Counter c4 (4,"Number of unknown memory accesses due to unknown size");
+        Counter c4 = mkCounter("Number of unknown memory accesses due to unknown size");
         c4 += MemUnknownSize;
-        Counter c5 (5,"Number of unknown memory accesses due to unknown offset");
+        Counter c5 = mkCounter("Number of unknown memory accesses due to unknown offset");
         c5 += MemUnknown;
         std::vector<Counter> mem_counters {c1, c2, c3, c4, c5};
         formatCounters (mem_counters, MaxNameLen, MaxValLen,false);
