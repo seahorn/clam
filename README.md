@@ -268,9 +268,3 @@ between 0 and 5.
   pointer abstract domain) wants to be used the translation must be
   extended.
 - ...
-
-#People#
-
-* [Jorge Navas](http://ti.arc.nasa.gov/profile/jorge/)
-* [Arie Gurfinkel](arieg.bitbucket.org)
-* [Temesghen Kahsai](http://www.lememta.info/)
