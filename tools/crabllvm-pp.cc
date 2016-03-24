@@ -70,7 +70,7 @@ LowerGv ("crab-lower-gv", llvm::cl::desc ("Lower global initializers in main"),
              llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-OptimizeLoops ("crab-pp-loops", 
+OptimizeLoops ("crab-llvm-pp-loops", 
                llvm::cl::desc ("Perform loop optimizations"),
                llvm::cl::init (false));
 

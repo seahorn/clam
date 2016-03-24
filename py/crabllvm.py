@@ -83,7 +83,7 @@ def parseArgs (argv):
                        help='Skip compilation and preprocessing', action='store_false',
                        default=True)
     p.add_argument ("--no-analyze", dest="analyze", 
-                       help='Skip analysis', action='store_false',
+                       help='Skip analysis (for debugging)', action='store_false',
                        default=True)
     p.add_argument ('-O', type=int, dest='L', metavar='INT',
                        help='Optimization level L:[0,1,2,3]', default=0)
@@ -91,11 +91,18 @@ def parseArgs (argv):
                        help='CPU time limit (seconds)', default=-1)
     p.add_argument ('--mem', type=int, dest='mem', metavar='MB',
                        help='MEM limit (MB)', default=-1)
+    p.add_argument ('--llvm-inline-threshold', dest='inline_threshold',
+                    type=int, metavar='NUM',
+                    help='Inline threshold (default = 255)')
+    p.add_argument ('--llvm-pp-loops',
+                    help='Optimizing loops',
+                    dest='pp_loops', default=False, action='store_true')
+    p.add_argument ('--llvm-unroll-threshold', type=int,
+                    help='Unrolling threshold (default = 150)',
+                    dest='unroll_threshold',
+                    default=150, metavar='NUM')
     p.add_argument ('--inline', dest='inline', help='Inline all functions',
                     default=False, action='store_true')
-    p.add_argument ('--pp-loops',
-                    help='Preprocessing Loops',
-                    dest='pp_loops', default=False, action='store_true')
     p.add_argument ('--turn-undef-nondet',
                     help='Turn undefined behaviour into non-determinism',
                     dest='undef_nondet', default=False, action='store_true')
@@ -103,7 +110,7 @@ def parseArgs (argv):
                     help='Lower select instructions',
                     dest='lower_select', default=False, action='store_true')
     p.add_argument ('--lower-gv',
-                    help='Lower global variable initializers into main',
+                    help='Lower some scalar global variable initializers into main',
                     dest='lower_gv', default=False, action='store_true')
     p.add_argument ('--lower-invoke',
                     help='Lower invoke instructions',
@@ -161,12 +168,10 @@ def parseArgs (argv):
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        
-    p.add_argument ('--crab-add-invariants-at-entries',
-                    help='Instrument code with invariants at each block entry',
-                    dest='insert_invs_entries', default=False, action='store_true')
-    p.add_argument ('--crab-add-invariants-after-loads',
-                    help='Instrument code with invariants after each load instruction',
-                    dest='insert_invs_loads', default=False, action='store_true')
+    p.add_argument ('--crab-add-invariants',
+                    help='Instrument code with invariants',
+                    choices=['none', 'block-entry', 'after-load'],
+                    dest='insert_invs', default='none')
     p.add_argument ('--crab-print-invariants',
                     help='Display computed invariants',
                     dest='show_invars', default=False, action='store_true')
@@ -293,13 +298,20 @@ def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if out_name is not None: opt_args.extend (['-o', out_name])
     opt_args.append('-O{0}'.format (args.L))
 
-    # They should be optional
+    # These two should be optional
     opt_args.append ('--enable-indvar=true')
     opt_args.append ('--enable-loop-idiom=true')
-    if args.undef_nondet:
+
+    if args.undef_nondet: 
         opt_args.append ('--enable-nondet-init=true')
-    else:
+    else: 
         opt_args.append ('--enable-nondet-init=false')
+    if args.inline_threshold is not None:
+        opt_args.append ('--inline-threshold={t}'.format
+                         (t=args.inline_threshold))
+    if args.unroll_threshold is not None:
+        opt_args.append ('--unroll-threshold={t}'.format
+                         (t=args.unroll_threshold))
     opt_args.extend (extra_args)
     opt_args.append (in_name)
 
@@ -333,7 +345,7 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.inline: 
         crabpp_args.append ('--crab-inline-all')
     if args.pp_loops: 
-        crabpp_args.append ('--crab-pp-loops')
+        crabpp_args.append ('--crab-llvm-pp-loops')
     if args.undef_nondet:
         crabpp_args.append( '--crab-turn-undef-nondet')
     if args.lower_gv:
@@ -398,10 +410,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         crabllvm_cmd.append ('--crab-inter')
     if args.crab_live:
         crabllvm_cmd.append ('--crab-live')
-    if args.insert_invs_entries:
-        crabllvm_cmd.append ('--crab-add-invariants-at-entries')
-    if args.insert_invs_loads:
-        crabllvm_cmd.append ('--crab-add-invariants-after-loads')
+    crabllvm_cmd.append ('--crab-add-invariants={0}'.format (args.insert_invs))
     if args.show_invars:
         crabllvm_cmd.append ('--crab-print-invariants')
     if args.show_summs:

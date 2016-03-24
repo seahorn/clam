@@ -187,8 +187,12 @@ int main(int argc, char **argv) {
 
   if (!NoCrab) {
     if (Concurrency) {
+    #ifdef HAVE_CONC
       // REALLY EXPERIMENTAL ...
       pass_manager.add (new crab_llvm::ConCrabLlvm ());
+    #else
+      errs () << "Crab-llvm needs to be compiled with -DHAVE_CONC=ON.\n";
+    #endif 
     }
     else {
       /// -- run the crab analyzer

@@ -173,7 +173,8 @@ abstraction. The possible values are:
    translates global singleton heaplets to scalar variables.
 
 - Crab-llvm can resolve indirect calls by enabling option
-  `--devirt-functions`.
+  `--devirt-functions`. For C++ programs, it might be useful the
+  option `--lower-invoke`.
 
 - By default, all the analyses are run in an intra-procedural
   manner. Enable the option `--crab-inter` to run the inter-procedural
@@ -189,9 +190,9 @@ abstraction. The possible values are:
 - To make easier the communication with other LLVM-based tools,
   Crab-llvm can output the invariants by inserting them into the LLVM
   bitecode via `verifier.assume` instructions. The option
-  `--crab-add-invariants-at-entries` injects the invariants that hold
+  `--crab-add-invariants=block-entry` injects the invariants that hold
   at each basic block entry while option
-  `--crab-add-invariants-after-loads` injects the invariants that hold
+  `--crab-add-invariants=after-load` injects the invariants that hold
   right after each LLVM load instruction. To see the final LLVM
   bitecode just add the option `-o out.bc`.
   

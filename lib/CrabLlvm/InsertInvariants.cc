@@ -34,17 +34,19 @@
 using namespace llvm;
 using namespace crab_llvm;
 
-
-static llvm::cl::opt<bool>
-CrabInsertEntries ("crab-add-invariants-at-entries", 
-                   llvm::cl::desc ("Instrument basic block entries with invariants"),
-                   llvm::cl::init (false));
-
-static llvm::cl::opt<bool>
-CrabInsertLoads ("crab-add-invariants-after-loads", 
-                 llvm::cl::desc ("Instrument load instructions with invariants"),
-                 llvm::cl::init (false));
-
+enum InsertInvsLoc { NONE, BLOCK_ENTRY, AFTER_LOAD};
+static llvm::cl::opt<InsertInvsLoc>
+InsertInvs("crab-add-invariants", 
+        llvm::cl::desc("Instrument code with invariants"),
+        llvm::cl::values(
+            clEnumValN (NONE, "none", "None"),
+            clEnumValN (BLOCK_ENTRY, "block-entry",
+                        "Add invariants that hold at each block entry"),
+            clEnumValN (AFTER_LOAD, "after-load",
+                        "Add invariants that hold after each load instruction"),
+            clEnumValEnd),
+        llvm::cl::init (NONE));
+            
 #define DEBUG_TYPE "crab-insert-invars"
 
 STATISTIC(NumInstrBlocks, "Number of basic blocks instrumented with invariants");
@@ -293,8 +295,7 @@ namespace crab_llvm
 
   bool InsertInvariants::runOnModule (llvm::Module &M)
   {
-    if (!CrabInsertEntries && 
-        !CrabInsertLoads)
+    if (InsertInvs == NONE)
       return false;
 
     LLVMContext& ctx = M.getContext ();
@@ -340,14 +341,14 @@ namespace crab_llvm
     bool change = false;
     for (auto &B : F) {
 
-      if (CrabInsertEntries) {
+      if (InsertInvs == BLOCK_ENTRY) {
         // --- Instrument basic block entry
         auto pre = crab->getPre (&B, false /*remove shadows*/);
         auto csts = pre->to_linear_constraints ();
         change |= instrument_entries (csts, &B, F.getContext(), cg);
       }
 
-      if (CrabInsertLoads) {
+      if (InsertInvs == AFTER_LOAD) {
         // --- We only instrument Load instructions
         if (reads_memory (B)) {
 

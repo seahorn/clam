@@ -32,6 +32,7 @@ endif ()
 
 option (USE_LDD   "Enable ldd" OFF)
 option (USE_APRON "Enable Apron library" OFF)
+option (HAVE_CONC "Enable very experimental concurrency analysis" OFF)
 
 # Add path for custom modules
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")

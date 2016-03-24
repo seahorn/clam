@@ -35,7 +35,7 @@ using namespace crab_llvm;
 
 // FIXME: template instantiation takes really long time ... so we
 // don't include all the domains by default
-// #define INCLUDE_ALL_DOMAINS
+//#define INCLUDE_ALL_DOMAINS
 
 llvm::cl::opt<bool>
 CrabPrintAns ("crab-print-invariants", 
@@ -79,21 +79,21 @@ CrabLlvmDomain("crab-dom",
                 clEnumValN (DIS_INTERVALS, "dis-int",
                             "Disjunctive intervals based on disjunction completion"),
                 clEnumValN (ZONES , "zones",
-                            "Sparse Difference-Bounds Matrix (or Zones) domain"),
+                            "Zones domain with Sparse Difference-Bounds Matrix (DBMs)"),
                 clEnumValN (SZONES, "szones",
-                            "Split Difference-Bounds Matrix domain"),
+                            "Zones domain with Sparse DBMs in Split Normal Form"),
                 clEnumValN (DZONES, "dzones",
-                            "Dense Difference-Bounds Matrix"),
+                            "Zones domain with dense DBMs"),
                 clEnumValN (VZONES, "vzones",
-                            "Dense Difference-Bounds Matrix with variable packing"),
+                            "Zones domain with dense DBMs and dynamic variable packing"),
                 clEnumValN (INTV_APRON, "int-apron",
-                            "Intervals using Apron library"),
+                            "Intervals domain using Apron library"),
                 clEnumValN (OCT_APRON, "oct-apron",
-                            "Octagons using Apron library"),
+                            "Octagons domain using Apron library"),
                 clEnumValN (OPT_OCT_APRON, "opt-oct-apron",
-                            "Optimized octagons using Elina"),
+                            "Optimized octagons domain using Elina"),
                 clEnumValN (PK_APRON, "pk-apron",
-                            "New polka using Apron library"),
+                            "Polyhedra domain using Apron library"),
                 clEnumValN (NUM, "num",
                             "Choose between int and reduced product of term-dis-int with szones."),
                 clEnumValEnd),
@@ -122,11 +122,13 @@ CrabSummDomain("crab-inter-sum-dom",
        llvm::cl::desc ("Crab relational abstract domain to generate function summaries"),
        llvm::cl::values 
        (clEnumValN (ZONES, "zones",
-                    "Difference-Bounds Matrix (or Zones) domain"),
+                    "Zones domain with sparse DBMs"),
         clEnumValN (SZONES, "szones",
-                    "Split Zones domain"),
+                    "Zones domain with sparse DBMs in Split Normal Form"),
+        clEnumValN (DZONES, "dzones",
+                    "Zones domain with dense DBMs"),
         clEnumValN (VZONES, "vzones",
-                    "Dense Zones with variable packing"),
+                    "Zones domain with dense DBMs and dynamic variable packing"),
         clEnumValN (OPT_OCT_APRON, "opt-oct-apron",
                     "Optimized octagons using Elina"),
         clEnumValN (TERMS_INTERVALS, "term-int",
@@ -184,6 +186,11 @@ namespace crab_llvm {
       RES = (TRACK == ARR ?                                                \
            analyzeCg <arr_vdbm_domain_t, ARR_DOM> (CG, LIVE, M) :          \
            analyzeCg <vdbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;            \
+      break;                                                               \
+    case DZONES:                                                           \
+      RES = (TRACK == ARR ?                                                \
+           analyzeCg <arr_ddbm_domain_t, ARR_DOM> (CG, LIVE, M) :          \
+           analyzeCg <ddbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;            \
       break;                                                               \
     case ZONES:                                                            \
       RES = (TRACK == ARR ?                                                \
