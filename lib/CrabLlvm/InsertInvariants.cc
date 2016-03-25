@@ -365,12 +365,8 @@ namespace crab_llvm
               INSTR_LOAD(ric_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
-            case GenericAbsDomWrapper::dbm: {
-              INSTR_LOAD(dbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
-              break;
-            }
-            case GenericAbsDomWrapper::sdbm: {
-              INSTR_LOAD(sdbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+            case GenericAbsDomWrapper::split_dbm: {
+              INSTR_LOAD(split_dbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::term_intv: {
@@ -393,12 +389,8 @@ namespace crab_llvm
               INSTR_LOAD(arr_ric_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
-            case GenericAbsDomWrapper::arr_dbm: {
-              INSTR_LOAD(arr_dbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
-              break;
-            }
-            case GenericAbsDomWrapper::arr_sdbm: {
-              INSTR_LOAD(arr_sdbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+            case GenericAbsDomWrapper::arr_split_dbm: {
+              INSTR_LOAD(arr_split_dbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_term_intv: {

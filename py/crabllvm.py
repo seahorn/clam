@@ -123,16 +123,7 @@ def parseArgs (argv):
     p.add_argument ('--crab-dom',
                     help='Choose abstract domain',
                     choices=['int','ric', 'boxes', 'dis-int', 'term-int', 'term-dis-int', 'num',
-                             ## Zones variants
-                             #  sparse zones
-                             'zones',
-                             #  split zones
-                             'szones',
-                             #  dense zones
-                             'dzones',
-                             #  dense zones with variable packing
-                             'vzones',
-                             ## Apron domains
+                             'zones-sparse', 'zones-split', 'zones-dense', 'zones-dense-pack',
                              'int-apron','oct-apron','opt-oct-apron','pk-apron'],
                     dest='crab_dom', default='int')
     ############ 
@@ -163,8 +154,10 @@ def parseArgs (argv):
                     dest='crab_inter', default=False, action='store_true')
     p.add_argument ('--crab-inter-sum-dom',
                     help='Choose abstract domain for computing summaries',
-                    choices=['term-int', 'zones', 'szones', 'vzones', 'opt-oct-apron','num'],
-                    dest='crab_inter_sum_dom', default='szones')
+                    choices=['term-int', 
+                             'zones-sparse', 'zones-split', 'zones-dense-pack', 
+                             'opt-oct-apron','num'],
+                    dest='crab_inter_sum_dom', default='zones-split')
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        

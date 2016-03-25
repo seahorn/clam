@@ -78,13 +78,13 @@ CrabLlvmDomain("crab-dom",
                             "Disjunctive intervals based on ldds"),
                 clEnumValN (DIS_INTERVALS, "dis-int",
                             "Disjunctive intervals based on disjunction completion"),
-                clEnumValN (ZONES , "zones",
+                clEnumValN (ZONES_SPARSE_DBM , "zones-sparse",
                             "Zones domain with Sparse Difference-Bounds Matrix (DBMs)"),
-                clEnumValN (SZONES, "szones",
+                clEnumValN (ZONES_SPLIT_DBM, "zones-split",
                             "Zones domain with Sparse DBMs in Split Normal Form"),
-                clEnumValN (DZONES, "dzones",
+                clEnumValN (ZONES_DENSE_DBM, "zones-dense",
                             "Zones domain with dense DBMs"),
-                clEnumValN (VZONES, "vzones",
+                clEnumValN (ZONES_DENSE_PACK_DBM, "zones-dense-pack",
                             "Zones domain with dense DBMs and dynamic variable packing"),
                 clEnumValN (INTV_APRON, "int-apron",
                             "Intervals domain using Apron library"),
@@ -95,7 +95,7 @@ CrabLlvmDomain("crab-dom",
                 clEnumValN (PK_APRON, "pk-apron",
                             "Polyhedra domain using Apron library"),
                 clEnumValN (NUM, "num",
-                            "Choose between int and reduced product of term-dis-int with szones."),
+                            "Choose between int and reduced product of term-dis-int with zones-split."),
                 clEnumValEnd),
                llvm::cl::init (INTERVALS));
 
@@ -121,13 +121,13 @@ llvm::cl::opt<CrabDomain>
 CrabSummDomain("crab-inter-sum-dom",
        llvm::cl::desc ("Crab relational abstract domain to generate function summaries"),
        llvm::cl::values 
-       (clEnumValN (ZONES, "zones",
+       (clEnumValN (ZONES_SPARSE_DBM, "zones-sparse",
                     "Zones domain with sparse DBMs"),
-        clEnumValN (SZONES, "szones",
+        clEnumValN (ZONES_SPLIT_DBM, "zones-split",
                     "Zones domain with sparse DBMs in Split Normal Form"),
-        clEnumValN (DZONES, "dzones",
+        clEnumValN (ZONES_DENSE_DBM, "zones-dense",
                     "Zones domain with dense DBMs"),
-        clEnumValN (VZONES, "vzones",
+        clEnumValN (ZONES_DENSE_PACK_DBM, "zones-dense-pack",
                     "Zones domain with dense DBMs and dynamic variable packing"),
         clEnumValN (OPT_OCT_APRON, "opt-oct-apron",
                     "Optimized octagons using Elina"),
@@ -136,9 +136,9 @@ CrabSummDomain("crab-inter-sum-dom",
         clEnumValN (TERMS_DIS_INTERVALS, "term-dis-int",
                     "Disjunctive Intervals with uninterpreted functions."),
         clEnumValN (NUM, "num",
-                    "Reduced product of term-dis-int and szones"),
+                    "Reduced product of term-dis-int and zones-split"),
         clEnumValEnd),
-       llvm::cl::init (ZONES));
+       llvm::cl::init (ZONES_SPLIT_DBM));
 
 llvm::cl::opt<enum TrackedPrecision>
 CrabTrackLev("crab-track",
@@ -182,17 +182,17 @@ namespace crab_llvm {
            analyzeCg <arr_term_dis_int_domain_t, ARR_DOM> (CG, LIVE, M) :  \
            analyzeCg <term_dis_int_domain_t, BASE_DOM> (CG, LIVE, M)) ;    \
       break;                                                               \
-    case VZONES:                                                           \
+    case ZONES_DENSE_PACK_DBM:                                             \
       RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_vdbm_domain_t, ARR_DOM> (CG, LIVE, M) :          \
-           analyzeCg <vdbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;            \
+           analyzeCg <arr_dp_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :        \
+           analyzeCg <dp_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;          \
       break;                                                               \
-    case DZONES:                                                           \
+    case ZONES_DENSE_DBM:                                                  \
       RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_ddbm_domain_t, ARR_DOM> (CG, LIVE, M) :          \
-           analyzeCg <ddbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;            \
+           analyzeCg <arr_d_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :         \
+           analyzeCg <d_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;           \
       break;                                                               \
-    case ZONES:                                                            \
+    case ZONES_SPARSE_DBM:                                                 \
       RES = (TRACK == ARR ?                                                \
            analyzeCg <arr_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :           \
            analyzeCg <dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;             \
@@ -208,13 +208,14 @@ namespace crab_llvm {
            analyzeCg <num_domain_t, BASE_DOM> (CG, LIVE, M)) ;             \
       break;                                                               \
     default:                                                               \
-      if (SUMM_DOM != SZONES)                                              \
-        cout << "Warning: choosing split zones to compute summaries\n";    \
+      if (SUMM_DOM != ZONES_SPLIT_DBM)                                     \
+        cout << "Warning: choosing zones-split to compute summaries\n";    \
       RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_sdbm_domain_t, ARR_DOM> (CG, LIVE, M) :          \
-           analyzeCg <sdbm_domain_t, BASE_DOM> (CG, LIVE, M)) ; }             
+           analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :     \
+           analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ; }             
   #else
-  // Here we only allow to use opt-oct, szones or num
+
+  // Here we only allow to use opt-oct, zones-split or num
   #define INTER_ANALYZE(SUMM_DOM,BASE_DOM,ARR_DOM,TRACK,CG,M,LIVE,RES)       \
   switch (SUMM_DOM){                                                         \
     case OPT_OCT_APRON:                                                      \
@@ -228,11 +229,11 @@ namespace crab_llvm {
            analyzeCg <num_domain_t, BASE_DOM> (CG, LIVE, M)) ;               \
       break;                                                                 \
     default:                                                                 \
-      if (SUMM_DOM != SZONES)                                                \
-        cout << "Warning: choosing split zones to compute summaries\n";      \
+      if (SUMM_DOM != ZONES_SPLIT_DBM)                                       \
+        cout << "Warning: choosing zones-split to compute summaries\n";      \
       RES = (TRACK == ARR ?                                                  \
-           analyzeCg <arr_sdbm_domain_t, ARR_DOM> (CG, LIVE, M) :            \
-           analyzeCg <sdbm_domain_t, BASE_DOM> (CG, LIVE, M)) ; }
+           analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :       \
+           analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ; }
   #endif  
 
 
@@ -348,21 +349,21 @@ namespace crab_llvm {
           INTER_ANALYZE (CrabSummDomain,dis_interval_domain_t,arr_dis_interval_domain_t,
                          CrabTrackLev,cg,M,live_map,change); 
           break;
-        case SZONES: 
-          INTER_ANALYZE (CrabSummDomain,sdbm_domain_t,arr_sdbm_domain_t,
+        case ZONES_SPLIT_DBM: 
+          INTER_ANALYZE (CrabSummDomain,split_dbm_domain_t,arr_split_dbm_domain_t,
                          CrabTrackLev,cg,M,live_map,change); 
           break;
         #ifdef INCLUDE_ALL_DOMAINS
-        case ZONES: 
+        case ZONES_SPARSE_DBM: 
           INTER_ANALYZE (CrabSummDomain,dbm_domain_t,arr_dbm_domain_t,
                          CrabTrackLev,cg,M,live_map,change); 
           break;
-        case DZONES: 
-          INTER_ANALYZE (CrabSummDomain,ddbm_domain_t,arr_ddbm_domain_t,
+        case ZONES_DENSE_DBM: 
+          INTER_ANALYZE (CrabSummDomain,d_dbm_domain_t,arr_d_dbm_domain_t,
                          CrabTrackLev,cg,M,live_map,change); 
           break;
-        case VZONES: 
-          INTER_ANALYZE (CrabSummDomain,vdbm_domain_t,arr_vdbm_domain_t,
+        case ZONES_DENSE_PACK_DBM: 
+          INTER_ANALYZE (CrabSummDomain,dp_dbm_domain_t,arr_dp_dbm_domain_t,
                          CrabTrackLev,cg,M,live_map,change); 
           break;
         #endif 
@@ -493,18 +494,18 @@ namespace crab_llvm {
       case TERMS_DIS_INTERVALS:
         ANALYZE(CrabTrackLev,term_dis_int_domain_t,arr_term_dis_int_domain_t,cfg,F,*live,change);
         break;
-      case SZONES: 
-        ANALYZE(CrabTrackLev,sdbm_domain_t,arr_sdbm_domain_t,cfg,F,*live,change);
+      case ZONES_SPLIT_DBM: 
+        ANALYZE(CrabTrackLev,split_dbm_domain_t,arr_split_dbm_domain_t,cfg,F,*live,change);
         break;
       #ifdef INCLUDE_ALL_DOMAINS
-      case ZONES: 
+      case ZONES_SPARSE_DBM: 
         ANALYZE(CrabTrackLev, dbm_domain_t, arr_dbm_domain_t, cfg, F, *live, change);
         break;
-      case DZONES: 
-        ANALYZE(CrabTrackLev, ddbm_domain_t, arr_ddbm_domain_t, cfg, F, *live, change);
+      case ZONES_DENSE_DBM: 
+        ANALYZE(CrabTrackLev, d_dbm_domain_t, arr_d_dbm_domain_t, cfg, F, *live, change);
         break;
-      case VZONES: 
-        ANALYZE(CrabTrackLev, vdbm_domain_t, arr_vdbm_domain_t, cfg, F, *live, change);
+      case ZONES_DENSE_PACK_DBM: 
+        ANALYZE(CrabTrackLev, dp_dbm_domain_t, arr_dp_dbm_domain_t, cfg, F, *live, change);
         break;
       #endif 
       case BOXES:

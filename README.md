@@ -121,8 +121,8 @@ inferred for each basic block in the `LLVM` bitcode.
 
     - `int`: classical intervals
 	- `ric`: intervals with congruences
-	- `zones`: zones using sparse difference-bound matrices
-	- `szones`: zones using split difference-bound matrices 
+	- `zones-sparse`: zones domain using sparse difference-bound matrices (DBM)
+	- `zones-split`: zones domain using sparse DBM in split normal form
 	- `opt-oct-apron`: octagons (only if `-DUSE_APRON=ON`)
 	- `pk-apron`: polyhedra (only if `-DUSE_APRON=ON`)
 	- `boxes`: disjunctive intervals based on ldds (only if `-DUSE_LDD=ON`)
@@ -130,7 +130,7 @@ inferred for each basic block in the `LLVM` bitcode.
     - `term-int`: intervals with uninterpreted functions
 	- `term-dis-int`: disjunctive intervals with uninterpreted functions
     - `num`: choose, based on the number of live variables, between `int`
-       and the reduced product of `term-dis-int` with `szones`. 
+       and the reduced product of `term-dis-int` with `zones-split`. 
 
 	For domains without narrowing operator (for instance `boxes`,
     `dis-int`, and `pk-apron`), you need to set the option:
