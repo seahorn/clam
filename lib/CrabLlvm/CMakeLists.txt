@@ -20,6 +20,9 @@ add_library (CrabLlvmAnalysis ${CRABLLVM_LIBS_TYPE}
   )
 
 target_link_libraries (CrabLlvmAnalysis ${CRAB_LIBS})
+if (USE_COTIRE)
+  cotire(CrabLlvmAnalysis)
+endif ()
 
 install(TARGETS CrabLlvmAnalysis 
   ARCHIVE DESTINATION lib
@@ -34,7 +37,10 @@ if (HAVE_CONC)
     )
   
   target_link_libraries (CrabLlvmConcAnalysis ${CRAB_LIBS})
-  
+  if (USE_COTIRE)
+    cotire(CrabLlvmConcAnalysis)  
+  endif () 
+
   install(TARGETS CrabLlvmConcAnalysis 
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib)
@@ -45,6 +51,9 @@ add_library (CrabLlvmInstrumentation ${CRABLLVM_LIBS_TYPE}
   )
 
 target_link_libraries (CrabLlvmInstrumentation ${CRAB_LIBS})
+if (USE_COTIRE)
+  cotire(CrabLlvmInstrumentation)  
+endif ()
 
 install(TARGETS CrabLlvmInstrumentation 
   ARCHIVE DESTINATION lib
