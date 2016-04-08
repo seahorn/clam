@@ -1,10 +1,3 @@
-set (CRAB_LIBS 
-  #${CRAB_DBM_LIB}
-  ${CRAB_TERM_LIB}
-  ${GMPXX_LIB}
-  ${GMP_LIB}
-  )
-
 if (USE_LDD)
   set (CRAB_LIBS ${CRAB_LIBS} ${LDD_LIBRARY}) 
 endif ()
@@ -63,6 +56,8 @@ install(TARGETS CrabLlvmInstrumentation
 if (BUILD_CRABLLVM_LIBS_SHARED)
   #install(FILES ${CRAB_DBM_LIB} DESTINATION lib)
   install(FILES ${CRAB_TERM_LIB} DESTINATION lib)
+  install(FILES ${CRAB_DEBUG_LIB} DESTINATION lib)
+  install(FILES ${CRAB_STATS_LIB} DESTINATION lib)
   if (USE_APRON)
     install(FILES ${APRON_LIBS} DESTINATION lib)
   endif ()

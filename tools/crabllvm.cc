@@ -31,6 +31,8 @@
 #include <crab_llvm/Transforms/InsertInvariants.hh>
 #include "crab_llvm/ConCrabLlvm.hh"
 
+#include "crab/common/debug.hpp"
+
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
               llvm::cl::Required, llvm::cl::value_desc("filename"));
@@ -72,6 +74,18 @@ static llvm::cl::opt<bool>
 LowerSelect ("crab-lower-select", 
              llvm::cl::desc ("Lower all select instructions"),
              llvm::cl::init (false));
+
+
+struct LogOpt {
+  void operator= (const std::string &tag) const 
+  { crab::CrabEnableLog (tag); } 
+};
+
+static llvm::cl::opt<LogOpt, true, llvm::cl::parser<std::string> > 
+LogClOption ("log",
+             llvm::cl::desc ("Enable specified log level"),
+             llvm::cl::value_desc ("string"),
+             llvm::cl::ValueRequired, llvm::cl::ZeroOrMore);
 
 using namespace crab_llvm;
 

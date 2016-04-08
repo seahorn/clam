@@ -17,6 +17,8 @@
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/Support/NameValues.hh"
 
+#include "crab/common/debug.hpp"
+#include "crab/common/stats.hpp"
 #include "crab/analysis/FwdAnalyzer.hpp"
 #include "crab/analysis/InterFwdAnalyzer.hpp"
 #include "crab/cg/CgBgl.hpp"
@@ -27,11 +29,6 @@
 
 using namespace llvm;
 using namespace crab_llvm;
-
-// for debugging
-#define CRABLLVM_DEBUG
-// for stats
-#define CRABLLVM_STATS
 
 // FIXME: template instantiation takes really long time ... so we
 // don't include all the domains by default
@@ -46,6 +43,11 @@ llvm::cl::opt<bool>
 CrabPrintSumm ("crab-print-summaries", 
                llvm::cl::desc ("Print Crab function summaries"),
                llvm::cl::init (false));
+
+llvm::cl::opt<bool>
+CrabStats ("crab-stats", 
+           llvm::cl::desc ("Show Crab statistics"),
+           llvm::cl::init (false));
 
 llvm::cl::opt<unsigned int>
 CrabWideningDelay("crab-widening-delay", 
@@ -214,7 +216,6 @@ namespace crab_llvm {
            analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :     \
            analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ; }             
   #else
-
   // Here we only allow to use opt-oct, zones-split or num
   #define INTER_ANALYZE(SUMM_DOM,BASE_DOM,ARR_DOM,TRACK,CG,M,LIVE,RES)       \
   switch (SUMM_DOM){                                                         \
@@ -251,17 +252,15 @@ namespace crab_llvm {
       CrabLive = true;
     }
 
-    #ifdef CRABLLVM_DEBUG
-    unsigned num_analyzed_funcs = 0;
-    for (auto &F : M) {
-      if (F.isDeclaration () || F.empty ()) continue;
-      if (F.isVarArg ()) continue;
-      num_analyzed_funcs++;
-    }
-    cout << "Total number of analyzed functions:" 
-         << num_analyzed_funcs << "\n";
-    cout.flush ();
-    #endif 
+    CRAB_LOG("crabllvm",
+             unsigned num_analyzed_funcs = 0;
+             for (auto &F : M) {
+               if (F.isDeclaration () || F.empty ()) continue;
+               if (F.isVarArg ()) continue;
+               num_analyzed_funcs++;
+             }
+             cout << "Total number of analyzed functions:" 
+                   << num_analyzed_funcs << "\n";);
 
     if (CrabInter){
 
@@ -284,33 +283,25 @@ namespace crab_llvm {
 
         // -- build liveness
         if (CrabLive) {
-          #ifdef CRABLLVM_DEBUG
-          auto fdecl = cfg.get_func_decl ();            
-          assert (fdecl);
-          cout << "Running liveness analysis for " 
-               << (*fdecl).get_func_name () << "  ... ";
-          cout.flush ();
-          #endif 
+          CRAB_LOG("crabllvm",
+                   auto fdecl = cfg.get_func_decl ();            
+                   assert (fdecl);
+                   cout << "Running liveness analysis for " 
+                        << (*fdecl).get_func_name () << "  ... ";);
+
           liveness_t* live = new liveness_t (cfg);
           live->exec ();
-          #ifdef CRABLLVM_DEBUG
-          cout << "DONE!\n";
-          cout.flush ();
-          #endif 
+          CRAB_LOG("crabllvm", cout << "DONE!\n";);
           // some stats
           unsigned total_live, max_live_per_blk_, avg_live_per_blk;
           live->get_stats (total_live, max_live_per_blk_, avg_live_per_blk);
           max_live_per_blk = std::max (max_live_per_blk, max_live_per_blk_);
-          #ifdef CRABLLVM_DEBUG
-          cout << "-- Max number of out live vars per block=" 
-               << max_live_per_blk_ << "\n";
-          cout << "-- Avg number of out live vars per block=" 
-               << avg_live_per_blk << "\n";
-          cout.flush ();
-          #endif 
-          #ifdef CRABLLVM_STATS
-          cerr << "BRUNCH_STAT maxlive " << max_live_per_blk << "\n";
-          #endif 
+          CRAB_LOG("crabllvm",
+                   cout << "-- Max number of out live vars per block=" 
+                        << max_live_per_blk_ << "\n";
+                   cout << "-- Avg number of out live vars per block=" 
+                        << avg_live_per_blk << "\n";);
+          crab::CrabStats::count_max ("Liveness.count.maxOutVars", max_live_per_blk);
 
           live_map.insert (make_pair (cfg, live));
         }
@@ -330,10 +321,9 @@ namespace crab_llvm {
       //        function to another.
       CrabDomain absdom = m_absdom;
       if (absdom == NUM) {
-        #ifdef CRABLLVM_DEBUG
-        cout << "Max live per block: " << max_live_per_blk << endl;
-        cout << "Threshold: " << CrabNumThreshold << endl;
-        #endif               
+        CRAB_LOG("crabllvm",
+                 cout << "Max live per block: " << max_live_per_blk << endl;
+                 cout << "Threshold: " << CrabNumThreshold << endl);
         if (max_live_per_blk > CrabNumThreshold) {
           absdom = DIS_INTERVALS;
         }
@@ -401,6 +391,9 @@ namespace crab_llvm {
           INTER_ANALYZE (CrabSummDomain,interval_domain_t,arr_interval_domain_t,
                          CrabTrackLev,cg,M,live_map,change);
       }
+      if (CrabStats)
+        crab::CrabStats::PrintBrunch (std::cout);
+
       if (CrabLive) {
         for (auto &p : live_map) {
           delete p.second;
@@ -415,6 +408,8 @@ namespace crab_llvm {
       for (auto &f : M) {
         change |= runOnFunction (f); 
       }
+      if (CrabStats)
+        crab::CrabStats::PrintBrunch (std::cout);
       return change;
     }
   }
@@ -441,42 +436,32 @@ namespace crab_llvm {
     liveness_t* live = nullptr;
     unsigned max_live_per_blk = 0;
     if (CrabLive) {
-      #ifdef CRABLLVM_DEBUG
-      auto fdecl = cfg.get_func_decl ();            
-      assert (fdecl);
-      cout << "Running liveness analysis for " 
-           << (*fdecl).get_func_name ()
-           << "  ... ";
-      cout.flush ();
-      #endif 
+      CRAB_LOG("crabllvm",
+               auto fdecl = cfg.get_func_decl ();            
+               assert (fdecl);
+               cout << "Running liveness analysis for " 
+                    << (*fdecl).get_func_name ()
+                    << "  ... ";);
       liveness_t ls (cfg);
       ls.exec ();
-      #ifdef CRABLLVM_DEBUG
-      cout << "DONE!\n";
-      cout.flush ();
-      #endif 
+      CRAB_LOG("crabllvm", cout << "DONE!\n");
       // some stats
       unsigned total_live, avg_live_per_blk;
       ls.get_stats (total_live, max_live_per_blk, avg_live_per_blk);
-      #ifdef CRABLLVM_DEBUG
-      cout << "-- Max number of out live vars per block=" 
-           << max_live_per_blk << "\n";
-      cout << "-- Avg number of out live vars per block=" 
-           << avg_live_per_blk << "\n";
-      cout.flush ();
-      #endif 
-      #ifdef CRABLLVM_STATS
-      cerr << "BRUNCH_STAT maxlive " << max_live_per_blk << "\n";
-      #endif 
+      CRAB_LOG("crabllvm", 
+               cout << "-- Max number of out live vars per block=" 
+                    << max_live_per_blk << "\n"
+                    << "-- Avg number of out live vars per block=" 
+                    << avg_live_per_blk << "\n";);
+      crab::CrabStats::count_max ("Liveness.count.maxOutVars", max_live_per_blk);
       live = &ls;
     }
 
     CrabDomain absdom = m_absdom;
     if (absdom == NUM) {
-      #ifdef CRABLLVM_DEBUG
-      cout << "Max live per block: " << max_live_per_blk << endl;
-      cout << "Threshold: " << CrabNumThreshold << endl;
-      #endif               
+      CRAB_LOG("crabllvm", 
+               cout << "Max live per block: " << max_live_per_blk << "\n"
+                    << "Threshold: " << CrabNumThreshold << "\n");
       if (max_live_per_blk > CrabNumThreshold) {
         absdom = DIS_INTERVALS;
       }
@@ -553,26 +538,20 @@ namespace crab_llvm {
     typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
                               BUAbsDomain, TDAbsDomain> analyzer_t;
 
-    #ifdef CRABLLVM_DEBUG
-    cout << "Running inter-procedural analysis with " 
-         << "forward domain:" 
-         << "\"" << TDAbsDomain::getDomainName () << "\"";
-    cout.flush ();
-    cout << " and bottom-up domain:" 
-         << "\"" << BUAbsDomain::getDomainName () << "\"" 
-         << "  ... ";
-    cout.flush ();
-    #endif 
-
+    CRAB_LOG("crabllvm", 
+              cout << "Running inter-procedural analysis with " 
+                   << "forward domain:" 
+                   << "\"" << TDAbsDomain::getDomainName () << "\"";
+              cout << " and bottom-up domain:" 
+                   << "\"" << BUAbsDomain::getDomainName () << "\"" 
+                   << "  ... ";);
+    
     analyzer_t analyzer(cg, m_vfac, (CrabLive ? &live_map : nullptr),
                         CrabWideningDelay, CrabNarrowingIters, 
                         CrabWideningJumpSet);
     analyzer.Run (TDAbsDomain::top ());
 
-    #ifdef CRABLLVM_DEBUG
-    cout << "DONE\n";
-    cout.flush ();
-    #endif 
+    CRAB_LOG("crabllvm", cout << "DONE\n");
 
     // -- store invariants     
     for (auto &n: boost::make_iterator_range (vertices (cg))) {
@@ -612,15 +591,13 @@ namespace crab_llvm {
     typedef typename NumFwdAnalyzer <cfg_t, 
                                      AbsDomain, 
                                      VariableFactory>::type analyzer_t;
-    #ifdef CRABLLVM_DEBUG
-    auto fdecl = cfg.get_func_decl ();            
-    assert (fdecl);
-    cout << "Running intra-procedural analysis with " 
-         << "\"" << AbsDomain::getDomainName ()  << "\""
-         << " for "  << (*fdecl).get_func_name ()
-         << "  ... ";
-    cout.flush ();
-    #endif 
+    CRAB_LOG("crabllvm",
+             auto fdecl = cfg.get_func_decl ();            
+             assert (fdecl);
+             cout << "Running intra-procedural analysis with " 
+                  << "\"" << AbsDomain::getDomainName ()  << "\""
+                  << " for "  << (*fdecl).get_func_name ()
+                  << "  ... ";);
 
     // -- run intra-procedural analysis
     analyzer_t analyzer (cfg, m_vfac, &live, 
@@ -629,10 +606,7 @@ namespace crab_llvm {
 
     analyzer.Run (AbsDomain::top());
 
-    #ifdef CRABLLVM_DEBUG
-    cout << "DONE\n"; 
-    cout.flush ();
-    #endif 
+    CRAB_LOG("crabllvm", cout << "DONE\n"); 
 
     // -- store invariants 
     for (auto const &B : F) {

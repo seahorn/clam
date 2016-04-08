@@ -69,9 +69,11 @@ namespace crab_llvm {
   typedef interval_domain< z_number, varname_t> interval_domain_t;
   /// -- Zones with sparse DBM
   //typedef DBM<z_number, varname_t> dbm_domain_t;
-  typedef SparseDBM<z_number, varname_t, SpDBM_impl::SimpleParams> dbm_domain_t;
+  //typedef SparseDBM<z_number, varname_t, SpDBM_impl::SimpleParams> dbm_domain_t;
+  typedef SparseDBM<z_number, varname_t, SpDBM_impl::DefaultParams> dbm_domain_t;
   /// -- Zones with split DBM
-  typedef SplitDBM<z_number, varname_t> split_dbm_domain_t;
+  //typedef SplitDBM<z_number, varname_t,SDBM_impl::SimpleParams> split_dbm_domain_t;
+  typedef SplitDBM<z_number, varname_t,SDBM_impl::DefaultParams> split_dbm_domain_t;
   /// -- Zones with dense DBM
   typedef DenseDBM< z_number, varname_t > d_dbm_domain_t;
   /// -- Zones with dense DBM + var packing 

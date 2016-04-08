@@ -60,11 +60,10 @@
 #include "boost/range/algorithm/set_algorithm.hpp"
 #include "boost/optional.hpp"
 
+#include "crab/common/debug.hpp"
+#include "crab/common/stats.hpp"
 #include "crab_llvm/CfgBuilder.hh"
 #include "crab_llvm/Support/CFG.hh"
-
-// #define GEP_DEBUG
-// #define MEM_DEBUG
 
 // FIXME: this translation may generate a lot dead code, in
 // particular, when an instruction feeds load or stores that are not
@@ -773,15 +772,13 @@ namespace crab_llvm
         return;
       }
 
-      #ifdef GEP_DEBUG
-      errs () << "Translating " << I << "\n";
-      #endif 
+      CRAB_LOG ("cfg-gep",
+                errs () << "Translating " << I << "\n");
 
       if (CrabNoPtrArith || AllUsesAreNonTrackMem (&I)) {
         if (CrabIncludeHavoc) m_bb.havoc (m_sev.symVar (I)); 
-        #ifdef GEP_DEBUG
-        errs () << " -- skipped translation: all uses are not track mem\n";
-        #endif 
+        CRAB_LOG("cfg-gep",
+                 errs () << " -- skipped translation: all uses are not track mem\n");
         return;
       }
 
@@ -801,15 +798,13 @@ namespace crab_llvm
         z_lin_exp_t offset (m_sev.toMpz (Offset).get_str ());
         if (isBaseZeroOffset) {
           m_bb.assign (res, offset);
-          #ifdef GEP_DEBUG
-          std::cout << "-- " << res << ":=" << offset << "\n";        
-          #endif 
+          CRAB_LOG("cfg-gep",
+                   std::cout << "-- " << res << ":=" << offset << "\n");        
         }
         else {
           m_bb.add (res, *ptr, offset);
-          #ifdef GEP_DEBUG
-          std::cout << "-- " << res << ":=" << *ptr  << "+" << offset << "\n";        
-          #endif 
+          CRAB_LOG("cfg-gep",
+                   std::cout << "-- " << res << ":=" << *ptr  << "+" << offset << "\n");        
         }
         return;
       }
@@ -838,22 +833,19 @@ namespace crab_llvm
             if (i == 0) {
               if (isBaseZeroOffset) {
                 m_bb.assign (res, offset);
-                #ifdef GEP_DEBUG
-                std::cout << "-- " << res << ":=" << offset << "\n";
-                #endif  
+                CRAB_LOG("cfg-gep",
+                         std::cout << "-- " << res << ":=" << offset << "\n");
               }
               else {
                 m_bb.add (res, *ptr, offset);
-                #ifdef GEP_DEBUG
-                std::cout << "-- " << res << ":=" << *ptr << "+" << offset << "\n";
-                #endif  
+                CRAB_LOG("cfg-gep",
+                         std::cout << "-- " << res << ":=" << *ptr << "+" << offset << "\n");
               }
             }
             else {
               m_bb.add (res, res, offset);
-              #ifdef GEP_DEBUG
-              std::cout << "-- " << res << ":=" << res << "+" << offset << "\n";
-              #endif 
+              CRAB_LOG("cfg-gep",
+                       std::cout << "-- " << res << ":=" << res << "+" << offset << "\n");
             }
           }
           else 
@@ -873,28 +865,25 @@ namespace crab_llvm
               ikos::z_number offset (storageSize (seqt->getElementType ()));
               m_bb.mul (res, *p, offset);
               is_init = true;
-              #ifdef GEP_DEBUG
-              std::cout << "-- " << res << ":=" << *p << "*" << offset << "\n";
-              #endif 
+              CRAB_LOG("cfg-gep",
+                       std::cout << "-- " << res << ":=" << *p << "*" << offset << "\n");
             } else {
               ikos::z_number offset (storageSize (seqt->getElementType ()));
               varname_t tmp = m_sev.getVarFac().get ();
               m_bb.mul (tmp, *p, offset);
               m_bb.add (res, *ptr, z_lin_exp_t (tmp));
-              #ifdef GEP_DEBUG
-              std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
-                        << "-- " << res << ":=" << *ptr << "+" << tmp << "\n";
-              #endif  
+              CRAB_LOG("cfg-gep",
+                       std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
+                       << "-- " << res << ":=" << *ptr << "+" << tmp << "\n");
             }
           } else {
             ikos::z_number offset (storageSize (seqt->getElementType ()));
             varname_t tmp = m_sev.getVarFac().get ();
             m_bb.mul (tmp, *p, offset);
             m_bb.add (res, res, tmp);
-            #ifdef GEP_DEBUG
-            std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
-                      << "-- " << res << ":=" << res << "+" << tmp << "\n";
-            #endif  
+            CRAB_LOG("cfg-gep",
+                     std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
+                     << "-- " << res << ":=" << res << "+" << tmp << "\n");
           }
         }
       }
@@ -1231,12 +1220,11 @@ namespace crab_llvm
           region_set_t mods = m_sev.getMem().getModifiedRegions (I);
           region_set_t news = m_sev.getMem().getNewRegions (I);
 
-          #ifdef MEM_DEBUG
-          errs () << "Callsite " << I << "\n";
-          std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (I) << "\n";
-          std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (I) << "\n";
-          std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (I) << "\n";
-          #endif 
+          CRAB_LOG("cfg-mem",
+                   errs () << "Callsite " << I << "\n";
+                   std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (I) << "\n";
+                   std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (I) << "\n";
+                   std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (I) << "\n");
 
           // Make sure that the order of the actuals parameters is the
           // same than the order of the formal parameters when the
@@ -1428,6 +1416,8 @@ namespace crab_llvm
 
   void CfgBuilder::build_cfg() {
 
+    crab::ScopedCrabStats __st__("CFG");
+
     std::vector<llvm::BasicBlock*> blks;
     for (auto &B : m_func) { 
       add_block (B); 
@@ -1554,12 +1544,11 @@ namespace crab_llvm
         region_set_t mods = m_sev.getMem().getModifiedRegions (m_func);
         region_set_t news = m_sev.getMem().getNewRegions (m_func);
 
-        #ifdef MEM_DEBUG
-        errs () << "Function " << m_func.getName () << "\n";
-        std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (m_func) << "\n";
-        std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (m_func) << "\n";
-        std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (m_func) << "\n";
-        #endif 
+        CRAB_LOG("cfg-mem",
+                 errs () << "Function " << m_func.getName () << "\n";
+                 std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (m_func) << "\n";
+                 std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (m_func) << "\n";
+                 std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (m_func) << "\n");
 
         // (**) The same order must be used by the callsites
 

@@ -66,6 +66,8 @@ def parseArgs (argv):
     p = a.ArgumentParser (description='Abstract Interpretation-based Analyzer for LLVM bitecode')
     p.add_argument ('-oll', dest='asm_out_name', metavar='FILE',
                        help='Output analyzed bitecode')
+    p.add_argument ('--log', dest='log', default=None,
+                    metavar='STR', help='Log level')
     p.add_argument ('-o', dest='out_name', metavar='FILE',
                        help='Output file name')
     p.add_argument ("--save-temps", dest="save_temps",
@@ -154,8 +156,7 @@ def parseArgs (argv):
                     dest='crab_inter', default=False, action='store_true')
     p.add_argument ('--crab-inter-sum-dom',
                     help='Choose abstract domain for computing summaries',
-                    choices=['term-int', 
-                             'zones-sparse', 'zones-split', 'zones-dense-pack', 
+                    choices=['term-int', 'zones-sparse', 'zones-split', 
                              'opt-oct-apron','num'],
                     dest='crab_inter_sum_dom', default='zones-split')
     p.add_argument ('--crab-live',
@@ -174,6 +175,9 @@ def parseArgs (argv):
     p.add_argument ('--crab-print-cfg',
                     help='Display Crab CFG',
                     dest='print_cfg', default=False, action='store_true')
+    p.add_argument ('--crab-stats',
+                    help='Display Crab statistics',
+                    dest='print_stats', default=False, action='store_true')
     ######################################################################
     p.add_argument ('--crab-cfg-simplify',
                     help=a.SUPPRESS,
@@ -381,6 +385,9 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
     crabllvm_cmd = crabllvm_cmd + extra_opts
 
+    if args.log is not None:
+        for l in args.log.split (':'): crabllvm_cmd.extend (['-log', l])
+
     if args.undef_nondet:
         crabllvm_cmd.append( '--crab-turn-undef-nondet')
     if args.lower_select:
@@ -410,6 +417,8 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         crabllvm_cmd.append ('--crab-print-summaries')
     if args.print_cfg:
         crabllvm_cmd.append ('--crab-print-cfg')
+    if args.print_stats:
+        crabllvm_cmd.append ('--crab-stats')
     # hidden options
     if args.crab_cfg_simplify:
         crabllvm_cmd.append ('--crab-cfg-simplify')
