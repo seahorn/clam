@@ -391,8 +391,12 @@ namespace crab_llvm {
           INTER_ANALYZE (CrabSummDomain,interval_domain_t,arr_interval_domain_t,
                          CrabTrackLev,cg,M,live_map,change);
       }
-      if (CrabStats)
-        crab::CrabStats::PrintBrunch (std::cout);
+
+      if (CrabStats) {
+        std::ostringstream oss;
+        crab::CrabStats::PrintBrunch (oss);
+        outs () << oss.str();
+      }
 
       if (CrabLive) {
         for (auto &p : live_map) {
@@ -408,8 +412,12 @@ namespace crab_llvm {
       for (auto &f : M) {
         change |= runOnFunction (f); 
       }
-      if (CrabStats)
-        crab::CrabStats::PrintBrunch (std::cout);
+      if (CrabStats) {
+        std::ostringstream oss;
+        crab::CrabStats::PrintBrunch (oss);
+        outs () << oss.str();
+      }
+
       return change;
     }
   }
