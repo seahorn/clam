@@ -32,6 +32,8 @@ endif ()
 
 option (USE_LDD   "Enable ldd" OFF)
 option (USE_APRON "Enable Apron library" OFF)
+option (USE_STATS "Enable statistics about the analysis" OFF)
+option (USE_LOG   "Enable logging for debugging purposes" ON)
 option (HAVE_CONC "Enable very experimental concurrency analysis" OFF)
 option (USE_COTIRE "Use cotire to speed up compilation time")
 
@@ -225,6 +227,24 @@ endif()
 
 include_directories (${APRON_INCLUDE_DIR})
 
+if (USE_LDD)
+  message (STATUS "The boxes domain will be available")  
+else ()
+  message (STATUS "The boxes domain will not be available")  
+endif ()
+
+if (USE_APRON)
+  message (STATUS "The apron domains will be available")
+else ()
+  message (STATUS "The apron domains will not be available")
+endif ()
+
+if (USE_STATS)
+  message (STATUS "Analysis statistics is enabled")
+else ()
+  message (STATUS "Analysis statistics is disabled")
+endif ()
+
 if (GIT_FOUND)
   set (CRAB_CORE_TAG "origin/dev" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
@@ -246,6 +266,8 @@ if (GIT_FOUND)
     -DCMAKE_USE_APRON=${USE_APRON}
     -DCMAKE_APRON_INCLUDE_DIR=${APRON_INCLUDE_DIR}
     -DCMAKE_APRON_LIBRARY=${APRON_LIBRARY}
+    -DCMAKE_USE_STATS=${USE_STATS}
+    -DCMAKE_USE_LOG=${USE_LOG}
     TEST_AFTER_INSTALL 1
     TEST_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
     LOG_DOWNLOAD 1

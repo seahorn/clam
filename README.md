@@ -53,9 +53,11 @@ Then, the compilation steps are:
 1. ```mkdir build ; cd build```
 2. ```cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=my_install_dir ../```
 
-If you want to use the boxes domain then add to step 2 the option `-DUSE_LDD=ON`.
+If you want to use the boxes domain then add to step 2 `-DUSE_LDD=ON`.
 
-If you want to use the apron domains then add to step 2 the option `-DUSE_APRON=ON`.
+If you want to use the apron domains then add to step 2 `-DUSE_APRON=ON`.
+
+If you want to enable statistics about the analysis then add to step 2 `-DUSE_STATS=ON`.
 
 #How Crab-llvm works#
 
