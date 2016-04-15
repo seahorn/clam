@@ -160,6 +160,12 @@ KeepShadows ("crab-keep-shadows",
              cl::init (false),
              cl::Hidden);
 
+llvm::cl::opt<bool>
+SAS16 ("sas16", 
+       llvm::cl::desc ("Experiment for SAS'16 submission"),
+       llvm::cl::init (false),
+       llvm::cl::Hidden);
+
 namespace crab_llvm {
 
   using namespace crab::analyzer;
@@ -260,8 +266,80 @@ namespace crab_llvm {
            analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ; }
   #endif  
 
+  // Very specific accuracy comparison for SAS'16 submission:
+  // intervals, zones-split, and zones-dense-pack.
+  void CrabLlvm::compareDomains (llvm::Module &M) {
+    #ifdef HAVE_DSA
+    m_mem.reset (new DSAMemAnalysis (M, &getAnalysis<SteensgaardDataStructures> (),
+                                     CrabTrackLev));
+    #endif     
+
+    assert (CrabInter);
+
+    vector<cfg_t> cfgs;
+    liveness_map_t live_map;
+    unsigned max_live_per_blk = 0;
+    for (auto &F : M) {
+      // -- skip functions without a body
+      if (F.isDeclaration () || F.empty ()) continue;
+      // -- skip variadic functions
+      if (F.isVarArg ()) continue;
+      
+      // -- build cfg
+      CfgBuilderPtr builder (new CfgBuilder (F, m_vfac, *m_mem, 
+                                             /*include function decls and callsites*/
+                                             true));
+      m_builder_map [&F] = builder;
+      cfg_t& cfg = builder->getCfg ();
+      cfgs.push_back (cfg);
+      
+      // -- build liveness
+      if (CrabLive) {
+        CRAB_LOG("crabllvm",
+                 auto fdecl = cfg.get_func_decl ();            
+                 assert (fdecl);
+                 cout << "Running liveness analysis for " 
+                 << (*fdecl).get_func_name () << "  ... ";);
+        
+        liveness_t* live = new liveness_t (cfg);
+        live->exec ();
+        CRAB_LOG("crabllvm", cout << "DONE!\n";);
+        // some stats
+        unsigned total_live, max_live_per_blk_, avg_live_per_blk;
+        live->get_stats (total_live, max_live_per_blk_, avg_live_per_blk);
+        max_live_per_blk = std::max (max_live_per_blk, max_live_per_blk_);
+        CRAB_LOG("crabllvm",
+                 cout << "-- Max number of out live vars per block=" 
+                 << max_live_per_blk_ << "\n";
+                 cout << "-- Avg number of out live vars per block=" 
+                 << avg_live_per_blk << "\n";);
+        crab::CrabStats::count_max ("Liveness.count.maxOutVars", max_live_per_blk);
+        
+        live_map.insert (make_pair (cfg, live));
+        }
+    }
+    
+    // -- build call graph
+    CallGraph<cfg_t> cg (cfgs);
+    
+    // -- run the interprocedural analyses
+    analyzeCg3 (cg, live_map, M);
+
+    // -- free resources
+    if (CrabLive) {
+      for (auto &p : live_map) {
+        delete p.second;
+      }
+    }          
+  }
 
   bool CrabLlvm::runOnModule (llvm::Module &M) {
+
+    if (SAS16) {
+      compareDomains (M);
+      return false;
+    }
+
     // -- initialize from cli options
     m_absdom = CrabLlvmDomain;
 
@@ -561,8 +639,8 @@ namespace crab_llvm {
 
   template<typename BUAbsDomain, typename TDAbsDomain>
   inline bool CrabLlvm::analyzeCg (const CallGraph<cfg_t>& cg, 
-            const liveness_map_t& live_map,
-           const llvm::Module &M)
+                                   const liveness_map_t& live_map,
+                                   const llvm::Module &M)
   {
     // -- run inter-procedural analysis on the whole call graph
     typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
@@ -611,6 +689,109 @@ namespace crab_llvm {
       }
     }
     return false;
+  }
+
+  // return true iff d1 and d2 have the same precision
+  // Pre: d1 an d2 can be expressed in split_dbm_domain_t without loss of precision.
+  template<typename D1, typename D2>
+  bool equal_precision (D1 d1, D2 d2) {
+    auto c1 = d1.to_linear_constraint_system ();
+    auto c2 = d2.to_linear_constraint_system ();
+    split_dbm_domain_t x1;
+    split_dbm_domain_t x2;
+    x1 += c1;
+    x2 += c2;
+    if (x1 <= x2 && x2 <= x1)
+      return true;
+    else 
+      return false;
+  }
+
+  template<typename D>
+  bool equal_precision (D d1, split_dbm_domain_t d2) {
+    auto c1 = d1.to_linear_constraint_system ();
+    split_dbm_domain_t x1;
+    x1 += c1;
+    if (x1 <= d2 && d2 <= x1)
+      return true;
+    else 
+      return false;
+  }
+
+
+  void CrabLlvm::analyzeCg3 (const CallGraph<cfg_t>& cg, 
+                             const liveness_map_t& live_map,
+                             const llvm::Module &M)
+  {
+    // -- run the inter-procedural analyses on the whole call graph
+
+    typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
+                              split_dbm_domain_t, split_dbm_domain_t> analyzer_zones_split_t;
+
+    typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
+                              split_dbm_domain_t, interval_domain_t> analyzer_interval_t;
+
+    typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
+                              dp_dbm_domain_t, dp_dbm_domain_t> analyzer_zones_dense_pack_t;
+
+    analyzer_interval_t a_intervals(cg, m_vfac, (CrabLive ? &live_map : nullptr),
+                                    CrabWideningDelay, CrabNarrowingIters, 
+                                    CrabWideningJumpSet);
+    a_intervals.Run (interval_domain_t::top ());
+
+    analyzer_zones_split_t a_split(cg, m_vfac, (CrabLive ? &live_map : nullptr),
+                                   CrabWideningDelay, CrabNarrowingIters, 
+                                   CrabWideningJumpSet);
+    a_split.Run (split_dbm_domain_t::top ());
+
+    analyzer_zones_dense_pack_t a_pack(cg, m_vfac, (CrabLive ? &live_map : nullptr),
+                                       CrabWideningDelay, CrabNarrowingIters, 
+                                       CrabWideningJumpSet);
+    a_pack.Run (dp_dbm_domain_t::top ());
+
+    // -- gather statistics
+    const bool ignore_top = true;
+    unsigned total_pack_intervals_invariants = 0;
+    unsigned total_pack_split_invariants = 0;
+    unsigned pack_eq_intervals = 0;
+    unsigned pack_eq_split = 0;
+
+    for (auto &n: boost::make_iterator_range (vertices (cg))) {
+      const cfg_t& cfg = n.getCfg ();
+      boost::optional<const llvm::Value *> v = n.name ().get ();
+      if (v) {
+        if (const llvm::Function *F = dyn_cast<llvm::Function> (*v)) {
+          for (auto &B : *F) {
+            // --- invariants that hold at the entry of the blocks
+    
+            auto pre_intervals = a_intervals.get_pre (cfg, &B);
+            auto pre_split = a_split.get_pre (cfg, &B);
+            auto pre_pack = a_pack.get_pre (cfg, &B);
+
+            ///////////////
+            if (ignore_top && (pre_intervals.is_top () && pre_pack.is_top ()))
+              continue;
+
+            total_pack_intervals_invariants++;
+            if (equal_precision (pre_intervals, pre_pack))
+              pack_eq_intervals++;
+
+            /////////////////
+            if (ignore_top && (pre_pack.is_top () && pre_split.is_top ()))
+              continue;
+
+            total_pack_split_invariants++;
+            if (equal_precision (pre_pack, pre_split))
+              pack_eq_split++;
+
+          }
+        }
+      }
+    }
+   outs () << "BRUNCH_STAT " << "TotalDbmPackIntInv"  << " " << total_pack_intervals_invariants  << " \n";
+   outs () << "BRUNCH_STAT " << "EqDbmPackIntInv"  << " " << pack_eq_intervals  << " \n";
+   outs () << "BRUNCH_STAT " << "TotalDbmPackSplitInv"  << " " << total_pack_split_invariants  << " \n";
+   outs () << "BRUNCH_STAT " << "EqDbmPackSplitInv"  << " " << pack_eq_split  << " \n";
   }
 
   template<typename AbsDomain>

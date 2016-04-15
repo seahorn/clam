@@ -125,6 +125,13 @@ namespace crab_llvm {
 
     void writeInvariants (llvm::raw_ostream& o, const llvm::Function& F);
 
+    // SAS'16
+
+    void compareDomains (llvm::Module &M);
+    void analyzeCg3 (const crab::cg::CallGraph<cfg_t>& cg, 
+                     const liveness_map_t& live_map,
+                     const llvm::Module &M);
+
   };
 
 } // end namespace 

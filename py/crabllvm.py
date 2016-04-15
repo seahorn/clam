@@ -184,6 +184,9 @@ def parseArgs (argv):
                     help=a.SUPPRESS,
                     dest='crab_keep_shadows', default=False, action='store_true')
     #### END CRAB
+    p.add_argument ('--sas16',
+                    help='Run an experiment for SAS16 submission ',
+                    dest='sas16', default=False, action='store_true')
     
     args = p.parse_args (argv)
     
@@ -422,6 +425,9 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         crabllvm_cmd.append ('--crab-cfg-simplify')
     if args.crab_keep_shadows:
         crabllvm_cmd.append ('--crab-keep-shadows')
+
+    if args.sas16:
+        crabllvm_cmd.append ('--sas16')
 
     if verbose: print ' '.join (crabllvm_cmd)
 

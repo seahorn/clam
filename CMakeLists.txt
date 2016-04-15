@@ -246,7 +246,8 @@ else ()
 endif ()
 
 if (GIT_FOUND)
-  set (CRAB_CORE_TAG "origin/dev_mut_val_ref" CACHE STRING "crab tag to use")
+  # set (CRAB_CORE_TAG "origin/sas16" CACHE STRING "crab tag to use")
+  set (CRAB_CORE_TAG "origin/sas16_mut_val_ref" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
        CACHE STRING "crab repository")
   ExternalProject_Add(crab
