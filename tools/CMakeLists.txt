@@ -25,7 +25,7 @@ install(TARGETS crabllvm-pp RUNTIME DESTINATION bin)
 add_executable(crabllvm crabllvm.cc)
 target_link_libraries (crabllvm
   CrabLlvmAnalysis 
-  CrabLlvmInstrumentation 
+#  CrabLlvmInstrumentation 
   LlvmPasses 
   ${USED_LIBS}
   ${LLVM_SEAHORN_LIBS})

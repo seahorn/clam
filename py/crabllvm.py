@@ -124,9 +124,7 @@ def parseArgs (argv):
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
                     help='Choose abstract domain',
-                    choices=['int','ric', 'boxes', 'dis-int', 'term-int', 'term-dis-int', 'num',
-                             'zones-sparse', 'zones-split', 'zones-dense', 'zones-dense-pack',
-                             'int-apron','oct-apron','opt-oct-apron','pk-apron'],
+                    choices=['int', 'zones-sparse', 'zones-split', 'zones-dense', 'zones-dense-pack'],
                     dest='crab_dom', default='int')
     ############ 
     p.add_argument ('--crab-widening-delay', 
@@ -156,16 +154,16 @@ def parseArgs (argv):
                     dest='crab_inter', default=False, action='store_true')
     p.add_argument ('--crab-inter-sum-dom',
                     help='Choose abstract domain for computing summaries',
-                    choices=['term-int', 'zones-sparse', 'zones-split', 
-                             'opt-oct-apron','num'],
+                    choices=['zones-sparse', 'zones-split', 
+                             'zones-dense' , 'zones-dense-pack'],
                     dest='crab_inter_sum_dom', default='zones-split')
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
                     dest='crab_live', default=False, action='store_true')        
-    p.add_argument ('--crab-add-invariants',
-                    help='Instrument code with invariants',
-                    choices=['none', 'block-entry', 'after-load'],
-                    dest='insert_invs', default='none')
+    # p.add_argument ('--crab-add-invariants',
+    #                 help='Instrument code with invariants',
+    #                 choices=['none', 'block-entry', 'after-load'],
+    #                 dest='insert_invs', default='none')
     p.add_argument ('--crab-print-invariants',
                     help='Display computed invariants',
                     dest='show_invars', default=False, action='store_true')
@@ -410,7 +408,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         crabllvm_cmd.append ('--crab-inter')
     if args.crab_live:
         crabllvm_cmd.append ('--crab-live')
-    crabllvm_cmd.append ('--crab-add-invariants={0}'.format (args.insert_invs))
+    #crabllvm_cmd.append ('--crab-add-invariants={0}'.format (args.insert_invs))
     if args.show_invars:
         crabllvm_cmd.append ('--crab-print-invariants')
     if args.show_summs:

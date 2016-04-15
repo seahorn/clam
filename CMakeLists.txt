@@ -35,7 +35,7 @@ option (USE_APRON "Enable Apron library" OFF)
 option (USE_STATS "Enable statistics about the analysis" OFF)
 option (USE_LOG   "Enable logging for debugging purposes" ON)
 option (HAVE_CONC "Enable very experimental concurrency analysis" OFF)
-option (USE_COTIRE "Use cotire to speed up compilation time")
+option (USE_COTIRE "Use cotire to speed up compilation time" OFF)
 
 # Add path for custom modules
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -246,7 +246,7 @@ else ()
 endif ()
 
 if (GIT_FOUND)
-  set (CRAB_CORE_TAG "origin/dev" CACHE STRING "crab tag to use")
+  set (CRAB_CORE_TAG "origin/dev_mut_val_ref" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
        CACHE STRING "crab repository")
   ExternalProject_Add(crab

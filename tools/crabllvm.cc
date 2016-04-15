@@ -28,7 +28,7 @@
 
 #include "crab_llvm/Passes.hh"
 #include "crab_llvm/CrabLlvm.hh"
-#include <crab_llvm/Transforms/InsertInvariants.hh>
+//#include <crab_llvm/Transforms/InsertInvariants.hh>
 #include "crab_llvm/ConCrabLlvm.hh"
 
 #include "crab/common/debug.hpp"
@@ -217,17 +217,17 @@ int main(int argc, char **argv) {
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (asmOutput->os ()));
  
-  if (!NoCrab && !Concurrency) {
-    /// -- insert invariants as assume instructions
-    pass_manager.add (new crab_llvm::InsertInvariants ());
-    /// -- simplify invariants added in the bytecode.
-    #ifdef HAVE_LLVM_SEAHORN
-    pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
-    #else
-    pass_manager.add (llvm::createInstructionCombiningPass ()); 
-    #endif 
-    pass_manager.add (crab_llvm::createSimplifyAssumePass ());
-  }
+  // if (!NoCrab && !Concurrency) {
+  //   /// -- insert invariants as assume instructions
+  //   pass_manager.add (new crab_llvm::InsertInvariants ());
+  //   /// -- simplify invariants added in the bytecode.
+  //   #ifdef HAVE_LLVM_SEAHORN
+  //   pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
+  //   #else
+  //   pass_manager.add (llvm::createInstructionCombiningPass ()); 
+  //   #endif 
+  //   pass_manager.add (crab_llvm::createSimplifyAssumePass ());
+  // }
       
   if (!OutputFilename.empty ()) 
   {

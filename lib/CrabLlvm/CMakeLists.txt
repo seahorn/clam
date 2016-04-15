@@ -39,18 +39,18 @@ if (HAVE_CONC)
     LIBRARY DESTINATION lib)
 endif ()
 
-add_library (CrabLlvmInstrumentation ${CRABLLVM_LIBS_TYPE}
-  InsertInvariants.cc
-  )
+# add_library (CrabLlvmInstrumentation ${CRABLLVM_LIBS_TYPE}
+#   InsertInvariants.cc
+#   )
 
-target_link_libraries (CrabLlvmInstrumentation ${CRAB_LIBS})
-if (USE_COTIRE)
-  cotire(CrabLlvmInstrumentation)  
-endif ()
+# target_link_libraries (CrabLlvmInstrumentation ${CRAB_LIBS})
+# if (USE_COTIRE)
+#   cotire(CrabLlvmInstrumentation)  
+# endif ()
 
-install(TARGETS CrabLlvmInstrumentation 
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib)
+# install(TARGETS CrabLlvmInstrumentation 
+#   ARCHIVE DESTINATION lib
+#   LIBRARY DESTINATION lib)
 
 # Needed if shared libraries
 if (BUILD_CRABLLVM_LIBS_SHARED)
