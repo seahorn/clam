@@ -8,9 +8,10 @@
 #include "llvm/IR/Instructions.h"
 
 #include "crab_llvm/config.h"
-#include "crab/cfg/Cfg.hpp"
 
-using namespace crab::cfg;
+#include <set>
+#include <boost/unordered_map.hpp>
+#include <boost/range/iterator_range.hpp>
 
 namespace crab_llvm {
 
@@ -92,8 +93,6 @@ namespace crab_llvm {
 
     protected:
 
-     TrackedPrecision m_tracklev;
-
      virtual const llvm::Value* getSingleton (int region) const = 0;
      
     public:
@@ -103,12 +102,7 @@ namespace crab_llvm {
 
     public:
 
-     MemAnalysis (TrackedPrecision tracklev = INT): 
-         m_tracklev (tracklev) { }
-
-     TrackedPrecision getTrackLevel () const { 
-       return m_tracklev; 
-     }
+     MemAnalysis () { }
      
      virtual region_t getRegion (llvm::Function&, llvm::Value*) = 0;
 
@@ -450,13 +444,9 @@ namespace crab_llvm {
 
    public:
     
-    DSAMemAnalysis (Module& M, 
-                    DataStructures* dsa, 
-                    TrackedPrecision tracklev): 
-        MemAnalysis (tracklev),
-        m_M (M),
-        m_dsa (dsa) { 
-      
+    DSAMemAnalysis (Module& M, DataStructures* dsa)
+        : m_M (M), m_dsa (dsa) { 
+
       // --- Pre-compute all the information per function and
       //     callsites
 

@@ -10,7 +10,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "crab_llvm/MemAnalysis.hh"
-#include "crab_llvm/CrabLlvm.hh"
 
 #include "crab/cfg/ConcSys.hpp"
 

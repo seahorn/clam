@@ -12,15 +12,14 @@
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 
 #include "crab_llvm/config.h"
+#include "crab_llvm/ConCrabLlvm.hh"
 #include "crab_llvm/CfgBuilder.hh"
 #include "crab_llvm/SymEval.hh"
-#include "crab_llvm/ConCrabLlvm.hh"
 #include "crab_llvm/AbstractDomains.hh"
 #include "crab_llvm/Support/NameValues.hh"
 
-#include <crab/cfg/ConcSys.hpp>
-#include <crab/analysis/ConcAnalyzer.hpp>
-#include <crab/domains/domain_traits.hpp>
+#include "crab/analysis/ConcAnalyzer.hpp"
+#include "crab/domains/domain_traits.hpp"
 
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
@@ -41,9 +40,9 @@ using namespace llvm;
 
 namespace crab_llvm
 {
-  inline llvm::raw_ostream& operator<< 
-  (llvm::raw_ostream& o, 
-   crab::conc::ConcSys< llvm::Function*, crab::cfg_impl::cfg_t> &sys)
+  template<typename CFG> 
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab::conc::ConcSys< llvm::Function*, CFG> &sys)
   {
     std::ostringstream s;
     s << sys;
@@ -61,7 +60,7 @@ namespace crab_llvm
 {
   using namespace crab::conc;
 
-  typedef ConcSys< llvm::Function*, cfg_t> conc_sys_t;
+  typedef ConcSys< llvm::Function*, cfg_ref_t> conc_sys_t;
   typedef SymEval<VariableFactory, crab::cfg_impl::z_lin_exp_t> sym_eval_t;
   typedef boost::optional<crab::cfg_impl::z_lin_exp_t> z_lin_exp_opt_t;
 
@@ -151,12 +150,12 @@ namespace crab_llvm
   void analyzeConcSys (conc_sys_t& sys, VariableFactory& vfac, 
                        Module& M, MemAnalysis& mem, const DataLayout* dl)
   {
-    typedef ConcAnalyzer <llvm::Function*, cfg_t, 
-                          AbsDomain, VariableFactory> conc_analyzer_t;
+    typedef ConcAnalyzer <llvm::Function*, cfg_ref_t, AbsDomain, VariableFactory> 
+        conc_analyzer_t;
 
     /// --- Initialize shared global state
     AbsDomain init_gv_inv = AbsDomain::top ();
-    sym_eval_t sym_eval (vfac, mem);
+    sym_eval_t sym_eval (vfac, mem, CrabTrackLev);
     for (auto p: sys)
     {
       // TODO: we should add only the initialization of the global
@@ -230,7 +229,7 @@ namespace crab_llvm
   {
 
     #ifdef HAVE_DSA
-    m_mem.reset (new DSAMemAnalysis (M, &getAnalysis<SteensgaardDataStructures> (), ARR)); 
+    m_mem.reset (new DSAMemAnalysis (M, &getAnalysis<SteensgaardDataStructures> ())); 
     #endif     
 
     /// --- Identify threads and shared global variables
@@ -256,8 +255,8 @@ namespace crab_llvm
     /// --- variables
     for (auto f : m_threads)
     {
-      CfgBuilder builder (*f, vfac, *m_mem, true);
-      cfg_t& cfg = builder.getCfg ();
+      CfgBuilder builder (*f, vfac, *m_mem, CrabTrackLev, true);
+      auto cfg_ptr = builder.getCfg ();
                            
       vector<varname_t> shared_vars;
       for (auto v : m_shared_vars)
@@ -269,7 +268,7 @@ namespace crab_llvm
         shared_vars.push_back (builder.getSymEval ().symVar (region));
       }
 
-      sys.add_thread (f, cfg, shared_vars.begin (), shared_vars.end ());
+      sys.add_thread (f, *cfg_ptr, shared_vars.begin (), shared_vars.end ());
     }
 
     const DataLayout* dl = M.getDataLayout ();
@@ -279,8 +278,8 @@ namespace crab_llvm
       case INTERVALS_CONGRUENCES: 
         ANALYZE(CrabTrackLev, ric_domain_t, arr_ric_domain_t, sys, vfac, M, *m_mem, dl); 
         break;
-      case ZONES: 
-        ANALYZE(CrabTrackLev, dbm_domain_t, arr_dbm_domain_t, sys, vfac, M, *m_mem, dl); 
+      case ZONES_SPLIT_DBM: 
+        ANALYZE(CrabTrackLev, split_dbm_domain_t, arr_split_dbm_domain_t, sys, vfac, M, *m_mem, dl); 
         break;
       case TERMS_INTERVALS: 
         ANALYZE(CrabTrackLev, term_int_domain_t, arr_term_int_domain_t, sys, vfac, M, *m_mem, dl); 

@@ -6,8 +6,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/APInt.h"
 
-#include <crab/cfg/Cfg.hpp>
-#include <crab_llvm/MemAnalysis.hh>
+#include "crab/cfg/Cfg.hpp"
+#include "crab_llvm/MemAnalysis.hh"
 
 namespace crab_llvm
 {
@@ -21,7 +21,8 @@ namespace crab_llvm
   class SymEval {
 
     VariableFactory& m_vfac;
-    MemAnalysis& m_mem;
+    MemAnalysis& m_mem; 
+    TrackedPrecision m_tracklev;
 
    public:
 
@@ -29,13 +30,14 @@ namespace crab_llvm
 
    public:
 
-    SymEval (VariableFactory &vfac, MemAnalysis& mem): 
-        m_vfac (vfac), m_mem (mem)
-    { }
+    SymEval (VariableFactory &vfac, MemAnalysis& mem, TrackedPrecision tracklev)
+        : m_vfac (vfac), m_mem (mem), m_tracklev(tracklev) { }
 
     MemAnalysis& getMem () { return m_mem;}
 
     VariableFactory& getVarFac () { return m_vfac; }
+
+    TrackedPrecision getTrackLevel () const { return m_tracklev;}
 
     bool isTracked (const llvm::Value &v) {
       
@@ -45,7 +47,7 @@ namespace crab_llvm
 
       // -- a pointer
       if (v.getType ()->isPointerTy ()) 
-        return (m_mem.getTrackLevel () >= PTR); 
+        return (m_tracklev >= PTR); 
 
       // -- always track integer registers
       return v.getType ()->isIntegerTy ();

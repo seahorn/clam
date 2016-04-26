@@ -165,13 +165,11 @@ namespace crab_llvm
     basic_block_t& m_bb;
     bool m_is_negated;
     
-    NumAbsCondVisitor (sym_eval_t& sev, 
-                             basic_block_t& bb, 
-                             bool is_negated):
-        m_sev (sev),
-        m_bb (bb), 
-        m_is_negated (is_negated)
-    { }
+    NumAbsCondVisitor (sym_eval_t& sev, basic_block_t& bb, 
+                       bool is_negated)
+        : m_sev (sev),
+          m_bb (bb), 
+          m_is_negated (is_negated) { }
     
     void normalizeCmpInst(CmpInst &I) {
       switch (I.getPredicate()){
@@ -325,8 +323,8 @@ namespace crab_llvm
     const llvm::BasicBlock& m_inc_BB; 
 
     NumAbsPhiVisitor (sym_eval_t& sev, 
-                       basic_block_t& bb, 
-                       const llvm::BasicBlock& inc_BB): 
+                      basic_block_t& bb, 
+                      const llvm::BasicBlock& inc_BB): 
         m_sev (sev), m_bb (bb), m_inc_BB (inc_BB)
     { }
 
@@ -400,7 +398,7 @@ namespace crab_llvm
     bool m_is_inter_proc;
 
     NumAbsVisitor (sym_eval_t& sev, const DataLayout* dl, 
-                    basic_block_t & bb, bool isInterProc): 
+                   basic_block_t & bb, bool isInterProc): 
         m_sev (sev),
         m_dl (dl),
         m_bb (bb), 
@@ -893,7 +891,7 @@ namespace crab_llvm
       /// --- Translate only loads into integer variables
 
       Type *ty = I.getType();
-      if (ty->isIntegerTy () && m_sev.getMem().getTrackLevel () == ARR) {
+      if (ty->isIntegerTy () && m_sev.getTrackLevel () == ARR) {
 
         region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), 
                                                     I.getPointerOperand ());
@@ -927,7 +925,7 @@ namespace crab_llvm
       /// --- Translate only stores of integer values
 
       Type* ty = I.getOperand (0)->getType ();
-      if (ty->isIntegerTy () && m_sev.getMem().getTrackLevel () == ARR) {                
+      if (ty->isIntegerTy () && m_sev.getTrackLevel () == ARR) {                
         region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()),
                                                     I.getOperand (1)); 
 
@@ -953,7 +951,7 @@ namespace crab_llvm
     }
 
     void visitAllocaInst (AllocaInst &I) {
-      if (m_sev.getMem().getTrackLevel () == ARR) {        
+      if (m_sev.getTrackLevel () == ARR) {        
         region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), 
                                                     &I);
         if (region.isUnknown ()) return;
@@ -1193,7 +1191,7 @@ namespace crab_llvm
         }
         
         // -- havoc all modified nodes by the callee
-        if (m_sev.getMem().getTrackLevel () == ARR) {
+        if (m_sev.getTrackLevel () == ARR) {
           region_set_t mods = m_sev.getMem().getModifiedRegions (I);
           for (auto a : mods) {
             m_bb.havoc (m_sev.symVar (a));
@@ -1214,7 +1212,7 @@ namespace crab_llvm
           actuals.push_back (normalizeParam (*v));
         }
 
-        if (m_sev.getMem().getTrackLevel () == ARR) {
+        if (m_sev.getTrackLevel () == ARR) {
           // -- add the array actual parameters
           region_set_t onlyreads = m_sev.getMem().getOnlyReadRegions (I);
           region_set_t mods = m_sev.getMem().getModifiedRegions (I);
@@ -1300,7 +1298,7 @@ namespace crab_llvm
   {
     assert (!lookup(B));
     llvm::BasicBlock *BB = &B;
-    basic_block_t &bb = m_cfg.insert ( BB);
+    basic_block_t &bb = m_cfg->insert ( BB);
     m_bb_map.insert (llvm_bb_map_t::value_type (BB, bb));
   }  
 
@@ -1310,7 +1308,7 @@ namespace crab_llvm
 
     assert (m_bb_map.find (BB) == m_bb_map.end()); 
 
-    basic_block_t &bb = m_cfg.insert (BB);
+    basic_block_t &bb = m_cfg->insert (BB);
 
     src -= dst;
     src >> bb;
@@ -1464,7 +1462,7 @@ namespace crab_llvm
     
     // -- unify multiple return blocks
     if (retBlks.size () == 1) { 
-      m_cfg.set_exit (retBlks [0]->label ());
+      m_cfg->set_exit (retBlks [0]->label ());
     }
     else if (retBlks.size () > 1) {
 
@@ -1472,18 +1470,18 @@ namespace crab_llvm
                                                               create_bb_name (),
                                                               &m_func);
       
-      basic_block_t &unified_ret = m_cfg.insert (singleRetBlk);
+      basic_block_t &unified_ret = m_cfg->insert (singleRetBlk);
 
       for(unsigned int i=0; i<retBlks.size (); i++)
         *(retBlks [i]) >> unified_ret;
-      m_cfg.set_exit (unified_ret.label ());
+      m_cfg->set_exit (unified_ret.label ());
     }
 
     /// Allocate arrays with initial values 
-    if (m_sev.getMem().getTrackLevel () == ARR) {
+    if (m_sev.getTrackLevel () == ARR) {
       if (m_func.getName ().equals ("main")) {
         Module*M = m_func.getParent ();
-        basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+        basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
         for (GlobalVariable &gv : boost::make_iterator_range (M->global_begin (),
                                                               M->global_end ())) {
           if (gv.hasInitializer ())  {
@@ -1508,7 +1506,7 @@ namespace crab_llvm
         // getNewRegions returns all the new nodes created by the
         // function (via malloc-like functions) except if the function
         // is main.
-        basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+        basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
         region_set_t news =  m_sev.getMem ().getNewRegions (m_func);
         for (auto n: news) {
           entry.set_insert_point_front ();
@@ -1535,10 +1533,10 @@ namespace crab_llvm
                                      getType (arg.getType ())));
       }
       
-      if (m_sev.getMem().getTrackLevel () == ARR && 
+      if (m_sev.getTrackLevel () == ARR && 
           (!m_func.getName ().equals ("main"))) {
         // -- add array formal parameters 
-        basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+        basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
 
         region_set_t onlyreads = m_sev.getMem().getOnlyReadRegions (m_func);
         region_set_t mods = m_sev.getMem().getModifiedRegions (m_func);
@@ -1595,18 +1593,12 @@ namespace crab_llvm
         retTy = getType (m_func.getReturnType ());
 
       FunctionDecl<varname_t> decl (retTy, m_sev.getVarFac()[m_func], params);
-      m_cfg.set_func_decl (decl);
+      m_cfg->set_func_decl (decl);
       
     }
     
-    if (CrabCFGSimplify) {
-      m_cfg.simplify ();
-    }
-    
-    if (CrabPrintCFG) {
-      cout << m_cfg << "\n";
-    }
-    
+    if (CrabCFGSimplify) m_cfg->simplify ();
+    if (CrabPrintCFG) cout << m_cfg << "\n";
     return ;
   }
 

@@ -93,6 +93,12 @@ def parseArgs (argv):
                        help='CPU time limit (seconds)', default=-1)
     p.add_argument ('--mem', type=int, dest='mem', metavar='MB',
                        help='MEM limit (MB)', default=-1)
+    p.add_argument ('--llvm-dot-cfg',
+                    help='Print LLVM CFG of function to dot file',
+                    dest='dot_cfg', default=False, action='store_true')
+    p.add_argument ('--llvm-view-cfg',
+                    help='View LLVM CFG of function',
+                    dest='view_cfg', default=False, action='store_true')
     p.add_argument ('--llvm-inline-threshold', dest='inline_threshold',
                     type=int, metavar='NUM',
                     help='Inline threshold (default = 255)')
@@ -127,7 +133,7 @@ def parseArgs (argv):
                     choices=['int','ric', 'boxes', 'dis-int', 'term-int', 'term-dis-int', 'num',
                              'zones-sparse', 'zones-split', 'zones-dense', 'zones-dense-pack',
                              'int-apron','oct-apron','opt-oct-apron','pk-apron'],
-                    dest='crab_dom', default='int')
+                    dest='crab_dom', default='zones-split')
     ############ 
     p.add_argument ('--crab-widening-delay', 
                     type=int, dest='widening_delay', 
@@ -156,8 +162,8 @@ def parseArgs (argv):
                     dest='crab_inter', default=False, action='store_true')
     p.add_argument ('--crab-inter-sum-dom',
                     help='Choose abstract domain for computing summaries',
-                    choices=['term-int', 'zones-sparse', 'zones-split', 
-                             'opt-oct-apron','num'],
+                    choices=['term-int', 'term-dis-int',
+                             'zones-sparse', 'zones-split', 'opt-oct-apron','num'],
                     dest='crab_inter_sum_dom', default='zones-split')
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
@@ -166,9 +172,6 @@ def parseArgs (argv):
                     help='Instrument code with invariants',
                     choices=['none', 'block-entry', 'after-load'],
                     dest='insert_invs', default='none')
-    p.add_argument ('--crab-print-invariants',
-                    help='Display computed invariants',
-                    dest='show_invars', default=False, action='store_true')
     p.add_argument ('--crab-print-summaries',
                     help='Display computed summaries (if --crab-inter)',
                     dest='show_summs', default=False, action='store_true')
@@ -328,6 +331,32 @@ def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if returnvalue != 0: sys.exit (returnvalue)
 
 
+# Generate dot files for each LLVM function.
+def dot (in_name, view_dot = False, cpu = -1, mem = -1):
+    def set_limits ():
+        if mem > 0:
+            mem_bytes = mem * 1024 * 1024
+            resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
+
+    fnull = open(os.devnull, 'w')
+    args = [getOptLlvm(), in_name, '-dot-cfg']
+    if view_dot: args.append ('-view-cfg')
+    if verbose: print ' '.join (args)
+
+    p = sub.Popen (args, stdout=fnull, preexec_fn=set_limits)
+    global running_process
+    running_process = p
+    timer = threading.Timer (cpu, kill, [p])
+    if cpu > 0: timer.start ()
+    try:
+        (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
+        running_process = None
+    finally:
+        ## kill the timer if the process has terminated already
+        if timer.isAlive (): timer.cancel ()
+    ## if crabpp did not terminate properly, propagate this error code
+    if returnvalue != 0: sys.exit (returnvalue)
+
 # Run crabpp
 def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     def set_limits ():
@@ -388,12 +417,8 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.log is not None:
         for l in args.log.split (':'): crabllvm_cmd.extend (['-log', l])
 
-    if args.undef_nondet:
-        crabllvm_cmd.append( '--crab-turn-undef-nondet')
-    if args.lower_select:
-        crabllvm_cmd.append( '--crab-lower-select')
-
-
+    if args.undef_nondet: crabllvm_cmd.append( '--crab-turn-undef-nondet')
+    if args.lower_select: crabllvm_cmd.append( '--crab-lower-select')
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     crabllvm_cmd.append ('--crab-inter-sum-dom={0}'.format (args.crab_inter_sum_dom))
     if (args.crab_dom == 'num'):
@@ -402,29 +427,19 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     crabllvm_cmd.append ('--crab-widening-jump-set={0}'.format (args.widening_jump_set))
     crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format (args.narrowing_iterations))
     crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
-    if args.crab_disable_offsets:
-        crabllvm_cmd.append ('--crab-disable-offsets')
-    if args.crab_singleton_aliases:
-        crabllvm_cmd.append ('--crab-singleton-aliases')
-    if args.crab_inter:
-        crabllvm_cmd.append ('--crab-inter')
-    if args.crab_live:
-        crabllvm_cmd.append ('--crab-live')
+    if args.crab_disable_offsets: crabllvm_cmd.append ('--crab-disable-offsets')
+    if args.crab_singleton_aliases: crabllvm_cmd.append ('--crab-singleton-aliases')
+    if args.crab_inter: crabllvm_cmd.append ('--crab-inter')
+    if args.crab_live: crabllvm_cmd.append ('--crab-live')
     crabllvm_cmd.append ('--crab-add-invariants={0}'.format (args.insert_invs))
-    if args.show_invars:
-        crabllvm_cmd.append ('--crab-print-invariants')
-    if args.show_summs:
-        crabllvm_cmd.append ('--crab-print-summaries')
-    if args.print_cfg:
-        crabllvm_cmd.append ('--crab-print-cfg')
-    if args.print_stats:
-        crabllvm_cmd.append ('--crab-stats')
+    crabllvm_cmd.append ('--crab-print-invariants')
+    if args.show_summs: crabllvm_cmd.append ('--crab-print-summaries')
+    if args.print_cfg: crabllvm_cmd.append ('--crab-print-cfg')
+    if args.print_stats: crabllvm_cmd.append ('--crab-stats')
     # hidden options
-    if args.crab_cfg_simplify:
-        crabllvm_cmd.append ('--crab-cfg-simplify')
-    if args.crab_keep_shadows:
-        crabllvm_cmd.append ('--crab-keep-shadows')
-
+    if args.crab_cfg_simplify: crabllvm_cmd.append ('--crab-cfg-simplify')
+    if args.crab_keep_shadows: crabllvm_cmd.append ('--crab-keep-shadows')
+        
     if verbose: print ' '.join (crabllvm_cmd)
 
     if args.out_name is not None:
@@ -494,6 +509,9 @@ def main (argv):
         if not args.analyze:
             extra_opts.append ('-no-crab')
         crabllvm (in_name, pp_out, args, extra_opts, cpu=args.cpu, mem=args.mem)
+
+    if args.dot_cfg: dot(pp_out)
+    if args.view_cfg: dot(pp_out, True)
     #stat ('Progress', 'Crab Llvm')
 
     if args.asm_out_name is not None and args.asm_out_name != pp_out:

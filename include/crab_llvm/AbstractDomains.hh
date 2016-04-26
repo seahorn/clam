@@ -9,7 +9,6 @@
 #include "crab/domains/linear_constraints.hpp"                     
 #include "crab/domains/intervals.hpp"                      
 #include "crab/domains/dis_intervals.hpp"                      
-//#include "crab/domains/dbm.hpp"
 #include "crab/domains/sparse_dbm.hpp"
 #include "crab/domains/split_dbm.hpp"
 #include "crab/domains/dense_dbm.hpp"
@@ -68,7 +67,6 @@ namespace crab_llvm {
   /// -- Intervals
   typedef interval_domain< z_number, varname_t> interval_domain_t;
   /// -- Zones with sparse DBM
-  //typedef DBM<z_number, varname_t> dbm_domain_t;
   typedef SpDBM_impl::DefaultParams<z_number> SparseDBMGraph;
   typedef SparseDBM<z_number, varname_t, SparseDBMGraph> dbm_domain_t;
   /// -- Zones with split DBM

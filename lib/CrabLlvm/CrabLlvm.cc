@@ -12,15 +12,16 @@
 #include "llvm/Support/Debug.h"
 
 #include "crab_llvm/config.h"
-#include "crab_llvm/AbstractDomains.hh"
 #include "crab_llvm/CrabLlvm.hh"
 #include "crab_llvm/SymEval.hh"
 #include "crab_llvm/Support/NameValues.hh"
 
 #include "crab/common/debug.hpp"
 #include "crab/common/stats.hpp"
+#include "crab/analysis/Liveness.hpp"
 #include "crab/analysis/FwdAnalyzer.hpp"
 #include "crab/analysis/InterFwdAnalyzer.hpp"
+#include "crab/cg/Cg.hpp"
 #include "crab/cg/CgBgl.hpp"
 
 #ifdef HAVE_DSA
@@ -167,74 +168,74 @@ namespace crab_llvm {
 
   char crab_llvm::CrabLlvm::ID = 0;
 
-  #define ANALYZE(TRACK,BASE_DOM,ARR_DOM,CFG,F,LIVE,RES)         \
-  RES = (TRACK == ARR ? analyzeCfg <ARR_DOM> (CFG, F, LIVE) :    \
-                        analyzeCfg <BASE_DOM> (CFG, F, LIVE));
+  #define ANALYZE(BASE_DOM,ARR_DOM,CFG,F,LIVE,RES)                    \
+  RES = (CrabTrackLev == ARR ? analyzeCfg <ARR_DOM> (CFG, F, LIVE) :  \
+                               analyzeCfg <BASE_DOM> (CFG, F, LIVE));
 
   #ifdef INCLUDE_ALL_DOMAINS
-  #define INTER_ANALYZE(SUMM_DOM,BASE_DOM,ARR_DOM,TRACK,CG,M,LIVE,RES)     \
-  switch (SUMM_DOM){                                                       \
+  #define INTER_ANALYZE(BASE_DOM,ARR_DOM,CG,M,LIVE,RES)                    \
+  switch (CrabSummDomain){                                                 \
     case TERMS_INTERVALS:                                                  \
-      RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_term_int_domain_t, ARR_DOM> (CG, LIVE, M) :      \
-           analyzeCg <term_int_domain_t, BASE_DOM> (CG, LIVE, M)) ;        \
+      RES = (CrabTrackLev == ARR ?                                         \
+             analyzeCg <arr_term_int_domain_t, ARR_DOM> (CG, M, LIVE) :    \
+             analyzeCg <term_int_domain_t, BASE_DOM> (CG, M, LIVE)) ;      \
       break;                                                               \
     case TERMS_DIS_INTERVALS:                                              \
-      RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_term_dis_int_domain_t, ARR_DOM> (CG, LIVE, M) :  \
-           analyzeCg <term_dis_int_domain_t, BASE_DOM> (CG, LIVE, M)) ;    \
+      RES = (CrabTrackLev == ARR ?                                         \
+             analyzeCg <arr_term_dis_int_domain_t, ARR_DOM> (CG, M, LIVE) : \
+             analyzeCg <term_dis_int_domain_t, BASE_DOM> (CG, M, LIVE)) ;  \
       break;                                                               \
     case ZONES_DENSE_PACK_DBM:                                             \
-      RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_dp_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :        \
-           analyzeCg <dp_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;          \
+      RES = (CrabTrackLev == ARR ?                                         \
+             analyzeCg <arr_dp_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :      \
+             analyzeCg <dp_dbm_domain_t, BASE_DOM> (CG, N, LIVE)) ;        \
       break;                                                               \
     case ZONES_DENSE_DBM:                                                  \
-      RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_d_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :         \
-           analyzeCg <d_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;           \
+      RES = (CrabTrackLev == ARR ?                                         \
+             analyzeCg <arr_d_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :       \
+             analyzeCg <d_dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ;         \
       break;                                                               \
     case ZONES_SPARSE_DBM:                                                 \
-      RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :           \
-           analyzeCg <dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ;             \
+      RES = (CrabTrackLev == ARR ?                                         \
+             analyzeCg <arr_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :         \
+             analyzeCg <dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ;           \
       break;                                                               \
     case OPT_OCT_APRON:                                                    \
-      RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_opt_oct_apron_domain_t, ARR_DOM> (CG, LIVE, M) : \
-           analyzeCg <opt_oct_apron_domain_t, BASE_DOM> (CG, LIVE, M)) ;   \
+      RES = (CrabTrackLev == ARR ?                                         \
+             analyzeCg <arr_opt_oct_apron_domain_t, ARR_DOM> (CG, M, LIVE) : \
+             analyzeCg <opt_oct_apron_domain_t, BASE_DOM> (CG, M, LIVE)) ; \
       break;                                                               \
     case NUM:                                                              \
-      RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_num_domain_t, ARR_DOM> (CG, LIVE, M) :           \
-           analyzeCg <num_domain_t, BASE_DOM> (CG, LIVE, M)) ;             \
+      RES = (CrabTrackLev == ARR ?                                         \
+             analyzeCg <arr_num_domain_t, ARR_DOM> (CG, M, LIVE) :         \
+             analyzeCg <num_domain_t, BASE_DOM> (CG, M, LIVE)) ;           \
       break;                                                               \
     default:                                                               \
-      if (SUMM_DOM != ZONES_SPLIT_DBM)                                     \
+      if (CrabSummDomain != ZONES_SPLIT_DBM)                               \
         cout << "Warning: choosing zones-split to compute summaries\n";    \
-      RES = (TRACK == ARR ?                                                \
-           analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :     \
-           analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ; }             
+      RES = (CrabTrackLev == ARR ?                                         \
+             analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :   \
+             analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ; }             
   #else
   // Here we only allow to use opt-oct, zones-split or num
-  #define INTER_ANALYZE(SUMM_DOM,BASE_DOM,ARR_DOM,TRACK,CG,M,LIVE,RES)       \
-  switch (SUMM_DOM){                                                         \
+  #define INTER_ANALYZE(BASE_DOM,ARR_DOM,CG,M,LIVE,RES)                      \
+  switch (CrabSummDomain){                                                   \
     case OPT_OCT_APRON:                                                      \
-      RES = (TRACK == ARR ?                                                  \
-           analyzeCg <arr_opt_oct_apron_domain_t, ARR_DOM> (CG, LIVE, M) :   \
-           analyzeCg <opt_oct_apron_domain_t, BASE_DOM> (CG, LIVE, M)) ;     \
+      RES = (CrabTrackLev == ARR ?                                           \
+             analyzeCg <arr_opt_oct_apron_domain_t, ARR_DOM> (CG, M, LIVE) : \
+             analyzeCg <opt_oct_apron_domain_t, BASE_DOM> (CG, M, LIVE)) ;   \
       break;                                                                 \
     case NUM:                                                                \
-      RES = (TRACK == ARR ?                                                  \
-           analyzeCg <arr_num_domain_t, ARR_DOM> (CG, LIVE, M) :             \
-           analyzeCg <num_domain_t, BASE_DOM> (CG, LIVE, M)) ;               \
+      RES = (CrabTrackLev == ARR ?                                           \
+             analyzeCg <arr_num_domain_t, ARR_DOM> (CG, M, LIVE) :           \
+             analyzeCg <num_domain_t, BASE_DOM> (CG, M, LIVE)) ;             \
       break;                                                                 \
     default:                                                                 \
-      if (SUMM_DOM != ZONES_SPLIT_DBM)                                       \
+      if (CrabSummDomain != ZONES_SPLIT_DBM)                                 \
         cout << "Warning: choosing zones-split to compute summaries\n";      \
-      RES = (TRACK == ARR ?                                                  \
-           analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, LIVE, M) :       \
-           analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, LIVE, M)) ; }
+      RES = (CrabTrackLev == ARR ?                                           \
+             analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :     \
+             analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ; }
   #endif  
 
 
@@ -243,8 +244,7 @@ namespace crab_llvm {
     m_absdom = CrabLlvmDomain;
 
     #ifdef HAVE_DSA
-    m_mem.reset (new DSAMemAnalysis (M, &getAnalysis<SteensgaardDataStructures> (),
-                                     CrabTrackLev));
+    m_mem.reset (new DSAMemAnalysis (M, &getAnalysis<SteensgaardDataStructures> ()));
     #endif     
 
     if (m_absdom == NUM) {
@@ -264,7 +264,7 @@ namespace crab_llvm {
 
     if (CrabInter){
 
-      vector<cfg_t> cfgs;
+      vector<cfg_ref_t> cfgs;
       liveness_map_t live_map;
       unsigned max_live_per_blk = 0;
       for (auto &F : M) {
@@ -274,22 +274,23 @@ namespace crab_llvm {
         if (F.isVarArg ()) continue;
 
         // -- build cfg
-        CfgBuilderPtr builder (new CfgBuilder (F, m_vfac, *m_mem, 
-                                               /*include function decls and callsites*/
-                                               true));
-        m_builder_map [&F] = builder;
-        cfg_t& cfg = builder->getCfg ();
-        cfgs.push_back (cfg);
+        CfgBuilder B (F, m_vfac, *m_mem, CrabTrackLev,
+                      /*include function decls and callsites*/
+                      true);
+
+        auto cfg_ptr = B.getCfg();
+        m_cfg_map [&F] = cfg_ptr;
+        cfgs.push_back (*cfg_ptr);
 
         // -- build liveness
         if (CrabLive) {
           CRAB_LOG("crabllvm",
-                   auto fdecl = cfg.get_func_decl ();            
+                   auto fdecl = cfg_ptr->get_func_decl ();            
                    assert (fdecl);
                    cout << "Running liveness analysis for " 
                         << (*fdecl).get_func_name () << "  ... ";);
 
-          liveness_t* live = new liveness_t (cfg);
+          liveness_t* live = new liveness_t (*cfg_ptr);
           live->exec ();
           CRAB_LOG("crabllvm", cout << "DONE!\n";);
           // some stats
@@ -303,14 +304,13 @@ namespace crab_llvm {
                         << avg_live_per_blk << "\n";);
           crab::CrabStats::count_max ("Liveness.count.maxOutVars", max_live_per_blk);
 
-          live_map.insert (make_pair (cfg, live));
+          live_map.insert (make_pair (cfg_ref_t(*cfg_ptr), live));
         }
       }
 
       // -- build call graph
 
-      CallGraph<cfg_t> cg (cfgs);
-
+      boost::scoped_ptr<call_graph_t> cg(new call_graph_t(cfgs));
       // -- run the interprocedural analysis
 
       // FIXME: the selection of the final domain between NUM and a
@@ -332,64 +332,57 @@ namespace crab_llvm {
       bool change = false;
       switch (absdom) {
         case INTERVALS_CONGRUENCES: 
-          INTER_ANALYZE (CrabSummDomain,ric_domain_t,arr_ric_domain_t,
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (ric_domain_t, arr_ric_domain_t, *cg, M, live_map, change); 
           break;
         case DIS_INTERVALS:
-          INTER_ANALYZE (CrabSummDomain,dis_interval_domain_t,arr_dis_interval_domain_t,
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (dis_interval_domain_t, arr_dis_interval_domain_t,
+                         *cg, M, live_map, change); 
           break;
         case ZONES_SPLIT_DBM: 
-          INTER_ANALYZE (CrabSummDomain,split_dbm_domain_t,arr_split_dbm_domain_t,
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (split_dbm_domain_t, arr_split_dbm_domain_t,
+                         *cg, M, live_map, change); 
           break;
         #ifdef INCLUDE_ALL_DOMAINS
         case ZONES_SPARSE_DBM: 
-          INTER_ANALYZE (CrabSummDomain,dbm_domain_t,arr_dbm_domain_t,
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (dbm_domain_t, arr_dbm_domain_t, *cg, M, live_map, change); 
           break;
         case ZONES_DENSE_DBM: 
-          INTER_ANALYZE (CrabSummDomain,d_dbm_domain_t,arr_d_dbm_domain_t,
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (d_dbm_domain_t, arr_d_dbm_domain_t, *cg, M, live_map, change); 
           break;
         case ZONES_DENSE_PACK_DBM: 
-          INTER_ANALYZE (CrabSummDomain,dp_dbm_domain_t,arr_dp_dbm_domain_t,
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (dp_dbm_domain_t, arr_dp_dbm_domain_t, *cg, M, live_map, change); 
           break;
         #endif 
         case TERMS_INTERVALS:
-          INTER_ANALYZE (CrabSummDomain,term_int_domain_t,arr_term_int_domain_t, 
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (term_int_domain_t, arr_term_int_domain_t, *cg, M, live_map, change); 
           break;
         case TERMS_DIS_INTERVALS:
-          INTER_ANALYZE (CrabSummDomain,term_dis_int_domain_t,arr_term_dis_int_domain_t, 
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (term_dis_int_domain_t,arr_term_dis_int_domain_t, 
+                         *cg,M,live_map,change); 
           break;
         #ifdef INCLUDE_ALL_DOMAINS
         case OCT_APRON:
-          INTER_ANALYZE (CrabSummDomain,oct_apron_domain_t,arr_oct_apron_domain_t, 
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (oct_apron_domain_t,arr_oct_apron_domain_t, 
+                         *cg, M, live_map, change); 
           break;
         #endif 
         case OPT_OCT_APRON:
-          INTER_ANALYZE (CrabSummDomain,opt_oct_apron_domain_t,arr_opt_oct_apron_domain_t, 
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (opt_oct_apron_domain_t,arr_opt_oct_apron_domain_t, 
+                         *cg, M, live_map, change); 
           break;
         case PK_APRON:
-          INTER_ANALYZE (CrabSummDomain,pk_apron_domain_t,arr_pk_apron_domain_t, 
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (pk_apron_domain_t,arr_pk_apron_domain_t, *cg,M,live_map,change); 
           break;
         case NUM: 
-          INTER_ANALYZE (CrabSummDomain,num_domain_t,arr_num_domain_t,
-                         CrabTrackLev,cg,M,live_map,change); 
+          INTER_ANALYZE (num_domain_t,arr_num_domain_t, *cg,M,live_map,change); 
           break;
         default: 
           if (absdom != INTERVALS)
             cout << "Warning: either abstract domain not found or "
                  << "inter-procedural version not implemented. "
                  << "Running intervals ...\n"; 
-          INTER_ANALYZE (CrabSummDomain,interval_domain_t,arr_interval_domain_t,
-                         CrabTrackLev,cg,M,live_map,change);
+          INTER_ANALYZE (interval_domain_t,arr_interval_domain_t,
+                         *cg,M,live_map,change);
       }
 
       if (CrabStats) {
@@ -434,23 +427,24 @@ namespace crab_llvm {
     if (F.isVarArg ()) return false;
 
     // -- build cfg
-    CfgBuilderPtr builder (new CfgBuilder (F, m_vfac, *m_mem, 
-                                           /*include function decls and callsites*/
-                                           true));
-    m_builder_map [&F] = builder;
-    cfg_t& cfg = builder->getCfg ();
+    CfgBuilder B (F, m_vfac, *m_mem, CrabTrackLev,
+                  /*include function decls and callsites*/
+                 true);
+
+    auto cfg_ptr = B.getCfg ();
+    m_cfg_map [&F] = cfg_ptr;
 
     // -- run liveness
     liveness_t* live = nullptr;
     unsigned max_live_per_blk = 0;
     if (CrabLive) {
       CRAB_LOG("crabllvm",
-               auto fdecl = cfg.get_func_decl ();            
+               auto fdecl = cfg_ptr->get_func_decl ();            
                assert (fdecl);
                cout << "Running liveness analysis for " 
                     << (*fdecl).get_func_name ()
                     << "  ... ";);
-      liveness_t ls (cfg);
+      liveness_t ls (*cfg_ptr);
       ls.exec ();
       CRAB_LOG("crabllvm", cout << "DONE!\n");
       // some stats
@@ -479,55 +473,55 @@ namespace crab_llvm {
     bool change=false;
     switch (absdom) {
       case INTERVALS_CONGRUENCES: 
-        ANALYZE(CrabTrackLev, ric_domain_t, arr_ric_domain_t, cfg, F, *live, change);
+        ANALYZE(ric_domain_t, arr_ric_domain_t, *cfg_ptr, F, *live, change);
         break;
       case TERMS_INTERVALS:
-        ANALYZE(CrabTrackLev,term_int_domain_t,arr_term_int_domain_t,cfg,F,*live,change);
+        ANALYZE(term_int_domain_t, arr_term_int_domain_t, *cfg_ptr, F, *live, change);
         break;
       case TERMS_DIS_INTERVALS:
-        ANALYZE(CrabTrackLev,term_dis_int_domain_t,arr_term_dis_int_domain_t,cfg,F,*live,change);
+        ANALYZE(term_dis_int_domain_t, arr_term_dis_int_domain_t, *cfg_ptr, F, *live, change);
         break;
       case ZONES_SPLIT_DBM: 
-        ANALYZE(CrabTrackLev,split_dbm_domain_t,arr_split_dbm_domain_t,cfg,F,*live,change);
+        ANALYZE(split_dbm_domain_t, arr_split_dbm_domain_t, *cfg_ptr, F, *live, change);
         break;
       #ifdef INCLUDE_ALL_DOMAINS
       case ZONES_SPARSE_DBM: 
-        ANALYZE(CrabTrackLev, dbm_domain_t, arr_dbm_domain_t, cfg, F, *live, change);
+        ANALYZE(dbm_domain_t, arr_dbm_domain_t, *cfg_ptr, F, *live, change);
         break;
       case ZONES_DENSE_DBM: 
-        ANALYZE(CrabTrackLev, d_dbm_domain_t, arr_d_dbm_domain_t, cfg, F, *live, change);
+        ANALYZE(d_dbm_domain_t, arr_d_dbm_domain_t, *cfg_ptr, F, *live, change);
         break;
       case ZONES_DENSE_PACK_DBM: 
-        ANALYZE(CrabTrackLev, dp_dbm_domain_t, arr_dp_dbm_domain_t, cfg, F, *live, change);
+        ANALYZE(dp_dbm_domain_t, arr_dp_dbm_domain_t, *cfg_ptr, F, *live, change);
         break;
       #endif 
       case BOXES:
-        ANALYZE(CrabTrackLev,boxes_domain_t,arr_boxes_domain_t,cfg,F,*live,change);
+        ANALYZE(boxes_domain_t, arr_boxes_domain_t, *cfg_ptr, F, *live, change);
         break;
       case DIS_INTERVALS:
-        ANALYZE(CrabTrackLev,dis_interval_domain_t,arr_dis_interval_domain_t,cfg,F,*live,change);
+        ANALYZE(dis_interval_domain_t, arr_dis_interval_domain_t, *cfg_ptr, F, *live, change);
         break;
       #ifdef INCLUDE_ALL_DOMAINS
       case INTV_APRON:
-        ANALYZE(CrabTrackLev, box_apron_domain_t, arr_box_apron_domain_t, cfg, F, *live, change);
+        ANALYZE(box_apron_domain_t, arr_box_apron_domain_t, *cfg_ptr, F, *live, change);
         break;
       case OCT_APRON:
-        ANALYZE(CrabTrackLev, oct_apron_domain_t, arr_oct_apron_domain_t, cfg, F, *live, change);
+        ANALYZE(oct_apron_domain_t, arr_oct_apron_domain_t, *cfg_ptr, F, *live, change);
         break;
       #endif 
       case OPT_OCT_APRON:
-        ANALYZE(CrabTrackLev,opt_oct_apron_domain_t,arr_opt_oct_apron_domain_t,cfg,F,*live,change);
+        ANALYZE(opt_oct_apron_domain_t, arr_opt_oct_apron_domain_t, *cfg_ptr, F, *live, change);
         break;
       case PK_APRON:
-        ANALYZE(CrabTrackLev,pk_apron_domain_t,arr_pk_apron_domain_t,cfg,F,*live,change);
+        ANALYZE(pk_apron_domain_t, arr_pk_apron_domain_t, *cfg_ptr, F, *live, change);
         break;
       case NUM:
-        ANALYZE(CrabTrackLev,num_domain_t,arr_num_domain_t,cfg,F,*live,change);
+        ANALYZE(num_domain_t, arr_num_domain_t, *cfg_ptr, F, *live, change);
         break;
       default: 
         if (absdom != INTERVALS)
           cout << "Warning: abstract domain not found. Running intervals ...\n"; 
-        ANALYZE(CrabTrackLev,interval_domain_t,arr_interval_domain_t,cfg,F,*live,change);
+        ANALYZE(interval_domain_t, arr_interval_domain_t, *cfg_ptr, F, *live, change);
     }
     
     if (CrabPrintAns) {
@@ -537,33 +531,33 @@ namespace crab_llvm {
     return change;
   }
 
-  template<typename BUAbsDomain, typename TDAbsDomain>
-  inline bool CrabLlvm::analyzeCg (const CallGraph<cfg_t>& cg, 
-            const liveness_map_t& live_map,
-           const llvm::Module &M)
+  template<typename BUDom, typename TDDom>
+  inline bool CrabLlvm::analyzeCg (call_graph_ref_t cg, const llvm::Module &M,
+                                   const liveness_map_t& live_map)
   {
     // -- run inter-procedural analysis on the whole call graph
-    typedef InterFwdAnalyzer< CallGraph<cfg_t>, VariableFactory,
-                              BUAbsDomain, TDAbsDomain> analyzer_t;
-
+    typedef InterFwdAnalyzer< call_graph_ref_t, VariableFactory,  BUDom, TDDom> 
+        inter_analyzer_t;
+                             
     CRAB_LOG("crabllvm", 
               cout << "Running inter-procedural analysis with " 
                    << "forward domain:" 
-                   << "\"" << TDAbsDomain::getDomainName () << "\"";
+                   << "\"" << TDDom::getDomainName () << "\"";
               cout << " and bottom-up domain:" 
-                   << "\"" << BUAbsDomain::getDomainName () << "\"" 
+                   << "\"" << BUDom::getDomainName () << "\"" 
                    << "  ... ";);
     
-    analyzer_t analyzer(cg, m_vfac, (CrabLive ? &live_map : nullptr),
-                        CrabWideningDelay, CrabNarrowingIters, 
-                        CrabWideningJumpSet);
-    analyzer.Run (TDAbsDomain::top ());
+    inter_analyzer_t analyzer(cg, m_vfac, (CrabLive ? &live_map : nullptr),
+                              CrabWideningDelay, 
+                              CrabNarrowingIters, 
+                              CrabWideningJumpSet);
+    analyzer.Run (TDDom::top ());
 
     CRAB_LOG("crabllvm", cout << "DONE\n");
 
     // -- store invariants     
     for (auto &n: boost::make_iterator_range (vertices (cg))) {
-      const cfg_t& cfg = n.getCfg ();
+      cfg_ref_t cfg = n.getCfg ();
       boost::optional<const llvm::Value *> v = n.name ().get ();
       if (v) {
         if (const llvm::Function *F = dyn_cast<llvm::Function> (*v)) {
@@ -591,28 +585,25 @@ namespace crab_llvm {
     return false;
   }
 
-  template<typename AbsDomain>
-  inline bool CrabLlvm::analyzeCfg (cfg_t& cfg, 
-                                    const Function&F, 
-                                    const liveness_t& live) {
+  template<typename Dom>
+  inline bool CrabLlvm::analyzeCfg (cfg_ref_t cfg, const Function&F, const liveness_t& live) {
 
-    typedef typename NumFwdAnalyzer <cfg_t, 
-                                     AbsDomain, 
-                                     VariableFactory>::type analyzer_t;
+    typedef typename NumFwdAnalyzer <cfg_ref_t,Dom,VariableFactory>::type intra_analyzer_t;
+
     CRAB_LOG("crabllvm",
              auto fdecl = cfg.get_func_decl ();            
              assert (fdecl);
              cout << "Running intra-procedural analysis with " 
-                  << "\"" << AbsDomain::getDomainName ()  << "\""
+                  << "\"" << Dom::getDomainName ()  << "\""
                   << " for "  << (*fdecl).get_func_name ()
                   << "  ... ";);
 
     // -- run intra-procedural analysis
-    analyzer_t analyzer (cfg, m_vfac, &live, 
-                         CrabWideningDelay, CrabNarrowingIters, 
-                         CrabWideningJumpSet);
-
-    analyzer.Run (AbsDomain::top());
+    intra_analyzer_t analyzer (cfg, m_vfac, &live, 
+                               CrabWideningDelay, CrabNarrowingIters, 
+                               CrabWideningJumpSet);
+    
+    analyzer.Run (Dom::top());
 
     CRAB_LOG("crabllvm", cout << "DONE\n"); 
 
@@ -691,10 +682,8 @@ namespace crab_llvm {
 } // end namespace 
 
 static llvm::RegisterPass<crab_llvm::CrabLlvm> 
-X ("crab-llvm",
-   "Infer invariants using Crab", 
-   false, 
-   false);
+X ("crab-llvm", "Infer invariants using Crab", false, false);
+  
    
 
 
