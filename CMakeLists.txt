@@ -193,7 +193,7 @@ if (USE_APRON)
      if (NOT HAVE_APRON)
        set (APRON_TAG "origin/elina" CACHE STRING "apron tag to use")
        ExternalProject_Add(apron
-         GIT_REPOSITORY git@bitbucket.org:jorgenavas/apron.git 
+         GIT_REPOSITORY https://jorgenavas@bitbucket.org/jorgenavas/apron.git
          GIT_TAG ${APRON_TAG}
          INSTALL_DIR ${CMAKE_BINARY_DIR}/run/apron
          CONFIGURE_COMMAND echo "Apron does not need a configure"
@@ -251,7 +251,7 @@ else ()
 endif ()
 
 if (GIT_FOUND)
-  set (CRAB_CORE_TAG "origin/dev" CACHE STRING "crab tag to use")
+  set (CRAB_CORE_TAG "origin/merging-master-dev" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
        CACHE STRING "crab repository")
   ExternalProject_Add(crab

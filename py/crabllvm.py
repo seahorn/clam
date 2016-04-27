@@ -13,7 +13,7 @@ import resource
 import stats
 
 root = os.path.dirname (os.path.dirname (os.path.realpath (__file__)))
-verbose = True
+verbose = False
 
 running_process = None
 
@@ -63,7 +63,10 @@ def loadEnv (filename):
         
 def parseArgs (argv):
     import argparse as a
-    p = a.ArgumentParser (description='Abstract Interpretation-based Analyzer for LLVM bitecode')
+    from argparse import RawTextHelpFormatter
+
+    p = a.ArgumentParser (description='Abstract Interpretation-based Analyzer for LLVM bitecode',
+                          formatter_class=RawTextHelpFormatter)
     p.add_argument ('-oll', dest='asm_out_name', metavar='FILE',
                        help='Output analyzed bitecode')
     p.add_argument ('--log', dest='log', default=None,
@@ -129,12 +132,24 @@ def parseArgs (argv):
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-dom',
-                    help='Choose abstract domain',
-                    choices=['int','ric', 'boxes', 'dis-int', 'term-int', 'term-dis-int', 'num',
-                             'zones-sparse', 'zones-split', 'zones-dense', 'zones-dense-pack',
-                             'int-apron','oct-apron','opt-oct-apron','pk-apron'],
+                    help="Choose abstract domain:\n"
+                          "- int: intervals\n"
+                          "- ric: reduced product of intervals and congruences\n"
+                          "- boxes: disjunctive intervals based on LDDs\n"
+                          "- dis-int: disjunctive intervals based on Clousot's DisInt domain\n"
+                          "- term-int: int with uninterpreted functions\n" 
+                          "- term-dis-int: dis-int with uninterpreted functions\n" 
+                          "- zones-sparse: zones domain using sparse DBM\n"
+                          "- zones-split: zones domain using sparse DBM in Split Normal Form\n"
+                          "- rtz: reduced product of term-int and zones-split\n"
+                          "- adapt-rtz: adaptative domain between intervals and rtz\n"
+                          "- opt-oct-apron: Elina's optimized octagon domain\n"
+                          "- pk-apron: Apron's polka domain\n",
+                    choices=['int','ric', 'boxes', 'dis-int', 
+                             'term-int', 'term-dis-int', 
+                             'zones-sparse', 'zones-split', 
+                             'rtz', 'adapt-rtz', 'opt-oct-apron','pk-apron'],
                     dest='crab_dom', default='zones-split')
-    ############ 
     p.add_argument ('--crab-widening-delay', 
                     type=int, dest='widening_delay', 
                     help='Max number of iterations until performing widening', default=1)
@@ -144,7 +159,7 @@ def parseArgs (argv):
     p.add_argument ('--crab-narrowing-iterations', 
                     type=int, dest='narrowing_iterations', 
                     help='Max number of narrowing iterations', default=999999)
-    p.add_argument ('--crab-dom-num-threshold', 
+    p.add_argument ('--crab-adapt-rtz-threshold', 
                     type=int, dest='num_threshold', 
                     help='Max number of live vars per block before switching domains', default=100)
     p.add_argument ('--crab-track',
@@ -156,14 +171,13 @@ def parseArgs (argv):
     p.add_argument ('--crab-disable-offsets',
                     help='Track memory contents but ignoring pointer offsets',
                     dest='crab_disable_offsets', default=False, action='store_true')
-    ############
     p.add_argument ('--crab-inter',
                     help='Run inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
     p.add_argument ('--crab-inter-sum-dom',
                     help='Choose abstract domain for computing summaries',
                     choices=['term-int', 'term-dis-int',
-                             'zones-sparse', 'zones-split', 'opt-oct-apron','num'],
+                             'zones-sparse', 'zones-split', 'opt-oct-apron','rtz'],
                     dest='crab_inter_sum_dom', default='zones-split')
     p.add_argument ('--crab-live',
                     help='Use of liveness information',
@@ -270,7 +284,8 @@ def defOutPPName (name, wd=None):
 # Run Clang
 def clang (in_name, out_name, arch=32, extra_args=[]):
     if os.path.splitext (in_name)[1] == '.bc':
-        print '--- Clang skipped: input file is already bitecode'
+        if verbose:
+            print '--- Clang skipped: input file is already bitecode'
         shutil.copy2 (in_name, out_name)
         return
 
@@ -421,11 +436,11 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.lower_select: crabllvm_cmd.append( '--crab-lower-select')
     crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
     crabllvm_cmd.append ('--crab-inter-sum-dom={0}'.format (args.crab_inter_sum_dom))
-    if (args.crab_dom == 'num'):
-        crabllvm_cmd.append ('--crab-dom-num-max-live={0}'.format (args.num_threshold))
     crabllvm_cmd.append ('--crab-widening-delay={0}'.format (args.widening_delay))
     crabllvm_cmd.append ('--crab-widening-jump-set={0}'.format (args.widening_jump_set))
     crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format (args.narrowing_iterations))
+    if (args.crab_dom == 'adapt-rtz'):
+        crabllvm_cmd.append ('--crab-adapt-rtz-threshold={0}'.format (args.num_threshold))
     crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
     if args.crab_disable_offsets: crabllvm_cmd.append ('--crab-disable-offsets')
     if args.crab_singleton_aliases: crabllvm_cmd.append ('--crab-singleton-aliases')

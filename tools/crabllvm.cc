@@ -81,9 +81,12 @@ struct LogOpt {
   { crab::CrabEnableLog (tag); } 
 };
 
+LogOpt loc;
+
 static llvm::cl::opt<LogOpt, true, llvm::cl::parser<std::string> > 
 LogClOption ("log",
              llvm::cl::desc ("Enable specified log level"),
+             llvm::cl::location (loc),
              llvm::cl::value_desc ("string"),
              llvm::cl::ValueRequired, llvm::cl::ZeroOrMore);
 

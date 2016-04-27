@@ -37,13 +37,10 @@ namespace crab_llvm {
                      DIS_INTERVALS,
                      ZONES_SPARSE_DBM, 
                      ZONES_SPLIT_DBM,
-                     ZONES_DENSE_DBM,
-                     ZONES_DENSE_PACK_DBM, 
                      TERMS_INTERVALS,
                      TERMS_DIS_INTERVALS,
-                     NUM,
-                     INTV_APRON,
-                     OCT_APRON,
+                     TERMS_ZONES, // TERMS_INTERVALS x  ZONES_SPLIT_DBM
+                     ADAPT_TERMS_ZONES, // (#live vars < threshold ? TERMS_INTERVALSxZONES_SPLIT_DBM, INTERVALS)
                      OPT_OCT_APRON,
                      PK_APRON };
 
@@ -72,20 +69,13 @@ namespace crab_llvm {
   /// -- Zones with split DBM
   typedef SDBM_impl::DefaultParams<z_number> SplitDBMGraph;
   typedef SplitDBM<z_number, varname_t, SplitDBMGraph> split_dbm_domain_t;
-  /// -- Zones with dense DBM
-  typedef DenseDBM< z_number, varname_t > d_dbm_domain_t;
-  /// -- Zones with dense DBM + var packing 
-  typedef DensePackDBM<z_number, varname_t> dp_dbm_domain_t;
   /// -- Boxes
   typedef boxes_domain<z_number, varname_t> boxes_domain_t;
   /// -- DisIntervals
   typedef dis_interval_domain <z_number, varname_t> dis_interval_domain_t;
   /// -- Apron domains
-  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_INT > box_apron_domain_t;
-  typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OCT > oct_apron_domain_t;
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_OPT_OCT > opt_oct_apron_domain_t;
   typedef apron_domain< z_number, varname_t, apron_domain_id_t::APRON_PK > pk_apron_domain_t;
-
 
   //////
   /// Combination/functor of domains 
@@ -109,15 +99,11 @@ namespace crab_llvm {
   typedef array_smashing<ric_domain_t> arr_ric_domain_t;
   typedef array_smashing<dbm_domain_t> arr_dbm_domain_t;
   typedef array_smashing<split_dbm_domain_t> arr_split_dbm_domain_t;
-  typedef array_smashing<dp_dbm_domain_t> arr_dp_dbm_domain_t;
-  typedef array_smashing<d_dbm_domain_t> arr_d_dbm_domain_t;
   typedef array_smashing<term_int_domain_t> arr_term_int_domain_t;
   typedef array_smashing<term_dis_int_domain_t> arr_term_dis_int_domain_t;
   typedef array_smashing<boxes_domain_t> arr_boxes_domain_t;
   typedef array_smashing<dis_interval_domain_t> arr_dis_interval_domain_t;
   typedef array_smashing<num_domain_t> arr_num_domain_t;
-  typedef array_smashing<box_apron_domain_t> arr_box_apron_domain_t;
-  typedef array_smashing<oct_apron_domain_t> arr_oct_apron_domain_t;
   typedef array_smashing<opt_oct_apron_domain_t> arr_opt_oct_apron_domain_t;
   typedef array_smashing<pk_apron_domain_t> arr_pk_apron_domain_t;
 
@@ -142,8 +128,6 @@ namespace llvm {
   DUMP_TO_LLVM_STREAM(crab_llvm::ric_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::dbm_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::split_dbm_domain_t)
-  DUMP_TO_LLVM_STREAM(crab_llvm::d_dbm_domain_t)
-  DUMP_TO_LLVM_STREAM(crab_llvm::dp_dbm_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::boxes_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::dis_interval_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::num_domain_t)
@@ -240,18 +224,18 @@ namespace crab_llvm {
 
   struct GenericAbsDomWrapper {
 
-     typedef enum { intv, dbm, split_dbm, dp_dbm, d_dbm,
+     typedef enum { intv, dbm, split_dbm, 
                     term_intv, term_dis_intv, 
                     ric, 
                     boxes, dis_intv,
-                    intv_apron, oct_apron, opt_oct_apron, pk_apron,
+                    opt_oct_apron, pk_apron,
                     num,
                     arr_intv, 
-                    arr_dbm, arr_split_dbm, arr_dp_dbm, arr_d_dbm,
+                    arr_dbm, arr_split_dbm, 
                     arr_term_intv, arr_term_dis_intv, 
                     arr_ric, 
                     arr_boxes, arr_dis_intv,
-                    arr_intv_apron, arr_oct_apron, arr_opt_oct_apron, arr_pk_apron,
+                    arr_opt_oct_apron, arr_pk_apron,
                     arr_num
                   } id_t;
 
@@ -295,14 +279,10 @@ namespace crab_llvm {
    DEFINE_BASE_DOMAIN(RicDomainWrapper,ric_domain_t,ric)
    DEFINE_BASE_DOMAIN(DbmDomainWrapper,dbm_domain_t,dbm)
    DEFINE_BASE_DOMAIN(SDbmDomainWrapper,split_dbm_domain_t,split_dbm)
-   DEFINE_BASE_DOMAIN(VDbmDomainWrapper,dp_dbm_domain_t,dp_dbm)
-   DEFINE_BASE_DOMAIN(DDbmDomainWrapper,d_dbm_domain_t,d_dbm)
    DEFINE_BASE_DOMAIN(TermIntDomainWrapper,term_int_domain_t,term_intv)
    DEFINE_BASE_DOMAIN(TermDisIntDomainWrapper,term_dis_int_domain_t,term_dis_intv)
    DEFINE_BASE_DOMAIN(BoxesDomainWrapper,boxes_domain_t,boxes)
    DEFINE_BASE_DOMAIN(DisIntervalDomainWrapper,dis_interval_domain_t,dis_intv)
-   DEFINE_BASE_DOMAIN(BoxApronDomainWrapper,box_apron_domain_t,intv_apron)
-   DEFINE_BASE_DOMAIN(OctApronDomainWrapper,oct_apron_domain_t,oct_apron)
    DEFINE_BASE_DOMAIN(OptOctApronDomainWrapper,opt_oct_apron_domain_t,opt_oct_apron)
    DEFINE_BASE_DOMAIN(PkApronDomainWrapper,pk_apron_domain_t,pk_apron)
    DEFINE_BASE_DOMAIN(NumDomainWrapper,num_domain_t,num)
@@ -312,14 +292,10 @@ namespace crab_llvm {
    REGISTER_DOMAIN_ID(arr_ric_domain_t,arr_ric)
    REGISTER_DOMAIN_ID(arr_dbm_domain_t,arr_dbm)
    REGISTER_DOMAIN_ID(arr_split_dbm_domain_t,arr_split_dbm)
-   REGISTER_DOMAIN_ID(arr_dp_dbm_domain_t,arr_dp_dbm)
-   REGISTER_DOMAIN_ID(arr_d_dbm_domain_t,arr_d_dbm)
    REGISTER_DOMAIN_ID(arr_term_int_domain_t,arr_term_intv)
    REGISTER_DOMAIN_ID(arr_term_dis_int_domain_t,arr_term_dis_intv)
    REGISTER_DOMAIN_ID(arr_boxes_domain_t,arr_boxes)
    REGISTER_DOMAIN_ID(arr_dis_interval_domain_t,arr_dis_intv)
-   REGISTER_DOMAIN_ID(arr_box_apron_domain_t,arr_intv_apron)
-   REGISTER_DOMAIN_ID(arr_oct_apron_domain_t,arr_oct_apron)
    REGISTER_DOMAIN_ID(arr_opt_oct_apron_domain_t,arr_opt_oct_apron)
    REGISTER_DOMAIN_ID(arr_pk_apron_domain_t,arr_pk_apron)
    REGISTER_DOMAIN_ID(arr_num_domain_t,arr_num)

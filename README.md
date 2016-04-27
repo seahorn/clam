@@ -138,16 +138,16 @@ domain. Users can choose the abstract domain by typing the option
 
 - `int`: classical intervals
 - `ric`: intervals with congruences
+- `term-int`: intervals with uninterpreted functions
 - `zones-sparse`: zones domain using sparse difference-bound matrices (DBM)
 - `zones-split`: zones domain using sparse DBM in split normal form
 - `opt-oct-apron`: octagons (only if `-DUSE_APRON=ON`)
 - `pk-apron`: polyhedra (only if `-DUSE_APRON=ON`)
 - `boxes`: disjunctive intervals based on ldds (only if `-DUSE_LDD=ON`)
 - `dis-int`: disjunctive intervals based on abstracted disjunctive completion
-- `term-int`: intervals with uninterpreted functions
 - `term-dis-int`: disjunctive intervals with uninterpreted functions
-- `num`: choose, based on the number of live variables, between `int`
-       and the reduced product of `term-dis-int` with `zones-split`.
+- `rtz`: reduced product of `term-dis-int` with `zones-split`.
+- `adapt-rtz`: choose, based on the number of live variables, between `int` and `rtz`.
 
 For domains without narrowing operator (for instance `boxes`,
 `dis-int`, and `pk-apron`), you need to set the option:

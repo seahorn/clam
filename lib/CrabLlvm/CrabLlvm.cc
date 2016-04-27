@@ -31,10 +31,6 @@
 using namespace llvm;
 using namespace crab_llvm;
 
-// FIXME: template instantiation takes really long time ... so we
-// don't include all the domains by default
-//#define INCLUDE_ALL_DOMAINS
-
 llvm::cl::opt<bool>
 CrabPrintAns ("crab-print-invariants", 
               llvm::cl::desc ("Print Crab invariants"),
@@ -85,26 +81,20 @@ CrabLlvmDomain("crab-dom",
                             "Zones domain with Sparse Difference-Bounds Matrix (DBMs)"),
                 clEnumValN (ZONES_SPLIT_DBM, "zones-split",
                             "Zones domain with Sparse DBMs in Split Normal Form"),
-                clEnumValN (ZONES_DENSE_DBM, "zones-dense",
-                            "Zones domain with dense DBMs"),
-                clEnumValN (ZONES_DENSE_PACK_DBM, "zones-dense-pack",
-                            "Zones domain with dense DBMs and dynamic variable packing"),
-                clEnumValN (INTV_APRON, "int-apron",
-                            "Intervals domain using Apron library"),
-                clEnumValN (OCT_APRON, "oct-apron",
-                            "Octagons domain using Apron library"),
                 clEnumValN (OPT_OCT_APRON, "opt-oct-apron",
                             "Optimized octagons domain using Elina"),
                 clEnumValN (PK_APRON, "pk-apron",
                             "Polyhedra domain using Apron library"),
-                clEnumValN (NUM, "num",
-                            "Choose between int and reduced product of term-dis-int with zones-split."),
+                clEnumValN (TERMS_ZONES, "rtz",
+                            "Reduced product term-dis-int with zones-split."),
+                clEnumValN (ADAPT_TERMS_ZONES, "adapt-rtz",
+                            "Choose dynamically between int and rtz."),
                 clEnumValEnd),
                llvm::cl::init (INTERVALS));
 
 // If domain is num
 llvm::cl::opt<unsigned>
-CrabNumThreshold("crab-dom-num-max-live", 
+CrabNumThreshold("crab-adapt-rtz-threshold", 
    llvm::cl::desc("Max number of live vars per block before switching domains"),
    llvm::cl::init (100),
    cl::Hidden);
@@ -128,17 +118,13 @@ CrabSummDomain("crab-inter-sum-dom",
                     "Zones domain with sparse DBMs"),
         clEnumValN (ZONES_SPLIT_DBM, "zones-split",
                     "Zones domain with sparse DBMs in Split Normal Form"),
-        clEnumValN (ZONES_DENSE_DBM, "zones-dense",
-                    "Zones domain with dense DBMs"),
-        clEnumValN (ZONES_DENSE_PACK_DBM, "zones-dense-pack",
-                    "Zones domain with dense DBMs and dynamic variable packing"),
         clEnumValN (OPT_OCT_APRON, "opt-oct-apron",
                     "Optimized octagons using Elina"),
         clEnumValN (TERMS_INTERVALS, "term-int",
                     "Intervals with uninterpreted functions."),
         clEnumValN (TERMS_DIS_INTERVALS, "term-dis-int",
                     "Disjunctive Intervals with uninterpreted functions."),
-        clEnumValN (NUM, "num",
+        clEnumValN (TERMS_ZONES, "rtz",
                     "Reduced product of term-dis-int and zones-split"),
         clEnumValEnd),
        llvm::cl::init (ZONES_SPLIT_DBM));
@@ -172,7 +158,6 @@ namespace crab_llvm {
   RES = (CrabTrackLev == ARR ? analyzeCfg <ARR_DOM> (CFG, F, LIVE) :  \
                                analyzeCfg <BASE_DOM> (CFG, F, LIVE));
 
-  #ifdef INCLUDE_ALL_DOMAINS
   #define INTER_ANALYZE(BASE_DOM,ARR_DOM,CG,M,LIVE,RES)                    \
   switch (CrabSummDomain){                                                 \
     case TERMS_INTERVALS:                                                  \
@@ -185,16 +170,6 @@ namespace crab_llvm {
              analyzeCg <arr_term_dis_int_domain_t, ARR_DOM> (CG, M, LIVE) : \
              analyzeCg <term_dis_int_domain_t, BASE_DOM> (CG, M, LIVE)) ;  \
       break;                                                               \
-    case ZONES_DENSE_PACK_DBM:                                             \
-      RES = (CrabTrackLev == ARR ?                                         \
-             analyzeCg <arr_dp_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :      \
-             analyzeCg <dp_dbm_domain_t, BASE_DOM> (CG, N, LIVE)) ;        \
-      break;                                                               \
-    case ZONES_DENSE_DBM:                                                  \
-      RES = (CrabTrackLev == ARR ?                                         \
-             analyzeCg <arr_d_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :       \
-             analyzeCg <d_dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ;         \
-      break;                                                               \
     case ZONES_SPARSE_DBM:                                                 \
       RES = (CrabTrackLev == ARR ?                                         \
              analyzeCg <arr_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :         \
@@ -205,7 +180,7 @@ namespace crab_llvm {
              analyzeCg <arr_opt_oct_apron_domain_t, ARR_DOM> (CG, M, LIVE) : \
              analyzeCg <opt_oct_apron_domain_t, BASE_DOM> (CG, M, LIVE)) ; \
       break;                                                               \
-    case NUM:                                                              \
+    case TERMS_ZONES:                                                      \
       RES = (CrabTrackLev == ARR ?                                         \
              analyzeCg <arr_num_domain_t, ARR_DOM> (CG, M, LIVE) :         \
              analyzeCg <num_domain_t, BASE_DOM> (CG, M, LIVE)) ;           \
@@ -216,28 +191,6 @@ namespace crab_llvm {
       RES = (CrabTrackLev == ARR ?                                         \
              analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :   \
              analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ; }             
-  #else
-  // Here we only allow to use opt-oct, zones-split or num
-  #define INTER_ANALYZE(BASE_DOM,ARR_DOM,CG,M,LIVE,RES)                      \
-  switch (CrabSummDomain){                                                   \
-    case OPT_OCT_APRON:                                                      \
-      RES = (CrabTrackLev == ARR ?                                           \
-             analyzeCg <arr_opt_oct_apron_domain_t, ARR_DOM> (CG, M, LIVE) : \
-             analyzeCg <opt_oct_apron_domain_t, BASE_DOM> (CG, M, LIVE)) ;   \
-      break;                                                                 \
-    case NUM:                                                                \
-      RES = (CrabTrackLev == ARR ?                                           \
-             analyzeCg <arr_num_domain_t, ARR_DOM> (CG, M, LIVE) :           \
-             analyzeCg <num_domain_t, BASE_DOM> (CG, M, LIVE)) ;             \
-      break;                                                                 \
-    default:                                                                 \
-      if (CrabSummDomain != ZONES_SPLIT_DBM)                                 \
-        cout << "Warning: choosing zones-split to compute summaries\n";      \
-      RES = (CrabTrackLev == ARR ?                                           \
-             analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :     \
-             analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ; }
-  #endif  
-
 
   bool CrabLlvm::runOnModule (llvm::Module &M) {
     // -- initialize from cli options
@@ -247,7 +200,7 @@ namespace crab_llvm {
     m_mem.reset (new DSAMemAnalysis (M, &getAnalysis<SteensgaardDataStructures> ()));
     #endif     
 
-    if (m_absdom == NUM) {
+    if (m_absdom == ADAPT_TERMS_ZONES) {
       // --- needs liveness information
       CrabLive = true;
     }
@@ -313,20 +266,20 @@ namespace crab_llvm {
       boost::scoped_ptr<call_graph_t> cg(new call_graph_t(cfgs));
       // -- run the interprocedural analysis
 
-      // FIXME: the selection of the final domain between NUM and a
-      //        cheaper domain is fixed for the whole program. That
-      //        is, if there is one function that exceeds the
-      //        threshold then the cheaper domain will be used for all
-      //        functions. We should be able to change from one
-      //        function to another.
+      // FIXME: the selection of the final domain is fixed for the
+      //        whole program. That is, if there is one function that
+      //        exceeds the threshold then the cheaper domain will be
+      //        used for all functions. We should be able to change
+      //        from one function to another.
       CrabDomain absdom = m_absdom;
-      if (absdom == NUM) {
+      if (absdom == ADAPT_TERMS_ZONES) {
         CRAB_LOG("crabllvm",
                  cout << "Max live per block: " << max_live_per_blk << endl;
                  cout << "Threshold: " << CrabNumThreshold << endl);
-        if (max_live_per_blk > CrabNumThreshold) {
+        if (max_live_per_blk > CrabNumThreshold)
           absdom = DIS_INTERVALS;
-        }
+        else 
+          absdom = TERMS_ZONES;
       }
             
       bool change = false;
@@ -342,17 +295,9 @@ namespace crab_llvm {
           INTER_ANALYZE (split_dbm_domain_t, arr_split_dbm_domain_t,
                          *cg, M, live_map, change); 
           break;
-        #ifdef INCLUDE_ALL_DOMAINS
         case ZONES_SPARSE_DBM: 
           INTER_ANALYZE (dbm_domain_t, arr_dbm_domain_t, *cg, M, live_map, change); 
           break;
-        case ZONES_DENSE_DBM: 
-          INTER_ANALYZE (d_dbm_domain_t, arr_d_dbm_domain_t, *cg, M, live_map, change); 
-          break;
-        case ZONES_DENSE_PACK_DBM: 
-          INTER_ANALYZE (dp_dbm_domain_t, arr_dp_dbm_domain_t, *cg, M, live_map, change); 
-          break;
-        #endif 
         case TERMS_INTERVALS:
           INTER_ANALYZE (term_int_domain_t, arr_term_int_domain_t, *cg, M, live_map, change); 
           break;
@@ -360,12 +305,6 @@ namespace crab_llvm {
           INTER_ANALYZE (term_dis_int_domain_t,arr_term_dis_int_domain_t, 
                          *cg,M,live_map,change); 
           break;
-        #ifdef INCLUDE_ALL_DOMAINS
-        case OCT_APRON:
-          INTER_ANALYZE (oct_apron_domain_t,arr_oct_apron_domain_t, 
-                         *cg, M, live_map, change); 
-          break;
-        #endif 
         case OPT_OCT_APRON:
           INTER_ANALYZE (opt_oct_apron_domain_t,arr_opt_oct_apron_domain_t, 
                          *cg, M, live_map, change); 
@@ -373,7 +312,7 @@ namespace crab_llvm {
         case PK_APRON:
           INTER_ANALYZE (pk_apron_domain_t,arr_pk_apron_domain_t, *cg,M,live_map,change); 
           break;
-        case NUM: 
+        case TERMS_ZONES: 
           INTER_ANALYZE (num_domain_t,arr_num_domain_t, *cg,M,live_map,change); 
           break;
         default: 
@@ -460,15 +399,16 @@ namespace crab_llvm {
     }
 
     CrabDomain absdom = m_absdom;
-    if (absdom == NUM) {
+    if (absdom == ADAPT_TERMS_ZONES) {
       CRAB_LOG("crabllvm", 
                cout << "Max live per block: " << max_live_per_blk << "\n"
                     << "Threshold: " << CrabNumThreshold << "\n");
-      if (max_live_per_blk > CrabNumThreshold) {
+      if (max_live_per_blk > CrabNumThreshold)
         absdom = DIS_INTERVALS;
-      }
+      else 
+        absdom = TERMS_ZONES;
     }
-    
+
     // -- run invariant generator
     bool change=false;
     switch (absdom) {
@@ -484,38 +424,22 @@ namespace crab_llvm {
       case ZONES_SPLIT_DBM: 
         ANALYZE(split_dbm_domain_t, arr_split_dbm_domain_t, *cfg_ptr, F, *live, change);
         break;
-      #ifdef INCLUDE_ALL_DOMAINS
       case ZONES_SPARSE_DBM: 
         ANALYZE(dbm_domain_t, arr_dbm_domain_t, *cfg_ptr, F, *live, change);
         break;
-      case ZONES_DENSE_DBM: 
-        ANALYZE(d_dbm_domain_t, arr_d_dbm_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case ZONES_DENSE_PACK_DBM: 
-        ANALYZE(dp_dbm_domain_t, arr_dp_dbm_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      #endif 
       case BOXES:
         ANALYZE(boxes_domain_t, arr_boxes_domain_t, *cfg_ptr, F, *live, change);
         break;
       case DIS_INTERVALS:
         ANALYZE(dis_interval_domain_t, arr_dis_interval_domain_t, *cfg_ptr, F, *live, change);
         break;
-      #ifdef INCLUDE_ALL_DOMAINS
-      case INTV_APRON:
-        ANALYZE(box_apron_domain_t, arr_box_apron_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case OCT_APRON:
-        ANALYZE(oct_apron_domain_t, arr_oct_apron_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      #endif 
       case OPT_OCT_APRON:
         ANALYZE(opt_oct_apron_domain_t, arr_opt_oct_apron_domain_t, *cfg_ptr, F, *live, change);
         break;
       case PK_APRON:
         ANALYZE(pk_apron_domain_t, arr_pk_apron_domain_t, *cfg_ptr, F, *live, change);
         break;
-      case NUM:
+      case TERMS_ZONES:
         ANALYZE(num_domain_t, arr_num_domain_t, *cfg_ptr, F, *live, change);
         break;
       default: 
