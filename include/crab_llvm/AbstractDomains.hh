@@ -11,8 +11,6 @@
 #include "crab/domains/dis_intervals.hpp"                      
 #include "crab/domains/sparse_dbm.hpp"
 #include "crab/domains/split_dbm.hpp"
-#include "crab/domains/dense_dbm.hpp"
-#include "crab/domains/dense_pack_dbm.hpp"
 #include "crab/domains/boxes.hpp"
 #include "crab/domains/apron_domains.hpp"
 #include "crab/domains/array_smashing.hpp"
