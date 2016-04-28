@@ -60,11 +60,10 @@
 #include "boost/range/algorithm/set_algorithm.hpp"
 #include "boost/optional.hpp"
 
+#include "crab/common/debug.hpp"
+#include "crab/common/stats.hpp"
 #include "crab_llvm/CfgBuilder.hh"
 #include "crab_llvm/Support/CFG.hh"
-
-// #define GEP_DEBUG
-// #define MEM_DEBUG
 
 // FIXME: this translation may generate a lot dead code, in
 // particular, when an instruction feeds load or stores that are not
@@ -166,13 +165,11 @@ namespace crab_llvm
     basic_block_t& m_bb;
     bool m_is_negated;
     
-    NumAbsCondVisitor (sym_eval_t& sev, 
-                             basic_block_t& bb, 
-                             bool is_negated):
-        m_sev (sev),
-        m_bb (bb), 
-        m_is_negated (is_negated)
-    { }
+    NumAbsCondVisitor (sym_eval_t& sev, basic_block_t& bb, 
+                       bool is_negated)
+        : m_sev (sev),
+          m_bb (bb), 
+          m_is_negated (is_negated) { }
     
     void normalizeCmpInst(CmpInst &I) {
       switch (I.getPredicate()){
@@ -326,8 +323,8 @@ namespace crab_llvm
     const llvm::BasicBlock& m_inc_BB; 
 
     NumAbsPhiVisitor (sym_eval_t& sev, 
-                       basic_block_t& bb, 
-                       const llvm::BasicBlock& inc_BB): 
+                      basic_block_t& bb, 
+                      const llvm::BasicBlock& inc_BB): 
         m_sev (sev), m_bb (bb), m_inc_BB (inc_BB)
     { }
 
@@ -401,7 +398,7 @@ namespace crab_llvm
     bool m_is_inter_proc;
 
     NumAbsVisitor (sym_eval_t& sev, const DataLayout* dl, 
-                    basic_block_t & bb, bool isInterProc): 
+                   basic_block_t & bb, bool isInterProc): 
         m_sev (sev),
         m_dl (dl),
         m_bb (bb), 
@@ -773,15 +770,13 @@ namespace crab_llvm
         return;
       }
 
-      #ifdef GEP_DEBUG
-      errs () << "Translating " << I << "\n";
-      #endif 
+      CRAB_LOG ("cfg-gep",
+                errs () << "Translating " << I << "\n");
 
       if (CrabNoPtrArith || AllUsesAreNonTrackMem (&I)) {
         if (CrabIncludeHavoc) m_bb.havoc (m_sev.symVar (I)); 
-        #ifdef GEP_DEBUG
-        errs () << " -- skipped translation: all uses are not track mem\n";
-        #endif 
+        CRAB_LOG("cfg-gep",
+                 errs () << " -- skipped translation: all uses are not track mem\n");
         return;
       }
 
@@ -801,15 +796,13 @@ namespace crab_llvm
         z_lin_exp_t offset (m_sev.toMpz (Offset).get_str ());
         if (isBaseZeroOffset) {
           m_bb.assign (res, offset);
-          #ifdef GEP_DEBUG
-          std::cout << "-- " << res << ":=" << offset << "\n";        
-          #endif 
+          CRAB_LOG("cfg-gep",
+                   std::cout << "-- " << res << ":=" << offset << "\n");        
         }
         else {
           m_bb.add (res, *ptr, offset);
-          #ifdef GEP_DEBUG
-          std::cout << "-- " << res << ":=" << *ptr  << "+" << offset << "\n";        
-          #endif 
+          CRAB_LOG("cfg-gep",
+                   std::cout << "-- " << res << ":=" << *ptr  << "+" << offset << "\n");        
         }
         return;
       }
@@ -838,22 +831,19 @@ namespace crab_llvm
             if (i == 0) {
               if (isBaseZeroOffset) {
                 m_bb.assign (res, offset);
-                #ifdef GEP_DEBUG
-                std::cout << "-- " << res << ":=" << offset << "\n";
-                #endif  
+                CRAB_LOG("cfg-gep",
+                         std::cout << "-- " << res << ":=" << offset << "\n");
               }
               else {
                 m_bb.add (res, *ptr, offset);
-                #ifdef GEP_DEBUG
-                std::cout << "-- " << res << ":=" << *ptr << "+" << offset << "\n";
-                #endif  
+                CRAB_LOG("cfg-gep",
+                         std::cout << "-- " << res << ":=" << *ptr << "+" << offset << "\n");
               }
             }
             else {
               m_bb.add (res, res, offset);
-              #ifdef GEP_DEBUG
-              std::cout << "-- " << res << ":=" << res << "+" << offset << "\n";
-              #endif 
+              CRAB_LOG("cfg-gep",
+                       std::cout << "-- " << res << ":=" << res << "+" << offset << "\n");
             }
           }
           else 
@@ -873,28 +863,25 @@ namespace crab_llvm
               ikos::z_number offset (storageSize (seqt->getElementType ()));
               m_bb.mul (res, *p, offset);
               is_init = true;
-              #ifdef GEP_DEBUG
-              std::cout << "-- " << res << ":=" << *p << "*" << offset << "\n";
-              #endif 
+              CRAB_LOG("cfg-gep",
+                       std::cout << "-- " << res << ":=" << *p << "*" << offset << "\n");
             } else {
               ikos::z_number offset (storageSize (seqt->getElementType ()));
               varname_t tmp = m_sev.getVarFac().get ();
               m_bb.mul (tmp, *p, offset);
               m_bb.add (res, *ptr, z_lin_exp_t (tmp));
-              #ifdef GEP_DEBUG
-              std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
-                        << "-- " << res << ":=" << *ptr << "+" << tmp << "\n";
-              #endif  
+              CRAB_LOG("cfg-gep",
+                       std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
+                       << "-- " << res << ":=" << *ptr << "+" << tmp << "\n");
             }
           } else {
             ikos::z_number offset (storageSize (seqt->getElementType ()));
             varname_t tmp = m_sev.getVarFac().get ();
             m_bb.mul (tmp, *p, offset);
             m_bb.add (res, res, tmp);
-            #ifdef GEP_DEBUG
-            std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
-                      << "-- " << res << ":=" << res << "+" << tmp << "\n";
-            #endif  
+            CRAB_LOG("cfg-gep",
+                     std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
+                     << "-- " << res << ":=" << res << "+" << tmp << "\n");
           }
         }
       }
@@ -904,7 +891,7 @@ namespace crab_llvm
       /// --- Translate only loads into integer variables
 
       Type *ty = I.getType();
-      if (ty->isIntegerTy () && m_sev.getMem().getTrackLevel () == ARR) {
+      if (ty->isIntegerTy () && m_sev.getTrackLevel () == ARR) {
 
         region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), 
                                                     I.getPointerOperand ());
@@ -938,7 +925,7 @@ namespace crab_llvm
       /// --- Translate only stores of integer values
 
       Type* ty = I.getOperand (0)->getType ();
-      if (ty->isIntegerTy () && m_sev.getMem().getTrackLevel () == ARR) {                
+      if (ty->isIntegerTy () && m_sev.getTrackLevel () == ARR) {                
         region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()),
                                                     I.getOperand (1)); 
 
@@ -964,7 +951,7 @@ namespace crab_llvm
     }
 
     void visitAllocaInst (AllocaInst &I) {
-      if (m_sev.getMem().getTrackLevel () == ARR) {        
+      if (m_sev.getTrackLevel () == ARR) {        
         region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), 
                                                     &I);
         if (region.isUnknown ()) return;
@@ -1204,7 +1191,7 @@ namespace crab_llvm
         }
         
         // -- havoc all modified nodes by the callee
-        if (m_sev.getMem().getTrackLevel () == ARR) {
+        if (m_sev.getTrackLevel () == ARR) {
           region_set_t mods = m_sev.getMem().getModifiedRegions (I);
           for (auto a : mods) {
             m_bb.havoc (m_sev.symVar (a));
@@ -1225,18 +1212,17 @@ namespace crab_llvm
           actuals.push_back (normalizeParam (*v));
         }
 
-        if (m_sev.getMem().getTrackLevel () == ARR) {
+        if (m_sev.getTrackLevel () == ARR) {
           // -- add the array actual parameters
           region_set_t onlyreads = m_sev.getMem().getOnlyReadRegions (I);
           region_set_t mods = m_sev.getMem().getModifiedRegions (I);
           region_set_t news = m_sev.getMem().getNewRegions (I);
 
-          #ifdef MEM_DEBUG
-          errs () << "Callsite " << I << "\n";
-          std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (I) << "\n";
-          std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (I) << "\n";
-          std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (I) << "\n";
-          #endif 
+          CRAB_LOG("cfg-mem",
+                   errs () << "Callsite " << I << "\n";
+                   std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (I) << "\n";
+                   std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (I) << "\n";
+                   std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (I) << "\n");
 
           // Make sure that the order of the actuals parameters is the
           // same than the order of the formal parameters when the
@@ -1312,7 +1298,7 @@ namespace crab_llvm
   {
     assert (!lookup(B));
     llvm::BasicBlock *BB = &B;
-    basic_block_t &bb = m_cfg.insert ( BB);
+    basic_block_t &bb = m_cfg->insert ( BB);
     m_bb_map.insert (llvm_bb_map_t::value_type (BB, bb));
   }  
 
@@ -1322,7 +1308,7 @@ namespace crab_llvm
 
     assert (m_bb_map.find (BB) == m_bb_map.end()); 
 
-    basic_block_t &bb = m_cfg.insert (BB);
+    basic_block_t &bb = m_cfg->insert (BB);
 
     src -= dst;
     src >> bb;
@@ -1428,6 +1414,8 @@ namespace crab_llvm
 
   void CfgBuilder::build_cfg() {
 
+    crab::ScopedCrabStats __st__("CFG");
+
     std::vector<llvm::BasicBlock*> blks;
     for (auto &B : m_func) { 
       add_block (B); 
@@ -1474,7 +1462,7 @@ namespace crab_llvm
     
     // -- unify multiple return blocks
     if (retBlks.size () == 1) { 
-      m_cfg.set_exit (retBlks [0]->label ());
+      m_cfg->set_exit (retBlks [0]->label ());
     }
     else if (retBlks.size () > 1) {
 
@@ -1482,18 +1470,18 @@ namespace crab_llvm
                                                               create_bb_name (),
                                                               &m_func);
       
-      basic_block_t &unified_ret = m_cfg.insert (singleRetBlk);
+      basic_block_t &unified_ret = m_cfg->insert (singleRetBlk);
 
       for(unsigned int i=0; i<retBlks.size (); i++)
         *(retBlks [i]) >> unified_ret;
-      m_cfg.set_exit (unified_ret.label ());
+      m_cfg->set_exit (unified_ret.label ());
     }
 
     /// Allocate arrays with initial values 
-    if (m_sev.getMem().getTrackLevel () == ARR) {
+    if (m_sev.getTrackLevel () == ARR) {
       if (m_func.getName ().equals ("main")) {
         Module*M = m_func.getParent ();
-        basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+        basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
         for (GlobalVariable &gv : boost::make_iterator_range (M->global_begin (),
                                                               M->global_end ())) {
           if (gv.hasInitializer ())  {
@@ -1518,7 +1506,7 @@ namespace crab_llvm
         // getNewRegions returns all the new nodes created by the
         // function (via malloc-like functions) except if the function
         // is main.
-        basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+        basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
         region_set_t news =  m_sev.getMem ().getNewRegions (m_func);
         for (auto n: news) {
           entry.set_insert_point_front ();
@@ -1545,21 +1533,20 @@ namespace crab_llvm
                                      getType (arg.getType ())));
       }
       
-      if (m_sev.getMem().getTrackLevel () == ARR && 
+      if (m_sev.getTrackLevel () == ARR && 
           (!m_func.getName ().equals ("main"))) {
         // -- add array formal parameters 
-        basic_block_t & entry = m_cfg.get_node (m_cfg.entry ());
+        basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
 
         region_set_t onlyreads = m_sev.getMem().getOnlyReadRegions (m_func);
         region_set_t mods = m_sev.getMem().getModifiedRegions (m_func);
         region_set_t news = m_sev.getMem().getNewRegions (m_func);
 
-        #ifdef MEM_DEBUG
-        errs () << "Function " << m_func.getName () << "\n";
-        std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (m_func) << "\n";
-        std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (m_func) << "\n";
-        std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (m_func) << "\n";
-        #endif 
+        CRAB_LOG("cfg-mem",
+                 errs () << "Function " << m_func.getName () << "\n";
+                 std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (m_func) << "\n";
+                 std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (m_func) << "\n";
+                 std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (m_func) << "\n");
 
         // (**) The same order must be used by the callsites
 
@@ -1606,18 +1593,12 @@ namespace crab_llvm
         retTy = getType (m_func.getReturnType ());
 
       FunctionDecl<varname_t> decl (retTy, m_sev.getVarFac()[m_func], params);
-      m_cfg.set_func_decl (decl);
+      m_cfg->set_func_decl (decl);
       
     }
     
-    if (CrabCFGSimplify) {
-      m_cfg.simplify ();
-    }
-    
-    if (CrabPrintCFG) {
-      cout << m_cfg << "\n";
-    }
-    
+    if (CrabCFGSimplify) m_cfg->simplify ();
+    if (CrabPrintCFG) cout << m_cfg << "\n";
     return ;
   }
 

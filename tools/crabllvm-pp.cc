@@ -1,5 +1,5 @@
 ///
-// LlvmPP-- LLVM bitcode Pre-Processor for static analysis
+// crabllvm-pp -- LLVM bitcode Pre-Processor for static analysis
 ///
 
 #include "llvm/LinkAllPasses.h"
@@ -53,20 +53,29 @@ InlineAll ("crab-inline-all", llvm::cl::desc ("Inline all functions"),
            llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
+Devirtualize ("crab-devirt", 
+              llvm::cl::desc ("Resolve indirect calls"),
+              llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
 LowerSelect ("crab-lower-select", llvm::cl::desc ("Lower all select instructions"),
-           llvm::cl::init (false));
+             llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-CrabLowerGv ("crab-lower-gv", llvm::cl::desc ("Lower global initializers in main"),
-         llvm::cl::init (false));
+LowerInvoke ("crab-lower-invoke", llvm::cl::desc ("Lower all invoke instructions"),
+             llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-OptimizeLoops ("crab-pp-loops", 
+LowerGv ("crab-lower-gv", llvm::cl::desc ("Lower global initializers in main"),
+             llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+OptimizeLoops ("crab-llvm-pp-loops", 
                llvm::cl::desc ("Perform loop optimizations"),
                llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
-CrabUndefNondet ("crab-turn-undef-nondet", 
+TurnUndefNondet ("crab-turn-undef-nondet", 
                  llvm::cl::desc ("Turn undefined behaviour into non-determinism"),
                  llvm::cl::init (false));
 
@@ -171,6 +180,12 @@ int main(int argc, char **argv) {
   // -- turn all functions internal so that we can apply some global
   // -- optimizations inline them if requested
   pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
+
+  if (Devirtualize) {
+    // -- resolve indirect calls
+    pass_manager.add (crab_llvm::createDevirtualizeFunctionsPass ());
+  }
+
   pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global  
   pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
   // -- global optimizations
@@ -178,17 +193,17 @@ int main(int argc, char **argv) {
   
   // -- SSA
   pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
-#ifdef HAVE_LLVM_SEAHORN
-  if (CrabUndefNondet) {
+  #ifdef HAVE_LLVM_SEAHORN
+  if (TurnUndefNondet) {
     // -- Turn undef into nondet
     pass_manager.add (llvm_seahorn::createNondetInitPass ());
   }
-#endif 
+  #endif 
 
   // -- cleanup after SSA
-#ifdef HAVE_LLVM_SEAHORN
+  #ifdef HAVE_LLVM_SEAHORN
   pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
-#endif 
+  #endif 
   pass_manager.add (llvm::createCFGSimplificationPass ());
   
   
@@ -198,33 +213,36 @@ int main(int argc, char **argv) {
                                                           SROA_StructMemThreshold,
                                                           SROA_ArrayElementThreshold,
                                                           SROA_ScalarLoadThreshold));
-#ifdef HAVE_LLVM_SEAHORN
-  if (CrabUndefNondet) {
+  #ifdef HAVE_LLVM_SEAHORN
+  if (TurnUndefNondet) {
      // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
      pass_manager.add (llvm_seahorn::createNondetInitPass ());
   }
-#endif 
+  #endif 
 
   // -- global value numbering and redundant load elimination
   pass_manager.add (llvm::createGVNPass());
   
   // -- cleanup after break aggregates
-#ifdef HAVE_LLVM_SEAHORN
+  #ifdef HAVE_LLVM_SEAHORN
   pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
-#endif 
+  #endif 
   pass_manager.add (llvm::createCFGSimplificationPass ());
   
-#ifdef HAVE_LLVM_SEAHORN
-  if (CrabUndefNondet) {
+  #ifdef HAVE_LLVM_SEAHORN
+  if (TurnUndefNondet) {
      // eliminate unused calls to verifier.nondet() functions
      pass_manager.add (llvm_seahorn::createDeadNondetElimPass ());
   }
-#endif 
+  #endif 
 
-  // -- lower invoke's
-  pass_manager.add(llvm::createLowerInvokePass());
-  // cleanup after lowering invoke's
-  pass_manager.add (llvm::createCFGSimplificationPass ());  
+  if (LowerInvoke) 
+  {
+    // -- lower invoke's
+    pass_manager.add(llvm::createLowerInvokePass());
+    // cleanup after lowering invoke's
+    pass_manager.add (llvm::createCFGSimplificationPass ());  
+  }
   
   if (InlineAll)
   {
@@ -242,10 +260,10 @@ int main(int argc, char **argv) {
     pass_manager.add (llvm::createCFGSimplificationPass ());  // cleanup unnecessary blocks 
     // loop-closed SSA 
     pass_manager.add (llvm::createLCSSAPass());
-#ifdef HAVE_LLVM_SEAHORN
+    #ifdef HAVE_LLVM_SEAHORN
     // induction variable
     pass_manager.add (llvm_seahorn::createIndVarSimplifyPass ());
-#endif 
+    #endif 
   }
 
   // trivial invariants outside loops 
@@ -256,7 +274,7 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createLoopDeletionPass());
   pass_manager.add (llvm::createCFGSimplificationPass ()); // cleanup unnecessary blocks 
   
-  if (CrabLowerGv) {
+  if (LowerGv) {
     // -- lower initializers of global variables
     pass_manager.add (crab_llvm::createLowerGvInitializersPass ());   
   }

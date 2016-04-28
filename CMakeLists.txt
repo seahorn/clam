@@ -30,13 +30,16 @@ if (TopLevel)
   endif()
 endif ()
 
-option (USE_LDD "Enable ldd" OFF)
+option (USE_LDD   "Enable ldd" OFF)
+option (USE_APRON "Enable Apron library" OFF)
+option (USE_STATS "Enable statistics about the analysis" ON)
+option (USE_LOG   "Enable logging for debugging purposes" ON)
+option (HAVE_CONC "Enable very experimental concurrency analysis" OFF)
+option (USE_COTIRE "Use cotire to speed up compilation time" OFF)
+option (BUILD_CRABLLVM_LIBS_SHARED "Build all CrabLlvm libraries shared." OFF)
 
 # Add path for custom modules
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-
-# Whether crabllvm libraries are built shared or statically
-option(BUILD_CRABLLVM_LIBS_SHARED "Build all CrabLlvm libraries shared." OFF)
 
 # Temporary fix because ldd provides only static libraries
 if (USE_LDD)
@@ -49,13 +52,20 @@ if (BUILD_CRABLLVM_LIBS_SHARED)
   set(CRABLLVM_LIBS_TYPE SHARED)
   # so that executables outside the build tree can find later shared
   # libraries
-  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-  if (NOT CMAKE_INSTALL_RPATH)
-    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
-  endif ()
+  # set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+  # if (NOT CMAKE_INSTALL_RPATH)
+  #   set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+  # endif ()
 else()
   message (STATUS "All crabllvm libraries will be built statically")
   set(CRABLLVM_LIBS_TYPE STATIC)
+endif ()
+
+# Even if CRABLLVM_LIBS_TYPE=STATIC we could have a mix of shared and
+# static libraries
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+if (NOT CMAKE_INSTALL_RPATH)
+  set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 endif ()
 
 if (TopLevel)
@@ -79,6 +89,11 @@ if (TopLevel)
   endif ()   
 endif ()
 
+if (USE_COTIRE)
+  # Required by cotire
+  set (ENV{CCACHE_SLOPPINESS} "pch_defines,time_macros")
+  include(cotire)
+endif ()
 
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
@@ -150,6 +165,91 @@ endif ()
 
 include_directories (${LDD_INCLUDE_DIR})
 
+if (USE_APRON)
+   if (GIT_FOUND)
+
+     find_package(Gmp REQUIRED)
+     get_filename_component (GMP_SEARCH_PATH ${GMP_INCLUDE_DIR} PATH)
+
+     find_package(MPFR REQUIRED)
+     if (MPFR_FOUND)
+       get_filename_component (MPFR_SEARCH_PATH ${MPFR_INCLUDES} PATH)
+     endif ()
+
+     find_package(SSE)
+     if (AVX_FOUND)
+       message(STATUS "Building opt-oct with AVX")
+       set (IS_VECTOR "IS_VECTOR=-DVECTOR")
+     else ()
+       if (SSE2_FOUND OR SSE3_FOUND OR SSSE3_FOUND OR SSE4_1_FOUND)
+          message(STATUS "Building opt-oct with SSE")
+	set (IS_VECTOR "IS_VECTOR=-DVECTOR")
+          set (IS_SSE "IS_SSE=-DSSE")
+       else ()
+          message(STATUS "Building opt-oct without vectorized operations.")
+       endif ()
+     endif ()
+
+     if (NOT HAVE_APRON)
+       set (APRON_TAG "origin/elina" CACHE STRING "apron tag to use")
+       ExternalProject_Add(apron
+         GIT_REPOSITORY https://jorgenavas@bitbucket.org/jorgenavas/apron.git
+         GIT_TAG ${APRON_TAG}
+         INSTALL_DIR ${CMAKE_BINARY_DIR}/run/apron
+         CONFIGURE_COMMAND echo "Apron does not need a configure"
+         BUILD_IN_SOURCE 1
+         BUILD_COMMAND make CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ${IS_VECTOR} ${IS_SSE}
+         APRON_PREFIX=<INSTALL_DIR> GMP_PREFIX=${GMP_SEARCH_PATH} MPFR_PREFIX=${MPFR_SEARCH_PATH} 
+         INSTALL_COMMAND 
+         make APRON_PREFIX=<INSTALL_DIR> GMP_PREFIX=${GMP_SEARCH_PATH} MPFR_PREFIX=${MPFR_SEARCH_PATH} install
+         LOG_CONFIGURE 1
+         LOG_INSTALL 1
+         LOG_BUILD 1)
+     endif ()
+   else ()
+     message (STATUS "Could not find git. Not downloading apron")
+   endif()
+   
+   find_package(Apron)
+   if (APRON_FOUND)
+     #include_directories (${APRON_INCLUDE_DIR})
+     set (APRON_LIBS ${APRON_LIBRARY} ${MPFR_LIBRARIES})
+     set (HAVE_APRON TRUE CACHE BOOL "Apron found")
+     message(STATUS "Found Apron ${APRON_INCLUDE_DIR}")
+     if (NOT TopLevel)
+       # propagate variables to the caller
+       set (HAVE_APRON TRUE PARENT_SCOPE)
+       set (APRON_INCLUDE_DIR ${APRON_INCLUDE_DIR} PARENT_SCOPE)
+       set (APRON_LIBS ${APRON_LIBS} PARENT_SCOPE)
+     endif()
+   else()
+     ExternalProject_Get_Property (apron INSTALL_DIR)
+     set (APRON_ROOT ${INSTALL_DIR} CACHE FILEPATH "Forced location of apron" FORCE)
+     message (WARNING "No apron found. Run \n\tcmake --build . --target apron && cmake ${CMAKE_SOURCE_DIR}")
+     return()
+   endif()
+endif()
+
+include_directories (${APRON_INCLUDE_DIR})
+
+if (USE_LDD)
+  message (STATUS "The boxes domain will be available")  
+else ()
+  message (STATUS "The boxes domain will not be available")  
+endif ()
+
+if (USE_APRON)
+  message (STATUS "The apron domains will be available")
+else ()
+  message (STATUS "The apron domains will not be available")
+endif ()
+
+if (USE_STATS)
+  message (STATUS "Analysis statistics is enabled")
+else ()
+  message (STATUS "Analysis statistics is disabled")
+endif ()
+
 if (GIT_FOUND)
   set (CRAB_CORE_TAG "origin/master" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
@@ -168,6 +268,11 @@ if (GIT_FOUND)
     -DCMAKE_LDD_INCLUDE_DIR=${LDD_INCLUDE_DIR}
     -DCMAKE_LDD_LIBRARY=${LDD_LIBRARY}
     -DCMAKE_CUDD_FOUND=${CUDD_FOUND}
+    -DCMAKE_USE_APRON=${USE_APRON}
+    -DCMAKE_APRON_INCLUDE_DIR=${APRON_INCLUDE_DIR}
+    -DCMAKE_APRON_LIBRARY=${APRON_LIBRARY}
+    -DCMAKE_USE_STATS=${USE_STATS}
+    -DCMAKE_USE_LOG=${USE_LOG}
     TEST_AFTER_INSTALL 1
     TEST_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
     LOG_DOWNLOAD 1
@@ -190,6 +295,7 @@ else()
     # propagate variables to the caller
     set (CRAB_FOUND ${CRAB_FOUND} PARENT_SCOPE)
     set (CRAB_INCLUDE_DIR ${CRAB_INCLUDE_DIR} PARENT_SCOPE)
+    set (CRAB_LIBS ${CRAB_LIBS} PARENT_SCOPE)
   endif()
 endif()  
 

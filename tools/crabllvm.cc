@@ -31,6 +31,8 @@
 #include <crab_llvm/Transforms/InsertInvariants.hh>
 #include "crab_llvm/ConCrabLlvm.hh"
 
+#include "crab/common/debug.hpp"
+
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
               llvm::cl::Required, llvm::cl::value_desc("filename"));
@@ -52,17 +54,18 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
 static llvm::cl::opt<bool>
+NoCrab ("no-crab", 
+        llvm::cl::desc ("Output bitecode but disable Crab analysis (debugging)"),
+        llvm::cl::init (false),
+        llvm::cl::Hidden);
+
+static llvm::cl::opt<bool>
 Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs (experimental)"),
              llvm::cl::init (false),
              llvm::cl::Hidden);
 
 static llvm::cl::opt<bool>
-CrabDevirtualize ("crab-devirt", 
-                  llvm::cl::desc ("Resolve indirect calls"),
-                  llvm::cl::init (false));
-
-static llvm::cl::opt<bool>
-CrabUndefNondet ("crab-turn-undef-nondet", 
+TurnUndefNondet ("crab-turn-undef-nondet", 
                  llvm::cl::desc ("Turn undefined behaviour into non-determinism"),
                  llvm::cl::init (false),
                  llvm::cl::Hidden);
@@ -71,6 +74,21 @@ static llvm::cl::opt<bool>
 LowerSelect ("crab-lower-select", 
              llvm::cl::desc ("Lower all select instructions"),
              llvm::cl::init (false));
+
+
+struct LogOpt {
+  void operator= (const std::string &tag) const 
+  { crab::CrabEnableLog (tag); } 
+};
+
+LogOpt loc;
+
+static llvm::cl::opt<LogOpt, true, llvm::cl::parser<std::string> > 
+LogClOption ("log",
+             llvm::cl::desc ("Enable specified log level"),
+             llvm::cl::location (loc),
+             llvm::cl::value_desc ("string"),
+             llvm::cl::ValueRequired, llvm::cl::ZeroOrMore);
 
 using namespace crab_llvm;
 
@@ -165,12 +183,6 @@ int main(int argc, char **argv) {
 
   // -- promote alloca's to registers
   pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
-
-  if (CrabDevirtualize) {
-    // -- resolve indirect calls
-    pass_manager.add (crab_llvm::createDevirtualizeFunctionsPass ());
-  }
-
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   // -- remove unreachable blocks 
@@ -181,36 +193,42 @@ int main(int argc, char **argv) {
   pass_manager.add (crab_llvm::createLowerCstExprPass ());   
   pass_manager.add (llvm::createDeadCodeEliminationPass());
 
-#ifdef HAVE_LLVM_SEAHORN
-  if (CrabUndefNondet) 
+  #ifdef HAVE_LLVM_SEAHORN
+  if (TurnUndefNondet) 
     pass_manager.add (llvm_seahorn::createDeadNondetElimPass ());
-#endif 
+  #endif 
 
   // -- must be the last ones before running crab.
   if (LowerSelect)
     pass_manager.add (crab_llvm::createLowerSelectPass ());   
-  
-  if (Concurrency) {
-    // REALLY EXPERIMENTAL ...
-    pass_manager.add (new crab_llvm::ConCrabLlvm ());
-  }
-  else {
-    /// -- run the crab analyzer
-    pass_manager.add (new crab_llvm::CrabLlvm ());
+
+  if (!NoCrab) {
+    if (Concurrency) {
+    #ifdef HAVE_CONC
+      // REALLY EXPERIMENTAL ...
+      pass_manager.add (new crab_llvm::ConCrabLlvm ());
+    #else
+      errs () << "Crab-llvm needs to be compiled with -DHAVE_CONC=ON.\n";
+    #endif 
+    }
+    else {
+      /// -- run the crab analyzer
+      pass_manager.add (new crab_llvm::CrabLlvm ());
+    }
   }
 
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (asmOutput->os ()));
-
-  if (!Concurrency) {
+ 
+  if (!NoCrab && !Concurrency) {
     /// -- insert invariants as assume instructions
     pass_manager.add (new crab_llvm::InsertInvariants ());
     /// -- simplify invariants added in the bytecode.
-#ifdef HAVE_LLVM_SEAHORN
+    #ifdef HAVE_LLVM_SEAHORN
     pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
-#else
+    #else
     pass_manager.add (llvm::createInstructionCombiningPass ()); 
-#endif 
+    #endif 
     pass_manager.add (crab_llvm::createSimplifyAssumePass ());
   }
       

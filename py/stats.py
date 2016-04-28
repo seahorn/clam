@@ -95,6 +95,10 @@ def count (key):
 
 def brunch_print ():
     """ Prints the result in brunch format """
+
+    if not _statistics:
+      return
+
     print '----------------------------------------------------------------------'
     for k in sorted (_statistics.keys ()):
         print 'BRUNCH_STAT {name} {value}'.format (name=k, value=_statistics [k])

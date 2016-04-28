@@ -34,17 +34,19 @@
 using namespace llvm;
 using namespace crab_llvm;
 
-
-static llvm::cl::opt<bool>
-CrabInsertEntries ("crab-add-invariants-at-entries", 
-                   llvm::cl::desc ("Instrument basic block entries with invariants"),
-                   llvm::cl::init (false));
-
-static llvm::cl::opt<bool>
-CrabInsertLoads ("crab-add-invariants-after-loads", 
-                 llvm::cl::desc ("Instrument load instructions with invariants"),
-                 llvm::cl::init (false));
-
+enum InsertInvsLoc { NONE, BLOCK_ENTRY, AFTER_LOAD};
+static llvm::cl::opt<InsertInvsLoc>
+InsertInvs("crab-add-invariants", 
+        llvm::cl::desc("Instrument code with invariants"),
+        llvm::cl::values(
+            clEnumValN (NONE, "none", "None"),
+            clEnumValN (BLOCK_ENTRY, "block-entry",
+                        "Add invariants that hold at each block entry"),
+            clEnumValN (AFTER_LOAD, "after-load",
+                        "Add invariants that hold after each load instruction"),
+            clEnumValEnd),
+        llvm::cl::init (NONE));
+            
 #define DEBUG_TYPE "crab-insert-invars"
 
 STATISTIC(NumInstrBlocks, "Number of basic blocks instrumented with invariants");
@@ -218,21 +220,21 @@ namespace crab_llvm
   // work but it's more efficient than storing all invariants at each
   // program point.
   template<typename AbsDomain>
-  bool InsertInvariants::instrument_loads (AbsDomain pre, 
+  bool InsertInvariants::instrument_loads (AbsDomain inv, 
                                            basic_block_t& bb, 
                                            LLVMContext &ctx,
                                            CallGraph* cg) {
     typedef crab::analyzer::NumAbsTransformer 
         <AbsDomain,
-         crab::analyzer::SummaryTable<cfg_t, AbsDomain>,
-         crab::analyzer::CallCtxTable<cfg_t, AbsDomain> > num_abs_tr_t; 
+         crab::analyzer::SummaryTable<cfg_ref_t, AbsDomain>,
+         crab::analyzer::CallCtxTable<cfg_ref_t, AbsDomain> > num_abs_tr_t; 
 
     IRBuilder<> Builder (ctx);
     bool change=false;
 
-    // FIXME: it will propagate forward pre through the basic block
+    // FIXME: it will propagate forward inv through the basic block
     //        but ignoring callsites
-    num_abs_tr_t vis (pre, nullptr, nullptr); 
+    num_abs_tr_t vis (inv, nullptr, nullptr); 
     for (auto &s: bb) {
 
       s.accept (&vis); //propagate the invariant one statement forward
@@ -259,8 +261,6 @@ namespace crab_llvm
       if (!I)
         continue;
 
-      AbsDomain inv = vis.inv ();
-      
       // -- Remove array shadow variables otherwise llvm will
       //    get choked
       CrabLlvm* crab = &getAnalysis<CrabLlvm> ();
@@ -295,8 +295,7 @@ namespace crab_llvm
 
   bool InsertInvariants::runOnModule (llvm::Module &M)
   {
-    if (!CrabInsertEntries && 
-        !CrabInsertLoads)
+    if (InsertInvs == NONE)
       return false;
 
     LLVMContext& ctx = M.getContext ();
@@ -334,7 +333,9 @@ namespace crab_llvm
       return false;
 
     CrabLlvm* crab = &getAnalysis<CrabLlvm> ();
-    if (!crab->hasCfg (&F)) return false;
+
+    auto cfg_ptr = crab->getCfg (&F);
+    if (!cfg_ptr) return false;
 
     CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
     CallGraph* cg = cgwp ? &cgwp->getCallGraph () : nullptr;
@@ -342,68 +343,67 @@ namespace crab_llvm
     bool change = false;
     for (auto &B : F) {
 
-      if (CrabInsertEntries) {
+      if (InsertInvs == BLOCK_ENTRY) {
         // --- Instrument basic block entry
         auto pre = crab->getPre (&B, false /*remove shadows*/);
         auto csts = pre->to_linear_constraints ();
         change |= instrument_entries (csts, &B, F.getContext(), cg);
       }
 
-      if (CrabInsertLoads) {
+      if (InsertInvs == AFTER_LOAD) {
         // --- We only instrument Load instructions
         if (reads_memory (B)) {
 
-          cfg_t& cfg = crab->getCfg (&F);
           auto pre = crab->getPre (&B, true /*keep shadows*/);
 
           // --- Figure out the type of the wrappee
           switch (pre->getId ()) {
             case GenericAbsDomWrapper::intv:{
-              INSTR_LOAD(interval_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(interval_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::ric: {
-              INSTR_LOAD(ric_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(ric_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
-            case GenericAbsDomWrapper::dbm: {
-              INSTR_LOAD(dbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+            case GenericAbsDomWrapper::split_dbm: {
+              INSTR_LOAD(split_dbm_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::term_intv: {
-              INSTR_LOAD(term_int_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(term_int_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::term_dis_intv: {
-              INSTR_LOAD(term_dis_int_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(term_dis_int_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::boxes: {
-              INSTR_LOAD(boxes_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(boxes_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_intv: {
-              INSTR_LOAD(arr_interval_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(arr_interval_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_ric: {
-              INSTR_LOAD(arr_ric_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(arr_ric_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
-            case GenericAbsDomWrapper::arr_dbm: {
-              INSTR_LOAD(arr_dbm_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+            case GenericAbsDomWrapper::arr_split_dbm: {
+              INSTR_LOAD(arr_split_dbm_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_term_intv: {
-              INSTR_LOAD(arr_term_int_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(arr_term_int_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_term_dis_intv: {
-              INSTR_LOAD(arr_term_dis_int_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(arr_term_dis_int_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             case GenericAbsDomWrapper::arr_boxes: {
-              INSTR_LOAD(arr_boxes_domain_t, pre, cfg.get_node (&B), F.getContext (), cg, change);
+              INSTR_LOAD(arr_boxes_domain_t, pre, cfg_ptr->get_node (&B), F.getContext (), cg, change);
               break;
             }
             default :

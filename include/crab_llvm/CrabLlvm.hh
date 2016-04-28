@@ -11,37 +11,55 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/ErrorHandling.h"
 
+#include "crab_llvm/AbstractDomains.hh"
+#include "crab_llvm/MemAnalysis.hh"
+
 #include <boost/shared_ptr.hpp>
 
-#include <crab_llvm/AbstractDomains.hh>
-#include <crab_llvm/CfgBuilder.hh>
-#include <crab_llvm/MemAnalysis.hh>
-
-#include <crab/cg/Cg.hpp>
-#include <crab/analysis/Liveness.hpp>
+// forward declarations
+namespace crab {
+  namespace analyzer {  
+     template <typename T> class Liveness;  
+  }
+  namespace cg {  
+    template <typename T> class CallGraph;  
+    template <typename T> class CallGraph_Ref;  
+  }
+} // end crab
 
 namespace crab_llvm {
 
+  class CfgBuilder; 
+ 
   using namespace llvm;
   using namespace crab::cfg_impl;
 
   /*! Compute invariants using Crab for the whole module. */
   class CrabLlvm : public llvm::ModulePass {
-   private:
+
+    typedef typename CfgBuilder::cfg_ptr_t cfg_ptr_t;
+    typedef crab::analyzer::Liveness<cfg_ref_t> liveness_t;
+    typedef crab::cg::CallGraph<cfg_ref_t> call_graph_t; 
+    typedef crab::cg::CallGraph_Ref<call_graph_t> call_graph_ref_t;
 
     typedef llvm::DenseMap<const llvm::BasicBlock *, GenericAbsDomWrapperPtr> invariants_map_t;
-    typedef boost::shared_ptr <CfgBuilder> CfgBuilderPtr;
-    typedef boost::unordered_map <Function*, CfgBuilderPtr > builder_map_t;
-    typedef crab::analyzer::Liveness<cfg_t> liveness_t;
-    // if inter-procedural analysis
-    typedef boost::unordered_map <cfg_t, const liveness_t*> liveness_map_t;
-
+    typedef llvm::DenseMap<llvm::Function*, cfg_ptr_t > cfg_map_t;
+    typedef boost::unordered_map <cfg_ref_t, const liveness_t*> liveness_map_t;
+    
     invariants_map_t m_pre_map;
     invariants_map_t m_post_map;
     CrabDomain m_absdom;
     boost::shared_ptr<MemAnalysis> m_mem;    
     VariableFactory m_vfac;
-    builder_map_t m_builder_map;
+    cfg_map_t m_cfg_map;
+
+    template<typename AbsDom> 
+    bool analyzeCfg (cfg_ref_t cfg, const Function& F, const liveness_t& live);
+
+    template<typename BUAbsDom, typename TDAbsDom> 
+    bool analyzeCg (call_graph_ref_t cg, const llvm::Module &M, const liveness_map_t& live_map);
+
+    void writeInvariants (llvm::raw_ostream& o, const llvm::Function& F);
 
    public:
 
@@ -50,16 +68,15 @@ namespace crab_llvm {
 
     static char ID;        
     
-    CrabLlvm (): 
-        llvm::ModulePass (ID),
-        m_absdom (INTERVALS), 
-        m_mem (new DummyMemAnalysis ())  { }
+    CrabLlvm ()
+        : llvm::ModulePass (ID), 
+          m_absdom (INTERVALS), 
+          m_mem (boost::make_shared<DummyMemAnalysis>()) { }
 
     virtual void releaseMemory () {
       m_pre_map.clear(); 
       m_post_map.clear(); 
-      
-      m_builder_map.clear ();
+      m_cfg_map.clear ();
     }
     
     virtual bool runOnModule (llvm::Module& M);
@@ -82,49 +99,19 @@ namespace crab_llvm {
     GenericAbsDomWrapperPtr getPost (const llvm::BasicBlock *BB, 
                                      bool KeepShadows=false) const;
 
-    TrackedPrecision getTrackLevel () const { 
-      return m_mem->getTrackLevel (); 
+    VariableFactory& getVariableFactory () { return m_vfac; }
+
+    MemAnalysis& getMemAnalysis () { return *m_mem; }
+
+    CrabDomain getAbsDomain () const { return m_absdom; }
+
+    // Needed for InsertInvariants
+    cfg_ptr_t getCfg (Function* F) {
+      auto it = m_cfg_map.find (F);
+      if (it != m_cfg_map.end ())
+        return it->second;
+      return nullptr;
     }
-
-    VariableFactory& getVariableFactory () { 
-      return m_vfac; 
-    }
-
-    MemAnalysis& getMemAnalysis () {
-      return *m_mem;
-    }
-
-    CrabDomain getAbsDomain () const {
-      return m_absdom;
-    }
-
-    bool hasCfg (Function* F) const {
-      auto const it = m_builder_map.find (F);
-      return it != m_builder_map.end ();
-    }
-
-    // pre F is in the builder map
-    cfg_t& getCfg (Function* F) {
-      auto it = m_builder_map.find (F);
-      if (it == m_builder_map.end ())
-        report_fatal_error ("Not CFG found for function");
-
-      auto builder = it->second;
-      return builder->getCfg ();
-    }
-
-   private:
-
-    template<typename AbsDomain> 
-    bool runOnCfg (cfg_t& cfg, const Function& F, const liveness_t& live);
-
-    template<typename BUAbsDomain, typename TDAbsDomain> 
-    bool runOnCg (const crab::cg::CallGraph<cfg_t>& cg, 
-                  const liveness_map_t& live_map,
-                  const llvm::Module &M);
-
-    void writeInvariants (llvm::raw_ostream& o, const llvm::Function& F);
-
   };
 
 } // end namespace 
