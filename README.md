@@ -136,16 +136,16 @@ Crab-llvm analyzes programs with the Zones domains as default abstract
 domain. Users can choose the abstract domain by typing the option
 `--crab-domain=VAL`. The possible values of `VAL` are:
 
-- `int`: classical intervals
-- `ric`: intervals with congruences
-- `term-int`: intervals with uninterpreted functions
+- `int`: intervals
+- `ric`: reduced product of `int` and congruences
+- `term-int`: `int` with uninterpreted functions
 - `zones-sparse`: zones domain using sparse difference-bound matrices (DBM)
 - `zones-split`: zones domain using sparse DBM in split normal form
-- `opt-oct-apron`: octagons (only if `-DUSE_APRON=ON`)
-- `pk-apron`: polyhedra (only if `-DUSE_APRON=ON`)
-- `boxes`: disjunctive intervals based on ldds (only if `-DUSE_LDD=ON`)
-- `dis-int`: disjunctive intervals based on abstracted disjunctive completion
-- `term-dis-int`: disjunctive intervals with uninterpreted functions
+- `opt-oct-apron`: Elina's optimized octagon domains (only if `-DUSE_APRON=ON`)
+- `pk-apron`: Apron's polka domain (only if `-DUSE_APRON=ON`)
+- `boxes`: disjunctive intervals based on LDDs (only if `-DUSE_LDD=ON`)
+- `dis-int`: disjunctive intervals based on Clousot's DisInt domain
+- `term-dis-int`: `dis-int` with uninterpreted functions
 - `rtz`: reduced product of `term-dis-int` with `zones-split`.
 - `adapt-rtz`: choose, based on the number of live variables, between `int` and `rtz`.
 
