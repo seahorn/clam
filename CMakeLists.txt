@@ -295,6 +295,7 @@ else()
     # propagate variables to the caller
     set (CRAB_FOUND ${CRAB_FOUND} PARENT_SCOPE)
     set (CRAB_INCLUDE_DIR ${CRAB_INCLUDE_DIR} PARENT_SCOPE)
+    set (CRAB_LIBS ${CRAB_LIBS} PARENT_SCOPE)
   endif()
 endif()  
 
