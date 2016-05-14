@@ -1598,7 +1598,7 @@ namespace crab_llvm
     }
     
     if (CrabCFGSimplify) m_cfg->simplify ();
-    if (CrabPrintCFG) cout << m_cfg << "\n";
+    if (CrabPrintCFG) cout << *m_cfg << "\n";
     return ;
   }
 
