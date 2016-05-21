@@ -1271,6 +1271,10 @@ namespace crab_llvm
       
     }
 
+    void visitUnreachableInst (UnreachableInst &I) {
+      m_bb.unreachable();
+    }
+
     /// base case. if all else fails.
     void visitInstruction (Instruction &I) {
       if (!m_sev.isTracked (I)) return;
