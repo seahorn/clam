@@ -285,12 +285,12 @@ Crab-llvm is distributed under MIT license. See
 [LICENSE.txt](LICENSE.txt) for details.
 
 
-# Known Limitations #
+# Known limitations of the translation from bitecode to Crab CFG#
 
 - Variadic functions are ignored.
-- Floating point operations are ignored.
+- Only unlimited integers.
+- Floating point operations are ignored 
 - Pointer addresses are abstracted by their numerical offsets. This
-  means that if a shape/pointer abstract domain (e.g., Crab provides a
-  pointer abstract domain) wants to be used the translation must be
-  extended.
+  means that if you want to use a shape/pointer abstract domain the
+  translation must be extended.
 - ...
