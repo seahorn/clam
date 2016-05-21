@@ -246,6 +246,7 @@ endif ()
 
 if (USE_STATS)
   message (STATUS "Analysis statistics is enabled")
+  set (HAVE_STATS TRUE CACHE BOOL "Stats enabled")
 else ()
   message (STATUS "Analysis statistics is disabled")
 endif ()
