@@ -3,22 +3,21 @@
  * understood by Crab.
  * 
  * The main purpose of the translation is to replace PHI nodes with
- * Crab's assignments and branches into Crab's assumes. This part is
- * quite standard. 
+ * assignments and branches into assumes. This part is quite standard.
  * 
  * What it's not so standard is that the translation also performs
- * code abstractions (in the spirit of "abstract compilation"
- * described in "Global Flow Analysis as Practical Compilation Tool"
- * by Hermenegildo et al.) by replacing concrete instructions with
+ * code abstractions by replacing concrete instructions with
  * abstracted ones:
  * 
  * (1) If the abstraction level includes only integers the translation
- *     will cover only instructions with operands of integer type.
+ *     will cover only instructions with operands of integer type. 
  *
  * (2) If the abstraction level includes pointers then in addition to
  *     integer scalars it will translate instructions that compute
  *     pointer numerical offsets. All pointers are abstracted to their
- *     numerical offsets *ignoring* their addresses.
+ *     numerical offsets *ignoring* their actual addresses. By offset
+ *     we mean the distance between the base of the memory object to
+ *     which the pointer points to and the pointer's address.
  *
  * (3) If the abstraction level includes memory contents, in addition
  *     to the previous abstractions, load and stores as well as other
@@ -29,19 +28,22 @@
  *     that an array abstract domain can be used to reason about
  *     heaplets by mapping each heaplet to an array.
  *
- * ## TODO ##
+ * ## Assumptions and limitations ##
  * 
- * The translation is focused on reasoning about integer scalars and
- * memory contents of integer type so that an numerical array abstract
- * domain is used.  This is the motivation of using the offset and
- * memory abstractions mentioned above.
+ * The translation covers only integer scalars, limited reasoning
+ * about pointer offsets (e.g., for buffer overflow checks) and memory
+ * contents of integer type so that a numerical array abstract domain
+ * can be used.
  * 
- * It does *not* consider yet the scenario where a pointer/shape
- * abstract domain wants to be used. For this reason, the translation
- * does *not* currently generate Crab pointer statements such as
- * ptr_store, ptr_load, ptr_assign, new_object, and new_ptr_func,
- * although it should not be hard to do by adding similar classes to
- * NumAbs*Visitor but focusing on pointer addresses.
+ * Although DSA provides us with separation information (i.e., whether
+ * two pointers may alias or not) the abstraction level (2) is very
+ * imprecise (though sound) in cases where a pointer address is read
+ * from memory. In fact, the translation does *not* currently generate
+ * Crab pointer statements such as ptr_store, ptr_load, ptr_assign,
+ * new_object, and new_ptr_func (see TODO's). This would allow a
+ * pointer analysis to keep track of offsets even when a pointer
+ * address is read from memory, and of course to infer more precise
+ * aliasing information than DSA.
  * 
  */
 
@@ -50,6 +52,7 @@
 #include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/CommandLine.h"
@@ -67,7 +70,7 @@
 
 // FIXME: this translation may generate a lot dead code, in
 // particular, when an instruction feeds load or stores that are not
-// tracked.
+// tracked. 
 
 using namespace llvm;
 
@@ -104,12 +107,21 @@ CrabNoPtrArith ("crab-disable-offsets",
                 cl::init (false),
                 cl::Hidden);
 
+// If a pointer is, for instance, a global variable or an alloca then
+// its numerical offset starts from zero. As result, invariants like
+// b <= offset <= b + 40 can be simplified to 0 <= offset <= 40.
+llvm::cl::opt<bool>
+CrabStartPtrOffsetFromZero ("crab-start-offset-from-zero",
+                cl::desc ("Pointer offsets start from 0 rather than from its object's base address"), 
+                cl::init (true),
+                cl::Hidden);
+
 /* 
   Since LLVM IR is in SSA form many of the havoc statements are
   redundant since variables can be defined only once.
  */
 llvm::cl::opt<bool>
-CrabIncludeHavoc ("crab-include-havoc",
+CrabIncludeHavoc ("crab-include-useless-havoc",
                   cl::desc ("Include all havoc statements."), 
                   cl::init (true),
                   cl::Hidden);
@@ -164,7 +176,7 @@ namespace crab_llvm
     sym_eval_t& m_sev;
     basic_block_t& m_bb;
     bool m_is_negated;
-    
+
     NumAbsCondVisitor (sym_eval_t& sev, basic_block_t& bb, 
                        bool is_negated)
         : m_sev (sev),
@@ -394,35 +406,46 @@ namespace crab_llvm
 
     sym_eval_t& m_sev;
     const DataLayout* m_dl;
+    const TargetLibraryInfo* m_tli;
     basic_block_t& m_bb;
     bool m_is_inter_proc;
 
-    NumAbsVisitor (sym_eval_t& sev, const DataLayout* dl, 
+    NumAbsVisitor (sym_eval_t& sev, 
+                   const DataLayout* dl, const TargetLibraryInfo* tli,
                    basic_block_t & bb, bool isInterProc): 
         m_sev (sev),
-        m_dl (dl),
+        m_dl (dl), 
+        m_tli (tli),
         m_bb (bb), 
         m_is_inter_proc (isInterProc)  
     { }
 
-    bool canPointerAbstractedToZeroOffset (const Value *V) const {
-      if (isa<const AllocaInst> (V))
-        return true;
+   private:
 
-      if (isa<const GlobalVariable> (V))
-        return true;
+    unsigned fieldOffset (const StructType *t, unsigned field) {
+      return m_dl->getStructLayout (const_cast<StructType*>(t))->
+          getElementOffset (field);
+    }
 
-      // TODO: if the pointer is originated by a malloc-like function
+    unsigned storageSize (const Type *t) {
+      return m_dl->getTypeStoreSize (const_cast<Type*> (t));
+    }
+
+    bool startPtrOffsetFromZero (const Value *V) const {
+      if (CrabStartPtrOffsetFromZero) {
+        V = V->stripPointerCasts();
+        if (isa<const AllocaInst> (V) || isa<const GlobalVariable> (V))
+          return true;
+        // pointer originated by malloc-like functions?
+      }
       return false;
     }
 
     // Return true if all uses of V are non-trackable memory accesses.
+    // Useful to avoid translating bitcode that won't have any effect
+    // anyway.
     bool AllUsesAreNonTrackMem (Value* V) const {
-      // strip cast if there is one
-      if (CastInst *CI = dyn_cast<CastInst> (V)) {
-        V = CI;
-      }
-
+      V = V->stripPointerCasts();
       for (auto &U: V->uses ()) {
         if (StoreInst *SI = dyn_cast<StoreInst> (U.getUser())) {
           Type* ty = SI->getOperand (0)->getType ();
@@ -449,10 +472,11 @@ namespace crab_llvm
         else if (CallInst *CI = dyn_cast<CallInst> (U.getUser())) { 
           CallSite CS (CI);
           Function* callee = CS.getCalledFunction ();
-          if (callee && 
-              ( callee->getName().startswith ("llvm.dbg") || 
-                callee->getName().startswith ("shadow.mem")))
+          if (callee && ( callee->getName().startswith ("llvm.dbg") || 
+                          callee->getName().startswith ("shadow.mem")))
             continue;
+          else // conservatively return false
+            return false; 
         }
         else
           return false;
@@ -460,10 +484,12 @@ namespace crab_llvm
       return true;
     }
     
-    bool isLogicalOp(const Instruction &I) const {
+    static bool isLogicalOp(const Instruction &I) {
       return (I.getOpcode() >= Instruction::And && 
               I.getOpcode() <= Instruction::Xor);
     }
+
+   public:
         
     /// skip PHI nodes
     void visitPHINode (PHINode &I) {}
@@ -478,7 +504,7 @@ namespace crab_llvm
       /// --- We cover the cases where it feeds a binary operator
       /// (e.g., bitwise operator).
 
-      /// TODO: this is overkill if there are many cases because Crab
+      /// XXX: this is overkill if there are many cases because Crab
       /// select statements perform joins. A solution would be to
       /// perform multiple select's together so the number of join
       /// operations can be reduced. This would be require to change
@@ -681,48 +707,12 @@ namespace crab_llvm
           break;
       }
     }
-    
-    void doCast(CastInst &I) {
-      /// IMPORTANT: the translation abstract cast operands to their
-      /// numerical offsets. Thus, aliasing is not translated.
-
-      if (!m_sev.isTracked (I)) 
-        return;
-
-      if (CrabNoPtrArith && !I.getType ()->isIntegerTy ())
-        return;
-
-      if (AllUsesAreNonTrackMem (&I))
-        return;
-
-      varname_t dst = m_sev.symVar (I);
-      const Value& v = *I.getOperand (0); // the value to be casted
-
-      optional<z_lin_exp_t> src = m_sev.lookup (v);
-
-      if (src) {
-        if (canPointerAbstractedToZeroOffset (&v)) {
-          m_bb.assign(dst, 0);
-        } else {
-          m_bb.assign(dst, *src);
-        }
-      }
-      else {
-        if (v.getType ()->isIntegerTy (1)) {
-          m_bb.assume ( z_lin_exp_t (dst) >= z_lin_exp_t (0) );
-          m_bb.assume ( z_lin_exp_t (dst) <= z_lin_exp_t (1) );
-        }
-        else if (CrabIncludeHavoc)
-          m_bb.havoc(dst);
-      }
-    }
-    
+        
     void visitZExtInst (ZExtInst &I) {
       // This optimization tries to reduce the number variables within
       // a basic block. This will put less pressure on the numerical
-      // abstract domain later on.
-      /* --- Search for this idiom: 
-         
+      // abstract domain later on. Search for this idiom: 
+      /*
          %_14 = zext i8 %_13 to i32
          %_15 = getelementptr inbounds [10 x i8]* @_ptr, i32 0, i32 %_14
          
@@ -746,229 +736,6 @@ namespace crab_llvm
                                               dest->use_end()))
         all_gep &= isa<GetElementPtrInst> (U.getUser ());
       if (!all_gep) doCast (I); 
-    }
-
-    // This will cover the whole class of cast instructions
-    void visitCastInst (CastInst &I) {
-      doCast (I);
-    }
-
-    unsigned fieldOffset (const StructType *t, unsigned field) {
-      return m_dl->getStructLayout (const_cast<StructType*>(t))->
-          getElementOffset (field);
-    }
-
-    unsigned storageSize (const Type *t) {
-      return m_dl->getTypeStoreSize (const_cast<Type*> (t));
-    }
-
-    void visitGetElementPtrInst (GetElementPtrInst &I) {
-      /// IMPORTANT: the translation abstracts GEP operands to their
-      /// numerical offsets. Aliasing is not translated here.
-
-      if (!m_sev.isTracked (I)) {
-        return;
-      }
-
-      CRAB_LOG ("cfg-gep",
-                errs () << "Translating " << I << "\n");
-
-      if (CrabNoPtrArith || AllUsesAreNonTrackMem (&I)) {
-        if (CrabIncludeHavoc) m_bb.havoc (m_sev.symVar (I)); 
-        CRAB_LOG("cfg-gep",
-                 errs () << " -- skipped translation: all uses are not track mem\n");
-        return;
-      }
-
-      optional<z_lin_exp_t> ptr = m_sev.lookup (*I.getPointerOperand ());
-      if (!ptr)  {
-        if (CrabIncludeHavoc) m_bb.havoc (m_sev.symVar (I));
-        return;
-      }
-
-      bool isBaseZeroOffset = canPointerAbstractedToZeroOffset(I.getPointerOperand ());
-      varname_t res = m_sev.symVar (I);
-
-      // -- more efficient translation if the GEP offset is constant
-      unsigned BitWidth = m_dl->getPointerTypeSizeInBits(I.getType());
-      APInt Offset(BitWidth, 0);
-      if (I.accumulateConstantOffset (*m_dl, Offset)) {
-        z_lin_exp_t offset (m_sev.toMpz (Offset).get_str ());
-        if (isBaseZeroOffset) {
-          m_bb.assign (res, offset);
-          CRAB_LOG("cfg-gep",
-                   std::cout << "-- " << res << ":=" << offset << "\n");        
-        }
-        else {
-          m_bb.add (res, *ptr, offset);
-          CRAB_LOG("cfg-gep",
-                   std::cout << "-- " << res << ":=" << *ptr  << "+" << offset << "\n");        
-        }
-        return;
-      }
-
-      SmallVector<const Value*, 4> ps;
-      SmallVector<const Type*, 4> ts;
-      gep_type_iterator typeIt = gep_type_begin (I);
-      for (unsigned i = 1; i < I.getNumOperands (); ++i, ++typeIt) {
-        // strip zext/sext if there is one
-        if (const ZExtInst *ze = dyn_cast<const ZExtInst> (I.getOperand (i)))
-          ps.push_back (ze->getOperand (0));
-        else if (const SExtInst *se = dyn_cast<const SExtInst> (I.getOperand (i)))
-          ps.push_back (se->getOperand (0));
-        else 
-          ps.push_back (I.getOperand (i));
-        ts.push_back (*typeIt);
-      }
-
-      bool is_init = false;
-      for (unsigned i = 0; i < ps.size (); ++i) {
-        if (const StructType *st = dyn_cast<const StructType> (ts [i]))
-        { // --- we do not optimize this case because it will often
-          //     optimized by accumulateConstantOffset
-          if (const ConstantInt *ci = dyn_cast<const ConstantInt> (ps [i])) {
-            ikos::z_number offset (fieldOffset (st, ci->getZExtValue ()));
-            if (i == 0) {
-              if (isBaseZeroOffset) {
-                m_bb.assign (res, offset);
-                CRAB_LOG("cfg-gep",
-                         std::cout << "-- " << res << ":=" << offset << "\n");
-              }
-              else {
-                m_bb.add (res, *ptr, offset);
-                CRAB_LOG("cfg-gep",
-                         std::cout << "-- " << res << ":=" << *ptr << "+" << offset << "\n");
-              }
-            }
-            else {
-              m_bb.add (res, res, offset);
-              CRAB_LOG("cfg-gep",
-                       std::cout << "-- " << res << ":=" << res << "+" << offset << "\n");
-            }
-          }
-          else 
-            llvm_unreachable ("unreachable");
-        }
-        else if (const SequentialType *seqt = dyn_cast<const SequentialType> (ts [i]))
-        {
-          if (const ConstantInt *ci = dyn_cast<const ConstantInt> (ps [i])) {
-            if (ci->isZero ())
-              continue;
-          }
-
-          optional<z_lin_exp_t> p = m_sev.lookup (*ps[i]);
-          assert (p);
-          if (!is_init) {
-            if (isBaseZeroOffset) {
-              ikos::z_number offset (storageSize (seqt->getElementType ()));
-              m_bb.mul (res, *p, offset);
-              is_init = true;
-              CRAB_LOG("cfg-gep",
-                       std::cout << "-- " << res << ":=" << *p << "*" << offset << "\n");
-            } else {
-              ikos::z_number offset (storageSize (seqt->getElementType ()));
-              varname_t tmp = m_sev.getVarFac().get ();
-              m_bb.mul (tmp, *p, offset);
-              m_bb.add (res, *ptr, z_lin_exp_t (tmp));
-              CRAB_LOG("cfg-gep",
-                       std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
-                       << "-- " << res << ":=" << *ptr << "+" << tmp << "\n");
-            }
-          } else {
-            ikos::z_number offset (storageSize (seqt->getElementType ()));
-            varname_t tmp = m_sev.getVarFac().get ();
-            m_bb.mul (tmp, *p, offset);
-            m_bb.add (res, res, tmp);
-            CRAB_LOG("cfg-gep",
-                     std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
-                     << "-- " << res << ":=" << res << "+" << tmp << "\n");
-          }
-        }
-      }
-    }
-
-    void visitLoadInst (LoadInst &I) {
-      /// --- Translate only loads into integer variables
-
-      Type *ty = I.getType();
-      if (ty->isIntegerTy () && m_sev.getTrackLevel () == ARR) {
-
-        region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), 
-                                                    I.getPointerOperand ());
-
-        if (!(region.isUnknown ())) {
-          // Post: region corresponds to a memory region pointed by
-          //       objects with same type and all accesses are
-          //       aligned.
-
-          if (const Value* s = isGlobalSingleton (region)) {
-            m_bb.assign (m_sev.symVar (I), z_lin_exp_t (m_sev.symVar(*s)));
-            return;
-          }
-
-          if (optional<z_lin_exp_t> idx = m_sev.lookup (*I.getPointerOperand ())) {
-            m_bb.array_load (m_sev.symVar (I), m_sev.symVar (region), *idx,
-                             ikos::z_number (m_dl->getTypeAllocSize (ty)));
-            return;
-          }
-        }
-      }
-
-      // Warning: for offset purposes we will lose dramatically
-      // information here
-      if (m_sev.isTracked (I)) {
-        if (CrabIncludeHavoc) m_bb.havoc (m_sev.symVar (I));
-      }
-    }
-    
-    void visitStoreInst (StoreInst &I) {
-      /// --- Translate only stores of integer values
-
-      Type* ty = I.getOperand (0)->getType ();
-      if (ty->isIntegerTy () && m_sev.getTrackLevel () == ARR) {                
-        region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()),
-                                                    I.getOperand (1)); 
-
-        if (region.isUnknown ()) return;
-        // Post: region corresponds to a memory region pointed by
-        //       objects with same type and all accesses are aligned.
-
-        optional<z_lin_exp_t> val = m_sev.lookup (*I.getOperand (0));
-        if (!val) return; // FIXME: we should havoc the array
-
-        if (const Value* s = isGlobalSingleton (region)) {
-          m_bb.assign (m_sev.symVar (*s), *val);
-          return;
-        }
-
-        optional<z_lin_exp_t> idx = m_sev.lookup (*I.getPointerOperand ());
-        if (!idx) return; // FIXME: we should havoc the array
-        m_bb.array_store (m_sev.symVar (region), 
-                          *idx, *val, 
-                          ikos::z_number (m_dl->getTypeAllocSize (ty)),
-                          region.getSingleton () != nullptr); 
-      }
-    }
-
-    void visitAllocaInst (AllocaInst &I) {
-      if (m_sev.getTrackLevel () == ARR) {        
-        region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), 
-                                                    &I);
-        if (region.isUnknown ()) return;
-        // Post: region corresponds to a memory region pointed by
-        //       objects with same type and all accesses are aligned.
-
-        // "Initialization hook": nodes which do not have an explicit
-        // initialization are initially undefined. Instead, we assume
-        // they are zero initialized so that Crab's array smashing can
-        // infer something meaningful. This is correct because in
-        // presence of undefined behaviour we can do whatever we want
-        // but it will, for instance, preclude the analysis to detect
-        // things like uninitialized variables and also if a more
-        // expressive array domain is used then this initialization
-        // will make it more imprecise.
-        m_bb.assume_array (m_sev.symVar (region), 0 /*any value we want*/);
-      }
     }
 
     void visitSelectInst(SelectInst &I) {
@@ -1020,11 +787,313 @@ namespace crab_llvm
       m_bb.select(lhs, m_sev.symVar (cond),  *op0, *op1);
     }
 
+    void doCast(CastInst &I) {
+      /// TODO: generate a ptr_assign instruction if the operands are
+      ///       pointers.
+
+      if (!m_sev.isTracked (I)) 
+        return;
+
+      if (CrabNoPtrArith && !I.getType ()->isIntegerTy ())
+        return;
+
+      if (AllUsesAreNonTrackMem (&I))
+        return;
+
+      varname_t dst = m_sev.symVar (I);
+      const Value& v = *I.getOperand (0); // the value to be casted
+
+      optional<z_lin_exp_t> src = m_sev.lookup (v);
+
+      if (src) {
+        // //if (startPtrOffsetFromZero (&v)) {
+        //   m_bb.assign(dst, 0);
+        // } else {
+        m_bb.assign(dst, *src);
+        //}
+      }
+      else {
+        if (v.getType ()->isIntegerTy (1)) {
+          m_bb.assume ( z_lin_exp_t (dst) >= z_lin_exp_t (0) );
+          m_bb.assume ( z_lin_exp_t (dst) <= z_lin_exp_t (1) );
+        }
+        else if (CrabIncludeHavoc)
+          m_bb.havoc(dst);
+      }
+    }
+
+    // This will cover the whole class of cast instructions
+    void visitCastInst (CastInst &I) {
+      doCast (I);
+    }
+
+    void visitGetElementPtrInst (GetElementPtrInst &I) {
+      /// TODO: generate a ptr_assign(b, offset) instruction.
+
+      if (!m_sev.isTracked (I)) {
+        return;
+      }
+
+      CRAB_LOG ("cfg-gep",
+                errs () << "Translating " << I << "\n");
+
+      if (CrabNoPtrArith || AllUsesAreNonTrackMem (&I)) {
+        if (CrabIncludeHavoc) m_bb.havoc (m_sev.symVar (I)); 
+        CRAB_LOG("cfg-gep",
+                 errs () << " -- skipped translation: all uses are not track mem\n");
+        return;
+      }
+
+      optional<z_lin_exp_t> ptr = m_sev.lookup (*I.getPointerOperand ());
+      if (!ptr)  {
+        if (CrabIncludeHavoc) m_bb.havoc (m_sev.symVar (I));
+        return;
+      }
+
+      varname_t res = m_sev.symVar (I);
+
+      // -- more efficient translation if the GEP offset is constant
+      unsigned BitWidth = m_dl->getPointerTypeSizeInBits(I.getType());
+      APInt Offset(BitWidth, 0);
+      if (I.accumulateConstantOffset (*m_dl, Offset)) {
+        z_lin_exp_t offset (m_sev.toMpz (Offset).get_str ());
+        if (startPtrOffsetFromZero(I.getPointerOperand ())) {
+          m_bb.assign (res, offset);
+          CRAB_LOG("cfg-gep",
+                   std::cout << "-- " << res << ":=" << offset << "\n");        
+        }
+        else {
+          m_bb.add (res, *ptr, offset);
+          CRAB_LOG("cfg-gep",
+                   std::cout << "-- " << res << ":=" << *ptr  << "+" << offset << "\n");        
+        }
+        return;
+      }
+
+      SmallVector<const Value*, 4> ps;
+      SmallVector<const Type*, 4> ts;
+      gep_type_iterator typeIt = gep_type_begin (I);
+      for (unsigned i = 1; i < I.getNumOperands (); ++i, ++typeIt) {
+        // strip zext/sext if there is one
+        if (const ZExtInst *ze = dyn_cast<const ZExtInst> (I.getOperand (i)))
+          ps.push_back (ze->getOperand (0));
+        else if (const SExtInst *se = dyn_cast<const SExtInst> (I.getOperand (i)))
+          ps.push_back (se->getOperand (0));
+        else 
+          ps.push_back (I.getOperand (i));
+        ts.push_back (*typeIt);
+      }
+
+      bool is_init = false;
+      for (unsigned i = 0; i < ps.size (); ++i) {
+        if (const StructType *st = dyn_cast<const StructType> (ts [i]))
+        { // --- we do not optimize this case because it will often
+          //     optimized by accumulateConstantOffset
+          if (const ConstantInt *ci = dyn_cast<const ConstantInt> (ps [i])) {
+            ikos::z_number offset (fieldOffset (st, ci->getZExtValue ()));
+            if (i == 0) {
+              if (startPtrOffsetFromZero(I.getPointerOperand ())) {
+                m_bb.assign (res, offset);
+                CRAB_LOG("cfg-gep",
+                         std::cout << "-- " << res << ":=" << offset << "\n");
+              }
+              else {
+                m_bb.add (res, *ptr, offset);
+                CRAB_LOG("cfg-gep",
+                         std::cout << "-- " << res << ":=" << *ptr << "+" << offset << "\n");
+              }
+            }
+            else {
+              m_bb.add (res, res, offset);
+              CRAB_LOG("cfg-gep",
+                       std::cout << "-- " << res << ":=" << res << "+" << offset << "\n");
+            }
+          }
+          else 
+            llvm_unreachable ("unreachable");
+        }
+        else if (const SequentialType *seqt = dyn_cast<const SequentialType> (ts [i]))
+        {
+          if (const ConstantInt *ci = dyn_cast<const ConstantInt> (ps [i])) {
+            if (ci->isZero ())
+              continue;
+          }
+
+          optional<z_lin_exp_t> p = m_sev.lookup (*ps[i]);
+          assert (p);
+          if (!is_init) {
+            if (startPtrOffsetFromZero(I.getPointerOperand ())) {
+              ikos::z_number offset (storageSize (seqt->getElementType ()));
+              m_bb.mul (res, *p, offset);
+              is_init = true;
+              CRAB_LOG("cfg-gep",
+                       std::cout << "-- " << res << ":=" << *p << "*" << offset << "\n");
+            } else {
+              ikos::z_number offset (storageSize (seqt->getElementType ()));
+              varname_t tmp = m_sev.getVarFac().get ();
+              m_bb.mul (tmp, *p, offset);
+              m_bb.add (res, *ptr, z_lin_exp_t (tmp));
+              CRAB_LOG("cfg-gep",
+                       std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
+                       << "-- " << res << ":=" << *ptr << "+" << tmp << "\n");
+            }
+          } else {
+            ikos::z_number offset (storageSize (seqt->getElementType ()));
+            varname_t tmp = m_sev.getVarFac().get ();
+            m_bb.mul (tmp, *p, offset);
+            m_bb.add (res, res, tmp);
+            CRAB_LOG("cfg-gep",
+                     std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
+                     << "-- " << res << ":=" << res << "+" << tmp << "\n");
+          }
+        }
+      }
+    }
+
+    void visitLoadInst (LoadInst &I) {
+      /// --- Translate only loads into integer variables
+      
+      Type *ty = I.getType();
+      if (ty->isIntegerTy () && m_sev.getTrackLevel () == ARR) {
+        
+        region_t r = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), 
+                                               I.getPointerOperand ());
+        
+        if (!(r.isUnknown ())) {
+          // Post: r corresponds to a memory region pointed by
+          //       objects with same type and all accesses are
+          //       aligned.
+          if (const Value* s = isGlobalSingleton (r)) {
+            m_bb.assign (m_sev.symVar (I), z_lin_exp_t (m_sev.symVar(*s)));
+            return;
+          }
+          if (optional<z_lin_exp_t> idx = m_sev.lookup (*I.getPointerOperand ())) {
+            m_bb.array_load (m_sev.symVar (I), m_sev.symVar (r), *idx,
+                             ikos::z_number (m_dl->getTypeAllocSize (ty)));
+            return;
+          }
+        }
+      }
+
+      // TODO: generate a ptr_load instruction here.
+      // Even, for offset purposes we will lose dramatically
+      // information here!
+      if (m_sev.isTracked (I)) {
+        if (CrabIncludeHavoc) m_bb.havoc (m_sev.symVar (I));
+      }
+    }
+    
+    void visitStoreInst (StoreInst &I) {
+      // TODO: generate a ptr_store instruction here.
+
+      /// --- Translate only stores of integer values
+
+      Type* ty = I.getOperand (0)->getType ();
+      if (ty->isIntegerTy () && m_sev.getTrackLevel () == ARR) {                
+        region_t r = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()),
+                                               I.getOperand (1)); 
+        if (r.isUnknown ()) return;
+        // Post: r corresponds to a memory region pointed by
+        //       objects with same type and all accesses are aligned.
+
+        optional<z_lin_exp_t> val = m_sev.lookup (*I.getOperand (0));
+        if (!val) return; // FIXME: we should havoc the array
+
+        if (const Value* s = isGlobalSingleton (r)) {
+          m_bb.assign (m_sev.symVar (*s), *val);
+          return;
+        }
+
+        optional<z_lin_exp_t> idx = m_sev.lookup (*I.getPointerOperand ());
+        if (!idx) return; // FIXME: we should havoc the array
+        m_bb.array_store (m_sev.symVar (r), 
+                          *idx, *val, 
+                          ikos::z_number (m_dl->getTypeAllocSize (ty)),
+                          r.getSingleton () != nullptr); 
+      }
+    }
+
+    void visitAllocaInst (AllocaInst &I) {
+      // TODO: new_object instruction here
+
+      if (m_sev.getTrackLevel () == ARR) {        
+        region_t r = m_sev.getMem().getRegion(*(I.getParent()->getParent()), &I);
+        if (r.isUnknown ()) return;
+        // Post: r corresponds to a memory region pointed by
+        //       objects with same type and all accesses are aligned.
+
+        // "Initialization hook": nodes which do not have an explicit
+        // initialization are initially undefined. Instead, we assume
+        // they are zero initialized so that Crab's array smashing can
+        // infer something meaningful. This is correct because in
+        // presence of undefined behaviour we can do whatever we want
+        // but it will, for instance, preclude the analysis to detect
+        // things like uninitialized variables and also if a more
+        // expressive array domain is used then this initialization
+        // will make it more imprecise.
+        m_bb.assume_array (m_sev.symVar(r), 0 /*any value we want*/);
+      }
+    }
+
+    void doAllocFn (Instruction &I) {
+      // TODO: new_object instruction here
+
+      if (CrabUnsoundArrayInit) {
+        Value *ptr = &I;
+        region_t r = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), ptr);
+        bool isMainCaller = I.getParent()->getParent()->getName().equals("main");
+        if (isMainCaller && !r.isUnknown ()) {
+          // Post: r corresponds to a memory region pointed by
+          //       objects with same type and all accesses are
+          //       aligned.
+          // We apply here again the "Initialization hook"
+          m_bb.assume_array (m_sev.symVar (r), 0);        
+        }
+      }
+      
+      // -- havoc return value
+      if (m_sev.isTracked (I)) {
+        Value *ret = &I;
+        if (!ret->getType()->isVoidTy() && CrabIncludeHavoc)
+          m_bb.havoc (m_sev.symVar (I));
+      }
+    }
+
+    void doMemIntrinsic(MemIntrinsic& I) {
+
+      if (isa<MemMoveInst>(I)) return;
+      
+      if (CrabUnsoundArrayInit) {
+        if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(&I)) {
+          Value* src = MCI->getSource ();
+          Value* dst = MCI->getDest ();
+          region_t dst_reg = m_sev.getMem().getRegion(*(I.getParent()->getParent()), dst);
+          region_t src_reg = m_sev.getMem().getRegion(*(I.getParent()->getParent ()), src);
+          if (dst_reg.isUnknown () || src_reg.isUnknown ()) return;
+          m_bb.havoc (m_sev.symVar (dst_reg));
+          m_bb.assign (m_sev.symVar (dst_reg), z_lin_exp_t (m_sev.symVar (src_reg)));
+        }
+        
+        if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
+          Value* dst = MSI->getDest();
+          Value *val = MSI->getValue();
+          region_t r = m_sev.getMem().getRegion(*(I.getParent ()->getParent ()), dst);
+          if (r.isUnknown()) return;
+          // Post: r corresponds to a memory region pointed by
+          //       objects with same type and all accesses are aligned.
+          optional<z_lin_exp_t> op0 = m_sev.lookup(*val);          
+          if (op0 && (*op0).is_constant()) {
+            m_bb.havoc (m_sev.symVar(r));
+            m_bb.assume_array (m_sev.symVar(r), (*op0).constant ());
+          }
+        }
+      }
+    }
+
     void visitReturnInst (ReturnInst &I) {
       if (!m_is_inter_proc) return;
 
       if (I.getNumOperands () > 0) {
-
         if (!m_sev.isTracked (*(I.getOperand (0))))
           return;
 
@@ -1037,7 +1106,9 @@ namespace crab_llvm
       }
     }
 
-    pair<varname_t, VariableType> normalizeParam (Value& V) {
+   private:
+
+    std::pair<varname_t, VariableType> normalizeScalarParam (Value& V) {
       if (Constant *cst = dyn_cast< Constant> (&V)) {
         varname_t v = m_sev.getVarFac().get ();
         if (ConstantInt * intCst = dyn_cast<ConstantInt> (cst)) {
@@ -1053,24 +1124,18 @@ namespace crab_llvm
       else
         return make_pair (m_sev.symVar (V), getType (V.getType ()));
     }
+
+   public:
     
     void visitCallInst (CallInst &I) {
       CallSite CS (&I);
       Function * callee = CS.getCalledFunction ();
 
-      // if (m_sev.isTracked (I) && AllUsesAreNonTrackMem (&I))
-      //   return;
-
       if (!callee) {         
-        // --- If we are here is either the functionis Asm or we could
-        //     not resolve the indirect call.
+        // --- If we are here is either because the function is Asm or
+        //     we could not resolve the indirect call.
 
-        // if (I.isInlineAsm ())
-        //   errs () << "WARNING: skipped inline asm statement call " << I << "\n";
-        // else
-        //   errs () << "WARNING: skipped indirect call " << I << "\n";
-
-        // -- havoc return value
+        // havoc return value
         if (m_sev.isTracked (I)) {
           Value *ret = &I;
           if (!ret->getType()->isVoidTy() && CrabIncludeHavoc)
@@ -1079,78 +1144,20 @@ namespace crab_llvm
         return;
       }
 
-      // --- Special functions 
-
       // -- ignore any shadow functions created by seahorn
       if (callee->getName().startswith ("shadow.mem")) return;
-
       if (callee->getName().equals ("seahorn.fn.enter")) return;
 
-      if (callee->isDeclaration () && 
-          I.getParent()->getParent ()->getName ().equals ("main") && 
-          ( callee->getName ().equals ("calloc") || 
-            callee->getName ().equals ("malloc") ||
-            callee->getName ().equals ("valloc") ||
-            callee->getName ().equals ("palloc"))) {
-        if (CrabUnsoundArrayInit) {
-          Value *ptr = &I;
-          region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), ptr);
-          if (region.isUnknown ()) return;
-          // Post: region corresponds to a memory region pointed by
-          //       objects with same type and all accesses are
-          //       aligned.
-          
-          // We apply here the "Initialization hook"
-          m_bb.assume_array (m_sev.symVar (region), 0);        
-        }
-
-        // -- havoc return value
-        if (m_sev.isTracked (I)) {
-          Value *ret = &I;
-          if (!ret->getType()->isVoidTy() && CrabIncludeHavoc)
-            m_bb.havoc (m_sev.symVar (I));
-        }
+      if (isAllocationFn(&I, m_tli)){
+        doAllocFn(I);
         return;
       }
 
       if (callee->isIntrinsic ()) {
-        if (callee->getName().startswith ("llvm.memset")) {
-          if (CrabUnsoundArrayInit) {
-            Value *ptr = CS.getArgument (0);
-            Value *val = CS.getArgument (1);
-            region_t region = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), ptr);
-            if (region.isUnknown ()) return;
-            // Post: region corresponds to a memory region pointed by
-            //       objects with same type and all accesses are
-            //       aligned.
-            optional<z_lin_exp_t> op0 = m_sev.lookup (*val);          
-            if (op0 && (*op0).is_constant ()) {
-              m_bb.havoc (m_sev.symVar (region));
-              m_bb.assume_array (m_sev.symVar (region), (*op0).constant ());
-            }
-          }
-        }
-        else if (callee->getName().startswith ("llvm.memcpy")) {
-          if (CrabUnsoundArrayInit) {
-            region_t dest = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), 
-                                                      CS.getArgument (0));
-            region_t src = m_sev.getMem().getRegion (*(I.getParent ()->getParent ()), 
-                                                     CS.getArgument (1));
-            
-            if (dest.isUnknown () || src.isUnknown ()) return;
-            
-            m_bb.havoc (m_sev.symVar (dest));
-            m_bb.assign (m_sev.symVar (dest), z_lin_exp_t (m_sev.symVar (src)));
-          }
-        }
-        // We don't want to model llvm.memmove since it allows
-        // overlapping between source and destination so the array
-        // domain may not be sound.
-
-        // else skip intrinsic
-
-        // -- havoc return value
-        if (m_sev.isTracked (I)) {
+        if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I)) {
+          doMemIntrinsic(*MI);
+        } else if (m_sev.isTracked (I)) {
+          // -- havoc return value
           Value *ret = &I;
           if (!ret->getType()->isVoidTy() && CrabIncludeHavoc)
             m_bb.havoc (m_sev.symVar (I));
@@ -1182,14 +1189,13 @@ namespace crab_llvm
         return;
       }
 
-      if ((!m_is_inter_proc) || callee->isVarArg()) {
+      if (callee->isDeclaration() || callee->isVarArg() || !m_is_inter_proc) {
         // -- havoc return value
         if (m_sev.isTracked (I)) {
           Value *ret = &I;
           if (!ret->getType()->isVoidTy() && CrabIncludeHavoc)
             m_bb.havoc (m_sev.symVar (I));
         }
-        
         // -- havoc all modified nodes by the callee
         if (m_sev.getTrackLevel () == ARR) {
           region_set_t mods = m_sev.getMem().getModifiedRegions (I);
@@ -1197,78 +1203,85 @@ namespace crab_llvm
             m_bb.havoc (m_sev.symVar (a));
           }
         }
+        return;
       }
-      else {
-        vector<pair<varname_t,VariableType> > actuals;
-        // -- add the scalar actual parameters
-        for (auto &a : boost::make_iterator_range (CS.arg_begin(),
-                                                   CS.arg_end())) {
-          Value *v = a.get();
-          if (!m_sev.isTracked (*v)) 
-            continue;
-          if (CrabNoPtrArith && !v->getType ()->isIntegerTy ())
-            continue;
 
-          actuals.push_back (normalizeParam (*v));
-        }
+      // --- call to a user-defined function
 
-        if (m_sev.getTrackLevel () == ARR) {
-          // -- add the array actual parameters
-          region_set_t onlyreads = m_sev.getMem().getOnlyReadRegions (I);
-          region_set_t mods = m_sev.getMem().getModifiedRegions (I);
-          region_set_t news = m_sev.getMem().getNewRegions (I);
-
-          CRAB_LOG("cfg-mem",
-                   errs () << "Callsite " << I << "\n";
-                   std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (I) << "\n";
-                   std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (I) << "\n";
-                   std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (I) << "\n");
-
-          // Make sure that the order of the actuals parameters is the
-          // same than the order of the formal parameters when the
-          // callee signature is built, search below for (**). This is
-          // ensured because array names are globals and get*Regions
-          // methods return always the regions in the same order.
-
-          // -- add input parameters
-          for (auto a: onlyreads) { 
-            if (const Value* s = isGlobalSingleton (a))
-              actuals.push_back (make_pair (m_sev.symVar (*s), INT_TYPE));
-            else
-              actuals.push_back (make_pair (m_sev.symVar (a), ARR_TYPE));
-          }
-          // -- add input/output parameters
-          for (auto a: mods) {
-            varname_t a_in = m_sev.getVarFac ().get (); // fresh variable
-            if (const Value* s = isGlobalSingleton (a)) {
-              m_bb.assign (a_in, z_lin_exp_t (m_sev.symVar(*s))); 
-              m_bb.havoc (m_sev.symVar(*s)); 
-            } else {
-              m_bb.assign (a_in, z_lin_exp_t (m_sev.symVar (a))); 
-              m_bb.havoc (m_sev.symVar (a)); 
-            }
-            actuals.push_back (make_pair (a_in, ARR_TYPE));
-            if (const Value* s = isGlobalSingleton (a))
-              actuals.push_back (make_pair (m_sev.symVar (*s), INT_TYPE));
-            else
-              actuals.push_back (make_pair (m_sev.symVar (a), ARR_TYPE));
-          }
-          // -- add output parameters
-          for (auto a: news) 
-            actuals.push_back (make_pair (m_sev.symVar (a), ARR_TYPE));
-        }
-
-        // -- add the callsite
-        if ( (getType (I.getType ()) != UNK_TYPE) && m_sev.isTracked (I) &&
-             (!CrabNoPtrArith || I.getType ()->isIntegerTy ())) {
-          m_bb.callsite (make_pair (m_sev.symVar (I), getType (I.getType ())), 
-                         m_sev.getVarFac() [*callee], actuals);
-        }
-        else {
-          m_bb.callsite (m_sev.getVarFac() [*callee], actuals);        
-        }
+      vector<pair<varname_t,VariableType> > actuals;
+      // -- add the scalar actual parameters
+      for (auto &a : boost::make_iterator_range (CS.arg_begin(),
+                                                 CS.arg_end())) {
+        Value *v = a.get();
+        if (!m_sev.isTracked (*v)) 
+          continue;
+        if (CrabNoPtrArith && !v->getType ()->isIntegerTy ())
+          continue;
+        
+        actuals.push_back (normalizeScalarParam(*v));
       }
       
+      if (m_sev.getTrackLevel () == ARR) {
+        // -- add the array actual parameters
+        region_set_t onlyreads = m_sev.getMem().getOnlyReadRegions (I);
+        region_set_t mods = m_sev.getMem().getModifiedRegions (I);
+        region_set_t news = m_sev.getMem().getNewRegions (I);
+        
+        CRAB_LOG("cfg-mem",
+                 errs () << "Callsite " << I << "\n";
+                 std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (I) << "\n";
+                 std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (I) << "\n";
+                 std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (I) << "\n");
+
+        // Make sure that the order of the actuals parameters is the
+        // same than the order of the formal parameters when the
+        // callee signature is built, search below for (**). This is
+        // ensured because array names are globals and get*Regions
+        // methods return always the regions in the same order.
+        
+        // -- add input parameters
+        for (auto a: onlyreads) { 
+          if (const Value* s = isGlobalSingleton (a))
+            actuals.push_back (make_pair (m_sev.symVar (*s), INT_TYPE));
+          else
+            actuals.push_back (make_pair (m_sev.symVar (a), ARR_TYPE));
+        }
+        // -- add input/output parameters
+        for (auto a: mods) {
+
+          if (news.find(a) != news.end()) continue;
+
+          varname_t a_in = m_sev.getVarFac ().get (); // fresh variable
+          // given x: x_in = x; x = *;
+          if (const Value* s = isGlobalSingleton (a)) {
+            m_bb.assign (a_in, z_lin_exp_t (m_sev.symVar(*s))); 
+            m_bb.havoc (m_sev.symVar(*s)); 
+          } else {
+            m_bb.assign (a_in, z_lin_exp_t (m_sev.symVar (a))); 
+            m_bb.havoc (m_sev.symVar (a)); 
+          }
+
+          actuals.push_back (make_pair (a_in, ARR_TYPE));
+          if (const Value* s = isGlobalSingleton (a))
+            actuals.push_back (make_pair (m_sev.symVar (*s), INT_TYPE));
+          else
+            actuals.push_back (make_pair (m_sev.symVar (a), ARR_TYPE));
+        }
+        // -- add output parameters
+        for (auto a: news) 
+          actuals.push_back (make_pair (m_sev.symVar (a), ARR_TYPE));
+      }
+      
+      // -- add the callsite
+      if ( (getType (I.getType ()) != UNK_TYPE) && m_sev.isTracked (I) &&
+           (!CrabNoPtrArith || I.getType ()->isIntegerTy ())) {
+        m_bb.callsite (make_pair (m_sev.symVar (I), getType (I.getType ())), 
+                       m_sev.getVarFac() [*callee], actuals);
+      }
+      else {
+        m_bb.callsite (m_sev.getVarFac() [*callee], actuals);        
+      }
+
     }
 
     void visitUnreachableInst (UnreachableInst &I) {
@@ -1278,12 +1291,7 @@ namespace crab_llvm
     /// base case. if all else fails.
     void visitInstruction (Instruction &I) {
       if (!m_sev.isTracked (I)) return;
-
-      if (isa<AllocaInst> (I)) return;
-
-      varname_t lhs = m_sev.symVar(I);
-      if (CrabIncludeHavoc)
-        m_bb.havoc(lhs);
+      if (CrabIncludeHavoc) m_bb.havoc(m_sev.symVar(I));
     }
     
   }; // end class
@@ -1438,7 +1446,7 @@ namespace crab_llvm
 
         basic_block_t& bb = *BB;
         retBlks.push_back (&bb);
-        NumAbsVisitor v (m_sev, m_dl, *BB, m_is_inter_proc);
+        NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, m_is_inter_proc);
         v.visit (*B);
       }
       else {
@@ -1448,7 +1456,7 @@ namespace crab_llvm
 
         // -- build an initial CFG block from bb but ignoring branches
         //    and phi-nodes
-        NumAbsVisitor v (m_sev, m_dl, *BB, m_is_inter_proc);
+        NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, m_is_inter_proc);
         v.visit (*B);
         
         for (const llvm::BasicBlock *dst : succs (*B)) {
@@ -1564,6 +1572,9 @@ namespace crab_llvm
 
         // -- add input/output parameters        
         for (auto a: mods) {
+
+          if (news.find(a) != news.end()) continue;
+
           // -- for each parameter `a` we create a fresh version
           //    `a_in` where `a_in` acts as the input version of the
           //    parameter and `a` is the output version. Note that the

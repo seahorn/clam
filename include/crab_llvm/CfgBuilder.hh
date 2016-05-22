@@ -16,7 +16,6 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/DataLayout.h"
 
 #include "crab_llvm/SymEval.hh"
 
@@ -110,6 +109,12 @@ namespace
 
 }
 
+// forward declaration
+namespace llvm {
+  class DataLayout;
+  class TargetLibraryInfo;
+}
+
 namespace crab_llvm
 {
   using namespace std;
@@ -140,6 +145,7 @@ namespace crab_llvm
     TrackedPrecision m_tracklev;
     bool m_is_inter_proc;
     const DataLayout* m_dl;
+    const TargetLibraryInfo* m_tli;
     // Placeholder blocks added *temporary* to the LLVM bitecode for
     // translating Branch instructions into Crab assume statements
     vector<llvm::BasicBlock*> m_fake_assume_blocks;
@@ -148,7 +154,8 @@ namespace crab_llvm
     
     CfgBuilder (Function& func, 
                 VariableFactory& vfac, MemAnalysis& mem, 
-                TrackedPrecision tracklev, bool isInterProc)
+                TrackedPrecision tracklev, bool isInterProc,
+                const TargetLibraryInfo* tli)
         : m_is_cfg_built (false),                          
           m_func (func), 
           m_sev (vfac, mem, tracklev),
@@ -156,7 +163,8 @@ namespace crab_llvm
           m_cfg (boost::make_shared<cfg_t>(&m_func.getEntryBlock (), tracklev)),
           m_tracklev (tracklev),
           m_is_inter_proc (isInterProc),
-          m_dl (func.getParent ()->getDataLayout ()) { }
+          m_dl (func.getParent ()->getDataLayout ()),
+          m_tli (tli) { }
     
     ~CfgBuilder () { 
       for (llvm::BasicBlock* B: m_fake_assume_blocks) {
@@ -182,7 +190,7 @@ namespace crab_llvm
                                              Function *parent);
 
     string create_bb_name(string prefix = "") {
-      if (prefix == "") prefix = string("_crab_bb_");
+      if (prefix == "") prefix = string("__@bb_");
       ++m_id;
       string id_str = std::to_string(m_id);
       return prefix + id_str;

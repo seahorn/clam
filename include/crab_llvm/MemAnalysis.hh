@@ -8,6 +8,7 @@
 #include "llvm/IR/Instructions.h"
 
 #include "crab_llvm/config.h"
+#include "crab/common/debug.hpp"
 
 #include <set>
 #include <boost/unordered_map.hpp>
@@ -308,21 +309,41 @@ namespace crab_llvm {
 
     bool isTrackable (const DSNode* n) const {
 
-      if (n->isNodeCompletelyFolded())
+      if (n->isNodeCompletelyFolded()) {
+        CRAB_LOG ("mem-analysis", 
+                  llvm::errs () << "\tThe node is not trackable because already folded.\n";);
         return false;
+      }
 
-      if (n->isExternalNode() || n->isIncompleteNode())
-        return false;
+      if (n->isExternalNode() || n->isIncompleteNode()) {
+        CRAB_LOG ("mem-analysis", 
+                  llvm::errs () << "\tThe node is external or incomplete.\n";);
+        //return false;
+      }
 
-      if (n->isUnknownNode() || n->isIntToPtrNode() || n->isPtrToIntNode())
+      if (n->isUnknownNode() || n->isIntToPtrNode() || n->isPtrToIntNode()) {
+        CRAB_LOG ("mem-analysis", 
+                  llvm::errs () << "\tThe node is unknown or casted from/to an integer.\n";);
         return false;
+      }
 
       //  A node is collapsed if all its uses have incompatible type
       //  or compatible types but misaligned.
-      if (n->isCollapsedNode ()) 
+      if (n->isCollapsedNode ())  {
+        CRAB_LOG ("mem-analysis", 
+                  llvm::errs () << "\tThe node has been collapsed.\n";);
         return false;
-     
-      return (n->isAllocaNode () || n->isHeapNode () || n->isGlobalNode ());
+      }
+ 
+      bool r = (n->isAllocaNode () || n->isHeapNode () || n->isGlobalNode ());
+      if (r)
+        CRAB_LOG ("mem-analysis", 
+                  llvm::errs () << "\tThe node is trackable!\n";);
+      else
+        CRAB_LOG ("mem-analysis", 
+                  llvm::errs () << "\tThe node is untrackable (unknown reason)\n";);
+      
+      return r;
     }
 
     // compute and cache the set of read, mod and new nodes of a whole
@@ -339,24 +360,37 @@ namespace crab_llvm {
       std::set<const DSNode*> reach, retReach;
       argReachableNodes (f, reach, retReach);
 
+      CRAB_LOG("mem-analysis", llvm::errs () << f.getName() << "\n");
+          
       region_set_t reads, mods, news;
       for (const DSNode* n : reach) {
 
-        if (!isTrackable (n))
+        CRAB_LOG ("mem-analysis", n->dump(););
+
+        if (!isTrackable (n)) {
           continue;
+        }
 
         if (!n->isReadNode () && !n->isModifiedNode ())
           continue;
 
-        if ((n->isReadNode () || n->isModifiedNode ()) && retReach.count (n) <= 0) 
+        if ((n->isReadNode () || n->isModifiedNode ()) && retReach.count (n) <= 0) {
+          CRAB_LOG ("mem-analysis", llvm::errs () << "\tThe node is read\n";);
           reads.insert (region_t (static_cast<MemAnalysis*> (this), getId (n)));
+        }
       
-        if (n->isModifiedNode () && retReach.count (n) <= 0)
+        if (n->isModifiedNode () && retReach.count (n) <= 0) {
+          CRAB_LOG ("mem-analysis", llvm::errs () << "\tThe node is modified\n";);
           mods.insert (region_t (static_cast<MemAnalysis*> (this), getId (n)));
+        }
 
-        if (n->isModifiedNode () && retReach.count (n))
+        if (n->isModifiedNode () && retReach.count (n)) {
+          CRAB_LOG ("mem-analysis", llvm::errs () << "\tThe node is created within the function\n";);
           news.insert (region_t (static_cast<MemAnalysis*> (this), getId (n)));
+        }
       }
+      CRAB_LOG("mem-analysis", llvm::errs () << "-----------------------\n");
+
       m_func_accessed [&f] = reads;
       m_func_mods [&f] = mods;
       m_func_news [&f] = news;
@@ -449,6 +483,9 @@ namespace crab_llvm {
 
       // --- Pre-compute all the information per function and
       //     callsites
+
+      CRAB_LOG("mem-analysis", 
+               llvm::errs () << "========= MemAnalysis =========\n");
 
       for (auto &F: boost::make_iterator_range (m_M)) {
         cacheReadModNewNodes (F);

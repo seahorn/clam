@@ -5,6 +5,7 @@
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/CFG.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -255,7 +256,8 @@ namespace crab_llvm
     /// --- variables
     for (auto f : m_threads)
     {
-      CfgBuilder builder (*f, vfac, *m_mem, CrabTrackLev, true);
+      CfgBuilder builder (*f, vfac, *m_mem, CrabTrackLev, true, 
+                          &getAnalysis<TargetLibraryInfo>());
       auto cfg_ptr = builder.getCfg ();
                            
       vector<varname_t> shared_vars;
@@ -347,6 +349,7 @@ namespace crab_llvm
     AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
     #endif 
     AU.addRequired<llvm::DataLayoutPass>();
+    AU.addRequired<llvm::TargetLibraryInfo>();
     AU.addRequired<llvm::UnifyFunctionExitNodes> ();
     AU.addRequired<crab_llvm::NameValues>();
 

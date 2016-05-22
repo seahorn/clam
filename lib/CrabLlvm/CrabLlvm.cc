@@ -3,8 +3,11 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/InstVisitor.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Support/CommandLine.h"
@@ -229,7 +232,7 @@ namespace crab_llvm {
         // -- build cfg
         CfgBuilder B (F, m_vfac, *m_mem, CrabTrackLev,
                       /*include function decls and callsites*/
-                      true);
+                      true,  &getAnalysis<TargetLibraryInfo>());
 
         auto cfg_ptr = B.getCfg();
         m_cfg_map [&F] = cfg_ptr;
@@ -323,11 +326,11 @@ namespace crab_llvm {
           INTER_ANALYZE (interval_domain_t,arr_interval_domain_t,
                          *cg,M,live_map,change);
       }
-
+      
       if (CrabStats) {
         std::ostringstream oss;
         crab::CrabStats::PrintBrunch (oss);
-        outs () << oss.str();
+        llvm::outs () << oss.str();
       }
 
       if (CrabLive) {
@@ -347,7 +350,7 @@ namespace crab_llvm {
       if (CrabStats) {
         std::ostringstream oss;
         crab::CrabStats::PrintBrunch (oss);
-        outs () << oss.str();
+        llvm::outs () << oss.str();
       }
 
       return change;
@@ -368,7 +371,7 @@ namespace crab_llvm {
     // -- build cfg
     CfgBuilder B (F, m_vfac, *m_mem, CrabTrackLev,
                   /*include function decls and callsites*/
-                 true);
+                  true,  &getAnalysis<TargetLibraryInfo>());
 
     auto cfg_ptr = B.getCfg ();
     m_cfg_map [&F] = cfg_ptr;
@@ -599,6 +602,7 @@ namespace crab_llvm {
     AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
     #endif 
     AU.addRequired<llvm::DataLayoutPass>();
+    AU.addRequired<llvm::TargetLibraryInfo>();
     AU.addRequired<llvm::UnifyFunctionExitNodes> ();
     AU.addRequired<crab_llvm::NameValues>();
   } 
