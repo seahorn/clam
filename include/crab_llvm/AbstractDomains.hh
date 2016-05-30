@@ -82,7 +82,7 @@ namespace crab_llvm {
   /// -- Reduced product of intervals with congruences
   typedef numerical_congruence_domain<interval_domain_t> ric_domain_t;
   /// -- Term functor domain with Intervals
-  typedef crab::cfg::var_factory_impl::StrVarAlloc_col::varname_t str_varname_t;
+  typedef crab::cfg::var_factory_impl::str_var_alloc_col::varname_t str_varname_t;
   typedef interval_domain<z_number, str_varname_t> str_interval_dom_t;
   typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
   typedef term_domain<idom_info> term_int_domain_t;  
@@ -114,7 +114,7 @@ namespace llvm {
   #define DUMP_TO_LLVM_STREAM(T)  \
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, \
                                         T& e) {               \
-    ostringstream s;                                          \
+    crab::crab_string_os s;                                   \
     s << e;                                                   \
     o << s.str ();                                            \
     return o; }                                                        
@@ -133,7 +133,7 @@ namespace llvm {
   template <typename DomInfo>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         crab::domains::term_domain<DomInfo>& inv) {
-    ostringstream s;
+    crab::crab_string_os s;
     s << inv;
     o << s.str ();
     return o;
@@ -144,7 +144,7 @@ namespace llvm {
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         crab::domains::apron_domain 
                                         <N,V,D> & inv) {
-    ostringstream s;
+    crab::crab_string_os s;
     s << inv;
     o << s.str ();
     return o;
@@ -153,7 +153,7 @@ namespace llvm {
   template <typename Base>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         crab::domains::array_smashing <Base> & inv) {
-    ostringstream s;
+    crab::crab_string_os s;
     s << inv;
     o << s.str ();
     return o;
@@ -183,7 +183,7 @@ namespace crab_llvm {
        return m_abs.to_linear_constraint_system ();                            \
      }                                                                         \
                                                                                \
-     void write (std::ostream& o) {                                            \
+     void write (crab::crab_os& o) {                                           \
        m_abs.write (o);                                                        \
      }                                                                         \
                                                                                \
@@ -241,7 +241,7 @@ namespace crab_llvm {
 
      virtual id_t getId () const = 0;
 
-     virtual void write (std::ostream& o) = 0;
+     virtual void write (crab::crab_os& o) = 0;
 
      virtual z_lin_cst_sys_t to_linear_constraints () = 0;
 
@@ -250,15 +250,15 @@ namespace crab_llvm {
 
    typedef boost::shared_ptr<GenericAbsDomWrapper> GenericAbsDomWrapperPtr;
 
-   inline std::ostream& operator<<(std::ostream& o , 
-                                   const GenericAbsDomWrapperPtr& v) {
+   inline crab::crab_os& operator<<(crab::crab_os& o , 
+                                    const GenericAbsDomWrapperPtr& v) {
      v->write (o);
      return o;
    }
 
    inline llvm::raw_ostream& operator<<(llvm::raw_ostream& o , 
                                         const GenericAbsDomWrapperPtr& v) {
-     ostringstream s;
+     crab::crab_string_os s;
      v->write (s);
      o << s.str ();
      return o;
@@ -327,7 +327,7 @@ namespace crab_llvm {
        return m_abs.to_linear_constraint_system ();
      }
      
-     void write (std::ostream& o) { 
+     void write (crab::crab_os& o) { 
        m_abs.write (o);
      }
 

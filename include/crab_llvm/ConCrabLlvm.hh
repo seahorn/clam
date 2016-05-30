@@ -11,7 +11,7 @@
 
 #include "crab_llvm/MemAnalysis.hh"
 
-#include "crab/cfg/ConcSys.hpp"
+#include "crab/cfg/conc_sys.hpp"
 
 namespace crab_llvm
 {

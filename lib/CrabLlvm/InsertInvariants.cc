@@ -19,11 +19,9 @@
 #include "crab_llvm/CfgBuilder.hh"
 #include "crab_llvm/Support/NameValues.hh"
 
-#include "crab/analysis/AbsTransformer.hpp"
-#include "crab/analysis/InterDS.hpp"
+#include "crab/analysis/abs_transformer.hpp"
+#include "crab/analysis/inter_ds.hpp"
 #include "crab/domains/domain_traits.hpp"
-
-#include "boost/lexical_cast.hpp"
 
 /* 
  * Instrument LLVM bitecode by inserting invariants computed by
@@ -94,8 +92,7 @@ namespace crab_llvm
     Value* mk_num (ikos::z_number n, LLVMContext &ctx)
     {
       Type * ty = Type::getInt64Ty (ctx); 
-      std::string snum = boost::lexical_cast<std::string> ((int)n);
-      return ConstantInt::get (ty, APInt (64, snum, 10));
+      return ConstantInt::get (ty, APInt (64, n.get_str(), 10));
     }
     
     Value* mk_var (varname_t v)
@@ -224,10 +221,10 @@ namespace crab_llvm
                                            basic_block_t& bb, 
                                            LLVMContext &ctx,
                                            CallGraph* cg) {
-    typedef crab::analyzer::NumAbsTransformer 
+    typedef crab::analyzer::num_abs_transformer
         <AbsDomain,
-         crab::analyzer::SummaryTable<cfg_ref_t, AbsDomain>,
-         crab::analyzer::CallCtxTable<cfg_ref_t, AbsDomain> > num_abs_tr_t; 
+         crab::analyzer::summary_table<cfg_ref_t, AbsDomain>,
+         crab::analyzer::call_ctx_table<cfg_ref_t, AbsDomain> > num_abs_tr_t; 
 
     IRBuilder<> Builder (ctx);
     bool change=false;
@@ -241,17 +238,17 @@ namespace crab_llvm
 
       const llvm::LoadInst* I = nullptr;
       z_lin_cst_t::variable_set_t load_vs;
-      if (s.isArrRead ()) { 
-        const ArrayLoad <z_number, varname_t>* load_stmt = 
-            static_cast< const ArrayLoad <z_number, varname_t> *> (&s);
+      if (s.is_arr_read ()) { 
+        const array_load_stmt <z_number, varname_t>* load_stmt = 
+            static_cast< const array_load_stmt <z_number, varname_t> *> (&s);
         if (boost::optional<const llvm::Value *> v = load_stmt->lhs ().name().get ()) {
           I = dyn_cast<const llvm::LoadInst> (*v);
           load_vs += (load_stmt->lhs ().name ());
         }
       }
-      else if (s.isPtrRead ()) { 
-        const PtrLoad <z_number, varname_t>* load_stmt = 
-            static_cast< const PtrLoad <z_number, varname_t> *> (&s);
+      else if (s.is_ptr_read ()) { 
+        const ptr_load_stmt <z_number, varname_t>* load_stmt = 
+            static_cast< const ptr_load_stmt <z_number, varname_t> *> (&s);
         if (boost::optional<const llvm::Value *> v = load_stmt->lhs ().get ()) {
           load_vs += (load_stmt->lhs ());
           I = dyn_cast<const llvm::LoadInst> (*v);

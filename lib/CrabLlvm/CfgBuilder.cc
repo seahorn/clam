@@ -146,7 +146,7 @@ namespace crab_llvm
   using namespace crab::cfg_impl;
   using namespace boost;
 
-  inline VariableType getType (Type * ty) {
+  inline variable_type getType (Type * ty) {
     if (ty->isIntegerTy ())
       return INT_TYPE;
     else if (ty->isPointerTy ())
@@ -860,12 +860,12 @@ namespace crab_llvm
         if (startPtrOffsetFromZero(I.getPointerOperand ())) {
           m_bb.assign (res, offset);
           CRAB_LOG("cfg-gep",
-                   std::cout << "-- " << res << ":=" << offset << "\n");        
+                   crab::outs() << "-- " << res << ":=" << offset << "\n");        
         }
         else {
           m_bb.add (res, *ptr, offset);
           CRAB_LOG("cfg-gep",
-                   std::cout << "-- " << res << ":=" << *ptr  << "+" << offset << "\n");        
+                   crab::outs() << "-- " << res << ":=" << *ptr  << "+" << offset << "\n");        
         }
         return;
       }
@@ -895,18 +895,18 @@ namespace crab_llvm
               if (startPtrOffsetFromZero(I.getPointerOperand ())) {
                 m_bb.assign (res, offset);
                 CRAB_LOG("cfg-gep",
-                         std::cout << "-- " << res << ":=" << offset << "\n");
+                         crab::outs() << "-- " << res << ":=" << offset << "\n");
               }
               else {
                 m_bb.add (res, *ptr, offset);
                 CRAB_LOG("cfg-gep",
-                         std::cout << "-- " << res << ":=" << *ptr << "+" << offset << "\n");
+                         crab::outs() << "-- " << res << ":=" << *ptr << "+" << offset << "\n");
               }
             }
             else {
               m_bb.add (res, res, offset);
               CRAB_LOG("cfg-gep",
-                       std::cout << "-- " << res << ":=" << res << "+" << offset << "\n");
+                       crab::outs() << "-- " << res << ":=" << res << "+" << offset << "\n");
             }
           }
           else 
@@ -927,14 +927,14 @@ namespace crab_llvm
               m_bb.mul (res, *p, offset);
               is_init = true;
               CRAB_LOG("cfg-gep",
-                       std::cout << "-- " << res << ":=" << *p << "*" << offset << "\n");
+                       crab::outs() << "-- " << res << ":=" << *p << "*" << offset << "\n");
             } else {
               ikos::z_number offset (storageSize (seqt->getElementType ()));
               varname_t tmp = m_sev.getVarFac().get ();
               m_bb.mul (tmp, *p, offset);
               m_bb.add (res, *ptr, z_lin_exp_t (tmp));
               CRAB_LOG("cfg-gep",
-                       std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
+                       crab::outs() << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
                        << "-- " << res << ":=" << *ptr << "+" << tmp << "\n");
             }
           } else {
@@ -943,7 +943,7 @@ namespace crab_llvm
             m_bb.mul (tmp, *p, offset);
             m_bb.add (res, res, tmp);
             CRAB_LOG("cfg-gep",
-                     std::cout << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
+                     crab::outs() << "-- " << tmp << ":=" << *p << "*" << offset << "\n"
                      << "-- " << res << ":=" << res << "+" << tmp << "\n");
           }
         }
@@ -1108,7 +1108,7 @@ namespace crab_llvm
 
    private:
 
-    std::pair<varname_t, VariableType> normalizeScalarParam (Value& V) {
+    std::pair<varname_t, variable_type> normalizeScalarParam (Value& V) {
       if (Constant *cst = dyn_cast< Constant> (&V)) {
         varname_t v = m_sev.getVarFac().get ();
         if (ConstantInt * intCst = dyn_cast<ConstantInt> (cst)) {
@@ -1208,7 +1208,7 @@ namespace crab_llvm
 
       // --- call to a user-defined function
 
-      vector<pair<varname_t,VariableType> > actuals;
+      vector<pair<varname_t,variable_type> > actuals;
       // -- add the scalar actual parameters
       for (auto &a : boost::make_iterator_range (CS.arg_begin(),
                                                  CS.arg_end())) {
@@ -1229,9 +1229,9 @@ namespace crab_llvm
         
         CRAB_LOG("cfg-mem",
                  errs () << "Callsite " << I << "\n";
-                 std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (I) << "\n";
-                 std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (I) << "\n";
-                 std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (I) << "\n");
+                 errs () << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (I) << "\n";
+                 errs () << "\tModified regions: " << m_sev.getMem().getModifiedRegions (I) << "\n";
+                 errs () << "\tNew regions:" << m_sev.getMem().getNewRegions (I) << "\n");
 
         // Make sure that the order of the actuals parameters is the
         // same than the order of the formal parameters when the
@@ -1532,7 +1532,7 @@ namespace crab_llvm
     if (m_is_inter_proc) {
       assert (!m_func.isVarArg ());
 
-      vector<pair<varname_t,VariableType> > params;
+      vector<pair<varname_t,variable_type> > params;
       // -- add scalar formal parameters
       for (llvm::Value &arg : boost::make_iterator_range (m_func.arg_begin (),
                                                           m_func.arg_end ())) {
@@ -1555,10 +1555,10 @@ namespace crab_llvm
         region_set_t news = m_sev.getMem().getNewRegions (m_func);
 
         CRAB_LOG("cfg-mem",
-                 errs () << "Function " << m_func.getName () << "\n";
-                 std::cout << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (m_func) << "\n";
-                 std::cout << "\tModified regions: " << m_sev.getMem().getModifiedRegions (m_func) << "\n";
-                 std::cout << "\tNew regions:" << m_sev.getMem().getNewRegions (m_func) << "\n");
+                 errs() << "Function " << m_func.getName () << "\n";
+                 errs() << "\tOnly-Read regions: " << m_sev.getMem().getOnlyReadRegions (m_func) << "\n";
+                 errs() << "\tModified regions: " << m_sev.getMem().getModifiedRegions (m_func) << "\n";
+                 errs() << "\tNew regions:" << m_sev.getMem().getNewRegions (m_func) << "\n");
 
         // (**) The same order must be used by the callsites
 
@@ -1603,17 +1603,17 @@ namespace crab_llvm
         
       }
 
-      VariableType retTy = UNK_TYPE;
+      variable_type retTy = UNK_TYPE;
       if (!CrabNoPtrArith || m_func.getReturnType ()->isIntegerTy ())
         retTy = getType (m_func.getReturnType ());
 
-      FunctionDecl<varname_t> decl (retTy, m_sev.getVarFac()[m_func], params);
+      function_decl<varname_t> decl (retTy, m_sev.getVarFac()[m_func], params);
       m_cfg->set_func_decl (decl);
       
     }
     
     if (CrabCFGSimplify) m_cfg->simplify ();
-    if (CrabPrintCFG) cout << *m_cfg << "\n";
+    if (CrabPrintCFG) crab::outs() << *m_cfg << "\n";
     return ;
   }
 

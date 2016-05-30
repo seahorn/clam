@@ -32,7 +32,7 @@
 extern llvm::cl::opt<bool> CrabPrintAns;
 extern llvm::cl::opt<crab_llvm::CrabDomain> CrabLlvmDomain;
 extern llvm::cl::opt<bool> CrabLive;
-extern llvm::cl::opt<enum crab::cfg::TrackedPrecision> CrabTrackLev;
+extern llvm::cl::opt<enum crab::cfg::tracked_precision> CrabTrackLev;
 extern llvm::cl::opt<unsigned int> CrabWideningDelay;
 extern llvm::cl::opt<unsigned int> CrabNarrowingIters;
 extern llvm::cl::opt<unsigned int> CrabWideningJumpSet;

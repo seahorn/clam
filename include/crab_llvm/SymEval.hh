@@ -6,7 +6,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/APInt.h"
 
-#include "crab/cfg/Cfg.hpp"
+#include "crab/cfg/cfg.hpp"
 #include "crab_llvm/MemAnalysis.hh"
 
 namespace crab_llvm
@@ -22,7 +22,7 @@ namespace crab_llvm
 
     VariableFactory& m_vfac;
     MemAnalysis& m_mem; 
-    TrackedPrecision m_tracklev;
+    tracked_precision m_tracklev;
 
    public:
 
@@ -30,14 +30,14 @@ namespace crab_llvm
 
    public:
 
-    SymEval (VariableFactory &vfac, MemAnalysis& mem, TrackedPrecision tracklev)
+    SymEval (VariableFactory &vfac, MemAnalysis& mem, tracked_precision tracklev)
         : m_vfac (vfac), m_mem (mem), m_tracklev(tracklev) { }
 
     MemAnalysis& getMem () { return m_mem;}
 
     VariableFactory& getVarFac () { return m_vfac; }
 
-    TrackedPrecision getTrackLevel () const { return m_tracklev;}
+    tracked_precision getTrackLevel () const { return m_tracklev;}
 
     bool isTracked (const llvm::Value &v) {
       

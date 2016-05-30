@@ -19,8 +19,8 @@
 
 #include "crab_llvm/SymEval.hh"
 
-#include "crab/cfg/Cfg.hpp"
-#include "crab/cfg/VarFactory.hpp"
+#include "crab/cfg/cfg.hpp"
+#include "crab/cfg/var_factory.hpp"
 #include "crab/common/bignums.hpp"
 
 namespace crab { namespace cfg { 
@@ -44,7 +44,7 @@ namespace crab {
   
      // Variable factory from llvm::Value's
      class LlvmVariableFactory : public boost::noncopyable  {
-       typedef var_factory_impl::VariableFactory< const llvm::Value* > LlvmVariableFactory_t;
+       typedef var_factory_impl::variable_factory< const llvm::Value* > LlvmVariableFactory_t;
        std::unique_ptr< LlvmVariableFactory_t > m_factory; 
        
       public: 
@@ -80,7 +80,7 @@ namespace crab {
      typedef ikos::variable< ikos::z_number, varname_t > z_var;
      typedef const llvm::BasicBlock* basic_block_label_t;
      typedef Cfg<basic_block_label_t, varname_t> cfg_t;
-     typedef Cfg_Ref<cfg_t> cfg_ref_t;
+     typedef cfg_ref<cfg_t> cfg_ref_t;
      typedef cfg_t::basic_block_t basic_block_t;
      typedef typename cfg_t::basic_block_t::z_lin_exp_t z_lin_exp_t;
      typedef typename cfg_t::basic_block_t::z_lin_cst_t z_lin_cst_t;
@@ -93,7 +93,7 @@ namespace
 {
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         const crab::cfg_impl::cfg_t& cfg) {
-    std::ostringstream s;
+    crab::crab_string_os s;
     s << cfg;
     o << s.str ();
     return o;
@@ -101,7 +101,7 @@ namespace
 
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         crab::cfg_impl::cfg_ref_t cfg) {
-    std::ostringstream s;
+    crab::crab_string_os s;
     s << cfg;
     o << s.str ();
     return o;
@@ -142,7 +142,7 @@ namespace crab_llvm
     unsigned m_id;
     cfg_ptr_t m_cfg;
     llvm_bb_map_t m_bb_map;
-    TrackedPrecision m_tracklev;
+    tracked_precision m_tracklev;
     bool m_is_inter_proc;
     const DataLayout* m_dl;
     const TargetLibraryInfo* m_tli;
@@ -154,7 +154,7 @@ namespace crab_llvm
     
     CfgBuilder (Function& func, 
                 VariableFactory& vfac, MemAnalysis& mem, 
-                TrackedPrecision tracklev, bool isInterProc,
+                tracked_precision tracklev, bool isInterProc,
                 const TargetLibraryInfo* tli)
         : m_is_cfg_built (false),                          
           m_func (func), 

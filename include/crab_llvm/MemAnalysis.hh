@@ -6,6 +6,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "crab_llvm/config.h"
 #include "crab/common/debug.hpp"
@@ -60,14 +61,14 @@ namespace crab_llvm {
        return m_id;
      }
 
-     void write (std::ostream& o) const {
+     void write (llvm::raw_ostream& o) const {
        if (isUnknown ()) 
          o << "unknown";
        else
          o << "R_" << m_id;
      }
 
-     friend std::ostream& operator<<(std::ostream& o, const Region<Mem>& r) {
+     friend llvm::raw_ostream& operator<<(llvm::raw_ostream &o, const Region<Mem>& r) {
        r.write (o);
        return o;
      }
@@ -75,7 +76,7 @@ namespace crab_llvm {
    };
 
    template<typename Mem>
-   inline std::ostream& operator<<(std::ostream&o, std::set<Region<Mem> > s) {
+   inline llvm::raw_ostream& operator<<(llvm::raw_ostream &o, std::set<Region<Mem> > s) {
      o << "{";
      for (typename std::set<Region<Mem> >::iterator it=s.begin (), et=s.end (); it!=et; ){
        o << *it;

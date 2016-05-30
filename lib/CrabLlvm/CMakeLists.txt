@@ -54,10 +54,7 @@ install(TARGETS CrabLlvmInstrumentation
 
 # Needed if shared libraries
 if (BUILD_CRABLLVM_LIBS_SHARED)
-  #install(FILES ${CRAB_DBM_LIB} DESTINATION lib)
-  install(FILES ${CRAB_TERM_LIB} DESTINATION lib)
-  install(FILES ${CRAB_DEBUG_LIB} DESTINATION lib)
-  install(FILES ${CRAB_STATS_LIB} DESTINATION lib)
+  install(FILES ${CRAB_LIBS} DESTINATION lib)
   if (USE_APRON)
     install(FILES ${APRON_LIBS} DESTINATION lib)
   endif ()

@@ -19,11 +19,11 @@
 // forward declarations
 namespace crab {
   namespace analyzer {  
-     template <typename T> class Liveness;  
+     template <typename T> class liveness;  
   }
   namespace cg {  
-    template <typename T> class CallGraph;  
-    template <typename T> class CallGraph_Ref;  
+    template <typename T> class call_graph;  
+    template <typename T> class call_graph_ref;  
   }
 } // end crab
 
@@ -38,9 +38,9 @@ namespace crab_llvm {
   class CrabLlvm : public llvm::ModulePass {
 
     typedef typename CfgBuilder::cfg_ptr_t cfg_ptr_t;
-    typedef crab::analyzer::Liveness<cfg_ref_t> liveness_t;
-    typedef crab::cg::CallGraph<cfg_ref_t> call_graph_t; 
-    typedef crab::cg::CallGraph_Ref<call_graph_t> call_graph_ref_t;
+    typedef crab::analyzer::liveness<cfg_ref_t> liveness_t;
+    typedef crab::cg::call_graph<cfg_ref_t> call_graph_t; 
+    typedef crab::cg::call_graph_ref<call_graph_t> call_graph_ref_t;
 
     typedef llvm::DenseMap<const llvm::BasicBlock *, GenericAbsDomWrapperPtr> invariants_map_t;
     typedef llvm::DenseMap<llvm::Function*, cfg_ptr_t > cfg_map_t;
