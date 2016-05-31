@@ -253,7 +253,11 @@ endif ()
 
 if (GIT_FOUND)
   set (CRAB_CORE_TAG "origin/master" CACHE STRING "crab tag to use")
-  set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
+  ## XXX: public repository currently unavailable
+  # set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
+  #      CACHE STRING "crab repository")
+
+  set (CRAB_CORE_REPO "https://github.com/caballa/crab.git"
        CACHE STRING "crab repository")
   ExternalProject_Add(crab
     GIT_REPOSITORY ${CRAB_CORE_REPO}
