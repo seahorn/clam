@@ -1,4 +1,5 @@
 extern int nd ();
+extern void __CRAB_assert(int);
 
 int main()
 {
@@ -28,8 +29,10 @@ int main()
     u = u + 3;
   else
     u = 3;
-  
-  // w/ intervals u = [3,13]
+
+  //__CRAB_assert(u >= 3 && u <= 13);
+  // w/ --crab-dom=term-int or --crab-dom=term-dis-int
+  __CRAB_assert(u >= 3 && u <= 5);
   if (nd ())
     return 42;
   else 

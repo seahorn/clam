@@ -1,4 +1,5 @@
 extern int nd ();
+extern void __CRAB_assert(int);
 
 int a[10];
 
@@ -14,5 +15,6 @@ int main ()
   }
 
   int res = a[i-1];
+  __CRAB_assert(res >= 0 && res <= 5);
   return res;
 }

@@ -24,6 +24,8 @@
 #include "crab/analysis/liveness.hpp"
 #include "crab/analysis/fwd_analyzer.hpp"
 #include "crab/analysis/inter_fwd_analyzer.hpp"
+#include <crab/checkers/assertion.hpp>
+#include <crab/checkers/checker.hpp>
 #include "crab/cg/cg.hpp"
 #include "crab/cg/cg_bgl.hpp"
 
@@ -141,6 +143,16 @@ CrabTrackLev("crab-track",
                clEnumValEnd),
    cl::init (tracked_precision::INT));
 
+llvm::cl::opt<bool>
+CrabAssertCheck ("crab-assert-check", 
+                 llvm::cl::desc ("Check user assertions"),
+                 llvm::cl::init (false));
+
+llvm::cl::opt<unsigned int>
+CrabCheckVerbose ("crab-check-verbose", 
+                 llvm::cl::desc ("Print verbose information about checks"),
+                 llvm::cl::init (0));
+
 // Important to crab-llvm clients (e.g., SeaHorn):
 // Shadow variables are variables that cannot be mapped back to a
 // const Value*. These are created for instance for memory heaps.
@@ -153,6 +165,7 @@ KeepShadows ("crab-keep-shadows",
 namespace crab_llvm {
 
   using namespace crab::analyzer;
+  using namespace crab::checker;
   using namespace crab::cg;
 
   char crab_llvm::CrabLlvm::ID = 0;
@@ -447,10 +460,6 @@ namespace crab_llvm {
         ANALYZE(interval_domain_t, arr_interval_domain_t, *cfg_ptr, F, *live, change);
     }
     
-    if (CrabPrintAns) {
-       writeInvariants (llvm::outs (), F);
-    }
-
     return change;
   }
 
@@ -461,6 +470,9 @@ namespace crab_llvm {
     // -- run inter-procedural analysis on the whole call graph
     typedef inter_fwd_analyzer<call_graph_ref_t, VariableFactory,  BUDom, TDDom> 
         inter_analyzer_t;
+    typedef inter_checker<inter_analyzer_t> inter_checker_t;
+    typedef assert_property_checker<inter_analyzer_t> assert_prop_t;
+
                              
     CRAB_LOG("crabllvm", 
               crab::outs() << "Running inter-procedural analysis with " 
@@ -493,11 +505,11 @@ namespace crab_llvm {
             m_post_map.insert (make_pair (&B, mkGenericAbsDomWrapper (post)));
           }
 
-          // -- print invariants and summaries
+          // --- print invariants and summaries
           // Summaries are not currently stored but it would be easy to do so.
-          if (CrabPrintAns)
+          if (CrabPrintAns) 
             writeInvariants (llvm::outs (), *F);
-
+          
           if (CrabPrintSumm && analyzer.has_summary (cfg)) {
             auto summ = analyzer.get_summary (cfg);
             crab::outs () << "SUMMARY " << F->getName () << ": " << summ << "\n";
@@ -505,6 +517,17 @@ namespace crab_llvm {
         }
       }
     }
+
+    // --- checking assertions
+    if (CrabAssertCheck) {
+      CRAB_LOG("crabllvm", crab::outs() << "Checking assertions ... \n"); 
+      typename inter_checker_t::prop_checker_ptr prop(new assert_prop_t(CrabCheckVerbose));
+      inter_checker_t checker (analyzer, {prop});
+      checker.run ();
+      checker.show (crab::outs());
+      CRAB_LOG("crabllvm", crab::outs() << "DONE!\n"); 
+    }
+
     return false;
   }
 
@@ -512,6 +535,8 @@ namespace crab_llvm {
   inline bool CrabLlvm::analyzeCfg (cfg_ref_t cfg, const Function&F, const liveness_t& live) {
 
     typedef typename num_fwd_analyzer<cfg_ref_t,Dom,VariableFactory>::type intra_analyzer_t;
+    typedef intra_checker<intra_analyzer_t> intra_checker_t;
+    typedef assert_property_checker<intra_analyzer_t> assert_prop_t;
 
     CRAB_LOG("crabllvm",
              auto fdecl = cfg.get_func_decl ();            
@@ -539,7 +564,20 @@ namespace crab_llvm {
       auto post = analyzer.get_post (&B);
       m_post_map.insert (make_pair (&B, mkGenericAbsDomWrapper (post)));
     }
-    
+
+    if (CrabPrintAns)
+      writeInvariants (llvm::outs (), F);
+
+    if (CrabAssertCheck) {
+      // --- checking assertions
+      CRAB_LOG("crabllvm", crab::outs() << "Checking assertions ... \n"); 
+      typename intra_checker_t::prop_checker_ptr prop (new assert_prop_t (CrabCheckVerbose));
+      intra_checker_t checker (analyzer, {prop});
+      checker.run ();
+      checker.show (crab::outs());
+      CRAB_LOG("crabllvm", crab::outs() << "DONE!\n"); 
+    }
+
     return false;
   }
 

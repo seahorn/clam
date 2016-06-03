@@ -186,6 +186,12 @@ def parseArgs (argv):
                     help='Instrument code with invariants',
                     choices=['none', 'block-entry', 'after-load'],
                     dest='insert_invs', default='none')
+    p.add_argument ('--crab-assert-check',
+                    help='Check user assertions',
+                    dest='assert_check', default=False, action='store_true')
+    p.add_argument ('--crab-check-verbose',
+                    help='Print verbose information about checks',
+                    dest='check_verbose', type=int, default=0)
     p.add_argument ('--crab-print-summaries',
                     help='Display computed summaries (if --crab-inter)',
                     dest='show_summs', default=False, action='store_true')
@@ -448,6 +454,8 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_live: crabllvm_cmd.append ('--crab-live')
     crabllvm_cmd.append ('--crab-add-invariants={0}'.format (args.insert_invs))
     crabllvm_cmd.append ('--crab-print-invariants')
+    if args.assert_check: crabllvm_cmd.append ('--crab-assert-check')
+    if args.check_verbose: crabllvm_cmd.append ('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.show_summs: crabllvm_cmd.append ('--crab-print-summaries')
     if args.print_cfg: crabllvm_cmd.append ('--crab-print-cfg')
     if args.print_stats: crabllvm_cmd.append ('--crab-stats')

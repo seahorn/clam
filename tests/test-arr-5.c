@@ -1,4 +1,6 @@
 extern int nd ();
+extern void __CRAB_assert(int);
+
 int a[10];
 int b[10];
 
@@ -22,6 +24,8 @@ int main ()
   }
 
   int x = a[i-1]  + b[i-1];
+  __CRAB_assert (x >= 0 && x<=30);
+
   if (x >= 0 && x<=30)
     return 42;
   else

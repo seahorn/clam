@@ -176,13 +176,24 @@ namespace crab_llvm
     sym_eval_t& m_sev;
     basic_block_t& m_bb;
     bool m_is_negated;
+    // if true constraints are added as assumptions, otherwise as
+    // assertions.
+    bool m_is_assumption; 
 
-    NumAbsCondVisitor (sym_eval_t& sev, basic_block_t& bb, 
-                       bool is_negated)
+    NumAbsCondVisitor (sym_eval_t& sev, basic_block_t& bb, bool is_negated,
+                       bool is_assumption = true)
         : m_sev (sev),
           m_bb (bb), 
-          m_is_negated (is_negated) { }
-    
+          m_is_negated (is_negated),
+          m_is_assumption (is_assumption) { }
+
+    void add_cst (z_lin_cst_t cst) {
+      if (m_is_assumption)
+        m_bb.assume(cst);
+      else
+        m_bb.assertion(cst);
+    }
+
     void normalizeCmpInst(CmpInst &I) {
       switch (I.getPredicate()){
         case ICmpInst::ICMP_UGT:	
@@ -193,7 +204,7 @@ namespace crab_llvm
       }
     }
 
-    z_lin_cst_sys_t gen_assertion (CmpInst &I, bool Unsigned = true) {
+    z_lin_cst_sys_t gen_cst_sys (CmpInst &I, bool Unsigned = true) {
 
       normalizeCmpInst(I);
       
@@ -265,15 +276,15 @@ namespace crab_llvm
           I.getOperand (1)->getType ()->isIntegerTy ()) {
         C1 = dyn_cast<CmpInst> (I.getOperand (0));
         if (C1)
-          for (auto cst: gen_assertion (*C1)) 
-            m_bb.assume(cst);
+          for (auto cst: gen_cst_sys (*C1)) 
+            add_cst(cst);
         else if (BinaryOperator* I0 = dyn_cast<BinaryOperator> (I.getOperand (0)))
           translateBitwiseBranchTrueCond (*I0);
         
         C2 = dyn_cast<CmpInst> (I.getOperand (1));
         if (C2)
-          for (auto cst: gen_assertion (*C2)) 
-            m_bb.assume(cst);
+          for (auto cst: gen_cst_sys (*C2)) 
+            add_cst(cst);
         else if (BinaryOperator* I1 = dyn_cast<BinaryOperator> (I.getOperand (1))) 
           translateBitwiseBranchTrueCond (*I1);
       }
@@ -307,8 +318,8 @@ namespace crab_llvm
            !I.getOperand (1)->getType ()->isIntegerTy ())) 
         return;    
 
-      for (auto cst: gen_assertion (I))
-        m_bb.assume(cst);
+      for (auto cst: gen_cst_sys (I))
+        add_cst(cst);
 
       // If this is reached then I is at least used by some branch so
       // we check if there is another use. If not, we don't bother to
@@ -317,9 +328,9 @@ namespace crab_llvm
       if (v.hasNUsesOrMore (2)) {
         varname_t lhs = m_sev.symVar (v);
         if (m_is_negated)
-          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
+          add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (0));
         else
-          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
+          add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (1));
       }
     }
   };
@@ -523,7 +534,7 @@ namespace crab_llvm
         //    %x = geq %y, 10  ---> select (%x, (geq %y, #10), 1, 0)
 
         NumAbsCondVisitor v (m_sev, m_bb, false);
-        auto csts = v.gen_assertion (I, false /*force generating one constraint*/);
+        auto csts = v.gen_cst_sys (I, false /*force generating one constraint*/);
         if (std::distance (csts.begin (), csts.end ()) == 1)
           m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
         else if (LlvmIncludeHavoc) 
@@ -766,7 +777,7 @@ namespace crab_llvm
 
       if (CmpInst* CI = dyn_cast<CmpInst> (&cond)) {
         NumAbsCondVisitor v (m_sev, m_bb, false);
-        auto csts = v.gen_assertion (*CI, false /*force generating one constraint*/);
+        auto csts = v.gen_cst_sys (*CI, false /*force generating one constraint*/);
         if (std::distance (csts.begin (), csts.end ()) == 1) {
           // select only takes a single constraint otherwise its
           // reasoning gets complicated if the analysis needs to
@@ -1126,6 +1137,20 @@ namespace crab_llvm
     }
 
    public:
+
+    static bool isAssertFn(Function* F) {
+      return (F->getName().equals("verifier.assert") || 
+              F->getName().equals("crab.assert") || 
+              F->getName().equals("__CRAB_assert"));
+    }
+
+    static bool isAssumeFn(Function* F) {
+      return (F->getName().equals("verifier.assume"));
+    }
+
+    static bool isNegAssumeFn(Function* F) {
+      return (F->getName().equals("verifier.assume.not"));
+    }
     
     void visitCallInst (CallInst &I) {
       CallSite CS (&I);
@@ -1165,25 +1190,13 @@ namespace crab_llvm
         return;
       }
       
-      if (callee->getName ().equals ("verifier.assume")) {
-        Value *cond = CS.getArgument (0);
+      if (isAssertFn(callee) || isAssumeFn(callee) || isNegAssumeFn(callee)) {
+        Value *cond = CS.getArgument (0);        
         // strip zext if there is one
         if (const ZExtInst *ze = dyn_cast<const ZExtInst> (cond))
           cond = ze->getOperand (0);
         if (llvm::Instruction *I = dyn_cast<llvm::Instruction> (cond)) {
-          NumAbsCondVisitor v (m_sev, m_bb, false);
-          v.visit (I);
-        }
-        return;
-      }
-
-      if (callee->getName ().equals ("verifier.assume.not")) {
-        Value *cond = CS.getArgument (0);
-        // strip zext if there is one
-        if (const ZExtInst *ze = dyn_cast<const ZExtInst> (cond))
-          cond = ze->getOperand (0);
-        if (llvm::Instruction *I = dyn_cast<llvm::Instruction> (cond)) {
-          NumAbsCondVisitor v (m_sev, m_bb, true);
+          NumAbsCondVisitor v (m_sev, m_bb, isNegAssumeFn(callee), !isAssertFn(callee));
           v.visit (I);
         }
         return;

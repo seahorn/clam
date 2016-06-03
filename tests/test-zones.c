@@ -1,3 +1,5 @@
+extern void __CRAB_assert(int);
+
 int main (){
 
   int x,y,i;
@@ -7,5 +9,6 @@ int main (){
     x++;
     y++;
   }
+  __CRAB_assert(x==y);
   return x+y;
 }
