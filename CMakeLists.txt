@@ -256,7 +256,7 @@ if (GIT_FOUND)
   ## XXX: public repository currently unavailable
   # set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
   #      CACHE STRING "crab public repository")
-  set (CRAB_CORE_REPO "git@github.com:caballa/crab-llvm.git"
+  set (CRAB_CORE_REPO "git@github.com:caballa/crab.git"
        CACHE STRING "crab private repository")
   ExternalProject_Add(crab
     GIT_REPOSITORY ${CRAB_CORE_REPO}
