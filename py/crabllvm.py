@@ -189,8 +189,11 @@ def parseArgs (argv):
     p.add_argument ('--crab-assert-check',
                     help='Check user assertions',
                     dest='assert_check', default=False, action='store_true')
-    p.add_argument ('--crab-check-verbose',
-                    help='Print verbose information about checks',
+    p.add_argument ('--crab-check-verbose', metavar='INT',
+                    help='Print verbose information about checks\n' + 
+                         '>=1: only error checks\n' + 
+                         '>=2: error and warning checks\n' + 
+                         '>=3: error, warning, and safe checks',
                     dest='check_verbose', type=int, default=0)
     p.add_argument ('--crab-print-summaries',
                     help='Display computed summaries (if --crab-inter)',

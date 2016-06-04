@@ -51,6 +51,8 @@
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/DebugLoc.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Pass.h"
@@ -166,6 +168,26 @@ namespace crab_llvm
   }
 
 
+  bool hasDebugLoc (const Instruction *inst) {
+    if (!inst) return false;
+    const DebugLoc &dloc = inst->getDebugLoc ();
+    return (!(dloc.isUnknown ()));
+  }
+
+  crab::cfg::debug_info getDebugLoc (const Instruction *inst) {
+    if (!hasDebugLoc(inst))
+      return crab::cfg::debug_info();
+
+    const DebugLoc &dloc = inst->getDebugLoc ();
+    unsigned Line = dloc.getLine ();
+    unsigned Col = dloc.getCol ();
+    std::string File; 
+    DIScope Scope (dloc.getScope ());
+    if (Scope) File = Scope.getFilename ();
+    else File = "unknown file";
+    return crab::cfg::debug_info(File, Line, Col);
+  }
+
   //! Translate flag conditions 
   //  Preconditions: this visitor is not intended to be executed for a
   //                 block. Instead, it should be called to visit a
@@ -187,11 +209,11 @@ namespace crab_llvm
           m_is_negated (is_negated),
           m_is_assumption (is_assumption) { }
 
-    void add_cst (z_lin_cst_t cst) {
+    void add_cst (z_lin_cst_t cst, crab::cfg::debug_info di = crab::cfg::debug_info()) {
       if (m_is_assumption)
         m_bb.assume(cst);
       else
-        m_bb.assertion(cst);
+        m_bb.assertion(cst, di);
     }
 
     void normalizeCmpInst(CmpInst &I) {
@@ -277,14 +299,14 @@ namespace crab_llvm
         C1 = dyn_cast<CmpInst> (I.getOperand (0));
         if (C1)
           for (auto cst: gen_cst_sys (*C1)) 
-            add_cst(cst);
+            add_cst(cst, getDebugLoc(&I));
         else if (BinaryOperator* I0 = dyn_cast<BinaryOperator> (I.getOperand (0)))
           translateBitwiseBranchTrueCond (*I0);
         
         C2 = dyn_cast<CmpInst> (I.getOperand (1));
         if (C2)
           for (auto cst: gen_cst_sys (*C2)) 
-            add_cst(cst);
+            add_cst(cst, getDebugLoc(&I));
         else if (BinaryOperator* I1 = dyn_cast<BinaryOperator> (I.getOperand (1))) 
           translateBitwiseBranchTrueCond (*I1);
       }
@@ -319,7 +341,9 @@ namespace crab_llvm
         return;    
 
       for (auto cst: gen_cst_sys (I))
-        add_cst(cst);
+        add_cst(cst, getDebugLoc(&I));
+
+      if (!m_is_assumption) return;
 
       // If this is reached then I is at least used by some branch so
       // we check if there is another use. If not, we don't bother to
@@ -328,9 +352,9 @@ namespace crab_llvm
       if (v.hasNUsesOrMore (2)) {
         varname_t lhs = m_sev.symVar (v);
         if (m_is_negated)
-          add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (0));
+          add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (0), getDebugLoc(&I));
         else
-          add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (1));
+          add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (1), getDebugLoc(&I));
       }
     }
   };
@@ -1144,6 +1168,11 @@ namespace crab_llvm
               F->getName().equals("__CRAB_assert"));
     }
 
+    static bool isErrorFn(Function* F) {
+      return (F->getName().equals("seahorn.error") || 
+              F->getName().equals("__SEAHORN_error"));
+    }
+
     static bool isAssumeFn(Function* F) {
       return (F->getName().equals("verifier.assume"));
     }
@@ -1199,6 +1228,11 @@ namespace crab_llvm
           NumAbsCondVisitor v (m_sev, m_bb, isNegAssumeFn(callee), !isAssertFn(callee));
           v.visit (I);
         }
+        return;
+      }
+
+      if (isErrorFn(callee)) {
+        m_bb.assertion(z_lin_cst_t::get_false(), getDebugLoc(&I));
         return;
       }
 
