@@ -621,8 +621,11 @@ namespace crab_llvm {
       for (auto &B : F) {
         const llvm::BasicBlock * BB = &B;
         o << "\t" << BB->getName () << ": ";
-        auto inv = getPost (BB, KeepShadows);
-        o << inv << "\n";
+        // auto inv = getPost (BB, KeepShadows);
+        // o << inv << "\n";
+        auto pre = getPre (BB, KeepShadows);
+        auto post = getPost (BB, KeepShadows);
+        o << pre << " ==> " << post << "\n";
       }
       o <<  "\n";
     }
