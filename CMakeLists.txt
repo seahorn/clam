@@ -377,7 +377,7 @@ endif()
 
 add_definitions(-std=c++11)
 add_definitions(-Wno-redeclared-class-member -Wno-sometimes-uninitialized)
-add_definitions(-Wno-covered-switch-default)
+#add_definitions(-Wno-covered-switch-default)
 
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
   add_definitions( -Wno-unused-local-typedefs)
