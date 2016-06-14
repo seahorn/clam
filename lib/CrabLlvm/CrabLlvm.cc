@@ -525,6 +525,12 @@ namespace crab_llvm {
       inter_checker_t checker (analyzer, {prop});
       checker.run ();
       checker.show (crab::outs());
+      auto db = checker.get_all_checks();
+      if (db.get_total_warning() > 0 || db.get_total_error() > 0) {
+        crab::outs () << "\nBRUNCH_STAT Result FALSE\n";
+      } else {
+        crab::outs () << "\nBRUNCH_STAT Result TRUE\n";
+      } 
       CRAB_LOG("crabllvm", crab::outs() << "DONE!\n"); 
     }
 
@@ -575,6 +581,12 @@ namespace crab_llvm {
       intra_checker_t checker (analyzer, {prop});
       checker.run ();
       checker.show (crab::outs());
+      auto db = checker.get_all_checks();
+      if (db.get_total_warning() > 0 || db.get_total_error() > 0) {
+        crab::outs () << "\nBRUNCH_STAT Result FALSE\n";
+      } else {
+        crab::outs () << "\nBRUNCH_STAT Result TRUE\n";
+      } 
       CRAB_LOG("crabllvm", crab::outs() << "DONE!\n"); 
     }
 
