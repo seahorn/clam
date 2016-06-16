@@ -524,6 +524,59 @@ namespace crab_llvm
               I.getOpcode() <= Instruction::Xor);
     }
 
+    static bool isBitwiseOp(const Instruction &I) {
+      return (I.getOpcode() >= Instruction::Shl && 
+              I.getOpcode() <= Instruction::AShr);
+    }
+
+    static bool isIntArithOp(const Instruction &I) {
+      return (I.getOpcode() == Instruction::Add ||
+              I.getOpcode() == Instruction::Sub ||
+              I.getOpcode() == Instruction::Mul ||
+              I.getOpcode() == Instruction::UDiv ||
+              I.getOpcode() == Instruction::SDiv ||
+              I.getOpcode() == Instruction::URem ||
+              I.getOpcode() == Instruction::SRem);
+    }
+
+    static bool isInterestingIntegerOperand(const Value* V) {
+      for (auto &U: V->uses ()) {
+        if (Instruction * I = dyn_cast<Instruction>(U.getUser())) {
+          // XXX: I lower a comparison instruction only if it is an
+          // operand of an integer arithmetic or bitwise
+          // operation. (the case where it is a branch condition is
+          // treated separately).
+          // 
+          // We do not try to cover all cases because lowering is
+          // expensive (it will increase the number of abstract
+          // joins).
+          // 
+          // Logical operations are not currently considered mainly
+          // because they come often from complex branch conditions
+          // and common abstract domains are unlikely to be precise.
+          // This is specially expensive when we have many of these
+          // operations within the same block.
+          // 
+          // Non-Boolean logical operations may not be so problematic
+          // so we may want to translate them in the future.
+          if ((isIntArithOp(*I) || isBitwiseOp(*I)) &&
+              (I->getOperand(0) == V || I->getOperand(1) == V))
+            return true;
+        }
+      }
+      return false;
+    }
+
+    static Instruction* stripZExtOrSExtInst(Instruction*I) {
+      if (const ZExtInst *ZE = dyn_cast<const ZExtInst>(I))
+        if (Instruction * ZEI = dyn_cast<Instruction> (ZE->getOperand(1)))
+          return ZEI;
+      if (const SExtInst *SE = dyn_cast<const SExtInst>(I))
+        if (Instruction * SEI = dyn_cast<Instruction> (SE->getOperand(1)))
+          return SEI;
+      return I;
+    }
+
    public:
         
     /// skip PHI nodes
@@ -532,39 +585,41 @@ namespace crab_llvm
     /// skip BranchInst
     void visitBranchInst (BranchInst &I) {}
     
-    /// CmpInst's are translated only if they feed the terminator of a
-    /// block (execBr) or a select.    
+    /// I is already translated if it is the condition of a branch.
+    /// Here we cover cases where I is an operand of other instructions.
     void visitCmpInst (CmpInst &I) {
-     #if 0
-      /// --- We cover the cases where it feeds a binary operator
-      /// (e.g., bitwise operator).
-
-      /// XXX: this is overkill if there are many cases because Crab
-      /// select statements perform joins. A solution would be to
-      /// perform multiple select's together so the number of join
-      /// operations can be reduced. This would be require to change
-      /// Crab CFG language.
-
       if (!m_sev.isTracked (I)) return;
 
       Value*V = &I;
 
-      bool isBinOp = false;
-      for (auto &U: V->uses ())
-        isBinOp |= isa<BinaryOperator> (U.getUser ());
-
-      if (isBinOp) {
-        // Perform the following translation:
-        //    %x = geq %y, 10  ---> select (%x, (geq %y, #10), 1, 0)
-
-        NumAbsCondVisitor v (m_sev, m_bb, false);
-        auto csts = v.gen_cst_sys (I, false /*force generating one constraint*/);
-        if (std::distance (csts.begin (), csts.end ()) == 1)
-          m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
-        else if (LlvmIncludeHavoc) 
-          m_bb.havoc(m_sev.symVar(I));
+      bool shouldBeLowered = false;
+      // Determine whether it is beneficial to lower I.
+      // The lowering of I may be expensive for the analysis because
+      // it will be translated to select's which might need join
+      // operations.
+      for (auto &U: V->uses ()) {
+        if (Instruction * UI = dyn_cast<Instruction>(U.getUser())) {
+          // I is already lowered 
+          if (isa<BranchInst> (UI)) return;
+          // strip zext/sext if there is one
+          UI = stripZExtOrSExtInst (UI);
+          shouldBeLowered |= isInterestingIntegerOperand(UI); 
+        }
       }
-     #endif       
+
+      if (shouldBeLowered) {
+        // Perform the following translation:
+        //    %x = geq %y, 10  ---> %x = ((geq %y, 10) ? 1 : 0)
+        NumAbsCondVisitor v (m_sev, m_bb, false /*non-negated*/);
+        auto csts = v.gen_cst_sys (I, false /*force generating one constraint*/);
+        if (csts.size() == 1) {
+          m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
+          return;
+        }
+      }
+
+      if (CrabIncludeHavoc) 
+        m_bb.havoc(m_sev.symVar(I));
     }
       
     void visitBinaryOperator(BinaryOperator &I) {
