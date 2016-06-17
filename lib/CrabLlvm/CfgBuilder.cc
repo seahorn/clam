@@ -192,7 +192,7 @@ namespace crab_llvm
   //  Preconditions: this visitor is not intended to be executed for a
   //                 block. Instead, it should be called to visit a
   //                 single statement (BinaryOperator or CmpInst).
-  struct NumAbsCondVisitor : 
+  class NumAbsCondVisitor : 
       public InstVisitor<NumAbsCondVisitor>
   {
     sym_eval_t& m_sev;
@@ -201,13 +201,6 @@ namespace crab_llvm
     // if true constraints are added as assumptions, otherwise as
     // assertions.
     bool m_is_assumption; 
-
-    NumAbsCondVisitor (sym_eval_t& sev, basic_block_t& bb, bool is_negated,
-                       bool is_assumption = true)
-        : m_sev (sev),
-          m_bb (bb), 
-          m_is_negated (is_negated),
-          m_is_assumption (is_assumption) { }
 
     void add_cst (z_lin_cst_t cst, crab::cfg::debug_info di = crab::cfg::debug_info()) {
       if (m_is_assumption)
@@ -225,6 +218,8 @@ namespace crab_llvm
         default: ;
       }
     }
+
+   public:
 
     z_lin_cst_sys_t gen_cst_sys (CmpInst &I, bool Unsigned = true) {
 
@@ -285,6 +280,16 @@ namespace crab_llvm
       return res;
     }
 
+   public:
+
+    NumAbsCondVisitor (sym_eval_t& sev, basic_block_t& bb, bool is_negated,
+                       bool is_assumption = true)
+        : m_sev (sev),
+          m_bb (bb), 
+          m_is_negated (is_negated),
+          m_is_assumption (is_assumption) { }
+
+    #if 0
     void translateBitwiseBranchTrueCond (BinaryOperator&I) {
 
       assert (!m_is_negated);
@@ -313,7 +318,6 @@ namespace crab_llvm
     }
 
     void visitBinaryOperator(BinaryOperator &I) {
-      #if 0
       // It searches only for this particular pattern:
       //   %o1 = icmp ...
       //   %o2 = icmp ...
@@ -331,8 +335,8 @@ namespace crab_llvm
       //    that.
       if (!m_is_negated)
         translateBitwiseBranchTrueCond (I);      
-     #endif 
     }
+    #endif 
 
     void visitCmpInst (CmpInst &I) {
       if (CrabNoPtrArith && 
@@ -357,6 +361,20 @@ namespace crab_llvm
           add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (1), getDebugLoc(&I));
       }
     }
+
+    // base case if all else fails
+    void visitInstruction (Instruction &I) {
+      const Value&v = I;
+
+      if (!m_sev.isTracked (v)) return;
+
+      varname_t lhs = m_sev.symVar (v);
+      if (m_is_negated)
+        add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (0), getDebugLoc(&I));
+      else
+        add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (1), getDebugLoc(&I));
+    }
+
   };
 
   //! Translate PHI nodes
@@ -539,42 +557,42 @@ namespace crab_llvm
               I.getOpcode() == Instruction::SRem);
     }
 
-    static bool isInterestingIntegerOperand(const Value* V) {
+    bool shouldICmpBeLowered (Value *V) {
       for (auto &U: V->uses ()) {
-        if (Instruction * I = dyn_cast<Instruction>(U.getUser())) {
-          // XXX: I lower a comparison instruction only if it is an
-          // operand of an integer arithmetic or bitwise
-          // operation. (the case where it is a branch condition is
-          // treated separately).
-          // 
-          // We do not try to cover all cases because lowering is
-          // expensive (it will increase the number of abstract
-          // joins).
-          // 
-          // Logical operations are not currently considered mainly
-          // because they come often from complex branch conditions
-          // and common abstract domains are unlikely to be precise.
-          // This is specially expensive when we have many of these
-          // operations within the same block.
-          // 
+        if (Instruction * UI = dyn_cast<Instruction>(U.getUser())) {
+
+          // I is already lowered 
+          if (isa<BranchInst> (UI)) return false;
+
+          // strip zext/sext if there is one
+          if (isa<ZExtInst>(UI) || isa<SExtInst>(UI))
+            return shouldICmpBeLowered(UI);
+
+          // XXX: We do not try to lower a comparison instruction in
+          // all cases because lowering is expensive (it will increase
+          // the number of abstract joins) and it might not always pay
+          // off.
+
+          if (PHINode * Phi = dyn_cast<PHINode>(UI))
+            for (unsigned i=0, e=Phi->getNumIncomingValues(); i!=e; ++i)
+              if (Phi->getIncomingValue(i) == V) 
+                return true;
+          
+          if ((isIntArithOp(*UI) || isBitwiseOp(*UI)) &&
+              (UI->getOperand(0) == V || UI->getOperand(1) == V))
+            return true;
+
+          // XXX: Logical operations are not currently considered
+          // mainly because they come often from complex branch
+          // conditions and common abstract domains are unlikely to be
+          // precise.  This is specially expensive when we have many
+          // of these operations within the same block.
           // Non-Boolean logical operations may not be so problematic
           // so we may want to translate them in the future.
-          if ((isIntArithOp(*I) || isBitwiseOp(*I)) &&
-              (I->getOperand(0) == V || I->getOperand(1) == V))
-            return true;
+ 
         }
       }
       return false;
-    }
-
-    static Instruction* stripZExtOrSExtInst(Instruction*I) {
-      if (const ZExtInst *ZE = dyn_cast<const ZExtInst>(I))
-        if (Instruction * ZEI = dyn_cast<Instruction> (ZE->getOperand(1)))
-          return ZEI;
-      if (const SExtInst *SE = dyn_cast<const SExtInst>(I))
-        if (Instruction * SEI = dyn_cast<Instruction> (SE->getOperand(1)))
-          return SEI;
-      return I;
     }
 
    public:
@@ -591,23 +609,7 @@ namespace crab_llvm
       if (!m_sev.isTracked (I)) return;
 
       Value*V = &I;
-
-      bool shouldBeLowered = false;
-      // Determine whether it is beneficial to lower I.
-      // The lowering of I may be expensive for the analysis because
-      // it will be translated to select's which might need join
-      // operations.
-      for (auto &U: V->uses ()) {
-        if (Instruction * UI = dyn_cast<Instruction>(U.getUser())) {
-          // I is already lowered 
-          if (isa<BranchInst> (UI)) return;
-          // strip zext/sext if there is one
-          UI = stripZExtOrSExtInst (UI);
-          shouldBeLowered |= isInterestingIntegerOperand(UI); 
-        }
-      }
-
-      if (shouldBeLowered) {
+      if (shouldICmpBeLowered(V)) {
         // Perform the following translation:
         //    %x = geq %y, 10  ---> %x = ((geq %y, 10) ? 1 : 0)
         NumAbsCondVisitor v (m_sev, m_bb, false /*non-negated*/);
