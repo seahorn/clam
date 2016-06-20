@@ -299,46 +299,46 @@ namespace crab_llvm {
       }
             
       bool change = false; 
-      // switch (absdom) {
-      //   case INTERVALS_CONGRUENCES: 
-      //     INTER_ANALYZE (ric_domain_t, arr_ric_domain_t, *cg, M, live_map, change); 
-      //     break;
-      //   case DIS_INTERVALS:
-      //     INTER_ANALYZE (dis_interval_domain_t, arr_dis_interval_domain_t,
-      //                    *cg, M, live_map, change); 
-      //     break;
-      //   case ZONES_SPLIT_DBM: 
-      //     INTER_ANALYZE (split_dbm_domain_t, arr_split_dbm_domain_t,
-      //                    *cg, M, live_map, change); 
-      //     break;
-      //   case ZONES_SPARSE_DBM: 
-      //     INTER_ANALYZE (dbm_domain_t, arr_dbm_domain_t, *cg, M, live_map, change); 
-      //     break;
-      //   case TERMS_INTERVALS:
-      //     INTER_ANALYZE (term_int_domain_t, arr_term_int_domain_t, *cg, M, live_map, change); 
-      //     break;
-      //   case TERMS_DIS_INTERVALS:
-      //     INTER_ANALYZE (term_dis_int_domain_t,arr_term_dis_int_domain_t, 
-      //                    *cg,M,live_map,change); 
-      //     break;
-      //   case OPT_OCT_APRON:
-      //     INTER_ANALYZE (opt_oct_apron_domain_t,arr_opt_oct_apron_domain_t, 
-      //                    *cg, M, live_map, change); 
-      //     break;
-      //   case PK_APRON:
-      //     INTER_ANALYZE (pk_apron_domain_t,arr_pk_apron_domain_t, *cg,M,live_map,change); 
-      //     break;
-      //   case TERMS_ZONES: 
-      //     INTER_ANALYZE (num_domain_t,arr_num_domain_t, *cg,M,live_map,change); 
-      //     break;
-      //   default: 
-      //     if (absdom != INTERVALS)
-      //       crab::outs() << "Warning: either abstract domain not found or "
-      //                    << "inter-procedural version not implemented. "
-      //                    << "Running intervals ...\n"; 
-      //     INTER_ANALYZE (interval_domain_t,arr_interval_domain_t,
-      //                    *cg,M,live_map,change);
-      //   }
+      switch (absdom) {
+        case INTERVALS_CONGRUENCES: 
+          INTER_ANALYZE (ric_domain_t, arr_ric_domain_t, *cg, M, live_map, change); 
+          break;
+        case DIS_INTERVALS:
+          INTER_ANALYZE (dis_interval_domain_t, arr_dis_interval_domain_t,
+                         *cg, M, live_map, change); 
+          break;
+        case ZONES_SPLIT_DBM: 
+          INTER_ANALYZE (split_dbm_domain_t, arr_split_dbm_domain_t,
+                         *cg, M, live_map, change); 
+          break;
+        case ZONES_SPARSE_DBM: 
+          INTER_ANALYZE (dbm_domain_t, arr_dbm_domain_t, *cg, M, live_map, change); 
+          break;
+        case TERMS_INTERVALS:
+          INTER_ANALYZE (term_int_domain_t, arr_term_int_domain_t, *cg, M, live_map, change); 
+          break;
+        case TERMS_DIS_INTERVALS:
+          INTER_ANALYZE (term_dis_int_domain_t,arr_term_dis_int_domain_t, 
+                         *cg,M,live_map,change); 
+          break;
+        case OPT_OCT_APRON:
+          INTER_ANALYZE (opt_oct_apron_domain_t,arr_opt_oct_apron_domain_t, 
+                         *cg, M, live_map, change); 
+          break;
+        case PK_APRON:
+          INTER_ANALYZE (pk_apron_domain_t,arr_pk_apron_domain_t, *cg,M,live_map,change); 
+          break;
+        case TERMS_ZONES: 
+          INTER_ANALYZE (num_domain_t,arr_num_domain_t, *cg,M,live_map,change); 
+          break;
+        default: 
+          if (absdom != INTERVALS)
+            crab::outs() << "Warning: either abstract domain not found or "
+                         << "inter-procedural version not implemented. "
+                         << "Running intervals ...\n"; 
+          INTER_ANALYZE (interval_domain_t,arr_interval_domain_t,
+                         *cg,M,live_map,change);
+        }
       
       if (CrabStats) {
         crab::CrabStats::PrintBrunch (crab::outs());
@@ -423,43 +423,42 @@ namespace crab_llvm {
 
     // -- run invariant generator
     bool change=false;
-    ANALYZE(interval_domain_t, arr_interval_domain_t, *cfg_ptr, F, *live, change);
-    // switch (absdom) {
-    //   case INTERVALS_CONGRUENCES: 
-    //     ANALYZE(ric_domain_t, arr_ric_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   case TERMS_INTERVALS:
-    //     ANALYZE(term_int_domain_t, arr_term_int_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   case TERMS_DIS_INTERVALS:
-    //     ANALYZE(term_dis_int_domain_t, arr_term_dis_int_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   case ZONES_SPLIT_DBM: 
-    //     ANALYZE(split_dbm_domain_t, arr_split_dbm_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   case ZONES_SPARSE_DBM: 
-    //     ANALYZE(dbm_domain_t, arr_dbm_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   case BOXES:
-    //     ANALYZE(boxes_domain_t, arr_boxes_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   case DIS_INTERVALS:
-    //     ANALYZE(dis_interval_domain_t, arr_dis_interval_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   case OPT_OCT_APRON:
-    //     ANALYZE(opt_oct_apron_domain_t, arr_opt_oct_apron_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   case PK_APRON:
-    //     ANALYZE(pk_apron_domain_t, arr_pk_apron_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   case TERMS_ZONES:
-    //     ANALYZE(num_domain_t, arr_num_domain_t, *cfg_ptr, F, *live, change);
-    //     break;
-    //   default: 
-    //     if (absdom != INTERVALS)
-    //       crab::outs() << "Warning: abstract domain not found. Running intervals ...\n"; 
-    //     ANALYZE(interval_domain_t, arr_interval_domain_t, *cfg_ptr, F, *live, change);
-    // }
+    switch (absdom) {
+      case INTERVALS_CONGRUENCES: 
+        ANALYZE(ric_domain_t, arr_ric_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      case TERMS_INTERVALS:
+        ANALYZE(term_int_domain_t, arr_term_int_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      case TERMS_DIS_INTERVALS:
+        ANALYZE(term_dis_int_domain_t, arr_term_dis_int_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      case ZONES_SPLIT_DBM: 
+        ANALYZE(split_dbm_domain_t, arr_split_dbm_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      case ZONES_SPARSE_DBM: 
+        ANALYZE(dbm_domain_t, arr_dbm_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      case BOXES:
+        ANALYZE(boxes_domain_t, arr_boxes_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      case DIS_INTERVALS:
+        ANALYZE(dis_interval_domain_t, arr_dis_interval_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      case OPT_OCT_APRON:
+        ANALYZE(opt_oct_apron_domain_t, arr_opt_oct_apron_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      case PK_APRON:
+        ANALYZE(pk_apron_domain_t, arr_pk_apron_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      case TERMS_ZONES:
+        ANALYZE(num_domain_t, arr_num_domain_t, *cfg_ptr, F, *live, change);
+        break;
+      default: 
+        if (absdom != INTERVALS)
+          crab::outs() << "Warning: abstract domain not found. Running intervals ...\n"; 
+        ANALYZE(interval_domain_t, arr_interval_domain_t, *cfg_ptr, F, *live, change);
+    }
     
     return change;
   }
