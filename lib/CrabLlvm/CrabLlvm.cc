@@ -525,12 +525,13 @@ namespace crab_llvm {
       inter_checker_t checker (analyzer, {prop});
       checker.run ();
       checker.show (crab::outs());
-      auto db = checker.get_all_checks();
-      if (db.get_total_warning() > 0 || db.get_total_error() > 0) {
-        crab::outs () << "\nBRUNCH_STAT Result FALSE\n";
-      } else {
-        crab::outs () << "\nBRUNCH_STAT Result TRUE\n";
-      } 
+      m_checks_db = boost::make_shared<checks_db_t>();
+      (*m_checks_db) += checker.get_all_checks();
+      // if (is_unsafe()) {
+      //   crab::outs () << "\nBRUNCH_STAT Result FALSE\n";
+      // } else {
+      //   crab::outs () << "\nBRUNCH_STAT Result TRUE\n";
+      // } 
       CRAB_LOG("crabllvm", crab::outs() << "DONE!\n"); 
     }
 
@@ -581,12 +582,13 @@ namespace crab_llvm {
       intra_checker_t checker (analyzer, {prop});
       checker.run ();
       checker.show (crab::outs());
-      auto db = checker.get_all_checks();
-      if (db.get_total_warning() > 0 || db.get_total_error() > 0) {
-        crab::outs () << "\nBRUNCH_STAT Result FALSE\n";
-      } else {
-        crab::outs () << "\nBRUNCH_STAT Result TRUE\n";
-      } 
+      m_checks_db = boost::make_shared<checks_db_t>();
+      (*m_checks_db) += checker.get_all_checks();
+      // if (is_unsafe()) {
+      //   crab::outs () << "\nBRUNCH_STAT Result FALSE\n";
+      // } else {
+      //   crab::outs () << "\nBRUNCH_STAT Result TRUE\n";
+      // } 
       CRAB_LOG("crabllvm", crab::outs() << "DONE!\n"); 
     }
 
@@ -641,6 +643,32 @@ namespace crab_llvm {
       }
       o <<  "\n";
     }
+  }
+
+  unsigned CrabLlvm::get_total_checks() const {
+    return get_total_safe_checks() +  
+           get_total_error_checks() + 
+           get_total_warning_checks();
+  }
+
+  unsigned CrabLlvm::get_total_safe_checks () const {
+    return (m_checks_db ? m_checks_db->get_total_safe() : 0);
+  }
+
+  unsigned CrabLlvm::get_total_error_checks () const {
+    return (m_checks_db ? m_checks_db->get_total_error() : 0);
+  }
+
+  unsigned CrabLlvm::get_total_warning_checks () const {
+    return (m_checks_db ? m_checks_db->get_total_warning() : 0);
+  }
+
+  bool CrabLlvm::is_safe () const {
+    return !is_unsafe();
+  }
+
+  bool CrabLlvm::is_unsafe () const {
+    return (get_total_warning_checks() > 0 || get_total_error_checks() > 0);
   }
 
   void CrabLlvm::getAnalysisUsage (llvm::AnalysisUsage &AU) const

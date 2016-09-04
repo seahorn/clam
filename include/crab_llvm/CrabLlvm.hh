@@ -25,6 +25,9 @@ namespace crab {
     template <typename T> class call_graph;  
     template <typename T> class call_graph_ref;  
   }
+  namespace checker {
+     class checks_db;
+  }
 } // end crab
 
 namespace crab_llvm {
@@ -41,6 +44,7 @@ namespace crab_llvm {
     typedef crab::analyzer::liveness<cfg_ref_t> liveness_t;
     typedef crab::cg::call_graph<cfg_ref_t> call_graph_t; 
     typedef crab::cg::call_graph_ref<call_graph_t> call_graph_ref_t;
+    typedef crab::checker::checks_db checks_db_t;
 
     typedef llvm::DenseMap<const llvm::BasicBlock *, GenericAbsDomWrapperPtr> invariants_map_t;
     typedef llvm::DenseMap<llvm::Function*, cfg_ptr_t > cfg_map_t;
@@ -52,6 +56,7 @@ namespace crab_llvm {
     boost::shared_ptr<MemAnalysis> m_mem;    
     VariableFactory m_vfac;
     cfg_map_t m_cfg_map;
+    boost::shared_ptr<checks_db_t> m_checks_db; 
 
     template<typename AbsDom> 
     bool analyzeCfg (cfg_ref_t cfg, const Function& F, const liveness_t& live);
@@ -71,7 +76,8 @@ namespace crab_llvm {
     CrabLlvm ()
         : llvm::ModulePass (ID), 
           m_absdom (INTERVALS), 
-          m_mem (boost::make_shared<DummyMemAnalysis>()) { }
+          m_mem (boost::make_shared<DummyMemAnalysis>()),
+          m_checks_db (nullptr) { }
 
     virtual void releaseMemory () {
       m_pre_map.clear(); 
@@ -112,6 +118,25 @@ namespace crab_llvm {
         return it->second;
       return nullptr;
     }
+
+    /// To query the analysis results 
+
+    // return total number of checks if assertion checker enabled,
+    // otherwise 0
+    unsigned get_total_checks() const;
+    // return total number of safe checks if assertion checker
+    // enabled, otherwise 0
+    unsigned get_total_safe_checks () const;
+    // return total number of definite error checks if assertion
+    // checker enabled, otherwise 0
+    unsigned get_total_error_checks () const;
+    // return total number of possibly error checks if assertion
+    // checker enabled, otherwise 0
+    unsigned get_total_warning_checks () const;
+    // Whether Crab is able to discharge all assertions
+    bool is_safe () const;
+    bool is_unsafe () const;
+    
   };
 
 } // end namespace 
