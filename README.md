@@ -39,6 +39,10 @@ If you want to use the boxes domain then add to step 2 `-DUSE_LDD=ON`.
 
 If you want to use the apron domains then add to step 2 `-DUSE_APRON=ON`.
 
+# Crab-llvm architecture #
+
+![Crab-Llvm Architecture](https://github.com/caballa/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
+
 # Usage #
 
 Consider the program `test.c`:
@@ -281,9 +285,8 @@ between 0 and 5.
 
 # Licensing #
 
-Crab-llvm is distributed under MIT license. See
-[LICENSE.txt](LICENSE.txt) for details.
-
+Crab-llvm is currently under a licensing process. Meanwhile, Crab-llvm cannot be
+publicly distributed.
 
 # Known limitations of the translation from bitecode to Crab CFG#
 
