@@ -1123,6 +1123,9 @@ namespace crab_llvm
         // things like uninitialized variables and also if a more
         // expressive array domain is used then this initialization
         // will make it more imprecise.
+
+        // FIXME: for array domains more precise than array smashing
+        // we should include at least the size of the array
         m_bb.assume_array (m_sev.symVar(r), 0 /*any value we want*/);
       }
     }
@@ -1139,6 +1142,9 @@ namespace crab_llvm
           //       objects with same type and all accesses are
           //       aligned.
           // We apply here again the "Initialization hook"
+
+          // FIXME: for array domains more precise than array smashing
+          // we should include at least the size of the array
           m_bb.assume_array (m_sev.symVar (r), 0);        
         }
       }
@@ -1176,6 +1182,9 @@ namespace crab_llvm
           optional<z_lin_exp_t> op0 = m_sev.lookup(*val);          
           if (op0 && (*op0).is_constant()) {
             m_bb.havoc (m_sev.symVar(r));
+
+            // FIXME: for array domains more precise than array smashing
+            // we should include at least the size of the array
             m_bb.assume_array (m_sev.symVar(r), (*op0).constant ());
           }
         }
@@ -1365,11 +1374,18 @@ namespace crab_llvm
             m_bb.havoc (m_sev.symVar (a)); 
           }
 
-          actuals.push_back (make_pair (a_in, ARR_TYPE));
-          if (const Value* s = isGlobalSingleton (a))
+          // input version
+          if (const Value* s = isGlobalSingleton (a)) 
+            actuals.push_back (make_pair (a_in, INT_TYPE));            
+          else 
+            actuals.push_back (make_pair (a_in, ARR_TYPE));
+
+          // output version
+          if (const Value* s = isGlobalSingleton (a)) 
             actuals.push_back (make_pair (m_sev.symVar (*s), INT_TYPE));
-          else
+          else 
             actuals.push_back (make_pair (m_sev.symVar (a), ARR_TYPE));
+          
         }
         // -- add output parameters
         for (auto a: news) 
@@ -1502,17 +1518,23 @@ namespace crab_llvm
     return opt_basic_block_t();    
   }
 
+  // FIXME: array_init's API is not enough for more precise array
+  // domains than array smashing. E.g., it must contain
+  // m_dl->getTypeAllocSize(ci->getType ())
   void doInitializer (Constant* cst, basic_block_t& bb, varname_t a) {
 
     if (isa<ConstantAggregateZero> (cst)){
       // --- a struct or array with all elements initialized to zero
+
+      // FIXME: for array domains more precise than array smashing
+      // we should include at least the size of the array
       bb.assume_array (a, 0);
     }
     else if (ConstantInt * ci = dyn_cast<ConstantInt> (cst)) {
       // --- an integer scalar global variable
       vector<ikos::z_number> val;
       val.push_back (ci->getZExtValue ());
-      bb.array_init (a, val);
+      bb.array_init (a, val);      
     }
     else if (ConstantDataSequential  *cds = dyn_cast<ConstantDataSequential> (cst)) {
       // --- an array of integers 1/2/4/8 bytes
@@ -1627,6 +1649,9 @@ namespace crab_llvm
         for (auto n: news) {
           entry.set_insert_point_front ();
           // We apply here the "Initialization hook".
+
+          // FIXME: for array domains more precise than array smashing
+          // we should include at least the size of the array
           entry.assume_array (m_sev.symVar (n), 0 /*any value we want*/);
         }
       }
@@ -1691,12 +1716,17 @@ namespace crab_llvm
             entry.assign (m_sev.symVar (*s), z_lin_exp_t (a_in)); 
           else
             entry.assign (m_sev.symVar (a), z_lin_exp_t (a_in)); 
+
           // input version
-          params.push_back (make_pair (a_in, ARR_TYPE));
-          // output version
           if (const Value* s = isGlobalSingleton (a))
-            params.push_back (make_pair (m_sev.symVar (*s), INT_TYPE));
+            params.push_back (make_pair (a_in, INT_TYPE));
           else
+            params.push_back (make_pair (a_in, ARR_TYPE));
+
+          // output version
+          if (const Value* s = isGlobalSingleton (a)) 
+            params.push_back (make_pair (m_sev.symVar (*s), INT_TYPE));
+          else 
             params.push_back (make_pair (m_sev.symVar (a), ARR_TYPE));
         }
 
