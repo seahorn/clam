@@ -14,6 +14,7 @@
 #include "crab/domains/boxes.hpp"
 #include "crab/domains/apron_domains.hpp"
 #include "crab/domains/array_smashing.hpp"
+#include "crab/domains/array_sparse_graph.hpp"
 #include "crab/domains/term_equiv.hpp"
 #include "crab/domains/combined_domains.hpp"
 
@@ -104,7 +105,9 @@ namespace crab_llvm {
   typedef array_smashing<num_domain_t> arr_num_domain_t;
   typedef array_smashing<opt_oct_apron_domain_t> arr_opt_oct_apron_domain_t;
   typedef array_smashing<pk_apron_domain_t> arr_pk_apron_domain_t;
-
+  /// -- Array graph domain 
+  typedef array_sparse_graph_domain<split_dbm_domain_t, interval_domain_t> arrG_interval_domain_t;
+  typedef array_sparse_graph_domain<split_dbm_domain_t, split_dbm_domain_t> arrG_split_dbm_domain_t;
 }
 
 namespace llvm {
@@ -153,6 +156,15 @@ namespace llvm {
   template <typename Base>
   inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
                                         crab::domains::array_smashing <Base> & inv) {
+    crab::crab_string_os s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+
+  template <typename S /*scalar domain*/, typename W /*weight domain*/>
+  inline llvm::raw_ostream& operator<< (llvm::raw_ostream& o, 
+                                        crab::domains::array_sparse_graph_domain <S,W> & inv) {
     crab::crab_string_os s;
     s << inv;
     o << s.str ();
@@ -234,7 +246,8 @@ namespace crab_llvm {
                     arr_ric, 
                     arr_boxes, arr_dis_intv,
                     arr_opt_oct_apron, arr_pk_apron,
-                    arr_num
+                    arr_num,
+                    arrG_intv, arrG_split_dbm  
                   } id_t;
 
      GenericAbsDomWrapper () { }
@@ -286,6 +299,7 @@ namespace crab_llvm {
    DEFINE_BASE_DOMAIN(NumDomainWrapper,num_domain_t,num)
 
    // Required only for array versions
+  
    REGISTER_DOMAIN_ID(arr_interval_domain_t,arr_intv)
    REGISTER_DOMAIN_ID(arr_ric_domain_t,arr_ric)
    REGISTER_DOMAIN_ID(arr_dbm_domain_t,arr_dbm)
@@ -297,6 +311,9 @@ namespace crab_llvm {
    REGISTER_DOMAIN_ID(arr_opt_oct_apron_domain_t,arr_opt_oct_apron)
    REGISTER_DOMAIN_ID(arr_pk_apron_domain_t,arr_pk_apron)
    REGISTER_DOMAIN_ID(arr_num_domain_t,arr_num)
+
+   REGISTER_DOMAIN_ID(arrG_interval_domain_t,arrG_intv)
+   REGISTER_DOMAIN_ID(arrG_split_dbm_domain_t,arrG_split_dbm)
 
    template<typename B>
    class ArraySmashingDomainWrapper: public GenericAbsDomWrapper {
@@ -319,22 +336,17 @@ namespace crab_llvm {
      ArraySmashingDomainWrapper(array_smashing_t abs):  
          GenericAbsDomWrapper (), m_id (getAbsDomId(abs)), m_abs (abs) { }
      
-     array_smashing_t& get () {
-       return m_abs;
-     }
+     array_smashing_t& get () { return m_abs; }
      
      z_lin_cst_sys_t to_linear_constraints () {
        return m_abs.to_linear_constraint_system ();
      }
      
-     void write (crab::crab_os& o) { 
-       m_abs.write (o);
-     }
+     void write (crab::crab_os& o) { m_abs.write (o); } 
 
      void forget (const vector<varname_t>& vars) { 
-       crab::domains::domain_traits<array_smashing_t>::forget (m_abs,          
-                                                               vars.begin (),  
-                                                               vars.end ());   
+       crab::domains::domain_traits<array_smashing_t>::
+       forget (m_abs, vars.begin (), vars.end ());              
      }                                                                   
    };
 
@@ -351,6 +363,57 @@ namespace crab_llvm {
      auto wrappee = boost::dynamic_pointer_cast<ArraySmashingDomainWrapper<B> > (wrapper);
      if (!wrappee)
        CRAB_ERROR("Could not cast to instance of ArraySmashingDomainWrapper");
+     abs_dom = wrappee->get ();
+   }
+
+
+   template<typename S, typename W>
+   class ArrayGraphDomainWrapper: public GenericAbsDomWrapper {
+    public:
+     
+     typedef typename S::number_t N;
+     typedef typename S::varname_t V;
+     
+    private:
+     
+     typedef array_sparse_graph_domain<S,W> array_graph_t;       
+
+     id_t m_id;     
+     array_graph_t m_abs;
+     
+    public:        
+
+     id_t getId () const { return m_id;}
+     
+     ArrayGraphDomainWrapper(array_graph_t abs):  
+         GenericAbsDomWrapper (), m_id (getAbsDomId(abs)), m_abs (abs) { }
+     
+     array_graph_t& get () { return m_abs; }
+
+     z_lin_cst_sys_t to_linear_constraints () 
+     { return m_abs.to_linear_constraint_system (); }
+     
+     void write (crab::crab_os& o) { m_abs.write (o); }
+
+     void forget (const vector<varname_t>& vars) { 
+       crab::domains::domain_traits<array_graph_t>::
+       forget (m_abs, vars.begin (), vars.end ());             
+     }  
+   };
+
+   template <typename S, typename W> 
+   inline GenericAbsDomWrapperPtr 
+   mkGenericAbsDomWrapper (array_sparse_graph_domain<S,W> abs_dom) {
+     GenericAbsDomWrapperPtr res (new ArrayGraphDomainWrapper<S,W> (abs_dom));        
+     return res;
+   }
+
+   template <typename S, typename W> 
+   inline void getAbsDomWrappee (GenericAbsDomWrapperPtr wrapper, 
+                                 array_sparse_graph_domain<S,W>&abs_dom) {
+     auto wrappee = boost::dynamic_pointer_cast<ArrayGraphDomainWrapper<S,W> > (wrapper);
+     if (!wrappee)
+       CRAB_ERROR("Could not cast to instance of ArrayGraphDomainWrapper");
      abs_dom = wrappee->get ();
    }
 

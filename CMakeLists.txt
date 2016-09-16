@@ -252,7 +252,8 @@ else ()
 endif ()
 
 if (GIT_FOUND)
-  set (CRAB_CORE_TAG "origin/master" CACHE STRING "crab tag to use")
+  #set (CRAB_CORE_TAG "origin/master" CACHE STRING "crab tag to use")
+  set (CRAB_CORE_TAG "origin/array_graph" CACHE STRING "crab tag to use")
   ## XXX: public repository currently unavailable
   # set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
   #      CACHE STRING "crab public repository")

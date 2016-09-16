@@ -143,6 +143,12 @@ CrabTrackLev("crab-track",
                clEnumValEnd),
    cl::init (tracked_precision::INT));
 
+
+llvm::cl::opt<bool>
+CrabArrayGraphDomain ("crab-array-graph-dom", 
+                      llvm::cl::desc ("Use array graph domain instead of array smashing"),
+                      llvm::cl::init (false));
+
 llvm::cl::opt<bool>
 CrabAssertCheck ("crab-assert-check", 
                  llvm::cl::desc ("Check user assertions"),
@@ -174,39 +180,45 @@ namespace crab_llvm {
   RES = (CrabTrackLev == ARR ? analyzeCfg <ARR_DOM> (CFG, F, LIVE) :  \
                                analyzeCfg <BASE_DOM> (CFG, F, LIVE));
 
-  #define INTER_ANALYZE(BASE_DOM,ARR_DOM,CG,M,LIVE,RES)                    \
-  switch (CrabSummDomain){                                                 \
-    case TERMS_INTERVALS:                                                  \
-      RES = (CrabTrackLev == ARR ?                                         \
-             analyzeCg <arr_term_int_domain_t, ARR_DOM> (CG, M, LIVE) :    \
-             analyzeCg <term_int_domain_t, BASE_DOM> (CG, M, LIVE)) ;      \
-      break;                                                               \
-    case TERMS_DIS_INTERVALS:                                              \
-      RES = (CrabTrackLev == ARR ?                                         \
-             analyzeCg <arr_term_dis_int_domain_t, ARR_DOM> (CG, M, LIVE) : \
-             analyzeCg <term_dis_int_domain_t, BASE_DOM> (CG, M, LIVE)) ;  \
-      break;                                                               \
-    case ZONES_SPARSE_DBM:                                                 \
-      RES = (CrabTrackLev == ARR ?                                         \
-             analyzeCg <arr_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :         \
-             analyzeCg <dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ;           \
-      break;                                                               \
-    case OPT_OCT_APRON:                                                    \
-      RES = (CrabTrackLev == ARR ?                                         \
-             analyzeCg <arr_opt_oct_apron_domain_t, ARR_DOM> (CG, M, LIVE) : \
-             analyzeCg <opt_oct_apron_domain_t, BASE_DOM> (CG, M, LIVE)) ; \
-      break;                                                               \
-    case TERMS_ZONES:                                                      \
-      RES = (CrabTrackLev == ARR ?                                         \
-             analyzeCg <arr_num_domain_t, ARR_DOM> (CG, M, LIVE) :         \
-             analyzeCg <num_domain_t, BASE_DOM> (CG, M, LIVE)) ;           \
-      break;                                                               \
-    default:                                                               \
-      if (CrabSummDomain != ZONES_SPLIT_DBM)                               \
-        crab::outs() << "Warning: choosing zones-split to compute summaries\n"; \
-      RES = (CrabTrackLev == ARR ?                                         \
-             analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :   \
-             analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ; }             
+    // #define INTER_ANALYZE(BASE_DOM,ARR_DOM,CG,M,LIVE,RES)                    \
+    // switch (CrabSummDomain){                                                 \
+    // // case TERMS_INTERVALS:                                                  \
+    //   RES = (CrabTrackLev == ARR ?                                         \
+    //          analyzeCg <arr_term_int_domain_t, ARR_DOM> (CG, M, LIVE) :    \
+    //          analyzeCg <term_int_domain_t, BASE_DOM> (CG, M, LIVE)) ;      \
+    //   break;                                                               \
+    // case TERMS_DIS_INTERVALS:                                              \
+    //   RES = (CrabTrackLev == ARR ?                                         \
+    //          analyzeCg <arr_term_dis_int_domain_t, ARR_DOM> (CG, M, LIVE) : \
+    //          analyzeCg <term_dis_int_domain_t, BASE_DOM> (CG, M, LIVE)) ;  \
+    //   break;                                                               \
+    // case ZONES_SPARSE_DBM:                                                 \
+    //   RES = (CrabTrackLev == ARR ?                                         \
+    //          analyzeCg <arr_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :         \
+    //          analyzeCg <dbm_domain_t, BASE_DOM> (CG, M, LIVE)) ;           \
+    //   break;                                                               \
+    // case OPT_OCT_APRON:                                                    \
+    //   RES = (CrabTrackLev == ARR ?                                         \
+    //          analyzeCg <arr_opt_oct_apron_domain_t, ARR_DOM> (CG, M, LIVE) : \
+    //          analyzeCg <opt_oct_apron_domain_t, BASE_DOM> (CG, M, LIVE)) ; \
+    //   break;                                                               \
+    // case TERMS_ZONES:                                                      \
+    //   RES = (CrabTrackLev == ARR ?                                         \
+    //          analyzeCg <arr_num_domain_t, ARR_DOM> (CG, M, LIVE) :         \
+    //          analyzeCg <num_domain_t, BASE_DOM> (CG, M, LIVE)) ;           \
+    //   break;                                                               \
+    // default:                                                               \
+    //   if (CrabSummDomain != ZONES_SPLIT_DBM)                               \
+    //     crab::outs() << "Warning: choosing zones-split to compute summaries\n"; \
+    //   RES = (CrabTrackLev == ARR ?                                         \
+    //          analyzeCg <arr_split_dbm_domain_t, ARR_DOM> (CG, M, LIVE) :   \
+    //          analyzeCg <split_dbm_domain_t, BASE_DOM> (CG, M, LIVE)); } 
+
+  #define INTER_ANALYZE(BASE_DOM,ARR_DOM,CG,M,LIVE,RES)                          \
+  { crab::outs() << "Warning: forcing BU domain to be equal than FWD domain\n";  \
+  RES = (CrabTrackLev == ARR?                                                    \
+         analyzeCg <ARR_DOM, ARR_DOM> (CG, M, LIVE) :                            \
+         analyzeCg <BASE_DOM, BASE_DOM> (CG, M, LIVE)); }            
 
   bool CrabLlvm::runOnModule (llvm::Module &M) {
     // -- initialize from cli options
@@ -300,45 +312,46 @@ namespace crab_llvm {
             
       bool change = false; 
       switch (absdom) {
-        case INTERVALS_CONGRUENCES: 
-          INTER_ANALYZE (ric_domain_t, arr_ric_domain_t, *cg, M, live_map, change); 
-          break;
-        case DIS_INTERVALS:
-          INTER_ANALYZE (dis_interval_domain_t, arr_dis_interval_domain_t,
-                         *cg, M, live_map, change); 
-          break;
+      //   case INTERVALS_CONGRUENCES: 
+      //     INTER_ANALYZE (ric_domain_t, arr_ric_domain_t, *cg, M, live_map, change); 
+      //     break;
+      //   case DIS_INTERVALS:
+      //     INTER_ANALYZE (dis_interval_domain_t, arr_dis_interval_domain_t,
+      //                    *cg, M, live_map, change); 
+      //     break;
         case ZONES_SPLIT_DBM: 
-          INTER_ANALYZE (split_dbm_domain_t, arr_split_dbm_domain_t,
-                         *cg, M, live_map, change); 
+          if (CrabArrayGraphDomain) 
+          { INTER_ANALYZE (split_dbm_domain_t,arrG_split_dbm_domain_t,*cg,M,live_map,change); }
+          else
+          { INTER_ANALYZE (split_dbm_domain_t,arr_split_dbm_domain_t,*cg,M,live_map,change); }
           break;
-        case ZONES_SPARSE_DBM: 
-          INTER_ANALYZE (dbm_domain_t, arr_dbm_domain_t, *cg, M, live_map, change); 
-          break;
-        case TERMS_INTERVALS:
-          INTER_ANALYZE (term_int_domain_t, arr_term_int_domain_t, *cg, M, live_map, change); 
-          break;
-        case TERMS_DIS_INTERVALS:
-          INTER_ANALYZE (term_dis_int_domain_t,arr_term_dis_int_domain_t, 
-                         *cg,M,live_map,change); 
-          break;
-        case OPT_OCT_APRON:
-          INTER_ANALYZE (opt_oct_apron_domain_t,arr_opt_oct_apron_domain_t, 
-                         *cg, M, live_map, change); 
-          break;
-        case PK_APRON:
-          INTER_ANALYZE (pk_apron_domain_t,arr_pk_apron_domain_t, *cg,M,live_map,change); 
-          break;
-        case TERMS_ZONES: 
-          INTER_ANALYZE (num_domain_t,arr_num_domain_t, *cg,M,live_map,change); 
-          break;
+      //   case ZONES_SPARSE_DBM: 
+      //     INTER_ANALYZE (dbm_domain_t, arr_dbm_domain_t, *cg, M, live_map, change); 
+      //     break;
+      //   case TERMS_INTERVALS:
+      //     INTER_ANALYZE (term_int_domain_t, arr_term_int_domain_t, *cg, M, live_map, change); 
+      //     break;
+      //   case TERMS_DIS_INTERVALS:
+      //     INTER_ANALYZE (term_dis_int_domain_t,arr_term_dis_int_domain_t, 
+      //                    *cg,M,live_map,change); 
+      //     break;
+      //   case OPT_OCT_APRON:
+      //     INTER_ANALYZE (opt_oct_apron_domain_t,arr_opt_oct_apron_domain_t, 
+      //                    *cg, M, live_map, change); 
+      //     break;
+      //   case PK_APRON:
+      //     INTER_ANALYZE (pk_apron_domain_t,arr_pk_apron_domain_t, *cg,M,live_map,change); 
+      //     break;
+      //   case TERMS_ZONES: 
+      //     INTER_ANALYZE (num_domain_t,arr_num_domain_t, *cg,M,live_map,change); 
+      //     break;
         default: 
           if (absdom != INTERVALS)
             crab::outs() << "Warning: either abstract domain not found or "
                          << "inter-procedural version not implemented. "
                          << "Running intervals ...\n"; 
-          INTER_ANALYZE (interval_domain_t,arr_interval_domain_t,
-                         *cg,M,live_map,change);
-        }
+          INTER_ANALYZE (interval_domain_t,arr_interval_domain_t,*cg,M,live_map,change);
+      }
       
       if (CrabStats) {
         crab::CrabStats::PrintBrunch (crab::outs());
@@ -424,39 +437,42 @@ namespace crab_llvm {
     // -- run invariant generator
     bool change=false;
     switch (absdom) {
-      case INTERVALS_CONGRUENCES: 
-        ANALYZE(ric_domain_t, arr_ric_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case TERMS_INTERVALS:
-        ANALYZE(term_int_domain_t, arr_term_int_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case TERMS_DIS_INTERVALS:
-        ANALYZE(term_dis_int_domain_t, arr_term_dis_int_domain_t, *cfg_ptr, F, *live, change);
-        break;
+      // case INTERVALS_CONGRUENCES: 
+      //   ANALYZE(ric_domain_t, arr_ric_domain_t, *cfg_ptr, F, *live, change);
+      //   break;
+      // case TERMS_INTERVALS:
+      //   ANALYZE(term_int_domain_t, arr_term_int_domain_t, *cfg_ptr, F, *live, change);
+      //   break;
+      // case TERMS_DIS_INTERVALS:
+      //   ANALYZE(term_dis_int_domain_t, arr_term_dis_int_domain_t, *cfg_ptr, F, *live, change);
+      //   break;
       case ZONES_SPLIT_DBM: 
-        ANALYZE(split_dbm_domain_t, arr_split_dbm_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case ZONES_SPARSE_DBM: 
-        ANALYZE(dbm_domain_t, arr_dbm_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case BOXES:
-        ANALYZE(boxes_domain_t, arr_boxes_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case DIS_INTERVALS:
-        ANALYZE(dis_interval_domain_t, arr_dis_interval_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case OPT_OCT_APRON:
-        ANALYZE(opt_oct_apron_domain_t, arr_opt_oct_apron_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case PK_APRON:
-        ANALYZE(pk_apron_domain_t, arr_pk_apron_domain_t, *cfg_ptr, F, *live, change);
-        break;
-      case TERMS_ZONES:
-        ANALYZE(num_domain_t, arr_num_domain_t, *cfg_ptr, F, *live, change);
-        break;
+          if (CrabArrayGraphDomain) 
+          { ANALYZE(split_dbm_domain_t, arrG_split_dbm_domain_t, *cfg_ptr, F, *live, change);}
+          else 
+          { ANALYZE(split_dbm_domain_t, arr_split_dbm_domain_t, *cfg_ptr, F, *live, change);}
+          break;
+      // case ZONES_SPARSE_DBM: 
+      //   ANALYZE(dbm_domain_t, arr_dbm_domain_t, *cfg_ptr, F, *live, change);
+      //   break;
+      // case BOXES:
+      //   ANALYZE(boxes_domain_t, arr_boxes_domain_t, *cfg_ptr, F, *live, change);
+      //   break;
+      // case DIS_INTERVALS:
+      //   ANALYZE(dis_interval_domain_t, arr_dis_interval_domain_t, *cfg_ptr, F, *live, change);
+      //   break;
+      // case OPT_OCT_APRON:
+      //   ANALYZE(opt_oct_apron_domain_t, arr_opt_oct_apron_domain_t, *cfg_ptr, F, *live, change);
+      //   break;
+      // case PK_APRON:
+      //   ANALYZE(pk_apron_domain_t, arr_pk_apron_domain_t, *cfg_ptr, F, *live, change);
+      //   break;
+      // case TERMS_ZONES:
+      //   ANALYZE(num_domain_t, arr_num_domain_t, *cfg_ptr, F, *live, change);
+      //   break;
       default: 
         if (absdom != INTERVALS)
-          crab::outs() << "Warning: abstract domain not found. Running intervals ...\n"; 
+          crab::outs() << "WARNING: abstract domain not found. Running intervals ...\n"; 
         ANALYZE(interval_domain_t, arr_interval_domain_t, *cfg_ptr, F, *live, change);
     }
     

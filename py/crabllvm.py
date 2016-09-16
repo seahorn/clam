@@ -165,6 +165,9 @@ def parseArgs (argv):
     p.add_argument ('--crab-track',
                     help='Track integers, pointer offsets, and memory contents',
                     choices=['int', 'ptr', 'arr'], dest='track', default='int')
+    p.add_argument ('--crab-array-graph-dom',
+                    help='Use array graph domain instead of array smashing',
+                    dest='crab_array_graph_dom', default=False, action='store_true')
     p.add_argument ('--crab-singleton-aliases',
                     help='Treat singleton alias sets as scalar values',
                     dest='crab_singleton_aliases', default=False, action='store_true')
@@ -453,6 +456,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
     if args.crab_disable_offsets: crabllvm_cmd.append ('--crab-disable-offsets')
     if args.crab_singleton_aliases: crabllvm_cmd.append ('--crab-singleton-aliases')
+    if args.crab_array_graph_dom: crabllvm_cmd.append ('--crab-array-graph-dom')
     if args.crab_inter: crabllvm_cmd.append ('--crab-inter')
     if args.crab_live: crabllvm_cmd.append ('--crab-live')
     crabllvm_cmd.append ('--crab-add-invariants={0}'.format (args.insert_invs))
