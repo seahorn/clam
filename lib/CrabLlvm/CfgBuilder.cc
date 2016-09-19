@@ -28,23 +28,30 @@
  *     that an array abstract domain can be used to reason about
  *     heaplets by mapping each heaplet to an array.
  *
- * ## Assumptions and limitations ##
+ * - TODOs:
  * 
- * The translation covers only integer scalars, limited reasoning
- * about pointer offsets (e.g., for buffer overflow checks) and memory
- * contents of integer type so that a numerical array abstract domain
- * can be used.
+ *   - Precise translation of pointers: generate Crab pointer
+ *     statements such as ptr_store, ptr_load, ptr_assign, new_object,
+ *     and new_ptr_func.
  * 
- * Although DSA provides us with separation information (i.e., whether
- * two pointers may alias or not) the abstraction level (2) is very
- * imprecise (though sound) in cases where a pointer address is read
- * from memory. In fact, the translation does *not* currently generate
- * Crab pointer statements such as ptr_store, ptr_load, ptr_assign,
- * new_object, and new_ptr_func (see TODO's). This would allow a
- * pointer analysis to keep track of offsets even when a pointer
- * address is read from memory, and of course to infer more precise
- * aliasing information than DSA.
+ *   - Precise translation of ICmp instructions. ICmp instructions are
+ *     currently translated only if:
  * 
+ *     (1) feeds a LLVM Br instruction
+ *     (2) shouldICmpBeLowered returns true
+ *     (3) there is a cal to verifier.assume within the same block
+ * 
+ *     Case (1) is translated as Crab assume while (2) and (3) are
+ *     translated to Crab select. Since the translation to Crab select
+ *     is expensive and complex (it's reduced to abstract joins and it
+ *     might generate disjunctions) we only do it when (2) or (3)
+ *     applies. 
+ * 
+ *     TODO: create a new Crab icmp instruction and let specialized
+ *     Crab abstract domains to deal with it natively.
+ * 
+ *   - Floating point instructions
+ *   - etc
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -70,9 +77,10 @@
 #include "crab_llvm/CfgBuilder.hh"
 #include "crab_llvm/Support/CFG.hh"
 
-// FIXME: this translation may generate a lot dead code, in
-// particular, when an instruction feeds load or stores that are not
-// tracked. 
+// TODO: this translation may generate a lot dead code, in particular,
+// when an instruction feeds load or stores that are not tracked. So
+// we should run a dead code elimination analysis after Crab CFG has
+// been formed.
 
 using namespace llvm;
 
@@ -148,7 +156,7 @@ namespace crab_llvm
   using namespace crab::cfg_impl;
   using namespace boost;
 
-  inline variable_type getType (Type * ty) {
+  static variable_type getType (Type * ty) {
     if (ty->isIntegerTy ())
       return INT_TYPE;
     else if (ty->isPointerTy ())
@@ -158,7 +166,7 @@ namespace crab_llvm
   }
 
   // helper to handle option CrabEnableUniqueScalars
-  const Value* isGlobalSingleton (region_t r) {
+  static const Value* isGlobalSingleton (region_t r) {
     if (CrabEnableUniqueScalars) {
       if (const Value* v = r.getSingleton ()) {
         return v;
@@ -167,14 +175,13 @@ namespace crab_llvm
     return nullptr;
   }
 
-
-  bool hasDebugLoc (const Instruction *inst) {
+  static bool hasDebugLoc (const Instruction *inst) {
     if (!inst) return false;
     const DebugLoc &dloc = inst->getDebugLoc ();
     return (!(dloc.isUnknown ()));
   }
 
-  crab::cfg::debug_info getDebugLoc (const Instruction *inst) {
+  static crab::cfg::debug_info getDebugLoc (const Instruction *inst) {
     if (!hasDebugLoc(inst))
       return crab::cfg::debug_info();
 
@@ -188,20 +195,21 @@ namespace crab_llvm
     return crab::cfg::debug_info(File, Line, Col);
   }
 
-  //! Translate flag conditions 
-  //  Preconditions: this visitor is not intended to be executed for a
+  //! Translate Boolean conditions 
+  //  Preconditions: this visitor should not be executed for a
   //                 block. Instead, it should be called to visit a
-  //                 single statement (BinaryOperator or CmpInst).
+  //                 single statement.
   class NumAbsCondVisitor : 
       public InstVisitor<NumAbsCondVisitor>
   {
     sym_eval_t& m_sev;
     basic_block_t& m_bb;
-    bool m_is_negated;
-    // if true constraints are added as assumptions, otherwise as
-    // assertions.
-    bool m_is_assumption; 
-
+    // if generated constraints should be negated
+    const bool m_is_negated;
+    // if generated constraints should be added as assumptions,
+    // otherwise as assertions.
+    const bool m_is_assumption; 
+    
     void add_cst (z_lin_cst_t cst, crab::cfg::debug_info di = crab::cfg::debug_info()) {
       if (m_is_assumption)
         m_bb.assume(cst);
@@ -349,11 +357,10 @@ namespace crab_llvm
 
       if (!m_is_assumption) return;
 
-      // If this is reached then I is at least used by some branch so
-      // we check if there is another use. If not, we don't bother to
-      // add these extra constraints.
       const Value&v = I;
       if (v.hasNUsesOrMore (2)) {
+        // If I has at least two uses then it means that I is used by
+        // another instruction apart from a branch condition.
         varname_t lhs = m_sev.symVar (v);
         if (m_is_negated)
           add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (0), getDebugLoc(&I));
@@ -394,6 +401,7 @@ namespace crab_llvm
     { }
 
     void visitBasicBlock (llvm::BasicBlock &BB) {
+      // TODO: use assign_ptr if phi node are pointers
 
       auto curr = BB.begin ();
       if (!isa<PHINode> (curr)) return;
@@ -438,7 +446,8 @@ namespace crab_llvm
 
         varname_t lhs = m_sev.symVar(phi);
         const Value &v = *phi.getIncomingValueForBlock (&m_inc_BB);
-        
+
+        // TODO: assign assign_ptr if phi node of pointer type
         auto it = oldValMap.find (&v);
         if (it != oldValMap.end ()) {
           m_bb.assign (lhs, it->second);
@@ -557,6 +566,10 @@ namespace crab_llvm
               I.getOpcode() == Instruction::SRem);
     }
 
+    // XXX: We do not try to lower a comparison instruction in
+    // all cases because lowering is expensive (it will increase
+    // the number of abstract joins) and it might not always pay
+    // off.
     bool shouldICmpBeLowered (Value *V) {
       for (auto &U: V->uses ()) {
         if (Instruction * UI = dyn_cast<Instruction>(U.getUser())) {
@@ -567,11 +580,6 @@ namespace crab_llvm
           // strip zext/sext if there is one
           if (isa<ZExtInst>(UI) || isa<SExtInst>(UI))
             return shouldICmpBeLowered(UI);
-
-          // XXX: We do not try to lower a comparison instruction in
-          // all cases because lowering is expensive (it will increase
-          // the number of abstract joins) and it might not always pay
-          // off.
 
           if (PHINode * Phi = dyn_cast<PHINode>(UI))
             for (unsigned i=0, e=Phi->getNumIncomingValues(); i!=e; ++i)
@@ -611,13 +619,12 @@ namespace crab_llvm
       Value*V = &I;
       if (shouldICmpBeLowered(V)) {
         // Perform the following translation:
-        //    %x = geq %y, 10  ---> %x = ((geq %y, 10) ? 1 : 0)
+        //    %x = icmp geq %y, 10  ---> %x = ((icmp geq %y, 10) ? 1 : 0)
         NumAbsCondVisitor v (m_sev, m_bb, false /*non-negated*/);
         auto csts = v.gen_cst_sys (I, false /*force generating one constraint*/);
-        if (csts.size() == 1) {
-          m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
-          return;
-        }
+        assert (csts.size () == 1);
+        m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
+        return;
       }
 
       if (CrabIncludeHavoc) 
@@ -858,14 +865,13 @@ namespace crab_llvm
 
       if (CmpInst* CI = dyn_cast<CmpInst> (&cond)) {
         NumAbsCondVisitor v (m_sev, m_bb, false);
+        // select only takes a single constraint otherwise its
+        // reasoning gets complicated if the analysis needs to
+        // negate conjunction of constraints. 
         auto csts = v.gen_cst_sys (*CI, false /*force generating one constraint*/);
-        if (std::distance (csts.begin (), csts.end ()) == 1) {
-          // select only takes a single constraint otherwise its
-          // reasoning gets complicated if the analysis needs to
-          // negate conjunction of constraints. 
-          m_bb.select (lhs, *(csts.begin ()), *op0, *op1);
-          return;
-        }
+        assert (csts.size () == 1);
+        m_bb.select (lhs, *(csts.begin ()), *op0, *op1);
+        return;
       }
 
       // default case if everything fails ...
@@ -881,7 +887,7 @@ namespace crab_llvm
 
     void doCast(CastInst &I) {
       /// TODO: generate a ptr_assign instruction if the operands are
-      ///       pointers.
+      ///       pointers. Special cases for ptrtoint and inttoptr.
 
       if (!m_sev.isTracked (I)) 
         return;
@@ -920,7 +926,7 @@ namespace crab_llvm
     }
 
     void visitGetElementPtrInst (GetElementPtrInst &I) {
-      /// TODO: generate a ptr_assign(b, offset) instruction.
+      /// TODO: generate a ptr_assign(p, q, offset).
 
       if (!m_sev.isTracked (I)) {
         return;
