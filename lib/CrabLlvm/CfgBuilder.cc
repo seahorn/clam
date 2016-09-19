@@ -39,13 +39,11 @@
  * 
  *     (1) feeds a LLVM Br instruction
  *     (2) shouldICmpBeLowered returns true
- *     (3) there is a cal to verifier.assume within the same block
  * 
- *     Case (1) is translated as Crab assume while (2) and (3) are
- *     translated to Crab select. Since the translation to Crab select
- *     is expensive and complex (it's reduced to abstract joins and it
- *     might generate disjunctions) we only do it when (2) or (3)
- *     applies. 
+ *     Case (1) is translated as Crab assume while (2) is translated
+ *     to Crab select. Since the translation to Crab select is
+ *     expensive and complex (it's reduced to abstract joins and it
+ *     might generate disjunctions) we only do it when (2) applies.
  * 
  *     TODO: create a new Crab icmp instruction and let specialized
  *     Crab abstract domains to deal with it natively.
@@ -470,15 +468,18 @@ namespace crab_llvm
     const DataLayout* m_dl;
     const TargetLibraryInfo* m_tli;
     basic_block_t& m_bb;
-    bool m_is_inter_proc;
-
+    const bool m_lower_icmp;  //lower ICmp instructions whenever possible
+    const bool m_is_inter_proc;
+    
+    
     NumAbsVisitor (sym_eval_t& sev, 
                    const DataLayout* dl, const TargetLibraryInfo* tli,
-                   basic_block_t & bb, bool isInterProc): 
+                   basic_block_t & bb, bool lower_icmp, bool isInterProc): 
         m_sev (sev),
         m_dl (dl), 
         m_tli (tli),
         m_bb (bb), 
+        m_lower_icmp (lower_icmp),
         m_is_inter_proc (isInterProc)  
     { }
 
@@ -566,11 +567,11 @@ namespace crab_llvm
               I.getOpcode() == Instruction::SRem);
     }
 
-    // XXX: We do not try to lower a comparison instruction in
-    // all cases because lowering is expensive (it will increase
-    // the number of abstract joins) and it might not always pay
-    // off.
-    bool shouldICmpBeLowered (Value *V) {
+    // XXX: Unless lower_icmp is enabled, we do not try to lower a
+    // comparison instruction in all cases because lowering is
+    // currently expensive (it will increase the number of abstract
+    // joins) and it might not always pay off.
+    bool shouldICmpBeLowered (Value *V, bool lower_icmp) {
       for (auto &U: V->uses ()) {
         if (Instruction * UI = dyn_cast<Instruction>(U.getUser())) {
 
@@ -579,7 +580,10 @@ namespace crab_llvm
 
           // strip zext/sext if there is one
           if (isa<ZExtInst>(UI) || isa<SExtInst>(UI))
-            return shouldICmpBeLowered(UI);
+            return shouldICmpBeLowered(UI, lower_icmp);
+
+          // we were told to lower the ICmp instruction
+          if (lower_icmp) return true;
 
           if (PHINode * Phi = dyn_cast<PHINode>(UI))
             for (unsigned i=0, e=Phi->getNumIncomingValues(); i!=e; ++i)
@@ -590,14 +594,14 @@ namespace crab_llvm
               (UI->getOperand(0) == V || UI->getOperand(1) == V))
             return true;
 
-          // XXX: Logical operations are not currently considered
-          // mainly because they come often from complex branch
-          // conditions and common abstract domains are unlikely to be
-          // precise.  This is specially expensive when we have many
-          // of these operations within the same block.
-          // Non-Boolean logical operations may not be so problematic
-          // so we may want to translate them in the future.
- 
+          // XXX: Unless lower_icmp is enabled, logical operations are
+          // not currently considered mainly because they come often
+          // from complex branch conditions and common abstract
+          // domains are unlikely to be precise.  This is specially
+          // expensive when we have many of these operations within
+          // the same block.  Non-Boolean logical operations may not
+          // be so problematic so we may want to translate them in the
+          // future.
         }
       }
       return false;
@@ -617,7 +621,7 @@ namespace crab_llvm
       if (!m_sev.isTracked (I)) return;
 
       Value*V = &I;
-      if (shouldICmpBeLowered(V)) {
+      if (shouldICmpBeLowered(V, m_lower_icmp)) {
         // Perform the following translation:
         //    %x = icmp geq %y, 10  ---> %x = ((icmp geq %y, 10) ? 1 : 0)
         NumAbsCondVisitor v (m_sev, m_bb, false /*non-negated*/);
@@ -1234,25 +1238,37 @@ namespace crab_llvm
 
    public:
 
-    static bool isAssertFn(Function* F) {
+    static bool isAssertFn(const Function* F) {
       return (F->getName().equals("verifier.assert") || 
               F->getName().equals("crab.assert") || 
               F->getName().equals("__CRAB_assert"));
     }
 
-    static bool isErrorFn(Function* F) {
+    static bool isErrorFn(const Function* F) {
       return (F->getName().equals("seahorn.error") || 
               F->getName().equals("__SEAHORN_error"));
     }
 
-    static bool isAssumeFn(Function* F) {
+    static bool isAssumeFn(const Function* F) {
       return (F->getName().equals("verifier.assume"));
     }
 
-    static bool isNegAssumeFn(Function* F) {
+    static bool isNegAssumeFn(const Function* F) {
       return (F->getName().equals("verifier.assume.not"));
     }
-    
+
+    static bool containsAssume (BasicBlock &B) {
+      for (auto &I: B) {
+        if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+          llvm::CallSite CS (CI);
+          Function * callee = CS.getCalledFunction ();
+          if (callee && (isAssumeFn (callee) || isNegAssumeFn (callee))) 
+            return true;
+        }
+      }
+      return false;
+    }
+
     void visitCallInst (CallInst &I) {
       CallSite CS (&I);
       Function * callee = CS.getCalledFunction ();
@@ -1578,7 +1594,7 @@ namespace crab_llvm
 
         basic_block_t& bb = *BB;
         retBlks.push_back (&bb);
-        NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, m_is_inter_proc);
+        NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, NumAbsVisitor::containsAssume (*B), m_is_inter_proc);
         v.visit (*B);
       }
       else {
@@ -1586,9 +1602,9 @@ namespace crab_llvm
         assert (BB);
         if (!BB) continue;
 
-        // -- build an initial CFG block from bb but ignoring branches
+        // -- build a CFG block from bb but ignoring branches
         //    and phi-nodes
-        NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, m_is_inter_proc);
+        NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, NumAbsVisitor::containsAssume (*B), m_is_inter_proc);
         v.visit (*B);
         
         for (const llvm::BasicBlock *dst : succs (*B)) {
