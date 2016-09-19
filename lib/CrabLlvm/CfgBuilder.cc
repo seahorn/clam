@@ -1587,26 +1587,19 @@ namespace crab_llvm
     // iterate over them.
     for (llvm::BasicBlock* B : blks)
     {
-      if (isa<ReturnInst> (B->getTerminator ())) {
-        opt_basic_block_t BB = lookup (*B);
-        assert (BB);
-        if (!BB) continue;
+      opt_basic_block_t BB = lookup (*B);
+      assert (BB);
+      if (!BB) continue;
 
+      // -- build a CFG block ignoring branches and phi-nodes
+      NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, NumAbsVisitor::containsAssume (*B), m_is_inter_proc);
+      v.visit (*B);
+      
+      if (isa<ReturnInst> (B->getTerminator ())) {
         basic_block_t& bb = *BB;
         retBlks.push_back (&bb);
-        NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, NumAbsVisitor::containsAssume (*B), m_is_inter_proc);
-        v.visit (*B);
       }
       else {
-        opt_basic_block_t BB = lookup (*B);
-        assert (BB);
-        if (!BB) continue;
-
-        // -- build a CFG block from bb but ignoring branches
-        //    and phi-nodes
-        NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, NumAbsVisitor::containsAssume (*B), m_is_inter_proc);
-        v.visit (*B);
-        
         for (const llvm::BasicBlock *dst : succs (*B)) {
           // -- move branch condition in bb to a new block inserted
           //    between bb and dst
@@ -1623,9 +1616,7 @@ namespace crab_llvm
     // -- unify multiple return blocks
     if (retBlks.size () == 1) { 
       m_cfg->set_exit (retBlks [0]->label ());
-    }
-    else if (retBlks.size () > 1) {
-
+    } else if (retBlks.size () > 1) {
       const llvm::BasicBlock* singleRetBlk = createFakeBlock (m_func.getContext (),
                                                               create_bb_name (),
                                                               &m_func);
