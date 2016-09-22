@@ -25,6 +25,7 @@
 #include "crab/analysis/fwd_analyzer.hpp"
 #include "crab/analysis/inter_fwd_analyzer.hpp"
 #include <crab/checkers/assertion.hpp>
+#include <crab/checkers/null.hpp>
 #include <crab/checkers/checker.hpp>
 #include "crab/cg/cg.hpp"
 #include "crab/cg/cg_bgl.hpp"
@@ -143,10 +144,16 @@ CrabTrackLev("crab-track",
                clEnumValEnd),
    cl::init (tracked_precision::INT));
 
-llvm::cl::opt<bool>
+typedef enum { NONE = 0, ASSERTION = 1, NULLITY = 2} assert_check_kind_t;
+llvm::cl::opt<assert_check_kind_t>
 CrabAssertCheck ("crab-assert-check", 
                  llvm::cl::desc ("Check user assertions"),
-                 llvm::cl::init (false));
+                 cl::values(
+                     clEnumValN (NONE      , "none"  , "None"),
+                     clEnumValN (ASSERTION , "assert", "User assertions"),
+                     clEnumValN (NULLITY   , "null"  , "Null dereference"),
+                     clEnumValEnd),
+                 cl::init (assert_check_kind_t::NONE));
 
 llvm::cl::opt<unsigned int>
 CrabCheckVerbose ("crab-check-verbose", 
@@ -472,7 +479,7 @@ namespace crab_llvm {
         inter_analyzer_t;
     typedef inter_checker<inter_analyzer_t> inter_checker_t;
     typedef assert_property_checker<inter_analyzer_t> assert_prop_t;
-
+    typedef null_property_checker<inter_analyzer_t> null_prop_t;
                              
     CRAB_LOG("crabllvm", 
               crab::outs() << "Running inter-procedural analysis with " 
@@ -522,6 +529,8 @@ namespace crab_llvm {
     if (CrabAssertCheck) {
       CRAB_LOG("crabllvm", crab::outs() << "Checking assertions ... \n"); 
       typename inter_checker_t::prop_checker_ptr prop(new assert_prop_t(CrabCheckVerbose));
+      if (CrabAssertCheck == NULLITY)
+        prop.reset (new null_prop_t(CrabCheckVerbose));      
       inter_checker_t checker (analyzer, {prop});
       checker.run ();
       checker.show (crab::outs());
@@ -544,6 +553,7 @@ namespace crab_llvm {
     typedef typename num_fwd_analyzer<cfg_ref_t,Dom,VariableFactory>::type intra_analyzer_t;
     typedef intra_checker<intra_analyzer_t> intra_checker_t;
     typedef assert_property_checker<intra_analyzer_t> assert_prop_t;
+    typedef null_property_checker<intra_analyzer_t> null_prop_t;
 
     CRAB_LOG("crabllvm",
              auto fdecl = cfg.get_func_decl ();            
@@ -579,6 +589,8 @@ namespace crab_llvm {
       // --- checking assertions
       CRAB_LOG("crabllvm", crab::outs() << "Checking assertions ... \n"); 
       typename intra_checker_t::prop_checker_ptr prop (new assert_prop_t (CrabCheckVerbose));
+      if (CrabAssertCheck == NULLITY)
+        prop.reset (new null_prop_t(CrabCheckVerbose));
       intra_checker_t checker (analyzer, {prop});
       checker.run ();
       checker.show (crab::outs());
