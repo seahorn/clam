@@ -247,8 +247,8 @@ namespace crab_llvm
         }
       }
       else if (s.is_ptr_read ()) { 
-        const ptr_load_stmt <z_number, varname_t>* load_stmt = 
-            static_cast< const ptr_load_stmt <z_number, varname_t> *> (&s);
+        const ptr_load_stmt <varname_t>* load_stmt = 
+            static_cast< const ptr_load_stmt <varname_t> *> (&s);
         if (boost::optional<const llvm::Value *> v = load_stmt->lhs ().get ()) {
           load_vs += (load_stmt->lhs ());
           I = dyn_cast<const llvm::LoadInst> (*v);
