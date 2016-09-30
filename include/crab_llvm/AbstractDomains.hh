@@ -239,6 +239,8 @@ namespace crab_llvm {
 
      GenericAbsDomWrapper () { }
 
+    virtual ~GenericAbsDomWrapper () { }
+
      virtual id_t getId () const = 0;
 
      virtual void write (crab::crab_os& o) = 0;
