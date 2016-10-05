@@ -350,13 +350,13 @@ namespace crab_llvm
            !I.getOperand (1)->getType ()->isIntegerTy ())) 
         return;    
 
-      for (auto cst: gen_cst_sys (I))
-        add_cst(cst, getDebugLoc(&I));
+      auto csts = gen_cst_sys (I);
+      for (auto cst: csts) { add_cst(cst, getDebugLoc(&I)); }
 
       if (!m_is_assumption) return;
 
       const Value&v = I;
-      if (v.hasNUsesOrMore (2)) {
+      if (csts.size () > 0 && v.hasNUsesOrMore (2)) {
         // If I has at least two uses then it means that I is used by
         // another instruction apart from a branch condition.
         varname_t lhs = m_sev.symVar (v);
@@ -625,9 +625,12 @@ namespace crab_llvm
         // Perform the following translation:
         //    %x = icmp geq %y, 10  ---> %x = ((icmp geq %y, 10) ? 1 : 0)
         NumAbsCondVisitor v (m_sev, m_bb, false /*non-negated*/);
+        // select only takes a single constraint otherwise its
+        // reasoning gets complicated if the analysis needs to
+        // negate conjunction of constraints. 
         auto csts = v.gen_cst_sys (I, false /*force generating one constraint*/);
         //assert (csts.size () == 0 || csts.size () == 1);
-        if (csts.size () == 1)
+        if (csts.size () > 0)
           m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
         return;
       }
@@ -869,13 +872,14 @@ namespace crab_llvm
       }
 
       if (CmpInst* CI = dyn_cast<CmpInst> (&cond)) {
-        NumAbsCondVisitor v (m_sev, m_bb, false);
+        NumAbsCondVisitor v (m_sev, m_bb, false /*non-negated*/);
         // select only takes a single constraint otherwise its
         // reasoning gets complicated if the analysis needs to
         // negate conjunction of constraints. 
         auto csts = v.gen_cst_sys (*CI, false /*force generating one constraint*/);
-        assert (csts.size () == 1);
-        m_bb.select (lhs, *(csts.begin ()), *op0, *op1);
+        //assert (csts.size () == 0 || csts.size () == 1);
+        if (csts.size () > 0)
+          m_bb.select (lhs, *(csts.begin ()), *op0, *op1);
         return;
       }
 
@@ -1524,8 +1528,8 @@ namespace crab_llvm
             v.visit (I); 
           }
           else {
-            // -- this can happen if the boolean condition is passed
-            //    directly (after optimization) as a function
+            // -- this can happen e.g., if the boolean condition is
+            //    passed directly (after optimization) as a function
             //    parameter
             varname_t lhs = m_sev.symVar (c);
             if (br->getSuccessor (1) == &dst)
