@@ -238,7 +238,7 @@ namespace crab_llvm
       optional<z_lin_exp_t> op2 = m_sev.lookup (v1);
       
       z_lin_cst_sys_t res;
-      
+
       if (op1 && op2) { 
         switch (I.getPredicate ()) {
           case CmpInst::ICMP_EQ:
@@ -626,8 +626,9 @@ namespace crab_llvm
         //    %x = icmp geq %y, 10  ---> %x = ((icmp geq %y, 10) ? 1 : 0)
         NumAbsCondVisitor v (m_sev, m_bb, false /*non-negated*/);
         auto csts = v.gen_cst_sys (I, false /*force generating one constraint*/);
-        assert (csts.size () == 1);
-        m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
+        //assert (csts.size () == 0 || csts.size () == 1);
+        if (csts.size () == 1)
+          m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
         return;
       }
 
