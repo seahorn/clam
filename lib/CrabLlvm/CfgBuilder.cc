@@ -576,7 +576,7 @@ namespace crab_llvm
         if (Instruction * UI = dyn_cast<Instruction>(U.getUser())) {
 
           // I is already lowered 
-          if (isa<BranchInst> (UI)) return false;
+          if (isa<BranchInst> (UI)) continue;
 
           // strip zext/sext if there is one
           if (isa<ZExtInst>(UI) || isa<SExtInst>(UI))
