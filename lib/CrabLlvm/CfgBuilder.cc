@@ -30,26 +30,20 @@
  *
  * - TODOs:
  * 
- *   - Precise translation of pointers: generate Crab pointer
- *     statements such as ptr_store, ptr_load, ptr_assign, new_object,
- *     and new_ptr_func.
+ *   - Replace current translation of pointers (item 2 above) with a
+ *     precise translation. That is, generate Crab pointer statements
+ *     such as ptr_store, ptr_load, ptr_assign, new_object, and
+ *     new_ptr_func.
  * 
- *   - Precise translation of ICmp instructions. ICmp instructions are
- *     currently translated only if:
+ *   - Do not translate Cmp LLVM instructions to Crab select
+ *     statements but instead to some new Crab statement and let
+ *     specialized Crab abstract domains (e.g., decision trees) to
+ *     deal with it natively.
  * 
- *     (1) feeds a LLVM Br instruction
- *     (2) shouldICmpBeLowered returns true
- * 
- *     Case (1) is translated as Crab assume while (2) is translated
- *     to Crab select. Since the translation to Crab select is
- *     expensive and complex (it's reduced to abstract joins and it
- *     might generate disjunctions) we only do it when (2) applies.
- * 
- *     TODO: create a new Crab icmp instruction and let specialized
- *     Crab abstract domains to deal with it natively.
+ *   - Distinguish between arrays of integers and array of pointers so
+ *     that analysis such as nullity can be done.
  * 
  *   - Floating point instructions
- *   - etc
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -77,8 +71,9 @@
 
 // TODO: this translation may generate a lot dead code, in particular,
 // when an instruction feeds load or stores that are not tracked or
-// due to some CmpInst instructions. So we should run a dead code
-// elimination analysis after Crab CFG has been formed.
+// because some CmpInst instructions are not translated. Ideally, we
+// should run a dead code elimination analysis after Crab CFG has been
+// formed.
 
 using namespace llvm;
 
@@ -97,6 +92,28 @@ llvm::cl::opt<bool>
 CrabEnableUniqueScalars ("crab-singleton-aliases",
                          cl::desc ("Treat singleton alias sets as scalar values"), 
                          cl::init (false));
+
+/*  
+ *  LLVM Cmp instructions with users which are not only branches
+ *  (i.e., arithmetic or bitwise operations) are translated to Crab
+ *  select statements. Since the analysis of these select's is
+ *  expensive and complex (it's reduced to abstract joins and it might
+ *  generate disjunctions) we allow user to choose between several
+ *  choices.
+ */
+typedef enum { NONE, BEST_EFFORT, ALL} cmp_prec_level_t;
+llvm::cl::opt<cmp_prec_level_t>
+CrabCmpToSelect ("crab-cmp-to-select", 
+                llvm::cl::desc ("Translate LLVM Cmp instructions to Crab select"),
+                 cl::values(
+                     // expensive
+                     clEnumValN (ALL  , "all" , "All LLVM Cmp instructions"),  
+                     // cheap and precise if the analysis does not require to reason about booleans
+                     clEnumValN (NONE , "none", "None"),
+                    // when some boolean reasoning is needed 
+                     clEnumValN (BEST_EFFORT, "best-effort", "Only if it might help precision without a high analysis cost"),
+                     clEnumValEnd),
+                 cl::init (cmp_prec_level_t::NONE));
 
 /* 
  Allow to track memory but ignoring pointer arithmetic. This makes
@@ -580,18 +597,18 @@ namespace crab_llvm
     const DataLayout* m_dl;
     const TargetLibraryInfo* m_tli;
     basic_block_t& m_bb;
-    const bool m_lower_icmp;  //lower ICmp instructions whenever possible
+    const bool m_has_assume;  //Current block has an assume
     const bool m_is_inter_proc;
     
     
     CrabInstVisitor (sym_eval_t& sev, 
                      const DataLayout* dl, const TargetLibraryInfo* tli,
-                     basic_block_t & bb, bool lower_icmp, bool isInterProc): 
+                     basic_block_t & bb, bool has_assume, bool isInterProc): 
         m_sev (sev),
         m_dl (dl), 
         m_tli (tli),
         m_bb (bb), 
-        m_lower_icmp (lower_icmp),
+        m_has_assume (has_assume),
         m_is_inter_proc (isInterProc)  
     { }
 
@@ -683,11 +700,8 @@ namespace crab_llvm
       return true;
     }
     
-    // XXX: Unless lower_icmp is enabled, we do not try to lower a
-    // comparison instruction in all cases because lowering is
-    // currently expensive (it will increase the number of abstract
-    // joins) and it might not always pay off.
-    bool shouldICmpBeLowered (Value *V, bool lower_icmp) {
+    // Try to figure out if it is worth it to lower the ICmp instruction
+    bool shouldICmpBeLowered (Value *V) {
       for (auto &U: V->uses ()) {
         if (Instruction * UI = dyn_cast<Instruction>(U.getUser())) {
 
@@ -696,10 +710,7 @@ namespace crab_llvm
 
           // strip zext/sext if there is one
           if (isa<ZExtInst>(UI) || isa<SExtInst>(UI))
-            return shouldICmpBeLowered(UI, lower_icmp);
-
-          // we were told to lower the ICmp instruction
-          if (lower_icmp) return true;
+            return shouldICmpBeLowered(UI);
 
           if (PHINode * Phi = dyn_cast<PHINode>(UI))
             for (unsigned i=0, e=Phi->getNumIncomingValues(); i!=e; ++i)
@@ -710,14 +721,13 @@ namespace crab_llvm
               (UI->getOperand(0) == V || UI->getOperand(1) == V))
             return true;
 
-          // XXX: Unless lower_icmp is enabled, logical operations are
-          // not currently considered mainly because they come often
-          // from complex branch conditions and common abstract
-          // domains are unlikely to be precise.  This is specially
-          // expensive when we have many of these operations within
-          // the same block.  Non-Boolean logical operations may not
-          // be so problematic so we may want to translate them in the
-          // future.
+          // XXX: Logical operations are not currently considered
+          // mainly because they come often from complex branch
+          // conditions and common abstract domains are unlikely to be
+          // precise.  This is specially expensive when we have many
+          // of these operations within the same block.  Non-Boolean
+          // logical operations may not be so problematic so we may
+          // want to translate them in the future.
         }
       }
       return false;
@@ -755,7 +765,10 @@ namespace crab_llvm
       if (!m_sev.isTracked (I)) return;
 
       Value*V = &I;
-      if (shouldICmpBeLowered(V, m_lower_icmp)) {
+
+      if ( CrabCmpToSelect == ALL || 
+          (CrabCmpToSelect == BEST_EFFORT && (m_has_assume || shouldICmpBeLowered(V)))) {
+        
         // Perform the following translation:
         //    %x = icmp geq %y, 10  ---> %x = ((icmp geq %y, 10) ? 1 : 0)
         
