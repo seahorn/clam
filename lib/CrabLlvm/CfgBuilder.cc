@@ -76,9 +76,9 @@
 #include "crab_llvm/Support/CFG.hh"
 
 // TODO: this translation may generate a lot dead code, in particular,
-// when an instruction feeds load or stores that are not tracked. So
-// we should run a dead code elimination analysis after Crab CFG has
-// been formed.
+// when an instruction feeds load or stores that are not tracked or
+// due to some CmpInst instructions. So we should run a dead code
+// elimination analysis after Crab CFG has been formed.
 
 using namespace llvm;
 
@@ -193,198 +193,313 @@ namespace crab_llvm
     return crab::cfg::debug_info(File, Line, Col);
   }
 
-  //! Translate Boolean conditions 
-  //  Preconditions: this visitor should not be executed for a
-  //                 block. Instead, it should be called to visit a
-  //                 single statement.
-  class NumAbsCondVisitor : 
-      public InstVisitor<NumAbsCondVisitor>
-  {
-    sym_eval_t& m_sev;
-    basic_block_t& m_bb;
-    // if generated constraints should be negated
-    const bool m_is_negated;
-    // if generated constraints should be added as assumptions,
-    // otherwise as assertions.
-    const bool m_is_assumption; 
-    
-    void add_cst (z_lin_cst_t cst, crab::cfg::debug_info di = crab::cfg::debug_info()) {
-      if (m_is_assumption)
-        m_bb.assume(cst);
-      else
-        m_bb.assertion(cst, di);
-    }
-
-    void normalizeCmpInst(CmpInst &I) {
-      switch (I.getPredicate()){
-        case ICmpInst::ICMP_UGT:	
-        case ICmpInst::ICMP_SGT: I.swapOperands(); break; 
-        case ICmpInst::ICMP_UGE:	
+  static void normalizeCmpInst(CmpInst &I) {
+    switch (I.getPredicate()){
+      case ICmpInst::ICMP_UGT:	
+      case ICmpInst::ICMP_SGT: I.swapOperands(); break; 
+      case ICmpInst::ICMP_UGE:	
         case ICmpInst::ICMP_SGE: I.swapOperands(); break; 
-        default: ;
+      default: ;
+    }
+  }
+
+  static bool isLogicalOp(const Instruction &I) {
+    return (I.getOpcode() >= Instruction::And && 
+            I.getOpcode() <= Instruction::Xor);
+  }
+
+  static bool isBitwiseOp(const Instruction &I) {
+    return (I.getOpcode() >= Instruction::Shl && 
+            I.getOpcode() <= Instruction::AShr);
+  }
+
+  static bool isIntArithOp(const Instruction &I) {
+    return (I.getOpcode() == Instruction::Add ||
+            I.getOpcode() == Instruction::Sub ||
+            I.getOpcode() == Instruction::Mul ||
+            I.getOpcode() == Instruction::UDiv ||
+            I.getOpcode() == Instruction::SDiv ||
+            I.getOpcode() == Instruction::URem ||
+              I.getOpcode() == Instruction::SRem);
+  }
+
+  static bool isAssertFn(const Function* F) {
+    return (F->getName().equals("verifier.assert") || 
+            F->getName().equals("crab.assert") || 
+            F->getName().equals("__CRAB_assert"));
+  }
+
+  static bool isErrorFn(const Function* F) {
+    return (F->getName().equals("seahorn.error") || 
+            F->getName().equals("__SEAHORN_error"));
+  }
+
+  static bool isAssumeFn(const Function* F) {
+    return (F->getName().equals("verifier.assume"));
+  }
+
+  static bool isNotAssumeFn(const Function* F) {
+    return (F->getName().equals("verifier.assume.not"));
+  }
+
+  static bool isVerifierCall (const Function *F) {
+    return (isAssertFn (F) || isErrorFn (F) || isAssumeFn(F) || isNotAssumeFn (F));
+  }
+
+  static bool containsAssume (BasicBlock &B) {
+    for (auto &I: B) {
+      if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+        llvm::CallSite CS (CI);
+        Function * callee = CS.getCalledFunction ();
+        if (callee && (isAssumeFn (callee) || isNotAssumeFn (callee))) 
+          return true;
       }
     }
+    return false;
+  }
 
-   public:
+  static z_lin_cst_sys_t CmpInst2Crab (CmpInst &I, sym_eval_t &sev,
+                                       const bool preciseUnsignedInt, 
+                                       const bool isNegated) {
 
-    z_lin_cst_sys_t gen_cst_sys (CmpInst &I, bool Unsigned = true) {
-
-      normalizeCmpInst(I);
+    normalizeCmpInst(I);
+    
+    const Value& v0 = *I.getOperand (0);
+    const Value& v1 = *I.getOperand (1);
+    
+    optional<z_lin_exp_t> op1 = sev.lookup (v0);
+    optional<z_lin_exp_t> op2 = sev.lookup (v1);
       
-      const Value& v0 = *I.getOperand (0);
-      const Value& v1 = *I.getOperand (1);
-
-      optional<z_lin_exp_t> op1 = m_sev.lookup (v0);
-      optional<z_lin_exp_t> op2 = m_sev.lookup (v1);
-      
-      z_lin_cst_sys_t res;
-
-      if (op1 && op2) { 
-        switch (I.getPredicate ()) {
-          case CmpInst::ICMP_EQ:
-            if (!m_is_negated)
-              res += z_lin_cst_t (*op1 == *op2);
-            else
-              res += z_lin_cst_t (*op1 != *op2);
-            break;
-          case CmpInst::ICMP_NE:
-            if (!m_is_negated)
-              res += z_lin_cst_t (*op1 != *op2);
-            else
-              res += z_lin_cst_t (*op1 == *op2);
-            break;
-          case CmpInst::ICMP_ULT:
-            if (Unsigned) {
-              if (m_sev.isVar (*op1))
-                res += z_lin_cst_t (*op1 >= z_number (0));
-              if (m_sev.isVar (*op2))
-                res += z_lin_cst_t (*op2 >= z_number (0));
-            }
-          case CmpInst::ICMP_SLT:
-            if (!m_is_negated)
-              res += z_lin_cst_t (*op1 <= *op2 - 1);
-            else
-              res += z_lin_cst_t (*op1 >= *op2);
-            break; 
-          case CmpInst::ICMP_ULE:
-            if (Unsigned) {
-              if (m_sev.isVar (*op1))
-                res += z_lin_cst_t (*op1 >= z_number (0));
-              if (m_sev.isVar (*op2))
-                res += z_lin_cst_t (*op2 >= z_number (0));
-            }
-          case CmpInst::ICMP_SLE:
-            if (!m_is_negated)
-              res += z_lin_cst_t (*op1 <= *op2);
-            else
-              res += z_lin_cst_t (*op1 >= *op2 + 1);
-            break;
-          default:  
-            llvm_unreachable ("unreachable");
-        }
+    z_lin_cst_sys_t res;
+    
+    if (op1 && op2) { 
+      switch (I.getPredicate ()) {
+        case CmpInst::ICMP_EQ:
+          if (!isNegated)
+            res += z_lin_cst_t (*op1 == *op2);
+          else
+            res += z_lin_cst_t (*op1 != *op2);
+          break;
+        case CmpInst::ICMP_NE:
+          if (!isNegated)
+            res += z_lin_cst_t (*op1 != *op2);
+          else
+            res += z_lin_cst_t (*op1 == *op2);
+          break;
+        case CmpInst::ICMP_ULT:
+          if (preciseUnsignedInt) {
+            if (sev.isVar (*op1))
+              res += z_lin_cst_t (*op1 >= z_number (0));
+            if (sev.isVar (*op2))
+              res += z_lin_cst_t (*op2 >= z_number (0));
+          }
+        case CmpInst::ICMP_SLT:
+          if (!isNegated)
+            res += z_lin_cst_t (*op1 <= *op2 - 1);
+          else
+            res += z_lin_cst_t (*op1 >= *op2);
+          break; 
+        case CmpInst::ICMP_ULE:
+          if (preciseUnsignedInt) {
+            if (sev.isVar (*op1))
+              res += z_lin_cst_t (*op1 >= z_number (0));
+            if (sev.isVar (*op2))
+              res += z_lin_cst_t (*op2 >= z_number (0));
+          }
+        case CmpInst::ICMP_SLE:
+          if (!isNegated)
+            res += z_lin_cst_t (*op1 <= *op2);
+          else
+            res += z_lin_cst_t (*op1 >= *op2 + 1);
+          break;
+        default:  
+          llvm_unreachable ("unreachable");
       }
-      return res;
     }
+    return res;
+  }
 
-   public:
 
-    NumAbsCondVisitor (sym_eval_t& sev, basic_block_t& bb, bool is_negated,
-                       bool is_assumption = true)
-        : m_sev (sev),
-          m_bb (bb), 
-          m_is_negated (is_negated),
-          m_is_assumption (is_assumption) { }
+  // //! Translate Boolean conditions 
+  // //  Preconditions: this visitor should not be executed for a
+  // //                 block. Instead, it should be called to visit a
+  // //                 single statement.
+  // class NumAbsCondVisitor : 
+  //     public InstVisitor<NumAbsCondVisitor>
+  // {
+  //   sym_eval_t& m_sev;
+  //   basic_block_t& m_bb;
+  //   // if generated constraints should be negated
+  //   const bool m_is_negated;
+  //   // if generated constraints should be added as assumptions,
+  //   // otherwise as assertions.
+  //   const bool m_is_assumption; 
+    
+  //   void add_cst (z_lin_cst_t cst, crab::cfg::debug_info di = crab::cfg::debug_info()) {
+  //     if (m_is_assumption) m_bb.assume(cst);
+  //     else m_bb.assertion(cst, di);
+  //   }
 
-    #if 0
-    void translateBitwiseBranchTrueCond (BinaryOperator&I) {
 
-      assert (!m_is_negated);
+  //  public:
 
-      if (!m_sev.isTracked (I)) return;
+  //   z_lin_cst_sys_t gen_cst_sys (CmpInst &I, bool Unsigned = true) {
 
-      CmpInst* C1 = nullptr;
-      CmpInst* C2 = nullptr;
+  //     normalizeCmpInst(I);
+      
+  //     const Value& v0 = *I.getOperand (0);
+  //     const Value& v1 = *I.getOperand (1);
 
-      if (I.getOperand (0)->getType ()->isIntegerTy () &&
-          I.getOperand (1)->getType ()->isIntegerTy ()) {
-        C1 = dyn_cast<CmpInst> (I.getOperand (0));
-        if (C1)
-          for (auto cst: gen_cst_sys (*C1)) 
-            add_cst(cst, getDebugLoc(&I));
-        else if (BinaryOperator* I0 = dyn_cast<BinaryOperator> (I.getOperand (0)))
-          translateBitwiseBranchTrueCond (*I0);
+  //     optional<z_lin_exp_t> op1 = m_sev.lookup (v0);
+  //     optional<z_lin_exp_t> op2 = m_sev.lookup (v1);
+      
+  //     z_lin_cst_sys_t res;
+
+  //     if (op1 && op2) { 
+  //       switch (I.getPredicate ()) {
+  //         case CmpInst::ICMP_EQ:
+  //           if (!m_is_negated)
+  //             res += z_lin_cst_t (*op1 == *op2);
+  //           else
+  //             res += z_lin_cst_t (*op1 != *op2);
+  //           break;
+  //         case CmpInst::ICMP_NE:
+  //           if (!m_is_negated)
+  //             res += z_lin_cst_t (*op1 != *op2);
+  //           else
+  //             res += z_lin_cst_t (*op1 == *op2);
+  //           break;
+  //         case CmpInst::ICMP_ULT:
+  //           if (Unsigned) {
+  //             if (m_sev.isVar (*op1))
+  //               res += z_lin_cst_t (*op1 >= z_number (0));
+  //             if (m_sev.isVar (*op2))
+  //               res += z_lin_cst_t (*op2 >= z_number (0));
+  //           }
+  //         case CmpInst::ICMP_SLT:
+  //           if (!m_is_negated)
+  //             res += z_lin_cst_t (*op1 <= *op2 - 1);
+  //           else
+  //             res += z_lin_cst_t (*op1 >= *op2);
+  //           break; 
+  //         case CmpInst::ICMP_ULE:
+  //           if (Unsigned) {
+  //             if (m_sev.isVar (*op1))
+  //               res += z_lin_cst_t (*op1 >= z_number (0));
+  //             if (m_sev.isVar (*op2))
+  //               res += z_lin_cst_t (*op2 >= z_number (0));
+  //           }
+  //         case CmpInst::ICMP_SLE:
+  //           if (!m_is_negated)
+  //             res += z_lin_cst_t (*op1 <= *op2);
+  //           else
+  //             res += z_lin_cst_t (*op1 >= *op2 + 1);
+  //           break;
+  //         default:  
+  //           llvm_unreachable ("unreachable");
+  //       }
+  //     }
+  //     return res;
+  //   }
+
+  //  public:
+
+  //   NumAbsCondVisitor (sym_eval_t& sev, basic_block_t& bb, bool is_negated,
+  //                      bool is_assumption = true)
+  //       : m_sev (sev),
+  //         m_bb (bb), 
+  //         m_is_negated (is_negated),
+  //         m_is_assumption (is_assumption) { }
+
+  //   #if 0
+  //   void translateBitwiseBranchTrueCond (BinaryOperator&I) {
+
+  //     assert (!m_is_negated);
+
+  //     if (!m_sev.isTracked (I)) return;
+
+  //     CmpInst* C1 = nullptr;
+  //     CmpInst* C2 = nullptr;
+
+  //     if (I.getOperand (0)->getType ()->isIntegerTy () &&
+  //         I.getOperand (1)->getType ()->isIntegerTy ()) {
+  //       C1 = dyn_cast<CmpInst> (I.getOperand (0));
+  //       if (C1)
+  //         for (auto cst: gen_cst_sys (*C1)) 
+  //           add_cst(cst, getDebugLoc(&I));
+  //       else if (BinaryOperator* I0 = dyn_cast<BinaryOperator> (I.getOperand (0)))
+  //         translateBitwiseBranchTrueCond (*I0);
         
-        C2 = dyn_cast<CmpInst> (I.getOperand (1));
-        if (C2)
-          for (auto cst: gen_cst_sys (*C2)) 
-            add_cst(cst, getDebugLoc(&I));
-        else if (BinaryOperator* I1 = dyn_cast<BinaryOperator> (I.getOperand (1))) 
-          translateBitwiseBranchTrueCond (*I1);
-      }
-    }
+  //       C2 = dyn_cast<CmpInst> (I.getOperand (1));
+  //       if (C2)
+  //         for (auto cst: gen_cst_sys (*C2)) 
+  //           add_cst(cst, getDebugLoc(&I));
+  //       else if (BinaryOperator* I1 = dyn_cast<BinaryOperator> (I.getOperand (1))) 
+  //         translateBitwiseBranchTrueCond (*I1);
+  //     }
+  //   }
 
-    void visitBinaryOperator(BinaryOperator &I) {
-      // It searches only for this particular pattern:
-      //   %o1 = icmp ...
-      //   %o2 = icmp ...
-      //   %f = and %o1 %o2 
-      //   br %f bb1 bb2
-      // and it adds *only* in bb1 the constraints from %o1 and %2. 
-      // 
-      // ** The bitwise operation will be anyway translated. The
-      //    purpose here is to add extra constraints to the abstract
-      //    domain which otherwise would be very hard (or sometimes
-      //    impossible) to infer by itself.
-      //
-      // ** We do not add any constraint in bb2 because we would need
-      //    to add a disjunction and the CFG language does not allow
-      //    that.
-      if (!m_is_negated)
-        translateBitwiseBranchTrueCond (I);      
-    }
-    #endif 
+  //   void visitBinaryOperator(BinaryOperator &I) {
+  //     // It searches only for this particular pattern:
+  //     //   %o1 = icmp ...
+  //     //   %o2 = icmp ...
+  //     //   %f = and %o1 %o2 
+  //     //   br %f bb1 bb2
+  //     // and it adds *only* in bb1 the constraints from %o1 and %2. 
+  //     // 
+  //     // ** The bitwise operation will be anyway translated. The
+  //     //    purpose here is to add extra constraints to the abstract
+  //     //    domain which otherwise would be very hard (or sometimes
+  //     //    impossible) to infer by itself.
+  //     //
+  //     // ** We do not add any constraint in bb2 because we would need
+  //     //    to add a disjunction and the CFG language does not allow
+  //     //    that.
+  //     if (!m_is_negated)
+  //       translateBitwiseBranchTrueCond (I);      
+  //   }
+  //   #endif 
 
-    void visitCmpInst (CmpInst &I) {
-      if (CrabNoPtrArith && 
-          (!I.getOperand (0)->getType ()->isIntegerTy () ||
-           !I.getOperand (1)->getType ()->isIntegerTy ())) 
-        return;    
+  //   void visitCmpInst (CmpInst &I) {
+  //     if (CrabNoPtrArith && 
+  //         (!I.getOperand (0)->getType ()->isIntegerTy () ||
+  //          !I.getOperand (1)->getType ()->isIntegerTy ())) 
+  //       return;    
 
-      auto csts = gen_cst_sys (I);
-      for (auto cst: csts) { add_cst(cst, getDebugLoc(&I)); }
+  //     auto csts = gen_cst_sys (I);
+  //     for (auto cst: csts) { add_cst(cst, getDebugLoc(&I)); }
 
-      if (!m_is_assumption) return;
+  //     if (!m_is_assumption) return;
 
-      const Value&v = I;
-      if (csts.size () > 0 && v.hasNUsesOrMore (2)) {
-        // If I has at least two uses then it means that I is used by
-        // another instruction apart from a branch condition.
-        varname_t lhs = m_sev.symVar (v);
-        if (m_is_negated)
-          add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (0), getDebugLoc(&I));
-        else
-          add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (1), getDebugLoc(&I));
-      }
-    }
+  //     const Value&v = I;
+  //     if (csts.size () > 0 && v.hasNUsesOrMore (2)) {
+  //       // If I has at least two uses then it means that I is used by
+  //       // another instruction apart from a branch condition.
+  //       varname_t lhs = m_sev.symVar (v);
+  //       if (m_is_negated)
+  //         add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (0), getDebugLoc(&I));
+  //       else
+  //         add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (1), getDebugLoc(&I));
+  //     }
+  //   }
 
-    // base case if all else fails
-    void visitInstruction (Instruction &I) {
-      const Value&v = I;
+  //   // base case if all else fails
+  //   void visitInstruction (Instruction &I) {
+  //     const Value&v = I;
 
-      if (!m_sev.isTracked (v)) return;
+  //     if (!m_sev.isTracked (v)) return;
 
-      varname_t lhs = m_sev.symVar (v);
-      if (m_is_negated)
-        add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (0), getDebugLoc(&I));
-      else
-        add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (1), getDebugLoc(&I));
-    }
+  //     varname_t lhs = m_sev.symVar (v);
+  //     if (m_is_negated)
+  //       add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (0), getDebugLoc(&I));
+  //     else
+  //       add_cst(z_lin_exp_t (lhs) == z_lin_exp_t (1), getDebugLoc(&I));
+  //   }
 
-  };
+  // };
 
   //! Translate PHI nodes
-  struct NumAbsPhiVisitor : 
-      public InstVisitor<NumAbsPhiVisitor> {
+  struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 
     sym_eval_t& m_sev;
     // block where assignment/havoc will be inserted
@@ -392,11 +507,9 @@ namespace crab_llvm
     // incoming block of the PHI instruction
     const llvm::BasicBlock& m_inc_BB; 
 
-    NumAbsPhiVisitor (sym_eval_t& sev, 
-                      basic_block_t& bb, 
-                      const llvm::BasicBlock& inc_BB): 
-        m_sev (sev), m_bb (bb), m_inc_BB (inc_BB)
-    { }
+    CrabPhiVisitor (sym_eval_t& sev, basic_block_t& bb, 
+                    const llvm::BasicBlock& inc_BB): 
+        m_sev (sev), m_bb (bb), m_inc_BB (inc_BB) { }
 
     void visitBasicBlock (llvm::BasicBlock &BB) {
       // TODO: use assign_ptr if phi node are pointers
@@ -461,8 +574,7 @@ namespace crab_llvm
   };
 
   //! Translate the rest of instructions
-  struct NumAbsVisitor : 
-      public InstVisitor<NumAbsVisitor> {
+  struct CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
 
     sym_eval_t& m_sev;
     const DataLayout* m_dl;
@@ -472,9 +584,9 @@ namespace crab_llvm
     const bool m_is_inter_proc;
     
     
-    NumAbsVisitor (sym_eval_t& sev, 
-                   const DataLayout* dl, const TargetLibraryInfo* tli,
-                   basic_block_t & bb, bool lower_icmp, bool isInterProc): 
+    CrabInstVisitor (sym_eval_t& sev, 
+                     const DataLayout* dl, const TargetLibraryInfo* tli,
+                     basic_block_t & bb, bool lower_icmp, bool isInterProc): 
         m_sev (sev),
         m_dl (dl), 
         m_tli (tli),
@@ -504,10 +616,34 @@ namespace crab_llvm
       return false;
     }
 
+    // Return true if all uses are BranchInst's 
+    bool AllUsesAreBrInst (Value* V) const {
+      // XXX: do not strip pointers here
+      for (auto &U: V->uses ())
+        if (!isa<BranchInst> (U.getUser())) return false;
+      return true;
+    }
+
+    // Return true if all uses are the callee at callsites
+    bool AllUsesAreIndirectCalls (Value* V) const {
+      // XXX: do not strip pointers here
+      for (auto &U: V->uses ()) {
+        if (CallInst *CI = dyn_cast<CallInst> (U.getUser ())) {
+          llvm::CallSite CS (CI);
+          const Value *callee = CS.getCalledValue ();
+          if (callee == V) continue;
+        }
+        return false;
+      }
+      return true;
+    }
+
+
     // Return true if all uses of V are non-trackable memory accesses.
     // Useful to avoid translating bitcode that won't have any effect
     // anyway.
     bool AllUsesAreNonTrackMem (Value* V) const {
+      // XXX: not sure if we should strip pointers here
       V = V->stripPointerCasts();
       for (auto &U: V->uses ()) {
         if (StoreInst *SI = dyn_cast<StoreInst> (U.getUser())) {
@@ -547,26 +683,6 @@ namespace crab_llvm
       return true;
     }
     
-    static bool isLogicalOp(const Instruction &I) {
-      return (I.getOpcode() >= Instruction::And && 
-              I.getOpcode() <= Instruction::Xor);
-    }
-
-    static bool isBitwiseOp(const Instruction &I) {
-      return (I.getOpcode() >= Instruction::Shl && 
-              I.getOpcode() <= Instruction::AShr);
-    }
-
-    static bool isIntArithOp(const Instruction &I) {
-      return (I.getOpcode() == Instruction::Add ||
-              I.getOpcode() == Instruction::Sub ||
-              I.getOpcode() == Instruction::Mul ||
-              I.getOpcode() == Instruction::UDiv ||
-              I.getOpcode() == Instruction::SDiv ||
-              I.getOpcode() == Instruction::URem ||
-              I.getOpcode() == Instruction::SRem);
-    }
-
     // XXX: Unless lower_icmp is enabled, we do not try to lower a
     // comparison instruction in all cases because lowering is
     // currently expensive (it will increase the number of abstract
@@ -607,6 +723,24 @@ namespace crab_llvm
       return false;
     }
 
+    // Used to ensure all actual parameters of a function are variables
+    std::pair<varname_t, variable_type> normalizeScalarParam (Value& V) {
+      if (Constant *cst = dyn_cast< Constant> (&V)) {
+        varname_t v = m_sev.getVarFac().get ();
+        if (ConstantInt * intCst = dyn_cast<ConstantInt> (cst)) {
+          auto e = m_sev.lookup (*intCst);
+          if (e) {
+            m_bb.assign (v, *e);
+            return make_pair (v, INT_TYPE);
+          }
+        }
+        m_bb.havoc (v);
+        return make_pair (v, UNK_TYPE);
+      }
+      else
+        return make_pair (m_sev.symVar (V), getType (V.getType ()));
+    }
+
    public:
         
     /// skip PHI nodes
@@ -624,19 +758,26 @@ namespace crab_llvm
       if (shouldICmpBeLowered(V, m_lower_icmp)) {
         // Perform the following translation:
         //    %x = icmp geq %y, 10  ---> %x = ((icmp geq %y, 10) ? 1 : 0)
-        NumAbsCondVisitor v (m_sev, m_bb, false /*non-negated*/);
+        
         // select only takes a single constraint otherwise its
         // reasoning gets complicated if the analysis needs to
         // negate conjunction of constraints. 
-        auto csts = v.gen_cst_sys (I, false /*force generating one constraint*/);
+        auto csts = CmpInst2Crab (I, m_sev, 
+                                  false /*generate at most one cst*/, 
+                                  false /*non-negated*/);
         //assert (csts.size () == 0 || csts.size () == 1);
         if (csts.size () > 0)
           m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
-        return;
-      }
+      } else if (CrabIncludeHavoc) {
+        // XXX: here cases where I will become dead
+        
+        if (AllUsesAreBrInst(&I)) return;
+        // TODO: do not havoc if only I's use is a verifier call
+        //       (directly or indirectly via SExt/ZExt)
+        // TODO: do not havoc if only I's use is a Select instruction
 
-      if (CrabIncludeHavoc) 
         m_bb.havoc(m_sev.symVar(I));
+      }
     }
       
     void visitBinaryOperator(BinaryOperator &I) {
@@ -872,14 +1013,16 @@ namespace crab_llvm
       }
 
       if (CmpInst* CI = dyn_cast<CmpInst> (&cond)) {
-        NumAbsCondVisitor v (m_sev, m_bb, false /*non-negated*/);
         // select only takes a single constraint otherwise its
         // reasoning gets complicated if the analysis needs to
         // negate conjunction of constraints. 
-        auto csts = v.gen_cst_sys (*CI, false /*force generating one constraint*/);
+        auto csts = CmpInst2Crab (*CI, m_sev, 
+                                  false /*generate at most one cst*/, 
+                                  false /*non-negated*/);
         //assert (csts.size () == 0 || csts.size () == 1);
         if (csts.size () > 0)
           m_bb.select (lhs, *(csts.begin ()), *op0, *op1);
+        
         return;
       }
 
@@ -898,29 +1041,19 @@ namespace crab_llvm
       /// TODO: generate a ptr_assign instruction if the operands are
       ///       pointers. Special cases for ptrtoint and inttoptr.
 
-      if (!m_sev.isTracked (I)) 
-        return;
+      if (!m_sev.isTracked (I)) return; 
+        
+      if (CrabNoPtrArith && !I.getType ()->isIntegerTy ()) return;
 
-      if (CrabNoPtrArith && !I.getType ()->isIntegerTy ())
-        return;
-
-      if (AllUsesAreNonTrackMem (&I))
-        return;
+      if (AllUsesAreNonTrackMem (&I)) return;
+        
+      if (AllUsesAreIndirectCalls (&I)) return;
 
       varname_t dst = m_sev.symVar (I);
-      const Value& v = *I.getOperand (0); // the value to be casted
-
-      optional<z_lin_exp_t> src = m_sev.lookup (v);
-
-      if (src) {
-        // //if (startPtrOffsetFromZero (&v)) {
-        //   m_bb.assign(dst, 0);
-        // } else {
+      if (optional<z_lin_exp_t> src = m_sev.lookup (*I.getOperand (0))) 
         m_bb.assign(dst, *src);
-        //}
-      }
       else {
-        if (v.getType ()->isIntegerTy (1)) {
+        if (I.getOperand (0)->getType ()->isIntegerTy (1)) {
           m_bb.assume ( z_lin_exp_t (dst) >= z_lin_exp_t (0) );
           m_bb.assume ( z_lin_exp_t (dst) <= z_lin_exp_t (1) );
         }
@@ -1222,56 +1355,52 @@ namespace crab_llvm
       }
     }
 
-   private:
-
-    std::pair<varname_t, variable_type> normalizeScalarParam (Value& V) {
-      if (Constant *cst = dyn_cast< Constant> (&V)) {
-        varname_t v = m_sev.getVarFac().get ();
-        if (ConstantInt * intCst = dyn_cast<ConstantInt> (cst)) {
-          auto e = m_sev.lookup (*intCst);
-          if (e) {
-            m_bb.assign (v, *e);
-            return make_pair (v, INT_TYPE);
-          }
-        }
-        m_bb.havoc (v);
-        return make_pair (v, UNK_TYPE);
+    void doVerifierCall (CallInst &I) {
+      CallSite CS (&I);
+      Function * callee = CS.getCalledFunction ();
+      
+      if (!callee) 
+        return;
+      
+      if (isErrorFn(callee)) {
+        m_bb.assertion (z_lin_cst_t::get_false(), getDebugLoc(&I));
+        return;
       }
-      else
-        return make_pair (m_sev.symVar (V), getType (V.getType ()));
-    }
 
-   public:
+      if (!isAssertFn(callee) && !isAssumeFn(callee) && !isNotAssumeFn(callee)) 
+        return;
 
-    static bool isAssertFn(const Function* F) {
-      return (F->getName().equals("verifier.assert") || 
-              F->getName().equals("crab.assert") || 
-              F->getName().equals("__CRAB_assert"));
-    }
+      Value *cond = CS.getArgument (0);        
+      // strip zext if there is one
+      if (const ZExtInst *ze = dyn_cast<const ZExtInst> (cond))
+        cond = ze->getOperand (0);
 
-    static bool isErrorFn(const Function* F) {
-      return (F->getName().equals("seahorn.error") || 
-              F->getName().equals("__SEAHORN_error"));
-    }
-
-    static bool isAssumeFn(const Function* F) {
-      return (F->getName().equals("verifier.assume"));
-    }
-
-    static bool isNegAssumeFn(const Function* F) {
-      return (F->getName().equals("verifier.assume.not"));
-    }
-
-    static bool containsAssume (BasicBlock &B) {
-      for (auto &I: B) {
-        if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-          llvm::CallSite CS (CI);
-          Function * callee = CS.getCalledFunction ();
-          if (callee && (isAssumeFn (callee) || isNegAssumeFn (callee))) 
-            return true;
+      if (!m_sev.isTracked (*cond)) return;
+      
+      if (CmpInst *CI = dyn_cast <CmpInst> (cond)) {
+        // -- cond is a CmpInst
+        for (auto cst: CmpInst2Crab (*CI, m_sev, true, isNotAssumeFn(callee))) { 
+          if (isAssertFn (callee))
+            m_bb.assertion (cst, getDebugLoc(&I)); 
+          else
+            m_bb.assume (cst); 
         }
+      } else if (ConstantInt *CI = dyn_cast<ConstantInt> (cond)) {
+        // -- cond is a constant
+        if ((CI->isOne () && isNotAssumeFn (callee)) || 
+            (CI->isZero () && !isNotAssumeFn (callee)))
+          m_bb.assume (z_lin_cst_t::get_false ()); 
+      } else { 
+        // -- cond is any other instruction
+        varname_t lhs = m_sev.symVar (*cond);
+        if (isNotAssumeFn (callee))
+          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
+        else if (isAssumeFn (callee))
+          m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
+        else 
+          m_bb.assertion (z_lin_exp_t (lhs) == z_lin_exp_t (1), getDebugLoc(&I));
       }
-      return false;
+
     }
 
     void visitCallInst (CallInst &I) {
@@ -1312,20 +1441,8 @@ namespace crab_llvm
         return;
       }
       
-      if (isAssertFn(callee) || isAssumeFn(callee) || isNegAssumeFn(callee)) {
-        Value *cond = CS.getArgument (0);        
-        // strip zext if there is one
-        if (const ZExtInst *ze = dyn_cast<const ZExtInst> (cond))
-          cond = ze->getOperand (0);
-        if (llvm::Instruction *I = dyn_cast<llvm::Instruction> (cond)) {
-          NumAbsCondVisitor v (m_sev, m_bb, isNegAssumeFn(callee), !isAssertFn(callee));
-          v.visit (I);
-        }
-        return;
-      }
-
-      if (isErrorFn(callee)) {
-        m_bb.assertion(z_lin_cst_t::get_false(), getDebugLoc(&I));
+      if (isVerifierCall (callee)) {
+        doVerifierCall (I);
         return;
       }
 
@@ -1521,21 +1638,30 @@ namespace crab_llvm
               (ci->isZero () && br->getSuccessor (1) != &dst))
             bb.unreachable();
         }
-        else {
-          if (llvm::Instruction *I = 
-              dyn_cast<llvm::Instruction> (& const_cast<llvm::Value&>(c))) {
-            NumAbsCondVisitor v (m_sev, bb, br->getSuccessor (1) == &dst);
-            v.visit (I); 
+        else 
+        {
+          bool isNegated = (br->getSuccessor (1) == &dst);
+
+          if (CmpInst* CI = dyn_cast<CmpInst> (& const_cast<llvm::Value&>(c))) 
+          {
+            auto csts = CmpInst2Crab (*CI, m_sev, true, isNegated);
+            for (auto cst: csts) bb.assume (cst); 
+            
+            if (csts.size () > 0 && c.hasNUsesOrMore (2)) {
+              // If I has at least two uses then it means that I is used by
+              // another instruction apart from a branch condition.
+              varname_t lhs = m_sev.symVar (c);
+              bb.assume ((isNegated) ? z_lin_exp_t (lhs) == z_lin_exp_t (0) :
+                                       z_lin_exp_t (lhs) == z_lin_exp_t (1));
+            }
           }
-          else {
-            // -- this can happen e.g., if the boolean condition is
-            //    passed directly (after optimization) as a function
-            //    parameter
+          else 
+          {
+            // -- if the boolean condition is passed directly (after
+            //    optimization) as a function argument.
             varname_t lhs = m_sev.symVar (c);
-            if (br->getSuccessor (1) == &dst)
-              bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
-            else
-              bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
+            bb.assume ((isNegated) ? z_lin_exp_t (lhs) == z_lin_exp_t (0) :
+                                     z_lin_exp_t (lhs) == z_lin_exp_t (1));
           }
         }
         return opt_basic_block_t(bb);
@@ -1597,7 +1723,7 @@ namespace crab_llvm
       if (!BB) continue;
 
       // -- build a CFG block ignoring branches and phi-nodes
-      NumAbsVisitor v (m_sev, m_dl, m_tli, *BB, NumAbsVisitor::containsAssume (*B), m_is_inter_proc);
+      CrabInstVisitor v (m_sev, m_dl, m_tli, *BB, containsAssume (*B), m_is_inter_proc);
       v.visit (*B);
       
       if (isa<ReturnInst> (B->getTerminator ())) {
@@ -1612,7 +1738,7 @@ namespace crab_llvm
 
           // -- phi nodes in dst are translated into assignments in
           //    the predecessor
-          NumAbsPhiVisitor v (m_sev, (mid_bb ? *mid_bb : *BB), *B);
+          CrabPhiVisitor v (m_sev, (mid_bb ? *mid_bb : *BB), *B);
           v.visit (const_cast<llvm::BasicBlock &>(*dst));
         }
       }
