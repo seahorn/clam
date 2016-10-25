@@ -467,7 +467,13 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.show_summs: crabllvm_cmd.append ('--crab-print-summaries')
     if args.print_cfg: crabllvm_cmd.append ('--crab-print-cfg')
     if args.print_stats: crabllvm_cmd.append ('--crab-stats')
-    crabllvm_cmd.append ('--crab-cmp-to-select={0}'.format (args.crab_cmp_to_select))
+
+    if args.assert_check:
+        if args.crab_cmp_to_select == 'none':
+            crabllvm_cmd.append ('--crab-cmp-to-select=best-effort')
+
+    if args.crab_cmp_to_select != 'none':            
+        crabllvm_cmd.append ('--crab-cmp-to-select={0}'.format (args.crab_cmp_to_select))
 
     # hidden options
     if args.crab_cfg_simplify: crabllvm_cmd.append ('--crab-cfg-simplify')
