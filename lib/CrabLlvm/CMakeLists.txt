@@ -21,24 +21,6 @@ install(TARGETS CrabLlvmAnalysis
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
 
-if (HAVE_CONC)
-  add_library (CrabLlvmConcAnalysis ${CRABLLVM_LIBS_TYPE}  
-    CfgBuilder.cc
-    CrabLlvm.cc
-    ConCrabLlvm.cc
-    NameValues.cc
-    )
-  
-  target_link_libraries (CrabLlvmConcAnalysis ${CRAB_LIBS})
-  if (USE_COTIRE)
-    cotire(CrabLlvmConcAnalysis)  
-  endif () 
-
-  install(TARGETS CrabLlvmConcAnalysis 
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib)
-endif ()
-
 add_library (CrabLlvmInstrumentation ${CRABLLVM_LIBS_TYPE}
   InsertInvariants.cc
   )

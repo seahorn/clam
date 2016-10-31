@@ -29,7 +29,6 @@
 #include "crab_llvm/Passes.hh"
 #include "crab_llvm/CrabLlvm.hh"
 #include <crab_llvm/Transforms/InsertInvariants.hh>
-#include "crab_llvm/ConCrabLlvm.hh"
 
 #include "crab/common/debug.hpp"
 
@@ -58,11 +57,6 @@ NoCrab ("no-crab",
         llvm::cl::desc ("Output bitecode but disable Crab analysis (debugging)"),
         llvm::cl::init (false),
         llvm::cl::Hidden);
-
-static llvm::cl::opt<bool>
-Concurrency ("crab-concur", llvm::cl::desc ("Analysis of concurrent programs (experimental)"),
-             llvm::cl::init (false),
-             llvm::cl::Hidden);
 
 static llvm::cl::opt<bool>
 TurnUndefNondet ("crab-turn-undef-nondet", 
@@ -203,24 +197,14 @@ int main(int argc, char **argv) {
     pass_manager.add (crab_llvm::createLowerSelectPass ());   
 
   if (!NoCrab) {
-    if (Concurrency) {
-    #ifdef HAVE_CONC
-      // REALLY EXPERIMENTAL ...
-      pass_manager.add (new crab_llvm::ConCrabLlvm ());
-    #else
-      errs () << "Crab-llvm needs to be compiled with -DHAVE_CONC=ON.\n";
-    #endif 
-    }
-    else {
-      /// -- run the crab analyzer
-      pass_manager.add (new crab_llvm::CrabLlvm ());
-    }
+    /// -- run the crab analyzer
+    pass_manager.add (new crab_llvm::CrabLlvm ());
   }
 
   if (!AsmOutputFilename.empty ()) 
     pass_manager.add (createPrintModulePass (asmOutput->os ()));
  
-  if (!NoCrab && !Concurrency) {
+  if (!NoCrab) {
     /// -- insert invariants as assume instructions
     pass_manager.add (new crab_llvm::InsertInvariants ());
     /// -- simplify invariants added in the bytecode.

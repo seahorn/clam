@@ -16,7 +16,4 @@
 /** Define whether llvm-seahorn is available */
 #cmakedefine HAVE_LLVM_SEAHORN ${HAVE_LLVM_SEAHORN}
 
-/** Define whether include concurrency analysis */
-#cmakedefine HAVE_CONC ${HAVE_CONC}
-
 #endif

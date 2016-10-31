@@ -29,9 +29,6 @@ target_link_libraries (crabllvm
   LlvmPasses 
   ${USED_LIBS}
   ${LLVM_SEAHORN_LIBS})
-if (HAVE_CONC)
-  target_link_libraries (crabllvm CrabLlvmConcAnalysis)
-endif ()
 if (HAVE_DSA)
   target_link_libraries (crabllvm ${DSA_LIBS})
 endif ()
