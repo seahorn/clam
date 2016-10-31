@@ -36,8 +36,8 @@
  *     new_ptr_func.
  * 
  *   - Do not translate Cmp LLVM instructions to Crab select
- *     statements but instead to some new Crab statement and let
- *     specialized Crab abstract domains (e.g., decision trees) to
+ *     statements but instead to some new Crab statement for Bools and
+ *     let specialized Crab abstract domains (e.g., decision trees) to
  *     deal with it natively.
  * 
  *   - Distinguish between arrays of integers and array of pointers so
@@ -263,21 +263,54 @@ namespace crab_llvm
     return (isAssertFn (F) || isErrorFn (F) || isAssumeFn(F) || isNotAssumeFn (F));
   }
 
-  static bool containsAssume (BasicBlock &B) {
+  static bool containsVerifierCall (BasicBlock &B) {
     for (auto &I: B) {
       if (CallInst *CI = dyn_cast<CallInst>(&I)) {
         llvm::CallSite CS (CI);
         Function * callee = CS.getCalledFunction ();
-        if (callee && (isAssumeFn (callee) || isNotAssumeFn (callee))) 
+        if (callee && isVerifierCall (callee)) 
           return true;
       }
     }
     return false;
   }
 
-  static z_lin_cst_sys_t CmpInst2Crab (CmpInst &I, sym_eval_t &sev,
-                                       const bool preciseUnsignedInt, 
-                                       const bool isNegated) {
+
+  
+  static void mkUnsignedLtOrLeq (CmpInst &I, sym_eval_t &sev, basic_block_t &bb,
+				 z_lin_exp_t op1, z_lin_exp_t op2) {
+    /*
+	   if (op1 >= 0)
+	       if (op2 >= 0)
+	          op1 < op2
+               else 
+                  true
+            else 
+               if (op2 < 0)
+                  op1 < op2
+               else 
+                  false
+    */
+    assert (I.getPredicate () == CmpInst::ICMP_ULT || I.getPredicate () == CmpInst::ICMP_ULE);
+    
+    /// XXX: this will be really expensive to analyze!
+    varname_t b1 = sev.getVarFac().get ();
+    z_lin_cst_t c1  = ( (I.getPredicate () == CmpInst::ICMP_ULT) ?
+			z_lin_cst_t(op1 <= op2 - 1) :
+			z_lin_cst_t(op1 <= op2));
+    bb.select (b1, c1 , 1, 0);	  
+    varname_t b2 = sev.getVarFac().get ();
+    z_lin_cst_t c2 (op2 >= z_number (0));
+    bb.select (b2, c2, z_var(b1), 1);	  
+    varname_t b3 = sev.getVarFac().get ();
+    z_lin_cst_t c3 (op2 <= -1);	  
+    bb.select (b3, c3, z_var(b1), 0);
+    z_lin_cst_t c4 (op1 >= 0);	  
+    bb.select (sev.symVar (I), c4, z_var(b2),z_var(b3));
+  }
+
+  static bool CmpInst2BoolCrab (CmpInst &I, sym_eval_t &sev, basic_block_t &bb,
+				const bool preciseUnsignedInt) {
 
     normalizeCmpInst(I);
     
@@ -287,53 +320,104 @@ namespace crab_llvm
     optional<z_lin_exp_t> op1 = sev.lookup (v0);
     optional<z_lin_exp_t> op2 = sev.lookup (v1);
       
-    z_lin_cst_sys_t res;
+
+    bool inserted_stmt = false;
     
     if (op1 && op2) { 
       switch (I.getPredicate ()) {
-        case CmpInst::ICMP_EQ:
-          if (!isNegated)
-            res += z_lin_cst_t (*op1 == *op2);
-          else
-            res += z_lin_cst_t (*op1 != *op2);
-          break;
-        case CmpInst::ICMP_NE:
-          if (!isNegated)
-            res += z_lin_cst_t (*op1 != *op2);
-          else
-            res += z_lin_cst_t (*op1 == *op2);
-          break;
-        case CmpInst::ICMP_ULT:
-          if (preciseUnsignedInt) {
-            if (sev.isVar (*op1))
-              res += z_lin_cst_t (*op1 >= z_number (0));
-            if (sev.isVar (*op2))
-              res += z_lin_cst_t (*op2 >= z_number (0));
-          }
-        case CmpInst::ICMP_SLT:
-          if (!isNegated)
-            res += z_lin_cst_t (*op1 <= *op2 - 1);
-          else
-            res += z_lin_cst_t (*op1 >= *op2);
-          break; 
-        case CmpInst::ICMP_ULE:
-          if (preciseUnsignedInt) {
-            if (sev.isVar (*op1))
-              res += z_lin_cst_t (*op1 >= z_number (0));
-            if (sev.isVar (*op2))
-              res += z_lin_cst_t (*op2 >= z_number (0));
-          }
-        case CmpInst::ICMP_SLE:
-          if (!isNegated)
-            res += z_lin_cst_t (*op1 <= *op2);
-          else
-            res += z_lin_cst_t (*op1 >= *op2 + 1);
-          break;
-        default:  
-          llvm_unreachable ("unreachable");
+      case CmpInst::ICMP_EQ:
+	{
+	  z_lin_cst_t cst (*op1 == *op2);
+	  bb.select (sev.symVar(I), cst, 1, 0);
+	  inserted_stmt = true;
+	  break;
+	}
+      case CmpInst::ICMP_NE:
+	{
+	  z_lin_cst_t cst (*op1 != *op2);
+	  bb.select (sev.symVar(I), cst, 1, 0);
+	  inserted_stmt = true;	
+	  break;
+	}
+      case CmpInst::ICMP_ULT:
+	if (preciseUnsignedInt) {
+	  mkUnsignedLtOrLeq (I, sev, bb, *op1, *op2);
+	  inserted_stmt = true;
+	}
+	break;
+      case CmpInst::ICMP_SLT:
+	{ 
+	  z_lin_cst_t cst (*op1 <= *op2 - 1);
+	  bb.select (sev.symVar(I), cst, 1, 0);
+	  inserted_stmt = true;	
+	  break;
+	}
+      case CmpInst::ICMP_ULE:
+	if (preciseUnsignedInt) {
+	  mkUnsignedLtOrLeq (I, sev, bb, *op1, *op2);
+	  inserted_stmt = true;	
+	}
+	break;
+      case CmpInst::ICMP_SLE:
+	{ 
+	  z_lin_cst_t cst (*op1 <= *op2);
+	  bb.select (sev.symVar(I), cst, 1, 0);
+	  inserted_stmt = true;	
+	  break;
+	}
+      default:  
+	llvm_unreachable ("unreachable");
       }
     }
-    return res;
+    return inserted_stmt;
+  }
+
+  
+  static boost::optional<z_lin_cst_t>
+  CmpInst2IntCrab (CmpInst &I, sym_eval_t &sev, const bool isNegated) {
+    normalizeCmpInst(I);
+    
+    const Value& v0 = *I.getOperand (0);
+    const Value& v1 = *I.getOperand (1);
+    
+    optional<z_lin_exp_t> op1 = sev.lookup (v0);
+    optional<z_lin_exp_t> op2 = sev.lookup (v1);
+    
+    if (op1 && op2) { 
+      switch (I.getPredicate ()) {
+      case CmpInst::ICMP_EQ:
+	if (!isNegated)
+	  return z_lin_cst_t (*op1 == *op2);
+	else
+	  return z_lin_cst_t (*op1 != *op2);
+	break;
+      case CmpInst::ICMP_NE:
+	if (!isNegated)
+	  return z_lin_cst_t (*op1 != *op2);
+	else
+	  return z_lin_cst_t (*op1 == *op2);
+	break;
+      case CmpInst::ICMP_ULT: // loss of precision
+	break;
+      case CmpInst::ICMP_SLT:
+	if (!isNegated)
+	  return z_lin_cst_t (*op1 <= *op2 - 1);
+	else
+	  return z_lin_cst_t (*op1 >= *op2);
+	break; 
+      case CmpInst::ICMP_ULE: // loss of precision
+	break;
+      case CmpInst::ICMP_SLE:
+	if (!isNegated)
+	  return z_lin_cst_t (*op1 <= *op2);
+	else
+	  return z_lin_cst_t (*op1 >= *op2 + 1);
+	break;
+      default:  
+	llvm_unreachable ("unreachable");
+      }
+    }
+    return boost::optional<z_lin_cst_t> ();
   }
 
 
@@ -597,18 +681,18 @@ namespace crab_llvm
     const DataLayout* m_dl;
     const TargetLibraryInfo* m_tli;
     basic_block_t& m_bb;
-    const bool m_has_assume;  //Current block has an assume
+    const bool m_has_verifier_call;  //Current block has an assume
     const bool m_is_inter_proc;
     
     
     CrabInstVisitor (sym_eval_t& sev, 
                      const DataLayout* dl, const TargetLibraryInfo* tli,
-                     basic_block_t & bb, bool has_assume, bool isInterProc): 
+                     basic_block_t & bb, bool has_verifier_call, bool isInterProc): 
         m_sev (sev),
         m_dl (dl), 
         m_tli (tli),
         m_bb (bb), 
-        m_has_assume (has_assume),
+        m_has_verifier_call (has_verifier_call),
         m_is_inter_proc (isInterProc)  
     { }
 
@@ -767,28 +851,15 @@ namespace crab_llvm
       Value*V = &I;
 
       if ( CrabCmpToSelect == ALL || 
-          (CrabCmpToSelect == BEST_EFFORT && (m_has_assume || shouldICmpBeLowered(V)))) {
-        
+          (CrabCmpToSelect == BEST_EFFORT && (m_has_verifier_call || shouldICmpBeLowered(V)))) {
         // Perform the following translation:
         //    %x = icmp geq %y, 10  ---> %x = ((icmp geq %y, 10) ? 1 : 0)
-        
-        // select only takes a single constraint otherwise its
-        // reasoning gets complicated if the analysis needs to
-        // negate conjunction of constraints. 
-        auto csts = CmpInst2Crab (I, m_sev, 
-                                  false /*generate at most one cst*/, 
-                                  false /*non-negated*/);
-        //assert (csts.size () == 0 || csts.size () == 1);
-        if (csts.size () > 0)
-          m_bb.select (m_sev.symVar(I), *(csts.begin ()), 1, 0);
+	CmpInst2BoolCrab (I, m_sev, m_bb, true /*precise with unsigned int */);
       } else if (CrabIncludeHavoc) {
         // XXX: here cases where I will become dead
         
         if (AllUsesAreBrInst(&I)) return;
-        // TODO: do not havoc if only I's use is a verifier call
-        //       (directly or indirectly via SExt/ZExt)
         // TODO: do not havoc if only I's use is a Select instruction
-
         m_bb.havoc(m_sev.symVar(I));
       }
     }
@@ -1026,15 +1097,12 @@ namespace crab_llvm
       }
 
       if (CmpInst* CI = dyn_cast<CmpInst> (&cond)) {
-        // select only takes a single constraint otherwise its
-        // reasoning gets complicated if the analysis needs to
-        // negate conjunction of constraints. 
-        auto csts = CmpInst2Crab (*CI, m_sev, 
-                                  false /*generate at most one cst*/, 
-                                  false /*non-negated*/);
-        //assert (csts.size () == 0 || csts.size () == 1);
-        if (csts.size () > 0)
-          m_bb.select (lhs, *(csts.begin ()), *op0, *op1);
+        // XXX: we choose to model a LLVM select only if its condition
+        // is a single constraint otherwise its reasoning gets
+        // complicated if the analysis needs to negate conjunction of
+        // constraints.
+        if (auto cst_opt = CmpInst2IntCrab (*CI, m_sev, false /*non-negated*/))
+          m_bb.select (lhs, *cst_opt, *op0, *op1);
         
         return;
       }
@@ -1389,16 +1457,28 @@ namespace crab_llvm
         cond = ze->getOperand (0);
 
       if (!m_sev.isTracked (*cond)) return;
-      
-      if (CmpInst *CI = dyn_cast <CmpInst> (cond)) {
-        // -- cond is a CmpInst
-        for (auto cst: CmpInst2Crab (*CI, m_sev, true, isNotAssumeFn(callee))) { 
-          if (isAssertFn (callee))
-            m_bb.assertion (cst, getDebugLoc(&I)); 
-          else
-            m_bb.assume (cst); 
-        }
-      } else if (ConstantInt *CI = dyn_cast<ConstantInt> (cond)) {
+
+      // XXX: cond has been already translated if crab-cmp-to-select != none
+      // if (CmpInst *CI = dyn_cast <CmpInst> (cond)) {
+      //   // -- cond is a CmpInst
+      // 	if (auto cst_opt = CmpInst2IntCrab (*CI, m_sev, isNotAssumeFn(callee))) {
+      //     if (isAssertFn (callee))
+      //       m_bb.assertion (*cst_opt, getDebugLoc(&I)); 
+      //     else
+      //       m_bb.assume (*cst_opt); 
+      //   }  else {
+      // 	  if (CmpInst2BoolCrab (*CI, m_sev, m_bb, true /*precise unsigned int*/)) {
+      // 	    varname_t lhs = m_sev.symVar (*cond);
+      // 	    if (isNotAssumeFn (callee))
+      // 	      m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (0));
+      // 	    else if (isAssumeFn (callee))
+      // 	      m_bb.assume (z_lin_exp_t (lhs) == z_lin_exp_t (1));
+      // 	    else 
+      // 	      m_bb.assertion (z_lin_exp_t (lhs) == z_lin_exp_t (1), getDebugLoc(&I));
+      // 	  }
+      // 	}
+      // } else
+      if (ConstantInt *CI = dyn_cast<ConstantInt> (cond)) {
         // -- cond is a constant
         if ((CI->isOne () && isNotAssumeFn (callee)) || 
             (CI->isZero () && !isNotAssumeFn (callee)))
@@ -1657,10 +1737,10 @@ namespace crab_llvm
 
           if (CmpInst* CI = dyn_cast<CmpInst> (& const_cast<llvm::Value&>(c))) 
           {
-            auto csts = CmpInst2Crab (*CI, m_sev, true, isNegated);
-            for (auto cst: csts) bb.assume (cst); 
+	    auto cst_opt = CmpInst2IntCrab (*CI, m_sev, isNegated);
+	    if (cst_opt) bb.assume (*cst_opt); 
             
-            if (csts.size () > 0 && c.hasNUsesOrMore (2)) {
+            if (cst_opt && c.hasNUsesOrMore (2)) {
               // If I has at least two uses then it means that I is used by
               // another instruction apart from a branch condition.
               varname_t lhs = m_sev.symVar (c);
@@ -1736,7 +1816,7 @@ namespace crab_llvm
       if (!BB) continue;
 
       // -- build a CFG block ignoring branches and phi-nodes
-      CrabInstVisitor v (m_sev, m_dl, m_tli, *BB, containsAssume (*B), m_is_inter_proc);
+      CrabInstVisitor v (m_sev, m_dl, m_tli, *BB, containsVerifierCall (*B), m_is_inter_proc);
       v.visit (*B);
       
       if (isa<ReturnInst> (B->getTerminator ())) {

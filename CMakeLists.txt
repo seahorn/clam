@@ -380,6 +380,11 @@ add_definitions(-Wno-redeclared-class-member -Wno-sometimes-uninitialized)
 
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
   add_definitions( -Wno-unused-local-typedefs)
+  else ()
+   if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedef")
+     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-inconsistent-missing-override")
+   endif ()
 endif ()
 
 if (TopLevel)
