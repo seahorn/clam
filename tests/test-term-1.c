@@ -1,3 +1,8 @@
+// RUN: %crabllvm -O0 --crab-dom=term-dis-int --crab-assert-check=assert "%s" 2>&1 | OutputCheck %s
+// CHECK: ^1  Number of total safe checks$
+// CHECK: ^0  Number of total error checks$
+// CHECK: ^0  Number of total warning checks$
+
 extern int nd ();
 extern void __CRAB_assert(int);
 
@@ -31,7 +36,7 @@ int main()
     u = 3;
 
   //__CRAB_assert(u >= 3 && u <= 13);
-  // w/ --crab-dom=term-int or --crab-dom=term-dis-int
+  
   __CRAB_assert(u >= 3 && u <= 5);
   if (nd ())
     return 42;

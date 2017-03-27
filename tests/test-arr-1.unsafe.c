@@ -1,6 +1,5 @@
-// RUN: %crabllvm -O0 --crab-dom=int --crab-track=arr --crab-assert-check=assert "%s" 2>&1 | OutputCheck %s
-// CHECK: ^1  Number of total safe checks$
-// CHECK: ^0  Number of total error checks$
+// RUN: %crabllvm -O0 --crab-dom=term-dis-int --crab-track=arr --crab-assert-check=assert "%s" 2>&1 | OutputCheck %s
+// CHECK: ^1  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
 extern int nd ();
 extern void __CRAB_assert(int);
@@ -19,6 +18,6 @@ int main ()
   }
 
   int res = a[i-1];
-  __CRAB_assert(res >= 0 && res <= 5);
+  __CRAB_assert(res == 4); // it's actually false but the domain is too weak for that
   return res;
 }

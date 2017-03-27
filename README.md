@@ -39,6 +39,18 @@ If you want to use the boxes domain then add to step 2 `-DUSE_LDD=ON`.
 
 If you want to use the apron domains then add to step 2 `-DUSE_APRON=ON`.
 
+(Optionally) To run some regression tests:
+
+3. ```cmake --build . --target test-crabllvm```
+
+For step 3 you need to install `lit` and `OutputCheck`:
+
+```
+$ apt-get install python-pip
+$ pip install lit
+$ pip install OutputCheck
+```
+
 # Crab-llvm architecture #
 
 ![Crab-Llvm Architecture](https://github.com/caballa/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")

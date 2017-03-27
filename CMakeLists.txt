@@ -12,6 +12,9 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
     "In-source builds are not allowed. Please clean your source tree and try again.")
 endif()
 
+enable_testing()
+include (CTest)
+
 # determine if this is top-level or embedded project
 if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
   set (TopLevel TRUE)
@@ -77,8 +80,14 @@ if (TopLevel)
   option (CRABLLVM_STATIC_EXE "Static executable." OFF)
 
   set (Boost_USE_STATIC_LIBS ON)
-  find_package (Boost 1.55 REQUIRED COMPONENTS system unit_test_framework)
-  IF (Boost_FOUND)
+  option (UNIT_TESTS "Compile unit tests" OFF)
+  if (UNIT_TESTS)
+    find_package (Boost 1.55 REQUIRED COMPONENTS system unit_test_framework)
+  else ()
+    find_package (Boost 1.55 REQUIRED COMPONENTS system)
+  endif ()
+
+  if (Boost_FOUND)
     include_directories (${Boost_INCLUDE_DIRS})
   endif ()
 
@@ -255,7 +264,7 @@ if (GIT_FOUND)
   ## XXX: public repository currently unavailable
   # set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
   #      CACHE STRING "crab public repository")
-  set (CRAB_CORE_REPO "git@github.com:caballa/crab.git"
+  set (CRAB_CORE_REPO "https://github.com/caballa/crab.git"
        CACHE STRING "crab private repository")
   ExternalProject_Add(crab
     GIT_REPOSITORY ${CRAB_CORE_REPO}
@@ -420,6 +429,7 @@ if (TopLevel)
   add_subdirectory(lib)
   add_subdirectory(tools)
   add_subdirectory(py)
+  add_subdirectory(tests)
 endif()
 
 configure_file( include/crab_llvm/config.h.cmake
