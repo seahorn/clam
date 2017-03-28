@@ -54,10 +54,11 @@ if (BUILD_CRABLLVM_LIBS_SHARED)
   set(CRABLLVM_LIBS_TYPE SHARED)
   # so that executables outside the build tree can find later shared
   # libraries
-  # set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-  # if (NOT CMAKE_INSTALL_RPATH)
-  #   set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
-  # endif ()
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+  set(CMAKE_MACOSX_RPATH TRUE)
+  if (NOT CMAKE_INSTALL_RPATH)
+    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+  endif ()
 else()
   message (STATUS "All crabllvm libraries will be built statically")
   set(CRABLLVM_LIBS_TYPE STATIC)
@@ -66,6 +67,7 @@ endif ()
 # Even if CRABLLVM_LIBS_TYPE=STATIC we could have a mix of shared and
 # static libraries
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set(CMAKE_MACOSX_RPATH TRUE)
 if (NOT CMAKE_INSTALL_RPATH)
   set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 endif ()
