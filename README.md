@@ -295,17 +295,9 @@ The special thing about the above LLVM bitecode is the existence of
 that the result of the load instruction at block `loop.exit` is
 between 0 and 5.
 
-# Licensing #
-
-Crab-llvm is currently under a licensing process. Meanwhile, Crab-llvm cannot be
-publicly distributed.
-
 # Known limitations of the translation from bitecode to Crab CFG#
 
-- Variadic functions are ignored.
 - Only unlimited integers.
 - Floating point operations are ignored 
-- Pointer addresses are abstracted by their numerical offsets. This
-  means that if you want to use a shape/pointer abstract domain the
-  translation must be extended.
-- ...
+- The translation abstracts pointer operations to arithmetic
+  operations involving only numerical offsets.
