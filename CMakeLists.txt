@@ -43,27 +43,16 @@ option (BUILD_CRABLLVM_LIBS_SHARED "Build all CrabLlvm libraries shared." OFF)
 # Add path for custom modules
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# Temporary fix because ldd provides only static libraries
-if (USE_LDD)
-  message (STATUS "ldd provides only static libraries. Forced CrabLlvm static building.")
-  set (BUILD_CRABLLVM_LIBS_SHARED OFF)
-endif ()
-
 if (BUILD_CRABLLVM_LIBS_SHARED)
   message (STATUS "All crabllvm libraries will be built as shared libraries")
   set(CRABLLVM_LIBS_TYPE SHARED)
-  # so that executables outside the build tree can find later shared
-  # libraries
-  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-  set(CMAKE_MACOSX_RPATH TRUE)
-  if (NOT CMAKE_INSTALL_RPATH)
-    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
-  endif ()
 else()
   message (STATUS "All crabllvm libraries will be built statically")
   set(CRABLLVM_LIBS_TYPE STATIC)
 endif ()
 
+# so that executables outside the build tree can find later shared
+# libraries
 # Even if CRABLLVM_LIBS_TYPE=STATIC we could have a mix of shared and
 # static libraries
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
@@ -81,7 +70,9 @@ if (TopLevel)
 
   option (CRABLLVM_STATIC_EXE "Static executable." OFF)
 
-  set (Boost_USE_STATIC_LIBS ON)
+  if (NOT BUILD_CRABLLVM_LIBS_SHARED)  
+    set (Boost_USE_STATIC_LIBS ON)
+  endif ()  
   option (UNIT_TESTS "Compile unit tests" OFF)
   if (UNIT_TESTS)
     find_package (Boost 1.55 REQUIRED COMPONENTS system unit_test_framework)
@@ -142,6 +133,9 @@ if (USE_LDD)
          -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
          -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
          -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+	 # XXX: ldd is always compiled statically.
+	 # We add -fPIC flag so it can be linked with a shared library
+	 -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON	 
          TEST_AFTER_INSTALL 1
          TEST_COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
          LOG_DOWNLOAD 1
@@ -262,12 +256,9 @@ else ()
 endif ()
 
 if (GIT_FOUND)
-  set (CRAB_CORE_TAG "origin/master" CACHE STRING "crab tag to use")
-  ## XXX: public repository currently unavailable
-  # set (CRAB_CORE_REPO "https://github.com/seahorn/crab.git"
-  #      CACHE STRING "crab public repository")
+  set (CRAB_CORE_TAG "origin/crab-llvm" CACHE STRING "crab tag to use")
   set (CRAB_CORE_REPO "https://github.com/caballa/crab.git"
-       CACHE STRING "crab private repository")
+       CACHE STRING "crab repository")
   ExternalProject_Add(crab
     GIT_REPOSITORY ${CRAB_CORE_REPO}
     GIT_TAG ${CRAB_CORE_TAG}
@@ -505,7 +496,7 @@ if (TopLevel)
 
    install (FILES ${CMAKE_CURRENT_SOURCE_DIR}/README.md DESTINATION .)
    # install all the licenses
-   # install(FILES LICENSE.txt DESTINATION share/doc
+   # install(FILES LICENSE DESTINATION share/doc
    #         RENAME crabllvm_license.txt)       
 
    if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ext/llvm/LICENSE.TXT)
@@ -514,19 +505,4 @@ if (TopLevel)
          RENAME llvm_license.txt)
    endif()
    
-   if (EXISTS ${CMAKE_CURRENT_BINARY_DIR}/crab/src/crab/Ikos_LICENSE.pdf)
-       install (
-         FILES
-         ${CMAKE_CURRENT_BINARY_DIR}/crab/src/crab/Ikos_LICENSE.pdf
-         DESTINATION share/doc
-         RENAME ikos_license.pdf)
-   endif()
-  
-   if (EXISTS ${CMAKE_CURRENT_BINARY_DIR}/crab/src/crab/Crab_LICENSE.txt)
-       install (
-         FILES
-         ${CMAKE_CURRENT_BINARY_DIR}/crab/src/crab/Crab_LICENSE.txt
-         DESTINATION share/doc
-         RENAME crab_license.txt)
-   endif()
 endif ()

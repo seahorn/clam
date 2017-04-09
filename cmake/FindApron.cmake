@@ -8,15 +8,17 @@ if (NOT APRON_FOUND)
 
    find_path(APRON_INCLUDE_DIR NAMES ap_abstract0.h PATHS ${APRON_ROOT}/include)
 
-   find_library(Apron_Polka_Lib NAMES polkaMPQ PATHS ${APRON_ROOT}/lib)
+   ### XXX: we grab static libraries
+   
+   find_library(Apron_Polka_Lib NAMES libpolkaMPQ.a PATHS ${APRON_ROOT}/lib)
    ## octD is faster than octMPQ
-   find_library(Apron_Oct_Lib NAMES octD PATHS ${APRON_ROOT}/lib)
+   find_library(Apron_Oct_Lib NAMES liboctD.a PATHS ${APRON_ROOT}/lib)
    # find_library(Apron_Oct_Lib NAMES octMPQ PATHS ${APRON_ROOT}/lib)
-   find_library(Apron_Opt_Oct_Lib NAMES optoct PATHS ${APRON_ROOT}/lib)
-   find_library(Apron_Opt_Oct_utils_Lib NAMES linkedlistapi PATHS ${APRON_ROOT}/lib)
-   find_library(Apron_Apron_Lib NAMES apron PATHS ${APRON_ROOT}/lib)
-   find_library(Apron_Box_Lib NAMES boxMPQ PATHS ${APRON_ROOT}/lib)
-   find_library(Apron_Itv_Lib NAMES itvMPQ PATHS ${APRON_ROOT}/lib)
+   find_library(Apron_Opt_Oct_Lib NAMES liboptoct.a PATHS ${APRON_ROOT}/lib)
+   find_library(Apron_Opt_Oct_utils_Lib NAMES liblinkedlistapi.a PATHS ${APRON_ROOT}/lib)
+   find_library(Apron_Apron_Lib NAMES libapron.a PATHS ${APRON_ROOT}/lib)
+   find_library(Apron_Box_Lib NAMES libboxMPQ.a PATHS ${APRON_ROOT}/lib)
+   find_library(Apron_Itv_Lib NAMES libitvMPQ.a PATHS ${APRON_ROOT}/lib)
    
    set(APRON_LIBRARY ${Apron_Polka_Lib} ${Apron_Oct_Lib} 
      ${Apron_Opt_Oct_Lib} ${Apron_Opt_Oct_utils_Lib}
