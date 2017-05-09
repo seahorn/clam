@@ -2,7 +2,7 @@
 find_program(LIT_COMMAND lit REQUIRED)
 
 # add the test suite
-add_lit_testsuite(test-crabllvm "Run simple tests"
+add_lit_testsuite(tests "Run simple tests"
   -v 
   ${CMAKE_CURRENT_SOURCE_DIR}  ## where .cfg file is located
   PARAMS

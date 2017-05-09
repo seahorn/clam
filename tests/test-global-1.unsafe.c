@@ -1,4 +1,4 @@
-// RUN: %crabllvm -O0 --crab-dom=int --crab-assert-check=assert "%s" 2>&1 | OutputCheck %s 
+// RUN: %crabllvm -O0 --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck %s 
 // CHECK: ^1  Number of total warning checks$
 
 extern int __VERIFIER_NONDET();

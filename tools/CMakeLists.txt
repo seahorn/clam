@@ -3,9 +3,8 @@ add_definitions(-D__STDC_LIMIT_MACROS)
 
 set (USED_LIBS 
   ${Boost_SYSTEM_LIBRARY}
-  ${GMPXX_LIB}
-  ${GMP_LIB}
-  ${RT_LIB})
+  ${CRAB_LIBS}
+)
 
 set(LLVM_LINK_COMPONENTS 
   irreader 

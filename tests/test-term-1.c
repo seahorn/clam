@@ -1,4 +1,4 @@
-// RUN: %crabllvm -O0 --crab-dom=term-dis-int --crab-assert-check=assert "%s" 2>&1 | OutputCheck %s
+// RUN: %crabllvm -O0 --crab-dom=term-dis-int --crab-check=assert "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$

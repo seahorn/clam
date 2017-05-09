@@ -1,4 +1,4 @@
-// RUN: %crabllvm -O0 --crab-inter --crab-dom=int --crab-track=arr --crab-assert-check=assert "%s" 2>&1 | OutputCheck %s
+// RUN: %crabllvm -O0 --crab-inter --crab-dom=int --crab-track=arr --crab-check=assert "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 extern int nd ();
 extern void __CRAB_assert(int);
