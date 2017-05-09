@@ -1,5 +1,7 @@
 # Crab-llvm #
 
+<a href="https://travis-ci.org/caballa/crab-llvm"><img src="https://travis-ci.org/caballa/crab-llvm.svg?branch=master" title="Ubuntu 12.04 LTS 64bit, g++-4.8"/></a>
+
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /> 
 <img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
@@ -256,12 +258,12 @@ memory contents is desired.
 
 Finally, to make easier the communication with other LLVM-based tools,
 Crab-llvm can output the invariants by inserting them into the LLVM
-bitecode via `verifier.assume` instructions. The option
+bitcode via `verifier.assume` instructions. The option
 `--crab-add-invariants=block-entry` injects the invariants that hold
 at each basic block entry while option
 `--crab-add-invariants=after-load` injects the invariants that hold
 right after each LLVM load instruction. The option `all` injects
-invariants in all above locations. To see the final LLVM bitecode just
+invariants in all above locations. To see the final LLVM bitcode just
 add the option `-o out.bc`.
   
 Consider the next program:
@@ -322,14 +324,14 @@ The content of `test.crab.bc` should be similar to:
     }
 ```
 
-The special thing about the above LLVM bitecode is the existence of
+The special thing about the above LLVM bitcode is the existence of
 `@verifier.assume` instructions. For instance, the instruction
 `@verifier.assume(i1 %crab_2)` indicates that `%i.0` is between 0 and
 10 at the loop header. Also, `@verifier.assume(i1 %crab_23)` indicates
 that the result of the load instruction at block `loop.exit` is
 between 0 and 5.
 
-# Known limitations of the translation from bitecode to Crab CFG #
+# Known limitations of the translation from bitcode to Crab CFG #
 
 - Translation only covers integers and we use unlimited integers so no
   machine arithmetic is considered.

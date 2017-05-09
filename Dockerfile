@@ -3,7 +3,7 @@
 # OS image
 FROM ubuntu:14.04
 
-MAINTAINER Temesghen Kahsai <lememta@gmail.com>
+MAINTAINER Jorge Navas <navasjorgea@gmail.com>
 
 ENV PATH="/home/seahorn/crab-llvm/build/run/bin:$PATH"
 
@@ -23,16 +23,17 @@ RUN \
 WORKDIR /home/crab
 
 # Install Docker
-RUN git clone https://github.com/seahorn/crab-llvm.git 
+RUN git clone https://github.com/caballa/crab-llvm.git 
 RUN \
    cd crab-llvm && \
    mkdir build && \
    cd build && \
-   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=run ../ && \
-   cmake --build . && \
-   cmake --build . /home/crab/crab-llvm && \
-   cmake --build . && \
-   cmake --build . /home/crab/crab-llvm && \
-   cmake --build . --target install  
+   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=run -DUSE_LDD=ON -DUSE_APRON=ON ../ && \
+   cmake --build . --target extra  && \               
+   cmake --build . --target crab && cmake .. && \
+   cmake --build . --target ldd && cmake .. && \
+   cmake --build . --target apron && cmake .. && \
+   cmake --build . --target llvm && cmake .. &&\                 
+   cmake --build . --target install 
   
    
