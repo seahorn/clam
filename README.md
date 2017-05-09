@@ -260,8 +260,9 @@ bitecode via `verifier.assume` instructions. The option
 `--crab-add-invariants=block-entry` injects the invariants that hold
 at each basic block entry while option
 `--crab-add-invariants=after-load` injects the invariants that hold
-right after each LLVM load instruction. To see the final LLVM bitecode
-just add the option `-o out.bc`.
+right after each LLVM load instruction. The option `all` injects
+invariants in all above locations. To see the final LLVM bitecode just
+add the option `-o out.bc`.
   
 Consider the next program:
 
@@ -283,9 +284,8 @@ Consider the next program:
 
 and type
 
-    crabllvm.py test.c --crab-live --crab-track=arr --crab-add-invariants-at-entries \
-	--crab-add-invariants-after-loads -o test.crab.bc
-
+    crabllvm.py test.c --crab-live --crab-track=arr --crab-add-invariants=all -o test.crab.bc
+    llvm-dis test.crab.bc
 
 The content of `test.crab.bc` should be similar to:
 

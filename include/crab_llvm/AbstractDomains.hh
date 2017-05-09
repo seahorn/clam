@@ -174,8 +174,15 @@ namespace crab_llvm {
      ABS_DOM m_abs;                                                            \
     public:                                                                    \
      id_t getId () const { return m_id;}                                       \
-                                                                               \
+       									       \
+     WRAPPER (ABS_DOM abs, id_t id): GenericAbsDomWrapper(), m_id(id), m_abs(abs) { } \
+  									       \
      WRAPPER (ABS_DOM abs): GenericAbsDomWrapper (), m_id (ID), m_abs (abs) { }\
+                                                                               \
+     GenericAbsDomWrapperPtr clone () const {                                  \
+       auto res = boost::make_shared<WRAPPER>(m_abs, m_id); 		       \
+       return res;                                                             \
+     }                                                                         \
                                                                                \
      ABS_DOM& get () { return m_abs; }                                         \
                                                                                \
@@ -222,6 +229,8 @@ namespace crab_llvm {
 
   struct GenericAbsDomWrapper {
 
+    typedef boost::shared_ptr<GenericAbsDomWrapper> GenericAbsDomWrapperPtr;
+    
      typedef enum { intv, dbm, split_dbm, 
                     term_intv, term_dis_intv, 
                     ric, 
@@ -239,10 +248,12 @@ namespace crab_llvm {
 
      GenericAbsDomWrapper () { }
 
-    virtual ~GenericAbsDomWrapper () { }
+     virtual ~GenericAbsDomWrapper () { }
 
      virtual id_t getId () const = 0;
 
+     virtual GenericAbsDomWrapperPtr clone () const = 0;
+    
      virtual void write (crab::crab_os& o) = 0;
 
      virtual z_lin_cst_sys_t to_linear_constraints () = 0;
@@ -250,7 +261,7 @@ namespace crab_llvm {
      virtual void forget(const vector<varname_t>& vars) = 0;
    };
 
-   typedef boost::shared_ptr<GenericAbsDomWrapper> GenericAbsDomWrapperPtr;
+   typedef GenericAbsDomWrapper::GenericAbsDomWrapperPtr GenericAbsDomWrapperPtr;
 
    inline crab::crab_os& operator<<(crab::crab_os& o , 
                                     const GenericAbsDomWrapperPtr& v) {
@@ -310,7 +321,8 @@ namespace crab_llvm {
     private:
      
      typedef array_smashing<B> array_smashing_t;       
-
+     typedef ArraySmashingDomainWrapper<B> this_type;
+     
      id_t m_id;     
      array_smashing_t m_abs;
      
@@ -320,6 +332,11 @@ namespace crab_llvm {
      
      ArraySmashingDomainWrapper(array_smashing_t abs):  
          GenericAbsDomWrapper (), m_id (getAbsDomId(abs)), m_abs (abs) { }
+
+     GenericAbsDomWrapperPtr clone () const {
+       auto res = boost::make_shared<this_type>(m_abs);
+       return res; 
+     }
      
      array_smashing_t& get () {
        return m_abs;
@@ -334,9 +351,8 @@ namespace crab_llvm {
      }
 
      void forget (const vector<varname_t>& vars) { 
-       crab::domains::domain_traits<array_smashing_t>::forget (m_abs,          
-                                                               vars.begin (),  
-                                                               vars.end ());   
+       crab::domains::domain_traits<array_smashing_t>::
+	 forget (m_abs,vars.begin (),vars.end ());
      }                                                                   
    };
 

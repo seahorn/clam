@@ -32,7 +32,7 @@
 using namespace llvm;
 using namespace crab_llvm;
 
-enum InsertInvsLoc { NONE, BLOCK_ENTRY, AFTER_LOAD};
+enum InsertInvsLoc { NONE, BLOCK_ENTRY, AFTER_LOAD, ALL};
 static llvm::cl::opt<InsertInvsLoc>
 InsertInvs("crab-add-invariants", 
         llvm::cl::desc("Instrument code with invariants"),
@@ -42,6 +42,9 @@ InsertInvs("crab-add-invariants",
                         "Add invariants that hold at each block entry"),
             clEnumValN (AFTER_LOAD, "after-load",
                         "Add invariants that hold after each load instruction"),
+            clEnumValN (ALL, "all",
+                        "Add invariants at all above locations"),
+	    
             clEnumValEnd),
         llvm::cl::init (NONE));
             
@@ -235,7 +238,7 @@ namespace crab_llvm
     for (auto &s: bb) {
 
       s.accept (&vis); //propagate the invariant one statement forward
-
+    
       const llvm::LoadInst* I = nullptr;
       z_lin_cst_t::variable_set_t load_vs;
       if (s.is_arr_read ()) { 
@@ -263,7 +266,7 @@ namespace crab_llvm
       CrabLlvm* crab = &getAnalysis<CrabLlvm> ();
       VariableFactory &vfac = crab->getVariableFactory ();
       auto shadows = vfac.get_shadow_vars ();
-      crab::domains::domain_traits<AbsDomain>::forget (inv, shadows.begin(), shadows.end());            
+      crab::domains::domain_traits<AbsDomain>::forget (inv, shadows.begin(), shadows.end());
 
       if (inv.is_top ())
         continue;
@@ -275,7 +278,7 @@ namespace crab_llvm
         if (!(vs & load_vs).empty ())
           rel_csts += cst;
       }
-      
+
       // -- Insert assume's the next after I
       Builder.SetInsertPoint (const_cast<llvm::LoadInst*> (I));
       llvm::BasicBlock* InsertBlk = Builder.GetInsertBlock ();
@@ -340,14 +343,14 @@ namespace crab_llvm
     bool change = false;
     for (auto &B : F) {
 
-      if (InsertInvs == BLOCK_ENTRY) {
+      if (InsertInvs == BLOCK_ENTRY || InsertInvs == ALL) {
         // --- Instrument basic block entry
         auto pre = crab->getPre (&B, false /*remove shadows*/);
         auto csts = pre->to_linear_constraints ();
         change |= instrument_entries (csts, &B, F.getContext(), cg);
       }
 
-      if (InsertInvs == AFTER_LOAD) {
+      if (InsertInvs == AFTER_LOAD || InsertInvs == ALL) {
         // --- We only instrument Load instructions
         if (reads_memory (B)) {
 

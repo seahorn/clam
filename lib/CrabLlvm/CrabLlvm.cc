@@ -152,7 +152,7 @@ CrabTrackLev("crab-track",
 
 typedef enum { NONE = 0, ASSERTION = 1, NULLITY = 2} assert_check_kind_t;
 llvm::cl::opt<assert_check_kind_t>
-CrabAssertCheck ("crab-assert-check", 
+CrabAssertCheck ("crab-check", 
                  llvm::cl::desc ("Check user assertions"),
                  cl::values(
                      clEnumValN (NONE      , "none"  , "None"),
@@ -637,31 +637,35 @@ namespace crab_llvm {
 
   // return invariants that hold at the entry of BB
   GenericAbsDomWrapperPtr 
-  CrabLlvm::getPre (const llvm::BasicBlock *BB, bool KeepShadows) const {
+  CrabLlvm::getPre (const llvm::BasicBlock *BB, bool keep_shadows) const {
     const_iterator it = m_pre_map.find (BB);
     assert (it != m_pre_map.end ());
-    if (KeepShadows)
+    if (keep_shadows)
       return it->second;
     else {
       vector<varname_t> shadows (m_vfac.get_shadow_vars ().begin (),
                                  m_vfac.get_shadow_vars ().end ());
-      it->second->forget (shadows); 
-      return it->second;
+      // make a copy before projecting shadow variables out
+      GenericAbsDomWrapperPtr invs = it->second->clone();
+      invs->forget (shadows); 
+      return invs;
     }
   }   
 
   // return invariants that hold at the exit of BB
   GenericAbsDomWrapperPtr 
-  CrabLlvm::getPost (const llvm::BasicBlock *BB, bool KeepShadows) const {
+  CrabLlvm::getPost (const llvm::BasicBlock *BB, bool keep_shadows) const {
     const_iterator it = m_post_map.find (BB);
     assert (it != m_post_map.end ());
-    if (KeepShadows)
+    if (keep_shadows)
       return it->second;
     else {
       vector<varname_t> shadows (m_vfac.get_shadow_vars ().begin (),
                                  m_vfac.get_shadow_vars ().end ());
-      it->second->forget (shadows); 
-      return it->second;
+      // make a copy before projecting shadow variables out
+      GenericAbsDomWrapperPtr invs = it->second->clone();
+      invs->forget (shadows); 
+      return invs;
     }
   }
 
@@ -674,8 +678,6 @@ namespace crab_llvm {
       for (auto &B : F) {
         const llvm::BasicBlock * BB = &B;
         o << "\t" << BB->getName () << ": ";
-        // auto inv = getPost (BB, KeepShadows);
-        // o << inv << "\n";
         auto pre = getPre (BB, KeepShadows);
         auto post = getPost (BB, KeepShadows);
         o << pre << " ==> " << post << "\n";
