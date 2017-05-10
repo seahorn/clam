@@ -1,11 +1,6 @@
 add_definitions(-D__STDC_CONSTANT_MACROS)
 add_definitions(-D__STDC_LIMIT_MACROS)
 
-set (USED_LIBS 
-  ${Boost_SYSTEM_LIBRARY}
-  ${CRAB_LIBS}
-)
-
 set(LLVM_LINK_COMPONENTS 
   irreader 
   bitwriter 
@@ -17,7 +12,10 @@ set(LLVM_LINK_COMPONENTS
   objcarcopts)
 
 add_executable(crabllvm-pp crabllvm-pp.cc)
-target_link_libraries (crabllvm-pp LlvmPasses ${USED_LIBS} ${LLVM_SEAHORN_LIBS})
+target_link_libraries (crabllvm-pp
+  LlvmPasses
+  ${LLVM_SEAHORN_LIBS}
+ )
 llvm_config (crabllvm-pp ${LLVM_LINK_COMPONENTS})
 install(TARGETS crabllvm-pp RUNTIME DESTINATION bin)
 
@@ -25,14 +23,12 @@ add_executable(crabllvm crabllvm.cc)
 target_link_libraries (crabllvm
   CrabLlvmAnalysis 
   CrabLlvmInstrumentation 
-  LlvmPasses 
-  ${USED_LIBS}
-  ${LLVM_SEAHORN_LIBS})
+  LlvmPasses
+  ${LLVM_SEAHORN_LIBS}
+)
 if (HAVE_DSA)
   target_link_libraries (crabllvm ${DSA_LIBS})
 endif ()
-
-
 llvm_config (crabllvm ${LLVM_LINK_COMPONENTS})
 install(TARGETS crabllvm RUNTIME DESTINATION bin)
 

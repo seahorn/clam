@@ -75,6 +75,7 @@ if (TopLevel)
   endif()
 
   option (CRABLLVM_STATIC_EXE "Static executable." OFF)
+  
   if (NOT BUILD_CRABLLVM_LIBS_SHARED)  
     set (Boost_USE_STATIC_LIBS ON)
   endif ()
@@ -135,16 +136,16 @@ endif ()
 if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/crab AND
     EXISTS ${CMAKE_SOURCE_DIR}/crab/CMakeLists.txt)
   set(CRAB_INCLUDE_DIR "crab/include")
-  set(CRAB_LIBS_TYPE ${CRABMCMT_LIBS_TYPE})
+  set(CRAB_LIBS_TYPE ${CRABLLVM_LIBS_TYPE})
   configure_file(${CRAB_INCLUDE_DIR}/crab/config.h.cmake
     ${CMAKE_BINARY_DIR}/include/crab/config.h)
   add_subdirectory(crab)
-  ##if (NOT TopLevel)
-  ##  # propagate variables to the caller
-  ###  set (CRAB_FOUND TRUE PARENT_SCOPE)
-  ##  set (CRAB_INCLUDE_DIR ${CRAB_INCLUDE_DIR} PARENT_SCOPE)
-  ##  ##set (CRAB_LIBS ${CRAB_LIBS} PARENT_SCOPE)
-  ###endif()
+  #if (NOT TopLevel)
+  #   # propagate variables to the caller
+  #  set (CRAB_FOUND TRUE PARENT_SCOPE)
+  #  set (CRAB_INCLUDE_DIR ${CRAB_INCLUDE_DIR} PARENT_SCOPE)
+  #  set (CRAB_LIBS ${CRAB_LIBS} PARENT_SCOPE)
+  #endif()
 else()
   message (WARNING "No crab found. Run \n\tcmake --build . --target crab && cmake ${CMAKE_SOURCE_DIR}")
   return ()
@@ -173,6 +174,7 @@ if (TopLevel)
     -DLLVM_TARGETS_TO_BUILD:STRING=X86 -DWITH_POLY:BOOL=OFF
     -DLLVM_ENABLE_PEDANTIC=OFF 
     -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=TRUE
+    -DLLVM_BUILD_LLVM_DYLIB:BOOL=${BUILD_CRABLLVM_LIBS_SHARED}
     LOG_CONFIGURE 1
     LOG_BUILD 1
     LOG_INSTALL 1)
