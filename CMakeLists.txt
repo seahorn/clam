@@ -258,6 +258,7 @@ if (TopLevel)
 endif ()
 
 include_directories(${CrabLlvm_SOURCE_DIR}/include)
+include_directories (${CMAKE_BINARY_DIR}/include)
 add_subdirectory(lib)
 
 if (TopLevel)
