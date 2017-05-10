@@ -11,7 +11,8 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/ErrorHandling.h"
 
-#include "crab_llvm/AbstractDomains.hh"
+#include "crab_llvm/crab_domains.hh"
+#include "crab_llvm/wrapper_domain.hh"
 #include "crab_llvm/MemAnalysis.hh"
 
 #include <boost/shared_ptr.hpp>
@@ -32,15 +33,11 @@ namespace crab {
 
 namespace crab_llvm {
 
-  class CfgBuilder; 
- 
   using namespace llvm;
-  using namespace crab::cfg_impl;
 
   /*! Compute invariants using Crab for the whole module. */
   class CrabLlvm : public llvm::ModulePass {
 
-    typedef typename CfgBuilder::cfg_ptr_t cfg_ptr_t;
     typedef crab::analyzer::liveness<cfg_ref_t> liveness_t;
     typedef crab::cg::call_graph<cfg_ref_t> call_graph_t; 
     typedef crab::cg::call_graph_ref<call_graph_t> call_graph_ref_t;

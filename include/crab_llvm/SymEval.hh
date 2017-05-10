@@ -13,7 +13,6 @@ namespace crab_llvm
 {
 
   using namespace llvm;
-  using namespace std;
   using namespace crab::cfg;
 
   //! Map llvm values to symbolic integer linear expressions

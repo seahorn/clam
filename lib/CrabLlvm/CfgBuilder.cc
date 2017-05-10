@@ -168,7 +168,6 @@ CrabUnsoundArrayInit ("crab-arr-unsound-init",
 namespace crab_llvm
 {
 
-  using namespace crab::cfg_impl;
   using namespace boost;
 
   static variable_type getType (Type * ty) {
@@ -1654,7 +1653,34 @@ namespace crab_llvm
     
   }; // end class
 
+  CfgBuilder::CfgBuilder(Function& func, 
+			 VariableFactory& vfac, MemAnalysis& mem, 
+			 tracked_precision tracklev, bool isInterProc,
+			 const TargetLibraryInfo* tli)
+    : m_is_cfg_built (false),                          
+      m_func (func), 
+      m_sev (vfac, mem, tracklev),
+      m_id (0),
+      m_cfg (boost::make_shared<cfg_t>(&m_func.getEntryBlock (), tracklev)),
+      m_tracklev (tracklev),
+      m_is_inter_proc (isInterProc),
+      m_dl (func.getParent ()->getDataLayout ()),
+      m_tli (tli) { }
 
+  CfgBuilder::~CfgBuilder () { 
+    for (llvm::BasicBlock* B: m_fake_assume_blocks) {
+      delete B; // B->eraseFromParent ();
+    }
+  }
+
+  cfg_ptr_t CfgBuilder::getCfg () { 
+    if (!m_is_cfg_built) {
+      build_cfg ();
+      m_is_cfg_built = true;
+    }
+    return m_cfg;
+  }
+  
   CfgBuilder::opt_basic_block_t CfgBuilder::lookup (const llvm::BasicBlock &B) {  
     llvm::BasicBlock* BB = const_cast<llvm::BasicBlock*> (&B);
     llvm_bb_map_t::iterator it = m_bb_map.find (BB);
