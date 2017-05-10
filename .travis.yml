@@ -22,8 +22,8 @@ before_install:
    - until sudo apt-get -qq install libstdc++5; do echo retry; done
    - if [[ $CMAKE_CXX_COMPILER == g++-5 ]]; then until sudo apt-get -qq install g++-5; do echo retry; done fi
    - sudo apt-get install --yes python-pip
-   - sudo pip install --yes lit
-   - sudo pip install --yes OutputCheck
+   - sudo pip install lit
+   - sudo pip install OutputCheck
 
 install:
   - sudo apt-get install --yes libgmp-dev
