@@ -51,7 +51,6 @@ script:
   - /usr/bin/cmake --build . --target crab && /usr/bin/cmake ..
   - /usr/bin/cmake --build . --target ldd && /usr/bin/cmake ..
   - /usr/bin/cmake --build . --target apron && /usr/bin/cmake ..
-  - /usr/bin/cmake --build . --target llvm && /usr/bin/cmake ..                
   - /usr/bin/cmake --build . --target install
   - /usr/bin/cmake --build . --target tests
 
