@@ -40,13 +40,15 @@ install:
   - mkdir -p $LZ
   - wget --output-document=llvm-z3.tar.gz https://www.dropbox.com/s/cipjz38k3boyd1v/llvm-3.6-z3.tar.gz?dl=1;
   - tar xvf llvm-z3.tar.gz -C $LZ;
+  - export PATH="$PATH:$TRAVIS_BUILD_DIR/install"
+  - export | grep "PATH"
 
 script:
   - cd crab-llvm
   - mkdir -p build
   - cd build
   - mv $LZ/run run
-  - /usr/bin/cmake -DBOOST_ROOT=$BOOST_ROOT -DLLVM_DIR=$(pwd)/run/share/llvm/cmake -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER} -DCMAKE_PROGRAM_PATH=/usr/bin  -DCMAKE_INSTALL_PREFIX=run -DUSE_LDD=ON -DUSE_APRON=ON ../;
+  - /usr/bin/cmake -DBOOST_ROOT=$BOOST_ROOT -DLLVM_DIR=$(pwd)/run/share/llvm/cmake -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER} -DCMAKE_PROGRAM_PATH=/usr/bin  -DCMAKE_INSTALL_PREFIX=$TRAVIS_BUILD_DIR/install -DUSE_LDD=ON -DUSE_APRON=ON ../;
   - /usr/bin/cmake --build . --target extra                 
   - /usr/bin/cmake --build . --target crab && /usr/bin/cmake ..
   - /usr/bin/cmake --build . --target ldd && /usr/bin/cmake ..
