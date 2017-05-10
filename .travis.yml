@@ -40,7 +40,7 @@ install:
   - mkdir -p $LZ
   - wget --output-document=llvm-z3.tar.gz https://www.dropbox.com/s/cipjz38k3boyd1v/llvm-3.6-z3.tar.gz?dl=1;
   - tar xvf llvm-z3.tar.gz -C $LZ;
-  - export PATH="$PATH:$TRAVIS_BUILD_DIR/install"
+  - export PATH="$PATH:$TRAVIS_BUILD_DIR/install/bin"
   - export | grep "PATH"
 
 script:
