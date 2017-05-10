@@ -90,37 +90,32 @@ $ pip install OutputCheck
 
 ![Crab-Llvm Architecture](https://github.com/caballa/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
 
-# Usage #
+# Demo 1 #
 
 Consider the program `test.c`:
 
-```c	 
-    extern void __CRAB_assume (int);
-    extern int __CRAB_nd();
-    extern void __CRAB_nonop2(int, int);
+```c
+extern void __CRAB_assume (int);
+extern void __CRAB_assert(int);
+extern int  __CRAB_nd();
 
-    int main() {
-       int k = __CRAB_nd();
-       int n = __CRAB_nd();
-       __CRAB_assume (k > 0);
-       __CRAB_assume (n > 0);
+int main() {
+  int k = __CRAB_nd();
+  int n = __CRAB_nd();
+  __CRAB_assume (k > 0);
+  __CRAB_assume (n > 0);
+  
+  int x = k;
+  int y = k;
+  while (x < n) {
+    x++;
+    y++;
+  }
+  __CRAB_assert (x >= y);
+  __CRAB_assert (x <= y);  
+  return 0;
+}
 
-       int x = k;
-       int y = k;
-       while (x < n) {
-           x++;
-           y++;
-       }
-
-       // We would like to see the relationship between x and y
-       // at the end of this function. However, at this program
-       // point x and y are dead so LLVM will kill them. One trick
-       // is to use an external function that takes x and y as
-       // parameters to keep them alive.
-	   
-       __CRAB_nonop2(x,y);
-       return 0;
-    }
 ```
 
 Crab-llvm provides a Python script called `crabllvm.py`. Type the
@@ -133,47 +128,53 @@ command:
   based on LLVM 3.6, the version of clang must be 3.6 as well. 
 
 
-The output should be something like this:
+If the above command succeeds, then the output should be something
+like this:
 
 	Function main
+
+	_1: {} ==> { ..., y.0-x.0<=0, x.0-y.0<=0}
 	
-	_1: {_3-x.0<=0, y.0-x.0<=0, x.0-_3<=0, y.0-_3<=0, _3-y.0<=0, x.0-y.0<=0}
-	_x.0: {_3-x.0<=0, y.0-x.0<=0, _3-y.0<=0, x.0-y.0<=0}
-	_12: {_br2-y.0<=0, _13-y.0<=0, _3-y.0<=-1, x.0-y.0<=0, x.0-_5<=0, _3-_5<=-1, y.0-_5<=0, _13-_5<=0,
-          _br2-_5<=0, x.0-_13<=0, _3-_13<=-1, y.0-_13<=0, _br2-_13<=0, y.0-_br2<=0, _3-_br2<=-1, x.0-_br2<=0,
-          _13-_br2<=0, _13-x.0<=0, _br2-x.0<=0, _3-x.0<=-1, y.0-x.0<=0}
-	_y.0.lcssa: {_3-x.0<=0, y.0-x.0<=0, _5-x.0<=0, y.0.lcssa-x.0<=0, x.0.lcssa-x.0<=0, _3-y.0<=0, x.0-y.0<=0,
-                 _5-y.0<=0, y.0.lcssa-y.0<=0, x.0.lcssa-y.0<=0, y.0-y.0.lcssa<=0, _3-y.0.lcssa<=0,
-                 x.0-y.0.lcssa<=0, _5-y.0.lcssa<=0, x.0.lcssa-y.0.lcssa<=0, x.0-x.0.lcssa<=0, _3-x.0.lcssa<=0,
-                 y.0-x.0.lcssa<=0, _5-x.0.lcssa<=0, y.0.lcssa-x.0.lcssa<=0}
+	_x.0: { ..., y.0-x.0<=0, x.0-y.0<=0} ==> { ..., y.0-x.0<=0, x.0-y.0<=0}
+	
+	_12: { ..., y.0-x.0<=0, x.0-y.0<=0, x.0-_5<=-1, y.0-_5<=-1} ==>
+	     { ..., _br2-y.0<=0, _13-y.0<=0, x.0-y.0<=0, x.0-_5<=0, y.0-_5<=0, _13-_5<=0, _br2-_5<=0,
+	       x.0-_13<=0, y.0-_13<=0, _br2-_13<=0, y.0-_br2<=0, x.0-_br2<=0, _13-_br2<=0, _13-x.0<=0,
+	       _br2-x.0<=0, y.0-x.0<=0}
+	       
+	_y.0.lcssa: { ..., y.0-x.0<=0, _5-x.0<=0, y.0.lcssa-x.0<=0, x.0.lcssa-x.0<=0, x.0-y.0<=0,
+	              _5-y.0<=0, y.0.lcssa-y.0<=0,x.0.lcssa-y.0<=0, y.0-y.0.lcssa<=0, x.0-y.0.lcssa<=0,
+		      _5-y.0.lcssa<=0, x.0.lcssa-y.0.lcssa<=0, x.0-x.0.lcssa<=0,
+		      y.0-x.0.lcssa<=0, _5-x.0.lcssa<=0, y.0.lcssa-x.0.lcssa<=0} ==>
+ 	            { ..., _call3 -> [1, 1], _call4 -> [1, 1], x.0.lcssa-y.0.lcssa<=0,
+		      y.0.lcssa-x.0.lcssa<=0}
 
 It shows the invariants inferred for function `main`. The format of
 this output is:
 
-	bb_1: invariants_1
+	bb_1: pre_invariants_1 => post_invariants_1
 	...
-	bb_n: invariants_n
+	bb_n: pre_invariants_n => post_invariants_n
 
-where `bb` is a basic block identifier and `invariants` is a
-conjunction of linear constraints over program variables that hold at
-the entry of the basic block `bb`.
+where `bb` is a basic block identifier and `pre_invariants`
+(`post_invariants`) is a conjunction of linear constraints over
+program variables that hold at the entry (exit) of the basic block
+`bb`.
 
-Note that unfortunately there is not a direct translation from the
-basic block identifiers to the original C program. Moreover, the
-variable names might not correspond to the C variable names. The
-reason is that Crab-llvm does not analyze C but instead the
-corresponding [LLVM](http://llvm.org/) bitcode generated after
-compiling the C program with [Clang](http://clang.llvm.org/).
-
-To help users understanding the invariants Crab-llvm provides an
-option to visualize the CFG of the function described in terms of the
-LLVM bitcode. Type the command:
+Note that unfortunately Crab-llvm does not provide a translation from
+the basic block identifiers and variable names to the original C
+program. The reason is that Crab-llvm does not analyze C but instead
+the corresponding [LLVM](http://llvm.org/) bitcode generated after
+compiling the C program with [Clang](http://clang.llvm.org/). To help
+users understanding the invariants Crab-llvm provides an option to
+visualize the CFG of the function described in terms of the LLVM
+bitcode:
 
     crabllvm.py test.c --llvm-view-cfg
 
 and you should see a screen with a similar CFG to this one:
 
-   <img src="http://seahorn.github.io/images/test.c.dot.png" alt="LLVM CFG of test.c" width=375 height=400 />
+   <img src="https://github.com/caballa/crab-llvm/blob/master/demo/test.c.dot.png" alt="LLVM CFG of test.c" width=375 height=400 />
 
 Since we are interested at the relationships between `x` and `y` after
 the loop, the LLVM basic block of interest is `_y.0.lcssa` and the
@@ -186,7 +187,25 @@ our tool and see the linear constraints:
     x.0.lcssa-y.0.lcssa<=0, ... , y.0.lcssa-x.0.lcssa<=0
 
 that implies the desired invariant `x.0.lcssa` = `y.0.lcssa`.
-	
+
+Apart from inferring invariants, Crab-llvm allows checking for
+assertions. To do that, programs must be annotated with
+`__CRAB_assert(c)` where `c` is any expression that evaluates to a
+boolean. Note that `__CRAB_assert` must be defined as an extern call
+so that Clang does not complain. Then, you can type:
+
+    crabllvm.py test.c --crab-check=assert
+
+and you should see something like this:
+
+    user-defined assertion checker using SplitDBM
+    2  Number of total safe checks
+    0  Number of total error checks
+    0  Number of total warning checks
+
+
+# Crab Options #
+
 
 Crab-llvm analyzes programs with the Zones domains as default abstract
 domain. Users can choose the abstract domain by typing the option
@@ -269,7 +288,9 @@ at each basic block entry while option
 right after each LLVM load instruction. The option `all` injects
 invariants in all above locations. To see the final LLVM bitcode just
 add the option `-o out.bc`.
-  
+
+# Demo 2 #
+
 Consider the next program:
 
 ```c
