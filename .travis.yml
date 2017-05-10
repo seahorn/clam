@@ -24,6 +24,7 @@ before_install:
    - sudo apt-get install --yes python-pip
    - sudo pip install lit
    - sudo pip install OutputCheck
+   - sudo apt-get install --yes clang-3.6
 
 install:
   - sudo apt-get install --yes libgmp-dev
