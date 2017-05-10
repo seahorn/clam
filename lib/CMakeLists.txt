@@ -1,3 +1,5 @@
 add_subdirectory (CrabLlvm)
-add_subdirectory (Transforms)
+if (TopLevel)
+  add_subdirectory (Transforms)
+endif ()
 

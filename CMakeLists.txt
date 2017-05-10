@@ -108,7 +108,6 @@ if (GIT_FOUND)
       CACHE STRING "dsa-seahorn repo")
     set (SEAHORN_LLVM_REPO "https://github.com/seahorn/llvm-seahorn"
       CACHE STRING "seahorn-llvm repo")
-    set (CRAB_REPO "https://github.com/caballa/crab.git" CACHE STRING "crab repo")
 
     add_custom_target (dsa-seahorn-git
       ${GIT_EXECUTABLE} clone ${DSA_SEAHORN_REPO} ${CMAKE_SOURCE_DIR}/dsa-seahorn)
@@ -118,47 +117,47 @@ if (GIT_FOUND)
     add_custom_target (extra DEPENDS dsa-seahorn-git seahorn-llvm-git)
   endif ()
 
-  ### crab stuff
+  set (CRAB_REPO "https://github.com/caballa/crab.git" CACHE STRING "crab repo")
+  
+  if (TopLevel)
+    set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/crab" CACHE STRING "crab root directory")
+  else ()
+    set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/crab-llvm/crab" CACHE STRING "crab root directory")
+  endif ()
+  
   add_custom_target (crab-git
-  		     ${GIT_EXECUTABLE} clone -b "crab-llvm" ${CRAB_REPO} ${CMAKE_SOURCE_DIR}/crab)
+     		     ${GIT_EXECUTABLE} clone -b "crab-llvm" ${CRAB_REPO} ${CRAB_ROOT})
+  
   add_custom_target (crab ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
-                     DEPENDS crab-git)
+                     DEPENDS crab-git)    
 
 else ()
   if (TopLevel)
-    message (STATUS "Could not find git. Not adding 'extra' target.")
+    message (STATUS "Could not find git. Not adding 'extra' and 'crab' targets.")
   endif ()
-  message (STATUS "Could not find git. Not adding 'crab' target.")
 endif ()
 
 
 #### begin crab stuff ####
-if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/crab AND
-    EXISTS ${CMAKE_SOURCE_DIR}/crab/CMakeLists.txt)
-  set(CRAB_INCLUDE_DIR "crab/include")
+if (IS_DIRECTORY ${CRAB_ROOT} AND EXISTS ${CRAB_ROOT}/CMakeLists.txt)
+  set(CRAB_INCLUDE_DIR "${CRAB_ROOT}/include")
   set(CRAB_LIBS_TYPE ${CRABLLVM_LIBS_TYPE})
   configure_file(${CRAB_INCLUDE_DIR}/crab/config.h.cmake
     ${CMAKE_BINARY_DIR}/include/crab/config.h)
   add_subdirectory(crab)
-  #if (NOT TopLevel)
-  #   # propagate variables to the caller
-  #  set (CRAB_FOUND TRUE PARENT_SCOPE)
-  #  set (CRAB_INCLUDE_DIR ${CRAB_INCLUDE_DIR} PARENT_SCOPE)
-  #  set (CRAB_LIBS ${CRAB_LIBS} PARENT_SCOPE)
-  #endif()
+  message (STATUS "Crab found ${CRAB_ROOT}")
+  include_directories(${CRAB_INCLUDE_DIR})
+  if (EXISTS ${LDD_INCLUDE_DIR})
+     include_directories(${LDD_INCLUDE_DIR})  
+  endif ()
+  if (EXISTS ${APRON_INCLUDE_DIR})
+     include_directories(${APRON_INCLUDE_DIR})      
+  endif ()
+  set_target_properties(crab PROPERTIES EXCLUDE_FROM_ALL ON)
 else()
   message (WARNING "No crab found. Run \n\tcmake --build . --target crab && cmake ${CMAKE_SOURCE_DIR}")
   return ()
 endif()
-
-include_directories(${CRAB_INCLUDE_DIR})
-if (EXISTS ${LDD_INCLUDE_DIR})
-  include_directories(${LDD_INCLUDE_DIR})  
-endif ()
-if (EXISTS ${APRON_INCLUDE_DIR})
-  include_directories(${APRON_INCLUDE_DIR})      
-endif ()
-set_target_properties(crab PROPERTIES EXCLUDE_FROM_ALL ON)
 #### end crab stuff ####
 
 if (TopLevel)
@@ -259,14 +258,26 @@ if (TopLevel)
 endif ()
 
 include_directories(${CrabLlvm_SOURCE_DIR}/include)
+add_subdirectory(lib)
 
 if (TopLevel)
-  include_directories (${CMAKE_BINARY_DIR}/include)
-  add_subdirectory(lib)
   add_subdirectory(tools)
   add_subdirectory(py)
   add_subdirectory(tests)
 endif()
+
+if (NOT TopLevel)
+  set (CRABLLVM_LIBS
+      CrabLlvmAnalysis CrabLlvmInstrumentation
+      ${CRAB_LIBS}
+      PARENT_SCOPE)
+  set (CRABLLVM_INCLUDE_DIRS
+      ${CrabLlvm_SOURCE_DIR}/include
+      ${CRAB_INCLUDE_DIR}
+      ${LDD_INCLUDE_DIR}
+      ${APRON_INCLUDE_DIR}
+      PARENT_SCOPE)  
+endif ()  
 
 configure_file( include/crab_llvm/config.h.cmake
                 ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h )
@@ -305,26 +316,22 @@ if (TopLevel)
        "ExecWait '$INSTDIR/tools/msbuild/uninstall.bat'")
    endif()
    include(CPack)
+endif ()
 
-   ## config.h
-   install(DIRECTORY ${CMAKE_BINARY_DIR}/include/crab DESTINATION include
+
+## Install files
+
+install(DIRECTORY ${CrabLlvm_SOURCE_DIR}/include/crab_llvm DESTINATION include
      FILES_MATCHING
      PATTERN "*.hpp"
      PATTERN "*.hh"
      PATTERN "*.h"
      PATTERN "CMakeFiles" EXCLUDE
      PATTERN ".svn" EXCLUDE
-   )
+)
 
-   ## config.h
-   install(DIRECTORY ${CMAKE_BINARY_DIR}/include/crab_llvm DESTINATION include
-     FILES_MATCHING
-     PATTERN "*.hpp"
-     PATTERN "*.hh"
-     PATTERN "*.h"
-     PATTERN "CMakeFiles" EXCLUDE
-     PATTERN ".svn" EXCLUDE
-   )
+if (TopLevel)
+
    if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ext/llvm/LICENSE.TXT)
        install (FILES ext/llvm/LICENSE.TXT
          DESTINATION .
@@ -333,4 +340,5 @@ if (TopLevel)
    
    install (FILES README.md DESTINATION .)
    install (FILES LICENSE DESTINATION .)
-endif ()
+   
+endif ()     
