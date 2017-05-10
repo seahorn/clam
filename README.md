@@ -1,6 +1,6 @@
 # Crab-llvm #
 
-<a href="https://travis-ci.org/caballa/crab-llvm"><img src="https://travis-ci.org/caballa/crab-llvm.svg?branch=master" title="Ubuntu 12.04 LTS 64bit, g++-4.8"/></a>
+<a href="https://travis-ci.org/caballa/crab-llvm"><img src="https://travis-ci.org/caballa/crab-llvm.svg?branch=master" title="Ubuntu 12.04 LTS 64bit, g++-5"/></a>
 
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /><img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
@@ -127,6 +127,11 @@ Crab-llvm provides a Python script called `crabllvm.py`. Type the
 command:
 
     crabllvm.py test.c
+
+**Important:** the first thing that `crabllvm.py` does is to compile
+  the C program into LLVM bitcode by using Clang. Since Crab-llvm is
+  based on LLVM 3.6, the version of clang must be 3.6 as well. 
+
 
 The output should be something like this:
 

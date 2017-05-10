@@ -24,7 +24,11 @@ before_install:
    - sudo apt-get install --yes python-pip
    - sudo pip install lit
    - sudo pip install OutputCheck
-   - sudo apt-get install --yes clang-3.6
+   # XXX: crab-llvm is based on llvm 3.6 so the clang version must be 3.6 as well.
+   # XXX: for ubuntu 14-04
+   #- sudo apt-get install --yes clang-3.6
+   # for ubuntu 12.04
+   - sudo apt-get install --yes clang
 
 install:
   - sudo apt-get install --yes libgmp-dev
