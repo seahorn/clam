@@ -272,11 +272,18 @@ if (NOT TopLevel)
       CrabLlvmAnalysis CrabLlvmInstrumentation
       ${CRAB_LIBS}
       PARENT_SCOPE)
+
+  set (CRAB_INCLUDE_DIRS ${CRAB_INCLUDE_DIR})
+  if (EXISTS ${LDD_INCLUDE_DIR})
+     set (CRAB_INCLUDE_DIRS ${CRAB_INCLUDE_DIRS} ${LDD_INCLUDE_DIR})
+  endif ()
+  if (EXISTS ${APRON_INCLUDE_DIR})
+     set (CRAB_INCLUDE_DIRS ${CRAB_INCLUDE_DIRS} ${APRON_INCLUDE_DIR})
+  endif ()   
+  
   set (CRABLLVM_INCLUDE_DIRS
       ${CrabLlvm_SOURCE_DIR}/include
-      ${CRAB_INCLUDE_DIR}
-      ${LDD_INCLUDE_DIR}
-      ${APRON_INCLUDE_DIR}
+      ${CRAB_INCLUDE_DIRS}
       PARENT_SCOPE)  
 endif ()  
 
