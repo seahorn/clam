@@ -140,20 +140,8 @@ endif ()
 
 #### begin crab stuff ####
 if (IS_DIRECTORY ${CRAB_ROOT} AND EXISTS ${CRAB_ROOT}/CMakeLists.txt)
-  set(CRAB_INCLUDE_DIR "${CRAB_ROOT}/include")
-  set(CRAB_LIBS_TYPE ${CRABLLVM_LIBS_TYPE})
-  configure_file(${CRAB_INCLUDE_DIR}/crab/config.h.cmake
-    ${CMAKE_BINARY_DIR}/include/crab/config.h)
-  add_subdirectory(crab)
-  message (STATUS "Crab found ${CRAB_ROOT}")
-  include_directories(${CRAB_INCLUDE_DIR})
-  if (EXISTS ${LDD_INCLUDE_DIR})
-     include_directories(${LDD_INCLUDE_DIR})  
-  endif ()
-  if (EXISTS ${APRON_INCLUDE_DIR})
-     include_directories(${APRON_INCLUDE_DIR})      
-  endif ()
-  set_target_properties(crab PROPERTIES EXCLUDE_FROM_ALL ON)
+ add_subdirectory(${CRAB_ROOT})
+ include_directories (${CRAB_INCLUDE_DIRS})
 else()
   message (WARNING "No crab found. Run \n\tcmake --build . --target crab && cmake ${CMAKE_SOURCE_DIR}")
   return ()
@@ -219,16 +207,17 @@ if (TopLevel)
 endif()
 
 add_definitions(-std=c++11)
-add_definitions(-Wno-redeclared-class-member -Wno-sometimes-uninitialized)
-#add_definitions(-Wno-covered-switch-default)
 
+add_definitions(-Wno-redeclared-class-member)
+add_definitions(-Wno-sometimes-uninitialized)
+add_definitions(-Wno-deprecated-declarations)
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
   add_definitions( -Wno-unused-local-typedefs)
   else ()
-   if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+  if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedef")
      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-inconsistent-missing-override")
-   endif ()
+  endif ()
 endif ()
 
 if (TopLevel)
@@ -261,11 +250,31 @@ include_directories(${CrabLlvm_SOURCE_DIR}/include)
 include_directories (${CMAKE_BINARY_DIR}/include)
 add_subdirectory(lib)
 
+configure_file(include/crab_llvm/config.h.cmake
+               ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h )
+ 
+
 if (TopLevel)
   add_subdirectory(tools)
   add_subdirectory(py)
   add_subdirectory(tests)
 endif()
+
+# Propagate to the parent
+if (NOT TopLevel)
+   set (CRABLLVM_LIBS
+       CrabLlvmAnalysis CrabLlvmInstrumentation
+       ${CRAB_LIBS}
+       PARENT_SCOPE)
+    
+   set (CRABLLVM_INCLUDE_DIRS
+        ${CrabLlvm_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/include ## crab-llvm config.h
+        ${CRAB_INCLUDE_DIRS}
+        PARENT_SCOPE)    
+   #message (STATUS "Crab include headers=${CRAB_INCLUDE_DIRS}")
+endif ()  
+
 
 if (NOT TopLevel)
   set (CRABLLVM_LIBS
@@ -279,9 +288,6 @@ if (NOT TopLevel)
       ${APRON_INCLUDE_DIR}
       PARENT_SCOPE)  
 endif ()  
-
-configure_file( include/crab_llvm/config.h.cmake
-                ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h )
 
 
 if (TopLevel)
