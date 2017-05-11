@@ -269,33 +269,10 @@ if (NOT TopLevel)
     
    set (CRABLLVM_INCLUDE_DIRS
         ${CrabLlvm_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/include ## crab-llvm config.h
+        ${CMAKE_BINARY_DIR}/include 
         ${CRAB_INCLUDE_DIRS}
         PARENT_SCOPE)    
-   #message (STATUS "Crab include headers=${CRAB_INCLUDE_DIRS}")
 endif ()  
-
-
-if (NOT TopLevel)
-  set (CRABLLVM_LIBS
-      CrabLlvmAnalysis CrabLlvmInstrumentation
-      ${CRAB_LIBS}
-      PARENT_SCOPE)
-
-  set (CRAB_INCLUDE_DIRS ${CRAB_INCLUDE_DIR})
-  if (EXISTS ${LDD_INCLUDE_DIR})
-     set (CRAB_INCLUDE_DIRS ${CRAB_INCLUDE_DIRS} ${LDD_INCLUDE_DIR})
-  endif ()
-  if (EXISTS ${APRON_INCLUDE_DIR})
-     set (CRAB_INCLUDE_DIRS ${CRAB_INCLUDE_DIRS} ${APRON_INCLUDE_DIR})
-  endif ()   
-  
-  set (CRABLLVM_INCLUDE_DIRS
-      ${CrabLlvm_SOURCE_DIR}/include
-      ${CRAB_INCLUDE_DIRS}
-      PARENT_SCOPE)  
-endif ()  
-
 
 if (TopLevel)
    set (PACKAGE_NAME CrabLlvm)
