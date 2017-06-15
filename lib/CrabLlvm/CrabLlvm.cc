@@ -7,8 +7,8 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -270,7 +270,7 @@ namespace crab_llvm {
         // -- build cfg
         CfgBuilder B (F, m_vfac, *m_mem, CrabTrackLev,
                       /*include function decls and callsites*/
-                      true,  &getAnalysis<TargetLibraryInfo>());
+                      true,  &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI());
 
         auto cfg_ptr = B.getCfg();
         m_cfg_map [&F] = cfg_ptr;
@@ -409,7 +409,7 @@ namespace crab_llvm {
     // -- build cfg
     CfgBuilder B (F, m_vfac, *m_mem, CrabTrackLev,
                   /*include function decls and callsites*/
-                  true,  &getAnalysis<TargetLibraryInfo>());
+                  true,  &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI());
 
     auto cfg_ptr = B.getCfg ();
     m_cfg_map [&F] = cfg_ptr;
@@ -720,8 +720,7 @@ namespace crab_llvm {
     #ifdef HAVE_DSA
     AU.addRequiredTransitive<llvm::SteensgaardDataStructures> ();
     #endif 
-    AU.addRequired<llvm::DataLayoutPass>();
-    AU.addRequired<llvm::TargetLibraryInfo>();
+    AU.addRequired<llvm::TargetLibraryInfoWrapperPass>();
     AU.addRequired<llvm::UnifyFunctionExitNodes> ();
     AU.addRequired<crab_llvm::NameValues>();
   } 

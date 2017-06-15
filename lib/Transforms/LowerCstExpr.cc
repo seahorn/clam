@@ -113,7 +113,7 @@ namespace crab_llvm
         {
           Instruction::OtherOps OtherOp = (Instruction::OtherOps)(CstExp->getOpcode());
           NewInst = CmpInst::Create(OtherOp,
-                                    CstExp->getPredicate(),
+                                    CmpInst::Predicate(CstExp->getPredicate()),
                                     CstExp->getOperand(0),
                                     CstExp->getOperand(1),
                                     CstExp->getName(),
@@ -133,12 +133,13 @@ namespace crab_llvm
             for (unsigned i = 1; i < CstExp->getNumOperands(); i++)
               VIdxs.push_back(CstExp->getOperand(i));
             
-            ArrayRef<Value*> Idxs(VIdxs); 
-            NewInst = (GetElementPtrInst::Create(CstExp->getOperand(0),
+            ArrayRef<Value*> Idxs(VIdxs);
+	    Value *Ptr = CstExp->getOperand(0);
+            NewInst = (GetElementPtrInst::Create(cast<PointerType>(Ptr->getType())->getElementType(),
+						 Ptr,
                                                  Idxs,
                                                  CstExp->getName(),
                                                  InsertionLoc));
-            
           }
           break;
         default: 

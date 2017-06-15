@@ -110,11 +110,14 @@ if (GIT_FOUND)
       CACHE STRING "seahorn-llvm repo")
 
     add_custom_target (dsa-seahorn-git
-      ${GIT_EXECUTABLE} clone ${DSA_SEAHORN_REPO} ${CMAKE_SOURCE_DIR}/dsa-seahorn)
+      ${GIT_EXECUTABLE} clone -b "llvm-3.8" ${DSA_SEAHORN_REPO} ${CMAKE_SOURCE_DIR}/dsa-seahorn)
     add_custom_target (seahorn-llvm-git
-      ${GIT_EXECUTABLE} clone ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
+      ${GIT_EXECUTABLE} clone -b "llvm-3.8" ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
 
-    add_custom_target (extra DEPENDS dsa-seahorn-git seahorn-llvm-git)
+    add_custom_target (extra DEPENDS
+      # TODO: port to llvm 3.8
+      # dsa-seahorn-git
+      seahorn-llvm-git)
   endif ()
 
   set (CRAB_REPO "https://github.com/caballa/crab.git" CACHE STRING "crab repo")
@@ -151,7 +154,7 @@ endif()
 if (TopLevel)
   # if top-level, offer to build llvm
   ExternalProject_Add (llvm
-    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_360/final/
+    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_380/final/
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/llvm
     INSTALL_DIR ${CMAKE_BINARY_DIR}/run
     CMAKE_ARGS
@@ -166,7 +169,7 @@ if (TopLevel)
     LOG_BUILD 1
     LOG_INSTALL 1)
 
-  find_package (LLVM 3.6.0 CONFIG NO_DEFAULT_PATH)
+  find_package (LLVM 3.8.0 CONFIG NO_DEFAULT_PATH)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})

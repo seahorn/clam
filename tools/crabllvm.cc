@@ -3,7 +3,7 @@
 ///
 
 #include "llvm/LinkAllPasses.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
@@ -150,22 +150,29 @@ int main(int argc, char **argv) {
   // initialise and run passes //
   ///////////////////////////////
 
-  llvm::PassManager pass_manager;
+  llvm::legacy::PassManager pass_manager;
   llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
   llvm::initializeAnalysis(Registry);
   
   /// call graph and other IPA passes
-  llvm::initializeIPA (Registry);
-  
+  // llvm::initializeIPA (Registry);
+  // XXX: porting to 3.8 
+  llvm::initializeCallGraphWrapperPassPass(Registry);
+  llvm::initializeCallGraphPrinterPass(Registry);
+  llvm::initializeCallGraphViewerPass(Registry);
+  // XXX: not sure if needed anymore
+  llvm::initializeGlobalsAAWrapperPassPass(Registry);  
+    
   // add an appropriate DataLayout instance for the module
-  const llvm::DataLayout *dl = module->getDataLayout ();
+  const llvm::DataLayout *dl = &module->getDataLayout ();
   if (!dl && !DefaultDataLayout.empty ())
   {
     module->setDataLayout (DefaultDataLayout);
-    dl = module->getDataLayout ();
+    dl = &module->getDataLayout ();
   }
-  if (dl) pass_manager.add (new DataLayoutPass ());
 
+  assert (dl && "Could not find Data Layout for the module");
+  
   /////
   // Here only passes that are necessary or very recommended for Crab
   /////

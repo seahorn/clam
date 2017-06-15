@@ -420,7 +420,6 @@ namespace crab_llvm
     AU.setPreservesAll ();
 
     AU.addRequired<crab_llvm::CrabLlvm>();
-    AU.addRequired<llvm::DataLayoutPass>();
     AU.addRequired<llvm::UnifyFunctionExitNodes> ();
     AU.addRequired<llvm::CallGraphWrapperPass> ();
     AU.addPreserved<llvm::CallGraphWrapperPass> ();

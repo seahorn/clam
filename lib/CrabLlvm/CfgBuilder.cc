@@ -192,7 +192,7 @@ namespace crab_llvm
   static bool hasDebugLoc (const Instruction *inst) {
     if (!inst) return false;
     const DebugLoc &dloc = inst->getDebugLoc ();
-    return (!(dloc.isUnknown ()));
+    return dloc;
   }
 
   static crab::cfg::debug_info getDebugLoc (const Instruction *inst) {
@@ -202,10 +202,9 @@ namespace crab_llvm
     const DebugLoc &dloc = inst->getDebugLoc ();
     unsigned Line = dloc.getLine ();
     unsigned Col = dloc.getCol ();
-    std::string File; 
-    DIScope Scope (dloc.getScope ());
-    if (Scope) File = Scope.getFilename ();
-    else File = "unknown file";
+    std::string File = (*dloc).getFilename();
+    if (File == "")
+      File = "unknown file";
     return crab::cfg::debug_info(File, Line, Col);
   }
 
@@ -1665,7 +1664,7 @@ namespace crab_llvm
       m_cfg (boost::make_shared<cfg_t>(&m_func.getEntryBlock (), tracklev)),
       m_tracklev (tracklev),
       m_is_inter_proc (isInterProc),
-      m_dl (func.getParent ()->getDataLayout ()),
+      m_dl (&(func.getParent ()->getDataLayout ())),
       m_tli (tli) { }
 
   CfgBuilder::~CfgBuilder () { 

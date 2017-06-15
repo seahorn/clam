@@ -20,7 +20,7 @@ namespace crab_llvm {
     
     virtual bool runOnModule (Module &M)
     {
-      const DataLayout* DL = &getAnalysis<DataLayoutPass>().getDataLayout ();
+      const DataLayout* DL = &M.getDataLayout ();
 
       Function *f = M.getFunction ("main");
       if (!f) return false;
@@ -55,7 +55,6 @@ namespace crab_llvm {
     
     void getAnalysisUsage (AnalysisUsage &AU) const {
       AU.setPreservesAll ();
-      AU.addRequired<llvm::DataLayoutPass>();
     }
 
     virtual const char * getPassName() const {
