@@ -17,7 +17,7 @@ Crab-llvm is written in C++ and uses heavily the Boost library. You will need:
 If you want Crab-llvm to reason about pointers and arrays you need to
 download the following package at the root directory:
 
-* [dsa-seahorn](https://github.com/seahorn/dsa-seahorn): ``` git clone https://github.com/seahorn/dsa-seahorn.git ```
+* [llvm-dsa](https://github.com/seahorn/llvm-dsa): ``` git clone https://github.com/seahorn/llvm-dsa.git ```
 
 DSA (Data Structure Analysis) is a heap analysis described
 [here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps).
@@ -185,7 +185,7 @@ abstraction. The possible values of `VAL` are:
    offsets but it will abstract away pointer addresses.
    
    If the level is `arr` then Crab-llvm uses the heap analysis
-   provided by `dsa-seahorn` to partition the heap into disjoint
+   provided by `llvm-dsa` to partition the heap into disjoint
    heaplets. Each heaplet is mapped to an array, and each LLVM load
    and store is translated to an array read and write operation,
    respectively. Then, it will use an array domain provided by Crab
