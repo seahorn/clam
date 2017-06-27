@@ -104,20 +104,17 @@ find_package (Git)
 
 if (GIT_FOUND)
   if (TopLevel)
-    set (DSA_SEAHORN_REPO "https://github.com/seahorn/dsa-seahorn"
-      CACHE STRING "dsa-seahorn repo")
+    set (LLVM_DSA_REPO "https://github.com/seahorn/llvm-dsa"
+      CACHE STRING "llvm-dsa repo")
     set (SEAHORN_LLVM_REPO "https://github.com/seahorn/llvm-seahorn"
       CACHE STRING "seahorn-llvm repo")
 
-    add_custom_target (dsa-seahorn-git
-      ${GIT_EXECUTABLE} clone -b "llvm-3.8" ${DSA_SEAHORN_REPO} ${CMAKE_SOURCE_DIR}/dsa-seahorn)
+    add_custom_target (llvm-dsa-git
+      ${GIT_EXECUTABLE} clone -b "llvm-3.8" ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
     add_custom_target (seahorn-llvm-git
       ${GIT_EXECUTABLE} clone -b "llvm-3.8" ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
 
-    add_custom_target (extra DEPENDS
-      # TODO: port to llvm 3.8
-      # dsa-seahorn-git
-      seahorn-llvm-git)
+    add_custom_target (extra DEPENDS llvm-dsa-git seahorn-llvm-git)
   endif ()
 
   set (CRAB_REPO "https://github.com/caballa/crab.git" CACHE STRING "crab repo")
@@ -224,15 +221,15 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
 endif ()
 
 if (TopLevel)
-  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/dsa-seahorn AND
-      EXISTS ${CMAKE_SOURCE_DIR}/dsa-seahorn/lib/DSA/Steensgaard.cpp)
-    include_directories (AFTER dsa-seahorn/include)
-    add_subdirectory (dsa-seahorn/lib/AssistDS)
-    add_subdirectory (dsa-seahorn/lib/DSA)
+  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-dsa AND
+      EXISTS ${CMAKE_SOURCE_DIR}/llvm-dsa/lib/DSA/Steensgaard.cpp)
+    include_directories (AFTER llvm-dsa/include)
+    add_subdirectory (llvm-dsa/lib/AssistDS)
+    add_subdirectory (llvm-dsa/lib/DSA)
     set (DSA_LIBS DSA AssistDS)
     set (HAVE_DSA TRUE)
   else()
-    message (WARNING "No DSA found in ${CMAKE_SOURCE_DIR}/dsa-seahorn")
+    message (WARNING "No DSA found in ${CMAKE_SOURCE_DIR}/llvm-dsa")
     set (DSA_LIBS "")
   endif()
 endif ()

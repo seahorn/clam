@@ -36,11 +36,15 @@ Then, the basic compilation steps are:
 If you want Crab-llvm to reason about pointers and arrays you need to
 download the following package at the root directory:
 
-* [dsa-seahorn](https://github.com/seahorn/dsa-seahorn): ``` git clone https://github.com/seahorn/dsa-seahorn.git ```
+* [llvm-dsa](https://github.com/seahorn/llvm-dsa): ``` git clone https://github.com/seahorn/llvm-dsa.git ```
 
-DSA (Data Structure Analysis) is a heap analysis described
-[here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps).
-
+  `llvm-dsa` is the legacy DSA implementation
+  from [PoolAlloc](https://llvm.org/svn/llvm-project/poolalloc/). DSA
+  (Data Structure Analysis) is a heap analysis
+  described
+  [here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps)
+  and it is used by Crab-llvm to disambiguate the heap.
+  
 Another optional but very recommended component is:
 
 * [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
@@ -49,7 +53,7 @@ Another optional but very recommended component is:
 `IndVarSimplify` LLVM passes as well as a LLVM pass to convert
 undefined values into nondeterministic calls.
 
-To include `dsa-seahorn` and `llvm-seahorn`, type instead:
+To include `llvm-dsa` and `llvm-seahorn`, type instead:
 
      mkdir build && cd build
      cmake -DCMAKE_INSTALL_PREFIX=_DIR_ ../
@@ -256,7 +260,7 @@ abstraction. The possible values of `VAL` are:
    offsets but it will abstract away pointer addresses.
    
    If the level is `arr` then Crab-llvm uses the heap analysis
-   provided by `dsa-seahorn` to partition the heap into disjoint
+   provided by `llvm-dsa` to partition the heap into disjoint
    heaplets. Each heaplet is mapped to an array, and each LLVM load
    and store is translated to an array read and write operation,
    respectively. Then, it will use an array domain provided by Crab
