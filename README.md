@@ -1,6 +1,6 @@
 # Crab-llvm #
 
-<a href="https://travis-ci.org/caballa/crab-llvm"><img src="https://travis-ci.org/caballa/crab-llvm.svg?branch=master" title="Ubuntu 12.04 LTS 64bit, g++-5"/></a>
+<a href="https://travis-ci.org/seahorn/crab-llvm"><img src="https://travis-ci.org/seahorn/crab-llvm.svg?branch=master" title="Ubuntu 12.04 LTS 64bit, g++-5"/></a>
 
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /><img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
@@ -92,7 +92,7 @@ $ pip install OutputCheck
 
 # Crab-llvm architecture #
 
-![Crab-Llvm Architecture](https://github.com/caballa/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
+![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
 
 # Demo 1 #
 
@@ -178,7 +178,7 @@ bitcode:
 
 and you should see a screen with a similar CFG to this one:
 
-   <img src="https://github.com/caballa/crab-llvm/blob/master/demo/test.c.dot.png" alt="LLVM CFG of test.c" width=375 height=400 />
+   <img src="https://github.com/seahorn/crab-llvm/blob/master/demo/test.c.dot.png" alt="LLVM CFG of test.c" width=375 height=400 />
 
 Since we are interested at the relationships between `x` and `y` after
 the loop, the LLVM basic block of interest is `_y.0.lcssa` and the
