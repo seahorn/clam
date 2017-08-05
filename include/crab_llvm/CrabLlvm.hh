@@ -6,16 +6,11 @@
  */
 
 #include "llvm/Pass.h"
-#include "llvm/IR/DataLayout.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/Support/ErrorHandling.h"
-
-#include "crab_llvm/crab_domains.hh"
-#include "crab_llvm/wrapper_domain.hh"
-#include "crab_llvm/MemAnalysis.hh"
 
 #include <boost/shared_ptr.hpp>
+
+#include "crab_llvm/crab_cfg.hh"
 
 // forward declarations
 namespace crab {
@@ -32,8 +27,34 @@ namespace crab {
 } // end crab
 
 namespace crab_llvm {
+  class HeapAbstraction;
+  class GenericAbsDomWrapper;
+}
 
-  using namespace llvm;
+
+namespace crab_llvm {
+   ////
+   // Base numerical domains for user options
+   ////
+  enum CrabDomain
+     {   INTERVALS
+       , INTERVALS_CONGRUENCES
+       , BOXES
+       , DIS_INTERVALS
+       , ZONES_SPARSE_DBM
+       , ZONES_SPLIT_DBM
+       , TERMS_INTERVALS
+       , TERMS_DIS_INTERVALS
+         //TERMS_INTERVALS x  ZONES_SPLIT_DBM
+       , TERMS_ZONES 
+         //(#live vars<threshold ? TERMS_INTERVALSxZONES_SPLIT_DBM, INTERVALS)
+       , ADAPT_TERMS_ZONES 
+       , OPT_OCT_APRON
+       , PK_APRON
+     };
+}
+
+namespace crab_llvm {
 
   /*! Compute invariants using Crab for the whole module. */
   class CrabLlvm : public llvm::ModulePass {
@@ -42,24 +63,29 @@ namespace crab_llvm {
     typedef crab::cg::call_graph<cfg_ref_t> call_graph_t; 
     typedef crab::cg::call_graph_ref<call_graph_t> call_graph_ref_t;
     typedef crab::checker::checks_db checks_db_t;
-
-    typedef llvm::DenseMap<const llvm::BasicBlock *, GenericAbsDomWrapperPtr> invariants_map_t;
-    typedef llvm::DenseMap<llvm::Function*, cfg_ptr_t > cfg_map_t;
+    typedef boost::shared_ptr<GenericAbsDomWrapper> GenericAbsDomWrapperPtr;
+    typedef llvm::DenseMap<const llvm::BasicBlock *, GenericAbsDomWrapperPtr>
+    invariants_map_t;
+    typedef llvm::DenseMap<llvm::Function*, cfg_ptr_t> cfg_map_t;
     typedef boost::unordered_map <cfg_ref_t, const liveness_t*> liveness_map_t;
     
     invariants_map_t m_pre_map;
     invariants_map_t m_post_map;
     CrabDomain m_absdom;
-    boost::shared_ptr<MemAnalysis> m_mem;    
-    VariableFactory m_vfac;
+    boost::shared_ptr<HeapAbstraction> m_mem;    
+    variable_factory_t m_vfac;
     cfg_map_t m_cfg_map;
     boost::shared_ptr<checks_db_t> m_checks_db; 
 
     template<typename AbsDom> 
-    bool analyzeCfg (cfg_ref_t cfg, const Function& F, const liveness_t& live);
+    void analyzeCfg (cfg_ref_t cfg,
+		     const llvm::Function& F,
+		     const liveness_t& live);
 
     template<typename BUAbsDom, typename TDAbsDom> 
-    bool analyzeCg (call_graph_ref_t cg, const llvm::Module &M, const liveness_map_t& live_map);
+    void analyzeCg (call_graph_ref_t cg,
+		    const llvm::Module &M,
+		    const liveness_map_t& live_map);
 
     void writeInvariants (llvm::raw_ostream& o, const llvm::Function& F);
 
@@ -70,17 +96,9 @@ namespace crab_llvm {
 
     static char ID;        
     
-    CrabLlvm ()
-        : llvm::ModulePass (ID), 
-          m_absdom (INTERVALS), 
-          m_mem (boost::make_shared<DummyMemAnalysis>()),
-          m_checks_db (nullptr) { }
+    CrabLlvm ();
 
-    virtual void releaseMemory () {
-      m_pre_map.clear(); 
-      m_post_map.clear(); 
-      m_cfg_map.clear ();
-    }
+    virtual void releaseMemory ();
     
     virtual bool runOnModule (llvm::Module& M);
 
@@ -90,33 +108,36 @@ namespace crab_llvm {
 
     virtual const char* getPassName () const {return "CrabLlvm";}
 
-    // return invariants that hold at the entry of BB
-    GenericAbsDomWrapperPtr getPre (const llvm::BasicBlock *BB, 
-                                    bool KeepShadows=false) const;
 
-    GenericAbsDomWrapperPtr operator[] (const llvm::BasicBlock *BB) const {
-      return getPre (BB); 
-    }
-    
-    // return invariants that hold at the exit of BB
-    GenericAbsDomWrapperPtr getPost (const llvm::BasicBlock *BB, 
-                                     bool KeepShadows=false) const;
+    variable_factory_t& getVariableFactory () { return m_vfac; }
 
-    VariableFactory& getVariableFactory () { return m_vfac; }
-
-    MemAnalysis& getMemAnalysis () { return *m_mem; }
+    HeapAbstraction& getHeapAbstraction () { return *m_mem; }
 
     CrabDomain getAbsDomain () const { return m_absdom; }
 
     // Needed for InsertInvariants
-    cfg_ptr_t getCfg (Function* F) {
-      auto it = m_cfg_map.find (F);
-      if (it != m_cfg_map.end ())
-        return it->second;
-      return nullptr;
-    }
+    cfg_ptr_t getCfg (llvm::Function* F);
+    
+    /**
+     * return invariants that hold at the entry of BB
+     **/
+    GenericAbsDomWrapperPtr
+    getPre (const llvm::BasicBlock *BB, bool KeepShadows=false) const;
 
-    /// To query the analysis results 
+    GenericAbsDomWrapperPtr
+    operator[] (const llvm::BasicBlock *BB) const {
+      return getPre (BB); 
+    }
+    
+    /**
+     * return invariants that hold at the exit of BB
+     **/
+    GenericAbsDomWrapperPtr
+    getPost (const llvm::BasicBlock *BB, bool KeepShadows=false) const;
+    
+    /**
+     * To query and view the analysis results 
+     **/
 
     // return total number of checks if assertion checker enabled,
     // otherwise 0
@@ -130,10 +151,8 @@ namespace crab_llvm {
     // return total number of possibly error checks if assertion
     // checker enabled, otherwise 0
     unsigned get_total_warning_checks () const;
-    // Whether Crab is able to discharge all assertions
-    bool is_safe () const;
-    bool is_unsafe () const;
     
+    void print_checks (llvm::raw_ostream &o) const;
   };
 
 } // end namespace 

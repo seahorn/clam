@@ -7,23 +7,31 @@
  */
 
 #include "llvm/Pass.h"
-#include "llvm/IR/DataLayout.h"
-#include "llvm/Analysis/CallGraph.h"
-#include "llvm/Support/raw_ostream.h"
+#include "crab_llvm/crab_cfg.hh"
 
-#include "crab_llvm/CrabLlvm.hh"
+namespace llvm {
+  class Function;
+  class Module;
+  class CallGraph;
+}
 
-namespace crab_llvm
-{
-
-  using namespace llvm;
+namespace crab_llvm {
 
   class InsertInvariants : public llvm::ModulePass {
 
-    Function* m_assumeFn;
-    
-   public:
+    llvm::Function* m_assumeFn;
 
+    // TODO: move this to InsertInvariants.cc so this header file does
+    // not expose crab_llvm/crab_cfg.hh
+    bool instrument_entries (z_lin_cst_sys_t csts, llvm::BasicBlock* bb, 
+                             llvm::LLVMContext &ctx, llvm::CallGraph* cg);
+      
+    template<typename AbsDomain> 
+    bool instrument_loads (AbsDomain pre, basic_block_t& bb,  
+                           llvm::LLVMContext& ctx, llvm::CallGraph* cg);
+
+  public:
+    
     static char ID;        
     
     InsertInvariants (): llvm::ModulePass (ID), m_assumeFn (0) {} 
@@ -35,15 +43,6 @@ namespace crab_llvm
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const ;
 
     virtual const char* getPassName () const {return "InsertInvariants";}
-
-   private:
-
-    bool instrument_entries (z_lin_cst_sys_t csts, llvm::BasicBlock* bb, 
-                             LLVMContext &ctx, CallGraph* cg);
-      
-    template<typename AbsDomain> 
-    bool instrument_loads (AbsDomain pre, basic_block_t& bb,  
-                           LLVMContext& ctx, CallGraph* cg);
 
   };
 
