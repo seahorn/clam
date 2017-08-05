@@ -1,4 +1,4 @@
-// RUN: %crabllvm -O0 --crab-dom=zones-split --crab-check=assert "%s" 2>&1 | OutputCheck %s
+// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-dom=zones --crab-check=assert "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total error checks$
 
 extern void __CRAB_assert(int);
