@@ -1,5 +1,5 @@
 ///
-// CrabLlvm-- Abstract Interpretation-based Analyzer for LLVM bitcode 
+// CrabLlvm -- Abstract Interpretation-based Analyzer for LLVM bitcode
 ///
 
 #include "llvm/LinkAllPasses.h"
@@ -28,8 +28,7 @@
 
 #include "crab_llvm/Passes.hh"
 #include "crab_llvm/CrabLlvm.hh"
-#include <crab_llvm/Transforms/InsertInvariants.hh>
-
+#include "crab_llvm/Transforms/InsertInvariants.hh"
 #include "crab/common/debug.hpp"
 
 static llvm::cl::opt<std::string>
@@ -54,7 +53,7 @@ DefaultDataLayout("default-data-layout",
 
 static llvm::cl::opt<bool>
 NoCrab ("no-crab", 
-        llvm::cl::desc ("Output bitecode but disable Crab analysis (debugging)"),
+        llvm::cl::desc ("Output preprocessed bitecode but disabling Crab analysis"),
         llvm::cl::init (false),
         llvm::cl::Hidden);
 
@@ -98,7 +97,7 @@ std::string getFileName(const std::string &str) {
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;  // calls llvm_shutdown() on exit
   llvm::cl::ParseCommandLineOptions(argc, argv,
-                                    "CrabLlvm-- Abstract Interpretation-based Analyzer of LLVM bitcode\n");
+  "CrabLlvm-- Abstract Interpretation-based Analyzer of LLVM bitcode\n");
 
   llvm::sys::PrintStackTraceOnErrorSignal();
   llvm::PrettyStackTraceProgram PSTP(argc, argv);
@@ -112,8 +111,7 @@ int main(int argc, char **argv) {
   std::unique_ptr<llvm::tool_output_file> asmOutput;
   
   module = llvm::parseIRFile(InputFilename, err, context);
-  if (!module)
-  {
+  if (!module) {
     if (llvm::errs().has_colors()) llvm::errs().changeColor(llvm::raw_ostream::RED);
     llvm::errs() << "error: "
                  << "Bitcode was not properly read; " << err.getMessage() << "\n";
@@ -159,34 +157,48 @@ int main(int argc, char **argv) {
   
   // add an appropriate DataLayout instance for the module
   const llvm::DataLayout *dl = module->getDataLayout ();
-  if (!dl && !DefaultDataLayout.empty ())
-  {
+  if (!dl && !DefaultDataLayout.empty ()) {
     module->setDataLayout (DefaultDataLayout);
     dl = module->getDataLayout ();
   }
-  if (dl) pass_manager.add (new DataLayoutPass ());
+  if (dl) pass_manager.add (new llvm::DataLayoutPass ());
 
-  /////
-  // Here only passes that are necessary or very recommended for Crab
-  /////
+  /**
+   * Here only passes that are strictly necessary to avoid crashes or
+   * useless results. Passes that are only for improving precision
+   * should be run in crabllvm-pp.
+   **/
 
   // -- turn all functions internal so that we can use DSA
   pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
-  pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global  
+  // kill unused internal global    
+  pass_manager.add (llvm::createGlobalDCEPass ()); 
   pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
 
   // -- promote alloca's to registers
   pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
+  #ifdef HAVE_LLVM_SEAHORN
+  if (TurnUndefNondet) {
+    // -- Turn undef into nondet
+    pass_manager.add (llvm_seahorn::createNondetInitPass ());
+  }
+  #endif 
+  // -- lower invoke's
+  pass_manager.add(llvm::createLowerInvokePass());
+  // cleanup after lowering invoke's
+  pass_manager.add (llvm::createCFGSimplificationPass ());  
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   // -- remove unreachable blocks 
   pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
   // -- remove switch constructions
   pass_manager.add (llvm::createLowerSwitchPass());
+  // cleanup after lowering switches
+  pass_manager.add (llvm::createCFGSimplificationPass ());  
   // -- lower constant expressions to instructions
-  pass_manager.add (crab_llvm::createLowerCstExprPass ());   
+  pass_manager.add (crab_llvm::createLowerCstExprPass ());
+  // cleanup after lowering constant expressions
   pass_manager.add (llvm::createDeadCodeEliminationPass());
-
   #ifdef HAVE_LLVM_SEAHORN
   if (TurnUndefNondet) 
     pass_manager.add (llvm_seahorn::createDeadNondetElimPass ());
@@ -210,14 +222,11 @@ int main(int argc, char **argv) {
     /// -- simplify invariants added in the bytecode.
     #ifdef HAVE_LLVM_SEAHORN
     pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
-    #else
-    pass_manager.add (llvm::createInstructionCombiningPass ()); 
     #endif 
     pass_manager.add (crab_llvm::createSimplifyAssumePass ());
   }
       
-  if (!OutputFilename.empty ()) 
-  {
+  if (!OutputFilename.empty ()) {
     if (OutputAssembly)
       pass_manager.add (createPrintModulePass (output->os ()));
     else 
