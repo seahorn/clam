@@ -38,15 +38,79 @@ def which(program):
                     return exe_file
     return None
 
-def kill (proc):
+def run_command_with_limits(cmd, cpu, mem, out = None):
+    def set_limits ():
+        if mem > 0:
+            mem_bytes = mem * 1024 * 1024
+            resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
+    def kill (proc):
+        try:
+            proc.terminate ()
+            proc.kill ()
+            proc.wait ()
+            global running_process
+            running_process = None
+        except OSError: pass
+        
+    if out is not None:
+        p = sub.Popen (cmd, stdout = out, preexec_fn=set_limits)
+    else:
+        p = sub.Popen (cmd, preexec_fn=set_limits)
+    global running_process
+    running_process = p
+    timer = threading.Timer (cpu, kill, [p])
+    if cpu > 0: timer.start ()
     try:
-        proc.terminate ()
-        proc.kill ()
-        proc.wait ()
-        global running_process
+        (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
         running_process = None
     except OSError:
-        pass
+        ## p has been killed probably because it consumed too much memory
+        ## It could be for other reasons but we assume OOM
+        returnvalue = 134 
+    finally:
+        ## kill the timer if the process has terminated already
+        if timer.isAlive (): timer.cancel ()        
+    ## if opt did not terminate properly, propagate this error code
+    if returnvalue != 0: sys.exit (returnvalue)
+
+# # Based on http://www.ostricher.com/2015/01/python-subprocess-with-timeout/    
+# class SubprocessTimeout(RuntimeError):
+#   """Error class for subprocess timeout."""
+#   pass
+    
+# def run_command_with_limits(cmd, cpu, mem, out = None):
+#     """Execute `cmd` in a subprocess and enforce timeout `cpu` seconds.
+#     Return subprocess exit code on natural completion of the subprocess.
+#     Raise an exception if timeout expires before subprocess completes."""
+
+#     def set_limits ():
+#         if mem > 0:
+#             mem_bytes = mem * 1024 * 1024
+#             resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
+
+#     if not out is None:
+#         proc = sub.Popen (cmd, stdout = out, preexec_fn=set_limits)
+#     else:
+#         proc = sub.Popen (cmd, preexec_fn=set_limits)
+            
+#     proc_thread = threading.Thread(target=proc.communicate)
+#     proc_thread.start()
+#     if cpu > 0:
+#         proc_thread.join(cpu)
+#     else:
+#         proc_thread.join()
+        
+#     if proc_thread.is_alive():
+#         # Process still running - kill it and raise timeout error
+#         try:
+#             proc.kill()
+#         except OSError, e:
+#             # The process finished between the `is_alive()` and `kill()`
+#             #return proc.returncode
+#             sys.exit(proc.returncode)
+#         # OK, the process was definitely killed
+#         # raise SubprocessTimeout('Process #%d killed after %f seconds' % (proc.pid, cpu))
+#         sys.exit(proc.returncode)
 
 def loadEnv (filename):
     if not os.path.isfile (filename): return
@@ -65,8 +129,8 @@ def parseArgs (argv):
     import argparse as a
     from argparse import RawTextHelpFormatter
 
-    p = a.ArgumentParser (description='Abstract Interpretation-based Analyzer for LLVM bitecode',
-                          formatter_class=RawTextHelpFormatter)
+    p = a.ArgumentParser(description='Abstract Interpretation-based Analyzer for LLVM bitecode',
+                         formatter_class=RawTextHelpFormatter)
     p.add_argument ('-oll', dest='asm_out_name', metavar='FILE',
                        help='Output analyzed bitecode')
     p.add_argument ('--log', dest='log', default=None,
@@ -120,12 +184,12 @@ def parseArgs (argv):
     p.add_argument ('--lower-select',
                     help='Lower select instructions',
                     dest='lower_select', default=False, action='store_true')
-    p.add_argument ('--lower-gv',
-                    help='Lower some scalar global variable initializers into main',
-                    dest='lower_gv', default=False, action='store_true')
-    p.add_argument ('--lower-invoke',
-                    help='Lower invoke instructions',
-                    dest='lower_invoke', default=False, action='store_true')
+    p.add_argument ('--disable-lower-gv',
+                    help='Disable lowering of global variable initializers into main',
+                    dest='disable_lower_gv', default=False, action='store_true')
+    p.add_argument ('--lower-unsigned-icmp',
+                    help='Lower ULT and ULE instructions',
+                    dest='lower_unsigned_icmp', default=False, action='store_true')
     p.add_argument ('--devirt-functions',
                     help='Resolve indirect calls',
                     dest='devirt', default=False, action='store_true')
@@ -135,21 +199,18 @@ def parseArgs (argv):
                     help="Choose abstract domain:\n"
                           "- int: intervals\n"
                           "- ric: reduced product of intervals and congruences\n"
-                          "- boxes: disjunctive intervals based on LDDs\n"
+                          "- term-int: int with uninterpreted functions\n"
                           "- dis-int: disjunctive intervals based on Clousot's DisInt domain\n"
-                          "- term-int: int with uninterpreted functions\n" 
-                          "- term-dis-int: dis-int with uninterpreted functions\n" 
-                          "- zones-sparse: zones domain using sparse DBM\n"
-                          "- zones-split: zones domain using sparse DBM in Split Normal Form\n"
-                          "- rtz: reduced product of term-int and zones-split\n"
-                          "- adapt-rtz: adaptative domain between intervals and rtz\n"
-                          "- opt-oct-apron: Elina's optimized octagon domain\n"
-                          "- pk-apron: Apron's polka domain\n",
-                    choices=['int','ric', 'boxes', 'dis-int', 
-                             'term-int', 'term-dis-int', 
-                             'zones-sparse', 'zones-split', 
-                             'rtz', 'adapt-rtz', 'opt-oct-apron','pk-apron'],
-                    dest='crab_dom', default='zones-split')
+                          "- term-dis-int: dis-int with uninterpreted functions\n"
+                          "- boxes: disjunctive intervals based on LDDs\n"
+                          "- zones: zones domain using sparse DBM in Split Normal Form\n"
+                          "- oct: Elina's optimized octagon domain\n"
+                          "- pk: Apron's polka domain\n"
+                          "- rtz: reduced product of term-dis-int with zones\n",
+                    choices=['int','ric', 'term-int',
+                             'dis-int', 'term-dis-int', 'boxes',  
+                             'zones', 'oct', 'pk', 'rtz', ],
+                    dest='crab_dom', default='zones')
     p.add_argument ('--crab-widening-delay', 
                     type=int, dest='widening_delay', 
                     help='Max number of iterations until performing widening', default=1)
@@ -158,33 +219,39 @@ def parseArgs (argv):
                     help='Size of the jump set used in widening', default=0)
     p.add_argument ('--crab-narrowing-iterations', 
                     type=int, dest='narrowing_iterations', 
-                    help='Max number of narrowing iterations', default=999999)
-    p.add_argument ('--crab-adapt-rtz-threshold', 
+                    help='Max number of narrowing iterations', default=3)
+    p.add_argument ('--crab-relational-threshold', 
                     type=int, dest='num_threshold', 
-                    help='Max number of live vars per block before switching domains', default=100)
+                    help='Max number of live vars per block before switching to a non-relational domain',
+                    default=10000)
     p.add_argument ('--crab-track',
                     help='Track integers, pointer offsets, and memory contents',
-                    choices=['int', 'ptr', 'arr'], dest='track', default='int')
-    p.add_argument ('--crab-cmp-to-select',
-                    help="Translate Cmp LLVM instrutions that feed non-branch instructions to Crab select",
-                    choices=['none','best-effort','all'],
-                    dest='crab_cmp_to_select', default='none')
+                    choices=['num', 'ptr', 'arr'], dest='track', default='num')
+    p.add_argument ('--crab-bool-as-int',
+                    help='Boolean variables are treated as integers',
+                    dest='crab_disable_bool', default=False, action='store_true')        
+    p.add_argument ('--crab-disable-ptr',
+                    help='Track memory contents but ignoring pointer offsets',
+                    dest='crab_disable_ptr', default=False, action='store_true')    
     p.add_argument ('--crab-singleton-aliases',
                     help='Treat singleton alias sets as scalar values',
                     dest='crab_singleton_aliases', default=False, action='store_true')
-    p.add_argument ('--crab-disable-offsets',
-                    help='Track memory contents but ignoring pointer offsets',
-                    dest='crab_disable_offsets', default=False, action='store_true')
     p.add_argument ('--crab-inter',
                     help='Run inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
     p.add_argument ('--crab-inter-sum-dom',
                     help='Choose abstract domain for computing summaries',
-                    choices=['term-int', 'term-dis-int',
-                             'zones-sparse', 'zones-split', 'opt-oct-apron','rtz'],
-                    dest='crab_inter_sum_dom', default='zones-split')
+                    choices=['zones','oct','rtz'],
+                    dest='crab_inter_sum_dom', default='zones')
+    p.add_argument ('--crab-backward',
+                    help='Run iterative forward/backward analysis (only intra version available)',
+                    dest='crab_backward', default=False, action='store_true')
+    # --crab-live may lose precision e.g. when computing summaries.
+    # However, note that due to non-monotonicity of operators such as widening the use of
+    # liveness information may actually improve precision. Thus, it's quite unpredictable
+    # the impact of this option.
     p.add_argument ('--crab-live',
-                    help='Use of liveness information',
+                    help='Use of liveness information: may lose precision with relational domains.',
                     dest='crab_live', default=False, action='store_true')        
     p.add_argument ('--crab-add-invariants',
                     help='Instrument code with invariants',
@@ -216,6 +283,10 @@ def parseArgs (argv):
     p.add_argument ('--crab-keep-shadows',
                     help=a.SUPPRESS,
                     dest='crab_keep_shadows', default=False, action='store_true')
+    p.add_argument ('--do-not-print-invariants',
+                    help=a.SUPPRESS,
+                    dest='do_not_print_invariants', default=False, action='store_true')
+    
     #### END CRAB
     
     args = p.parse_args (argv)
@@ -315,11 +386,6 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
 
 # Run llvm optimizer
 def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
-    def set_limits ():
-        if mem > 0:
-            mem_bytes = mem * 1024 * 1024
-            resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
-
     if out_name == '' or out_name == None:
         out_name = defOptName (in_name)
 
@@ -345,54 +411,19 @@ def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     opt_args.append (in_name)
 
     if verbose: print ' '.join (opt_args)
-    p = sub.Popen (opt_args, preexec_fn=set_limits)
-    global running_process
-    running_process = p
-    timer = threading.Timer (cpu, kill, [p])
-    if cpu > 0: timer.start ()
-    try:
-        (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
-        running_process = None
-    finally:
-        ## kill the timer if the process has terminated already
-        if timer.isAlive (): timer.cancel ()
-    ## if opt did not terminate properly, propagate this error code
-    if returnvalue != 0: sys.exit (returnvalue)
-
+    run_command_with_limits(opt_args, cpu, mem)
+    
 
 # Generate dot files for each LLVM function.
 def dot (in_name, view_dot = False, cpu = -1, mem = -1):
-    def set_limits ():
-        if mem > 0:
-            mem_bytes = mem * 1024 * 1024
-            resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
-
     fnull = open(os.devnull, 'w')
     args = [getOptLlvm(), in_name, '-dot-cfg']
     if view_dot: args.append ('-view-cfg')
     if verbose: print ' '.join (args)
-
-    p = sub.Popen (args, stdout=fnull, preexec_fn=set_limits)
-    global running_process
-    running_process = p
-    timer = threading.Timer (cpu, kill, [p])
-    if cpu > 0: timer.start ()
-    try:
-        (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
-        running_process = None
-    finally:
-        ## kill the timer if the process has terminated already
-        if timer.isAlive (): timer.cancel ()
-    ## if crabpp did not terminate properly, propagate this error code
-    if returnvalue != 0: sys.exit (returnvalue)
+    run_command_with_limits(args, cpu, mem, fnull)
 
 # Run crabpp
 def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
-    def set_limits ():
-        if mem > 0:
-            mem_bytes = mem * 1024 * 1024
-            resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
-
     if out_name == '' or out_name == None:
         out_name = defPPName (in_name)
 
@@ -403,108 +434,70 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append ('--crab-llvm-pp-loops')
     if args.undef_nondet:
         crabpp_args.append( '--crab-turn-undef-nondet')
-    if args.lower_gv:
-        crabpp_args.append( '--crab-lower-gv')
-    if args.lower_invoke:
-        crabpp_args.append( '--crab-lower-invoke')
+    if args.disable_lower_gv:
+        crabpp_args.append( '--crab-lower-gv=false')
+    if args.lower_unsigned_icmp:
+        crabpp_args.append( '--crab-lower-unsigned-icmp')
     if args.devirt:
         crabpp_args.append ('--crab-devirt')
 
     crabpp_args.extend (extra_args)
-
-    if verbose: print ' '.join (crabpp_args)
-    p = sub.Popen (crabpp_args, preexec_fn=set_limits)
-    global running_process
-    running_process = p
-    timer = threading.Timer (cpu, kill, [p])
-    if cpu > 0: timer.start ()
-    try:
-        (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
-        running_process = None
-    finally:
-        ## kill the timer if the process has terminated already
-        if timer.isAlive (): timer.cancel ()
-    ## if crabpp did not terminate properly, propagate this error code
-    if returnvalue != 0: sys.exit (returnvalue)
+    run_command_with_limits(crabpp_args, cpu, mem)    
 
 
-def sharedLib (base):
-    ext = '.so'
-    if sys.platform.startswith ('darwin'): ext = '.dylib'
-    return base + ext
+# def sharedLib (base):
+#     ext = '.so'
+#     if sys.platform.startswith ('darwin'): ext = '.dylib'
+#     return base + ext
 
 # Run crabllvm
 def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
-    def set_limits ():
-        if mem > 0:
-            mem_bytes = mem * 1024 * 1024
-            resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
-
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
     crabllvm_cmd = crabllvm_cmd + extra_opts
 
     if args.log is not None:
         for l in args.log.split (':'): crabllvm_cmd.extend (['-log', l])
 
+    ## This option already run in crabpp    
     if args.undef_nondet: crabllvm_cmd.append( '--crab-turn-undef-nondet')
+        
     if args.lower_select: crabllvm_cmd.append( '--crab-lower-select')
-    crabllvm_cmd.append ('--crab-dom={0}'.format (args.crab_dom))
-    crabllvm_cmd.append ('--crab-inter-sum-dom={0}'.format (args.crab_inter_sum_dom))
-    crabllvm_cmd.append ('--crab-widening-delay={0}'.format (args.widening_delay))
-    crabllvm_cmd.append ('--crab-widening-jump-set={0}'.format (args.widening_jump_set))
-    crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format (args.narrowing_iterations))
-    if (args.crab_dom == 'adapt-rtz'):
-        crabllvm_cmd.append ('--crab-adapt-rtz-threshold={0}'.format (args.num_threshold))
-    crabllvm_cmd.append ('--crab-track={0}'.format (args.track))
-    if args.crab_disable_offsets: crabllvm_cmd.append ('--crab-disable-offsets')
+    crabllvm_cmd.append ('--crab-dom={0}'.format(args.crab_dom))
+    crabllvm_cmd.append ('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))
+    crabllvm_cmd.append ('--crab-widening-delay={0}'.format(args.widening_delay))
+    crabllvm_cmd.append ('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
+    crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
+    crabllvm_cmd.append ('--crab-relational-threshold={0}'.format(args.num_threshold))
+    crabllvm_cmd.append ('--crab-track={0}'.format(args.track))
+    if args.crab_disable_bool: crabllvm_cmd.append ('--crab-bool-as-int')    
+    if args.crab_disable_ptr: crabllvm_cmd.append ('--crab-disable-ptr')
     if args.crab_singleton_aliases: crabllvm_cmd.append ('--crab-singleton-aliases')
     if args.crab_inter: crabllvm_cmd.append ('--crab-inter')
+    if args.crab_backward: crabllvm_cmd.append ('--crab-backward')
     if args.crab_live: crabllvm_cmd.append ('--crab-live')
     crabllvm_cmd.append ('--crab-add-invariants={0}'.format (args.insert_invs))
-    crabllvm_cmd.append ('--crab-print-invariants')
     if args.assert_check: crabllvm_cmd.append ('--crab-check={0}'.format(args.assert_check))
-    if args.check_verbose: crabllvm_cmd.append ('--crab-check-verbose={0}'.format(args.check_verbose))
+    if args.check_verbose:
+        crabllvm_cmd.append ('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.show_summs: crabllvm_cmd.append ('--crab-print-summaries')
     if args.print_cfg: crabllvm_cmd.append ('--crab-print-cfg')
     if args.print_stats: crabllvm_cmd.append ('--crab-stats')
 
-    if args.assert_check:
-        if args.crab_cmp_to_select == 'none':
-            crabllvm_cmd.append ('--crab-cmp-to-select=best-effort')
-
-    if args.crab_cmp_to_select != 'none':            
-        crabllvm_cmd.append ('--crab-cmp-to-select={0}'.format (args.crab_cmp_to_select))
-
     # hidden options
     if args.crab_cfg_simplify: crabllvm_cmd.append ('--crab-cfg-simplify')
     if args.crab_keep_shadows: crabllvm_cmd.append ('--crab-keep-shadows')
+    if not args.do_not_print_invariants: crabllvm_cmd.append ('--crab-print-invariants')
         
     if verbose: print ' '.join (crabllvm_cmd)
 
     if args.out_name is not None:
         crabllvm_cmd.append ('-o={0}'.format (args.out_name))
 
-    p = sub.Popen (crabllvm_cmd, preexec_fn=set_limits)
-
-    global running_process
-    running_process = p
-
-    timer = threading.Timer (cpu, kill, [p])
-    if cpu > 0: timer.start ()
-
-    try:
-        (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
-        running_process = None
-    finally:
-        ## kill the timer if the process has terminated already
-        if timer.isAlive (): timer.cancel ()
-
-    ## if crabllvm did not terminate properly, propagate this error code
-    if returnvalue != 0: sys.exit (returnvalue)
+    run_command_with_limits(crabllvm_cmd, cpu, mem)            
 
 
-def stat (key, val): stats.put (key, val)
 def main (argv):
+    def stat (key, val): stats.put (key, val)
     os.setpgrp ()
     loadEnv (os.path.join (root, "env.common"))
 
