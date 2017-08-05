@@ -126,7 +126,7 @@ if (GIT_FOUND)
   endif ()
   
   add_custom_target (crab-git
-     		     ${GIT_EXECUTABLE} clone -b "v1.0" ${CRAB_REPO} ${CRAB_ROOT})
+     		     ${GIT_EXECUTABLE} clone ${CRAB_REPO} ${CRAB_ROOT})
   
   add_custom_target (crab ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
                      DEPENDS crab-git)    
@@ -207,7 +207,7 @@ if (TopLevel)
 endif()
 
 add_definitions(-std=c++11)
-
+#add_definitions(-Wall)
 add_definitions(-Wno-redeclared-class-member)
 add_definitions(-Wno-sometimes-uninitialized)
 add_definitions(-Wno-deprecated-declarations)
