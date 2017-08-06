@@ -7,7 +7,7 @@
  *   %struct.gstate = type { i32, i32, [10 x i32] }
  *   @g = internal global %struct.gstate zeroinitializer, align 4
  * 
- * This pass inserts the entry block of main as follows:
+ * This pass inserts in the entry block of main :
  * 
  * define i32 @main() {
  *   %_1 = getelementptr %struct.gstate* @g, i32 0, i32 0
@@ -40,21 +40,25 @@
 
 using namespace llvm;
 
+//#define DEBUG_LOWER_GV
+
 namespace crab_llvm {
   
   class LowerGvInitializers : public ModulePass {
     
     static char ID;
 
-    Value* CreateIntCst (int64_t val) {
-      ConstantInt *cst = ConstantInt::get(m_intty, val);
-      return cst;
-    }
-    
-    SmallVector<Value*, 8> CreateGEPIndices(std::vector<unsigned> &stack){
+    template<typename S> 
+    SmallVector<Value*, 8> CreateGEPIndices(const S &stack){
+      // The first GEP index must be of pointer type.
+      // Struct fields can only be indexed by i32 integer constants.
+      // Array, pointers, and vectors can by indexed by any integer constant.
       SmallVector<Value*, 8> indices;
       for(unsigned i=0; i< stack.size(); i++){
-	indices.push_back(CreateIntCst(stack[i]));
+	if (i == 0)
+	  indices.push_back(ConstantInt::get(m_intptrty, stack[i]));
+	else
+	  indices.push_back(ConstantInt::get(m_intty, stack[i]));	  
       }
       return indices;
     }
@@ -78,64 +82,72 @@ namespace crab_llvm {
       if (m_cg) m_cg->getOrInsertFunction(fun);
       return fun;
     }
-    
-    
-    bool LowerZeroInitializer(Type* T, Value &base,
-			    IRBuilder<> &Builder, Module &M,
-			    std::vector<unsigned> &stack,
-			    SmallSet<Type*,8> &cache) {
-      
-      if (cache.count(T) > 0)
-	return true;
 
+    template<typename S>
+    void CreateZeroInitializerCallSite(Value &base, const S &stack,  
+				       IRBuilder<> &Builder, Module &M) {
+      Value *ptr = Builder.CreateInBoundsGEP(&base, CreateGEPIndices(stack));
+      Function *f = CreateZeroInitializerFunction(ptr, M);
+      Builder.CreateCall(f, ptr);
+    }
+    
+
+    template<typename S>
+    bool LowerZeroInitializer(Type* T, Value &base,
+			      IRBuilder<> &Builder, Module &M,
+			      S &stack) {
+      
       bool change = false;
-      if (IntegerType * IT = dyn_cast<IntegerType> (T)) {
-	#if 0
+      if (IntegerType * IntTy = dyn_cast<IntegerType> (T)) {
+	#ifdef DEBUG_LOWER_GV
 	llvm::errs () << "GEP " << base.getName() << " ";
-	for (unsigned j=0; j<stack.size();j++){
+	for (unsigned j=0; j<stack.size();j++)
 	  llvm::errs () << stack[j] << " ";
-	}
 	llvm::errs () << "\n";
+	llvm::errs () << "TYPE=" << *IntTy << "\n";	  	
 	#endif
-	
-	Value *ptr =
-	  Builder.CreateInBoundsGEP(&base, CreateGEPIndices(stack));
-	Function *f = CreateZeroInitializerFunction(ptr, M);
-	Builder.CreateCall(f, ptr);
-	stack.pop_back();
+
+	CreateZeroInitializerCallSite(base, stack, Builder, M);
 	change = true;
       } else if (StructType *STy = dyn_cast<StructType> (T)) {
 	for (unsigned i=0; i < STy->getNumElements(); i++) {
 	  Type* ETy = STy->getElementType(i);
 	  stack.push_back(i);
-	  change |= LowerZeroInitializer(ETy, base, Builder, M, stack, cache);
+	  change |= LowerZeroInitializer(ETy, base, Builder, M, stack);
 	}
-	stack.pop_back();
       } else if (ArrayType *ATy = dyn_cast<ArrayType> (T)) {
 	if (ATy->getElementType()->isIntegerTy()) {
-	  #if 0
+          #ifdef DEBUG_LOWER_GV
 	  llvm::errs () << "GEP " << base.getName() << " ";
 	  for (unsigned j=0; j<stack.size();j++)
 	    llvm::errs () << stack[j] << " ";
 	  llvm::errs () << "\n";
+	  llvm::errs () << "TYPE=" << *ATy << "\n";	  
 	  #endif
-	  
-	  Value *ptr =
-	    Builder.CreateInBoundsGEP(&base, CreateGEPIndices(stack));
-	  Function *f = CreateZeroInitializerFunction(ptr, M);
-	  Builder.CreateCall(f, ptr);
+
+	  CreateZeroInitializerCallSite(base, stack, Builder, M);	  
 	  change = true;
 	} else {
-	  // TODO: skipped
+	  llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *ATy << "\n";
 	}
-	stack.pop_back();
       } else if (PointerType *PTy = dyn_cast<PointerType> (T)) {
-	Value *ptr =
-	  Builder.CreateInBoundsGEP(&base, CreateGEPIndices(stack));
-	Function *f = CreateZeroInitializerFunction(ptr, M);
-	Builder.CreateCall(f, ptr);
-	stack.pop_back();
+        #ifdef DEBUG_LOWER_GV
+	llvm::errs () << "GEP " << base.getName() << " ";
+	for (unsigned j=0; j<stack.size();j++)
+	  llvm::errs () << stack[j] << " ";
+	llvm::errs () << "\n";
+	llvm::errs () << "TYPE=" << *PTy << "\n";
+        #endif
+
+	// Note that we don't go recursively since it would require
+	// loading the pointer before continuing calculation.	
+	CreateZeroInitializerCallSite(base, stack, Builder, M);
+	change = true;
+      } else {
+	llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *T << "\n";
       }
+
+      stack.pop_back();	      
       return change;
     }
 
@@ -143,8 +155,9 @@ namespace crab_llvm {
     DenseMap<const Type*, Constant*> m_initfn;
     /** void type **/
     Type *m_voidty;
-    /** gep index type **/
-    IntegerType* m_intty;
+    /** gep index types **/
+    IntegerType* m_intptrty;
+    IntegerType* m_intty;    
     /** callgraph **/
     CallGraph *m_cg;
     const DataLayout *m_dl;
@@ -158,8 +171,13 @@ namespace crab_llvm {
       CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
       m_cg = cgwp ? &cgwp->getCallGraph () : nullptr;
       m_voidty = Type::getVoidTy(M.getContext());
-      m_intty = cast<IntegerType>(m_dl->getIntPtrType(M.getContext(), 0));
-  
+      m_intptrty = cast<IntegerType>(m_dl->getIntPtrType(M.getContext(), 0));
+      m_intty = IntegerType::get(M.getContext(), 32);      
+
+      
+      //llvm::errs () << "IntegerPtrType:" << *m_intptrty << "\n";
+      //llvm::errs () << "IntegerType:" << *m_intty << "\n";      
+      
       Function *f = M.getFunction ("main");
       if (!f) return false;
       
@@ -182,10 +200,9 @@ namespace crab_llvm {
 	if (!(isa<ConstantAggregateZero>(gv.getInitializer()) ||
 	      isa<ConstantInt>(gv.getInitializer()))) continue;
 	
-	std::vector<unsigned> stack = {0};
-	SmallSet<Type*,8> cache;
+	std::vector<uint64_t> stack = {0};
 	change |= LowerZeroInitializer(gv.getInitializer()->getType(), gv,
-				       Builder, M, stack, cache);
+				       Builder, M, stack);
       }
       return change;
       
