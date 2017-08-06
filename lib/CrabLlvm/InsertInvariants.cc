@@ -366,36 +366,6 @@ namespace crab_llvm {
 			 cfg_ptr->get_node(&B), F.getContext(), cg, change);
               break;
             }
-            // case GenericAbsDomWrapper::arr_intv: {
-            //   INSTR_LOAD(arr_interval_domain_t, pre,
-	    // 		 cfg_ptr->get_node(&B), F.getContext(), cg, change);
-            //   break;
-            // }
-            // case GenericAbsDomWrapper::arr_ric: {
-            //   INSTR_LOAD(arr_ric_domain_t, pre,
-	    // 		 cfg_ptr->get_node(&B), F.getContext(), cg, change);
-            //   break;
-            // }
-            // case GenericAbsDomWrapper::arr_split_dbm: {
-            //   INSTR_LOAD(arr_split_dbm_domain_t, pre,
-	    // 		 cfg_ptr->get_node(&B), F.getContext(), cg, change);
-            //   break;
-            // }
-            // case GenericAbsDomWrapper::arr_term_intv: {
-            //   INSTR_LOAD(arr_term_int_domain_t, pre,
-	    // 		 cfg_ptr->get_node(&B), F.getContext(), cg, change);
-            //   break;
-            // }
-            // case GenericAbsDomWrapper::arr_term_dis_intv: {
-            //   INSTR_LOAD(arr_term_dis_int_domain_t, pre,
-	    // 		 cfg_ptr->get_node(&B), F.getContext(), cg, change);
-            //   break;
-            // }
-            // case GenericAbsDomWrapper::arr_boxes: {
-            //   INSTR_LOAD(arr_boxes_domain_t, pre,
-	    // 		 cfg_ptr->get_node(&B), F.getContext(), cg, change);
-            //   break;
-            // }
             default :
               report_fatal_error("Abstract domain not supported by InsertInvariants");
           }
