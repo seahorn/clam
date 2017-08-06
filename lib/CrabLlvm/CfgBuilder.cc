@@ -1544,8 +1544,10 @@ namespace crab_llvm {
 
       // -- POINTER CAST      
       if (isPointerCast(I)) {
-	if (isa<PtrToIntInst>(I) || isa<IntToPtrInst>(I)) {
-	  CRABLLVM_WARNING("translation skipped " << I);
+	if (isa<PtrToIntInst>(I)) {
+	  CRABLLVM_WARNING("translation skipped PtrToIntInst\n");
+	} else if (isa<IntToPtrInst>(I)) {
+	  CRABLLVM_WARNING("translation skipped IntToPtrInst\n");
 	} else if (isa<BitCastInst>(I) && isPointer(*I.getOperand(0), m_lfac.get_track())) {
 	  boost::optional<crabPtrLit> lsrc = m_lfac.getPtrLit(*I.getOperand(0));
 	  if (lsrc) {
@@ -1944,14 +1946,18 @@ namespace crab_llvm {
       const Function *callee =dyn_cast<Function>(calleeV->stripPointerCasts());
       
       if (!callee) {         
-        // --- If we are here is either because the function is Asm or
-        //     we could not resolve the indirect call.
-	CRABLLVM_WARNING("skipped indirect call " << I << "\nEnable --devirt-functions");
-	if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
-	  // havoc return value
-	  havoc(GET_VAR(I, m_lfac), m_bb);
+	if (I.isInlineAsm()) {
+	  // -- inline asm: do nothing 
+	} else {
+	  // -- unresolved indirect call
+	  CRABLLVM_WARNING("skipped indirect call. Enable --devirt-functions");
+	  
+	  if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+	    // havoc return value
+	    havoc(GET_VAR(I, m_lfac), m_bb);
+	  }
 	}
-        return;
+	return;
       }
 
       // -- ignore any shadow functions created by seahorn
@@ -2253,7 +2259,7 @@ namespace crab_llvm {
 	    } else if (isPointer(*(CI->getOperand(0)), lfac.get_track()) &&
 		       isPointer(*(CI->getOperand(1)), lfac.get_track())) {
 	      // TODO: add ptr_assume statement	      
-	      CRABLLVM_WARNING("translation skipped " << CI << "\n");
+	      CRABLLVM_WARNING("translation skipped comparison between pointers.\n");
 	    }
 	    if (c.hasNUsesOrMore (2)) {
 	      // If I is used by another instruction apart from a
@@ -2380,23 +2386,41 @@ namespace crab_llvm {
       
       std::vector<typed_variable_t> inputs, outputs;
 
-      // -- add input parameters i1,...,in
-      for (Value &arg : boost::make_iterator_range (m_func.arg_begin (),
-						    m_func.arg_end ())) {
-        if (!isTracked(arg, lfac.get_track())) continue;
-        inputs.push_back (typed_variable_t(GET_VAR(arg, lfac), 
-					   getCrabType(arg.getType())));
-      }
-
+      basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
+      
       // -- add the returned value of the llvm function: o
       if (ret_val) {
 	outputs.push_back(*ret_val);
       }
+      
+      // -- add input parameters i1,...,in
+      for (Value &arg : boost::make_iterator_range (m_func.arg_begin (),
+						    m_func.arg_end ())) {
+        if (!isTracked(arg, lfac.get_track())) continue;
+
+	typed_variable_t i(GET_VAR(arg, lfac), getCrabType(arg.getType()));
+	if (ret_val && i == *ret_val) {
+	  // rename i to avoid having same name as output (crab requirement)
+          varname_t fresh_i = FRESH_VAR(lfac);	  	  
+	  if (i.second == BOOL_TYPE) {
+	    entry.bool_assign(fresh_i, i.first);
+	  } else if (i.second == INT_TYPE) {
+	    entry.assign(fresh_i, z_lin_exp_t(i.first));
+	  } else if (i.second == PTR_TYPE) {
+	    entry.ptr_assign(fresh_i, i.first, z_lin_exp_t(0));
+	  } else {
+	    llvm_unreachable("ERROR: unexpected function parameter type\n");
+	  }
+	  inputs.push_back (typed_variable_t(fresh_i, i.second));
+	} else {
+	  inputs.push_back (i);
+	}
+      }
+
 	
       if (m_tracklev == ARR && (!m_func.getName ().equals ("main"))) {
 	
         // -- add the input and output array parameters 
-        basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
 
         auto onlyreads = m_mem.getOnlyReadRegions (m_func);
         auto mods = m_mem.getModifiedRegions (m_func);
@@ -2478,6 +2502,32 @@ namespace crab_llvm {
       }
 
       // -- Finally, we add the function declaration
+
+      #if 0
+      // SANITY CHECK
+      std::vector<varname_t> sorted_ins, sorted_outs;
+      sorted_ins.reserve(inputs.size());
+      sorted_outs.reserve(outputs.size());
+      for (auto kv: inputs) sorted_ins.push_back(kv.first);
+      for (auto kv: outputs) sorted_outs.push_back(kv.first);
+      std::sort(sorted_ins.begin(), sorted_ins.end());
+      std::sort(sorted_outs.begin(), sorted_outs.end());
+      std::vector<varname_t> intersect;
+      std::set_intersection(sorted_ins.begin(), sorted_ins.end(),
+			    sorted_outs.begin(), sorted_outs.end(),
+			    std::back_inserter(intersect));
+      if (!intersect.empty()) {
+	llvm::errs () << "Function inputs and outputs should not intersect\n";
+	crab::outs () << "INPUTS: {";
+	for (auto kv: inputs) { crab::outs () << kv.first << ":" << kv.second << ";"; }
+	crab::outs () << "}\n";
+	crab::outs () << "OUTPUTS: {";
+	for (auto kv: outputs) { crab::outs () << kv.first << ":" << kv.second  << ";"; }
+	crab::outs () << "}\n";
+      }
+      #endif
+
+      
       function_decl<varname_t> decl(GET_VAR(m_func, lfac), inputs, outputs);
       m_cfg->set_func_decl (decl);
       
