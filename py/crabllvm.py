@@ -17,6 +17,15 @@ verbose = False
 
 running_process = None
 
+## special error codes
+# frontend = clang + opt + pp
+ERR_FRONTEND_TIMEOUT=20    
+ERR_FRONTEND_MEMORY_OUT=21  
+# specific errors to each frontend component
+ERR_VARIOUS_CLANG = 22
+ERR_VARIOUS_OPT = 23
+ERR_VARIOUS_PP = 24
+
 def isexec (fpath):
     if fpath == None: return False
     return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
@@ -71,7 +80,7 @@ def run_command_with_limits(cmd, cpu, mem, out = None):
         ## kill the timer if the process has terminated already
         if timer.isAlive (): timer.cancel ()        
     ## if opt did not terminate properly, propagate this error code
-    if returnvalue != 0: sys.exit (returnvalue)
+    return returnvalue
 
 # # Based on http://www.ostricher.com/2015/01/python-subprocess-with-timeout/    
 # class SubprocessTimeout(RuntimeError):
@@ -382,7 +391,17 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     clang_args.append ('-m{0}'.format (arch))
 
     if verbose: print ' '.join (clang_args)
-    sub.check_call (clang_args)
+    returnvalue = run_command_with_limits(clang_args, -1, -1)
+    if returnvalue != 0:        
+        returnvalue = returnvalue % 256
+        if returnvalue == 9:
+            returnvalue = ERR_FRONTEND_TIMEOUT
+        elif returnvalue == 134:
+            returnvalue = ERR_FRONTEND_MEMORY_OUT
+        else:
+            returnvalue = ERR_VARIOUS_CLANG
+        sys.exit(returnvalue)    
+    
 
 # Run llvm optimizer
 def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
@@ -411,7 +430,16 @@ def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     opt_args.append (in_name)
 
     if verbose: print ' '.join (opt_args)
-    run_command_with_limits(opt_args, cpu, mem)
+    returnvalue = run_command_with_limits(opt_args, cpu, mem)
+    if returnvalue != 0:
+        returnvalue = returnvalue % 256        
+        if returnvalue == 9:
+            returnvalue = ERR_FRONTEND_TIMEOUT
+        elif returnvalue == 134:
+            returnvalue = ERR_FRONTEND_MEMORY_OUT
+        else:
+            returnvalue = ERR_VARIOUS_OPT
+        sys.exit(returnvalue)    
     
 
 # Generate dot files for each LLVM function.
@@ -420,8 +448,9 @@ def dot (in_name, view_dot = False, cpu = -1, mem = -1):
     args = [getOptLlvm(), in_name, '-dot-cfg']
     if view_dot: args.append ('-view-cfg')
     if verbose: print ' '.join (args)
-    run_command_with_limits(args, cpu, mem, fnull)
-
+    returnvalue = run_command_with_limits(args, cpu, mem, fnull)
+    if returnvalue != 0: sys.exit (returnvalue)    
+    
 # Run crabpp
 def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if out_name == '' or out_name == None:
@@ -442,9 +471,17 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append ('--crab-devirt')
 
     crabpp_args.extend (extra_args)
-    run_command_with_limits(crabpp_args, cpu, mem)    
-
-
+    returnvalue = run_command_with_limits(crabpp_args, cpu, mem)
+    if returnvalue != 0:
+        returnvalue = returnvalue % 256        
+        if returnvalue == 9:
+            returnvalue = ERR_FRONTEND_TIMEOUT
+        elif returnvalue == 134:
+            returnvalue = ERR_FRONTEND_MEMORY_OUT
+        else:
+            returnvalue = ERR_VARIOUS_PP
+        sys.exit(returnvalue)    
+    
 # def sharedLib (base):
 #     ext = '.so'
 #     if sys.platform.startswith ('darwin'): ext = '.dylib'
@@ -493,9 +530,10 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.out_name is not None:
         crabllvm_cmd.append ('-o={0}'.format (args.out_name))
 
-    run_command_with_limits(crabllvm_cmd, cpu, mem)            
-
-
+    returnvalue = run_command_with_limits(crabllvm_cmd, cpu, mem)
+    if returnvalue != 0:
+        sys.exit (returnvalue)    
+    
 def main (argv):
     def stat (key, val): stats.put (key, val)
     os.setpgrp ()
