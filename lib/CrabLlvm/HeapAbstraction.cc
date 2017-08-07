@@ -288,17 +288,24 @@ namespace crab_llvm {
     
     /// ignore inline assembly
     if (I.isInlineAsm()) return;
-          
+
+    llvm::Function* Called = llvm::CallSite(&I).getCalledFunction();
+
+    if (!Called) {
+      // This shouldn't happen since DSA should resolve all callsites
+      llvm::errs () << "CRABLLVM WARNING: DSA cannot resolve " << I << "\n";
+      return;
+    }
+    
     // hook: skip shadow mem functions created by SeaHorn
     // We treat them as readnone functions
-    if (llvm::Function* Called = llvm::CallSite(&I).getCalledFunction())
-      if (Called->getName().startswith("shadow.mem"))
-	return;
+    if (Called->getName().startswith("shadow.mem"))
+      return;
     
     llvm::DSGraph *dsg = m_dsa->getDSGraph(*(I.getParent()->getParent()));
     llvm::DSCallSite CS = dsg->getDSCallSiteForCallSite(llvm::CallSite(&I));
     
-    if (!CS.isDirectCall()) return;
+    assert(CS.isDirectCall());
           
     if (!m_dsa->hasDSGraph(*CS.getCalleeFunc())) return;
     
