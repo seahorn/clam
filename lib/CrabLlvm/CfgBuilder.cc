@@ -19,6 +19,8 @@
  * - Ignore ashr and shl with non-constant shifts.
  * - Ignore integer bitwidths in most operations (this can affect
  *   soundness).
+ * - Comparison between pointers
+ * - Pointer cast instructions
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -279,7 +281,7 @@ namespace crab_llvm {
     else {
       CRABLLVM_WARNING("Warning: " <<
 		       toMpz(CI->getValue()).get_str() <<   
-		       " does not fit in int64_t.\n");
+		       " does not fit in int64_t.");
       return boost::optional<int64_t>();
     }
   }
@@ -1384,7 +1386,7 @@ namespace crab_llvm {
 	  isPointer(*I.getOperand(1),m_lfac.get_track())) {
 	
 	if (!AllUsesAreBrInst(&I)) {
-	  CRABLLVM_WARNING("translation skipped " << I << "\n");
+	  CRABLLVM_WARNING("translation skipped comparison between pointers");
 	  havoc(GET_VAR(I, m_lfac), m_bb);		  
 	}
 	return;
@@ -1545,9 +1547,9 @@ namespace crab_llvm {
       // -- POINTER CAST      
       if (isPointerCast(I)) {
 	if (isa<PtrToIntInst>(I)) {
-	  CRABLLVM_WARNING("translation skipped PtrToIntInst\n");
+	  CRABLLVM_WARNING("translation skipped pointer to integer cast");
 	} else if (isa<IntToPtrInst>(I)) {
-	  CRABLLVM_WARNING("translation skipped IntToPtrInst\n");
+	  CRABLLVM_WARNING("translation skipped integer to pointer cast");
 	} else if (isa<BitCastInst>(I) && isPointer(*I.getOperand(0), m_lfac.get_track())) {
 	  boost::optional<crabPtrLit> lsrc = m_lfac.getPtrLit(*I.getOperand(0));
 	  if (lsrc) {
@@ -1709,7 +1711,7 @@ namespace crab_llvm {
       }
       
       if ((*ptr_lit).isNull()) {
-	CRABLLVM_WARNING(I << " doing pointer arithmetic with null pointer\n");
+	CRABLLVM_WARNING(I << " doing pointer arithmetic with null pointer.");
         havoc(GET_VAR(I, m_lfac), m_bb);
         return;
       }
@@ -1788,7 +1790,7 @@ namespace crab_llvm {
       varname_t lhs = GET_VAR(I, m_lfac);      
       boost::optional<crabPtrLit> ptr_lit = m_lfac.getPtrLit(*I.getPointerOperand ());
       if (!ptr_lit) {
-	CRABLLVM_WARNING("unexpected pointer operand " << I << "\n");
+	CRABLLVM_WARNING("unexpected pointer operand " << I);
 	havoc(lhs, m_bb);
 	return;
       }
@@ -1840,7 +1842,7 @@ namespace crab_llvm {
 
       boost::optional<crabPtrLit> ptr_lit = m_lfac.getPtrLit(*I.getPointerOperand());
       if (!ptr_lit) {
-	CRABLLVM_WARNING("unexpected pointer operand " << I << "\n");
+	CRABLLVM_WARNING("unexpected pointer operand " << I);
 	return;
       }
       
@@ -1855,7 +1857,7 @@ namespace crab_llvm {
 
 	boost::optional<crabPtrLit> val_lit = m_lfac.getPtrLit(*I.getValueOperand());
 	if (!val_lit) {
-	  CRABLLVM_WARNING("unexpected value operand " << I << "\n");
+	  CRABLLVM_WARNING("unexpected value operand " << I);
 	  havoc((*ptr_lit).getVar(), m_bb);
 	} else if (!(*val_lit). isNull()) {
 	  // OVER-APPROXIMATION: we ignore the case if we store a null pointer. In
@@ -1873,7 +1875,7 @@ namespace crab_llvm {
 	  boost::optional<crabNumLit> val_lit = m_lfac.getNumLit(*I.getValueOperand());
 
 	  if (!val_lit) {
-	    CRABLLVM_WARNING("unexpected value operand " << I << "\n");
+	    CRABLLVM_WARNING("unexpected value operand " << I);
 	    havoc((*ptr_lit).getVar(), m_bb);
 	    return;
 	  }
@@ -2259,7 +2261,7 @@ namespace crab_llvm {
 	    } else if (isPointer(*(CI->getOperand(0)), lfac.get_track()) &&
 		       isPointer(*(CI->getOperand(1)), lfac.get_track())) {
 	      // TODO: add ptr_assume statement	      
-	      CRABLLVM_WARNING("translation skipped comparison between pointers.\n");
+	      CRABLLVM_WARNING("translation skipped comparison between pointers");
 	    }
 	    if (c.hasNUsesOrMore (2)) {
 	      // If I is used by another instruction apart from a
@@ -2289,7 +2291,7 @@ namespace crab_llvm {
 
   void CfgBuilder::build_cfg() {
 
-    crab::ScopedCrabStats __st__("CFG");
+    crab::ScopedCrabStats __st__("CFG Construction");
 
     std::vector<BasicBlock*> blocks;
     for (auto &B : m_func) { 
