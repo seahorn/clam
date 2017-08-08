@@ -474,6 +474,7 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append ('--crab-devirt')
 
     crabpp_args.extend (extra_args)
+    if verbose: print ' '.join (crabpp_args)
     returnvalue = run_command_with_limits(crabpp_args, cpu, mem)
     if returnvalue != 0:
         returnvalue = returnvalue % 256        
@@ -485,11 +486,6 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
             returnvalue = ERR_VARIOUS_PP
         sys.exit(returnvalue)    
     
-# def sharedLib (base):
-#     ext = '.so'
-#     if sys.platform.startswith ('darwin'): ext = '.dylib'
-#     return base + ext
-
 # Run crabllvm
 def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
@@ -597,10 +593,12 @@ def main (argv):
 def killall ():
     global running_process
     if running_process != None:
-        running_process.terminate ()
-        running_process.kill ()
-        running_process.wait ()
-        running_process = None
+        try:
+            running_process.terminate ()
+            running_process.kill ()
+            running_process.wait ()
+            running_process = None
+        except OSError: pass
 
 if __name__ == '__main__':
     # unbuffered output
