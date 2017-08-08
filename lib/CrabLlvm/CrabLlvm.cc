@@ -59,6 +59,11 @@ CrabPrintSumm ("crab-print-summaries",
                cl::init (false));
 
 cl::opt<bool>
+CrabPrintPreCond ("crab-print-preconditions", 
+               cl::desc ("Print Crab necessary preconditions"),
+               cl::init (false));
+
+cl::opt<bool>
 CrabStats ("crab-stats", 
            cl::desc ("Show Crab statistics and analysis results"),
            cl::init (false));
@@ -570,7 +575,7 @@ namespace crab_llvm {
           // --- print invariants and summaries
           // Summaries are not currently stored but it would be easy to do so.
           if (CrabPrintAns) 
-            writeInvariants (llvm::outs (), *F);
+            printInvariants(llvm::outs (), *F);
           
           if (CrabPrintSumm && analyzer.has_summary (cfg)) {
             auto summ = analyzer.get_summary (cfg);
@@ -653,8 +658,22 @@ namespace crab_llvm {
       }
     }
 
-    if (CrabPrintAns)
-      writeInvariants (llvm::outs (), F);
+    if (CrabPrintAns) {
+      printInvariants(llvm::outs(), F);
+    }
+    
+    if (CrabPrintPreCond && CrabBackward) {
+      if (!F.isDeclaration () && !F.empty () && !F.isVarArg ()) {
+	llvm::outs() << "\nNecessary preconditions for " << F.getName () << "\n";
+	for (auto &B : F) {
+	  const llvm::BasicBlock * BB = &B;
+	  llvm::outs() << "\t" << BB->getName () << ": ";
+	  auto pre = analyzer.get_preconditions(BB);
+	  crab::outs() << pre << "\n";
+	}
+	llvm::outs() <<  "\n";
+      }
+    }
 
     if (CrabAssertCheck) {
       // --- checking assertions and collecting data
@@ -721,10 +740,10 @@ namespace crab_llvm {
     }
   }
 
-  void CrabLlvm::writeInvariants (llvm::raw_ostream& o, 
+  void CrabLlvm::printInvariants (llvm::raw_ostream& o, 
                                   const Function& F) {
     if (!F.isDeclaration () && !F.empty () && !F.isVarArg ()) {
-      o << "\nFunction " << F.getName () << "\n";
+      o << "\nInvariants for " << F.getName () << "\n";
       for (auto &B : F) {
         const llvm::BasicBlock * BB = &B;
         o << "\t" << BB->getName () << ": ";
@@ -739,6 +758,7 @@ namespace crab_llvm {
       o <<  "\n";
     }
   }
+
 
   /**
    * For assertion checking

@@ -87,8 +87,8 @@ namespace crab_llvm {
 		    const llvm::Module &M,
 		    const liveness_map_t& live_map);
 
-    void writeInvariants (llvm::raw_ostream& o, const llvm::Function& F);
-
+    void printInvariants(llvm::raw_ostream& o, const llvm::Function& F);
+    
    public:
 
     typedef invariants_map_t::iterator iterator;

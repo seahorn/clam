@@ -278,7 +278,10 @@ def parseArgs (argv):
                     dest='check_verbose', type=int, default=0)
     p.add_argument ('--crab-print-summaries',
                     help='Display computed summaries (if --crab-inter)',
-                    dest='show_summs', default=False, action='store_true')
+                    dest='print_summs', default=False, action='store_true')
+    p.add_argument ('--crab-print-preconditions',
+                    help='Display computed necessary preconditions (if --crab-backward)',
+                    dest='print_preconds', default=False, action='store_true')
     p.add_argument ('--crab-print-cfg',
                     help='Display Crab CFG',
                     dest='print_cfg', default=False, action='store_true')
@@ -516,7 +519,8 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.assert_check: crabllvm_cmd.append ('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:
         crabllvm_cmd.append ('--crab-check-verbose={0}'.format(args.check_verbose))
-    if args.show_summs: crabllvm_cmd.append ('--crab-print-summaries')
+    if args.print_summs: crabllvm_cmd.append ('--crab-print-summaries')
+    if args.print_preconds: crabllvm_cmd.append ('--crab-print-preconditions')    
     if args.print_cfg: crabllvm_cmd.append ('--crab-print-cfg')
     if args.print_stats: crabllvm_cmd.append ('--crab-stats')
 
