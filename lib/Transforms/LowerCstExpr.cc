@@ -6,40 +6,21 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/ADT/SmallPtrSet.h"
 
-#include "boost/range.hpp"
-#include <set>
-
 namespace crab_llvm {
   
   using namespace llvm;
 
   class LowerCstExpr: public ModulePass {
-    ConstantExpr* hasCstExpr(Value *V, std::set<Value*> &visited) {
-      if (visited.count (V) > 0) return nullptr;
-      
-      visited.insert (V);
+    
+    ConstantExpr* hasCstExpr(Value *V) {
+      // We only handle top-level constant expressions ignoring
+      // constant subexpressions
       if (Constant * cst = dyn_cast<Constant>(V)) {
         if (ConstantExpr * ce = dyn_cast<ConstantExpr>(cst)) {
           return ce;
-	} else {
-          // for ConstantStruct, ConstantArray, etc, we need to check
-          // recursively.
-          for (unsigned u=0; u < cst->getNumOperands (); ++u) {
-            Use& p = cst->getOperandUse(u);
-            // for (auto p : boost::make_iterator_range (cst->op_begin (),
-            //                                           cst->op_end ()))
-            // {
-            if (ConstantExpr * cst_exp_i = hasCstExpr(p.get (), visited))
-              return cst_exp_i;
-          }
-        }          
+	}
       }
       return nullptr;
-    }
-    
-    ConstantExpr* hasCstExpr(Value *V) {
-      std::set<Value*> visited;
-      return hasCstExpr(V,visited);
     }
 
     Instruction * lowerCstExpr(ConstantExpr* CstExp, 
