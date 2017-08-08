@@ -17,14 +17,17 @@ verbose = False
 
 running_process = None
 
-## special error codes
-# frontend = clang + opt + pp
+####### SPECIAL ERROR CODES USEFUL FOR DEBUGGING ############
+## special error codes for the frontend (clang + opt + pp)
 ERR_FRONTEND_TIMEOUT=20    
 ERR_FRONTEND_MEMORY_OUT=21  
-# specific errors to each frontend component
-ERR_VARIOUS_CLANG = 22
-ERR_VARIOUS_OPT = 23
-ERR_VARIOUS_PP = 24
+#### specific errors for each frontend component
+ERR_CLANG = 22
+ERR_OPT = 23
+ERR_PP = 24
+## special error code for crab-llvm/crab
+ERR_CRAB = 25
+#############################################################
 
 def isexec (fpath):
     if fpath == None: return False
@@ -64,13 +67,19 @@ def run_command_with_limits(cmd, cpu, mem, out = None):
     if out is not None:
         p = sub.Popen (cmd, stdout = out, preexec_fn=set_limits)
     else:
-        p = sub.Popen (cmd, preexec_fn=set_limits)
+        p = sub.Popen (cmd, preexec_fn=set_limits)    
     global running_process
     running_process = p
     timer = threading.Timer (cpu, kill, [p])
     if cpu > 0: timer.start ()
     try:
         (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
+        # returnvalue is a 16-bit number, whose low byte is the signal number 
+        # that killed the process, and whose high byte is the exit status 
+        # (if the signal number is zero)
+        killed_by_signal = returnvalue & 127
+        if not killed_by_signal:
+            returnvalue = returnvalue >> 8
         running_process = None
     except OSError:
         ## p has been killed probably because it consumed too much memory
@@ -78,8 +87,8 @@ def run_command_with_limits(cmd, cpu, mem, out = None):
         returnvalue = 134 
     finally:
         ## kill the timer if the process has terminated already
-        if timer.isAlive (): timer.cancel ()        
-    ## if opt did not terminate properly, propagate this error code
+        if timer.isAlive (): timer.cancel ()            
+    #print "RETURNVALUE =" + str(returnvalue)    
     return returnvalue
 
 # # Based on http://www.ostricher.com/2015/01/python-subprocess-with-timeout/    
@@ -399,13 +408,12 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     if verbose: print ' '.join (clang_args)
     returnvalue = run_command_with_limits(clang_args, -1, -1)
     if returnvalue != 0:        
-        returnvalue = returnvalue % 256
         if returnvalue == 9:
             returnvalue = ERR_FRONTEND_TIMEOUT
         elif returnvalue == 134:
             returnvalue = ERR_FRONTEND_MEMORY_OUT
         else:
-            returnvalue = ERR_VARIOUS_CLANG
+            returnvalue = ERR_CLANG
         sys.exit(returnvalue)    
     
 
@@ -438,13 +446,12 @@ def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if verbose: print ' '.join (opt_args)
     returnvalue = run_command_with_limits(opt_args, cpu, mem)
     if returnvalue != 0:
-        returnvalue = returnvalue % 256        
         if returnvalue == 9:
             returnvalue = ERR_FRONTEND_TIMEOUT
         elif returnvalue == 134:
             returnvalue = ERR_FRONTEND_MEMORY_OUT
         else:
-            returnvalue = ERR_VARIOUS_OPT
+            returnvalue = ERR_OPT
         sys.exit(returnvalue)    
     
 
@@ -480,13 +487,12 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if verbose: print ' '.join (crabpp_args)
     returnvalue = run_command_with_limits(crabpp_args, cpu, mem)
     if returnvalue != 0:
-        returnvalue = returnvalue % 256        
         if returnvalue == 9:
             returnvalue = ERR_FRONTEND_TIMEOUT
         elif returnvalue == 134:
             returnvalue = ERR_FRONTEND_MEMORY_OUT
         else:
-            returnvalue = ERR_VARIOUS_PP
+            returnvalue = ERR_PP
         sys.exit(returnvalue)    
     
 # Run crabllvm
@@ -536,6 +542,9 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
 
     returnvalue = run_command_with_limits(crabllvm_cmd, cpu, mem)
     if returnvalue != 0:
+        # crab returns EXIT_FAILURE which in most platforms is 1 but not in all.
+        if returnvalue == 1:
+            returnvalue = ERR_CRAB
         sys.exit (returnvalue)    
     
 def main (argv):
