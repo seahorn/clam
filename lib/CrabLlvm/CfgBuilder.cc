@@ -125,12 +125,17 @@ CrabUnsoundArrayInit("crab-arr-unsound-init",
 		     cl::init (false),
 		     cl::Hidden);
 
-
+cl::opt<bool>
+CrabDisableWarnings("crab-disable-warnings",
+	      cl::desc ("Disable warning messages"), 
+	      cl::init (false),
+	      cl::Hidden);
 
 namespace crab_llvm {
 
   #define CRABLLVM_WARNING(MSG) \
-    llvm::errs () << "CRABLLVM WARNING: " << MSG << "\n";
+    if (!CrabDisableWarnings) \
+      {llvm::errs () << "CRABLLVM WARNING: " << MSG << "\n";}
   #define GET_VAR(V,LFAC) LFAC.get_vfac()[&V]
   #define FRESH_VAR(LFAC) LFAC.get_vfac().get()
   #define GET_VAR_FROM_REGION(R,LFAC) LFAC.get_vfac().get(R.get_id())
