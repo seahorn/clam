@@ -1283,6 +1283,14 @@ namespace crab_llvm {
 			       lb_idx, ub_idx,init_val);
 	  }
 	} else if (isIntArray(*Ty)){
+	  if (cast<ArrayType>(Ty)->getNumElements() == 0) {
+	    // TODO: zero-length array are possible inside structs We
+	    // can simply make ub_idx > 0.  However, DSA is very
+	    // likely that it will collapse anyway so the fact we skip
+	    // the translation won't make any difference.
+	    CRAB_WARN("translation skipped a zero-length array");
+	    return;
+	  }
 	  uint64_t elem_size = storageSize(cast<ArrayType>(Ty)->getElementType());
 	  z_lin_exp_t ub_idx((cast<ArrayType>(Ty)->getNumElements() - 1)* elem_size);
 	  m_bb.array_assume (a, ARR_INT_TYPE, elem_size,
