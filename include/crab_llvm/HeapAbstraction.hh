@@ -7,8 +7,6 @@
 
 #include <set>
 
-// TODO: A region must have the type(s) of the pointee elements.
-
 // forward declarations
 namespace llvm {
   class Module;
@@ -30,7 +28,8 @@ namespace crab_llvm {
 
      // A region different from unknown should represent a consecutive
      // sequence of bytes in memory that have compatible types and are
-     // aligned so the analysis can use it in a safe manner. 
+     // accessed uniformly so the analysis can use it in a safe
+     // manner.
 
      friend struct DummyHeapAbstraction;
      #ifdef HAVE_DSA
