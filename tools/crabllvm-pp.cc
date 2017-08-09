@@ -287,6 +287,8 @@ int main(int argc, char **argv) {
   if (LowerGv) {
     // -- lower initializers of global variables
     pass_manager.add (crab_llvm::createLowerGvInitializersPass ());   
+    // cleanup of dead initializers
+    pass_manager.add (llvm::createDeadCodeEliminationPass());
   }
 
   // -- ensure one single exit point per function
@@ -298,6 +300,8 @@ int main(int argc, char **argv) {
 
   // -- remove switch constructions
   pass_manager.add (llvm::createLowerSwitchPass());
+  // cleanup unnecessary blocks     
+  opass_manager.add (llvm::createCFGSimplificationPass ());  
   
   // -- lower constant expressions to instructions
   pass_manager.add (crab_llvm::createLowerCstExprPass ());   
@@ -311,7 +315,7 @@ int main(int argc, char **argv) {
     pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
   }
   
-  // -- must be the last ones:
+  // -- must be the last one to avoid llvm undoing it
   if (LowerSelect)
     pass_manager.add (crab_llvm::createLowerSelectPass ());   
 
