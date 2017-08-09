@@ -242,7 +242,7 @@ namespace crab_llvm {
 
       // -- Remove array shadow variables otherwise llvm will
       //    get choked
-      CrabLlvm* crab = &getAnalysis<CrabLlvm> ();
+      CrabLlvmPass* crab = &getAnalysis<CrabLlvmPass> ();
       auto &vfac = crab->getVariableFactory ();
       auto shadows = vfac.get_shadow_vars ();
       crab::domains::domain_traits<AbsDomain>::
@@ -310,7 +310,7 @@ namespace crab_llvm {
     if (F.isDeclaration () || F.empty () || F.isVarArg ()) 
       return false;
 
-    CrabLlvm* crab = &getAnalysis<CrabLlvm> ();
+    CrabLlvmPass* crab = &getAnalysis<CrabLlvmPass> ();
 
     auto cfg_ptr = crab->getCfg (&F);
     if (!cfg_ptr) return false;
@@ -377,7 +377,7 @@ namespace crab_llvm {
 
   void InsertInvariants::getAnalysisUsage (AnalysisUsage &AU) const {
     AU.setPreservesAll ();
-    AU.addRequired<crab_llvm::CrabLlvm>();
+    AU.addRequired<crab_llvm::CrabLlvmPass>();
     AU.addRequired<DataLayoutPass>();
     AU.addRequired<UnifyFunctionExitNodes> ();
     AU.addRequired<CallGraphWrapperPass> ();

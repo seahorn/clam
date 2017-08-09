@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
 
   if (!NoCrab) {
     /// -- run the crab analyzer
-    pass_manager.add (new crab_llvm::CrabLlvm ());
+    pass_manager.add (new crab_llvm::CrabLlvmPass ());
   }
 
   if (!AsmOutputFilename.empty ()) 
