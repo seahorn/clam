@@ -301,7 +301,7 @@ int main(int argc, char **argv) {
   // -- remove switch constructions
   pass_manager.add (llvm::createLowerSwitchPass());
   // cleanup unnecessary blocks     
-  opass_manager.add (llvm::createCFGSimplificationPass ());  
+  pass_manager.add (llvm::createCFGSimplificationPass ());  
   
   // -- lower constant expressions to instructions
   pass_manager.add (crab_llvm::createLowerCstExprPass ());   
