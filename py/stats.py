@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 # simple statistics module
 
 import resource
