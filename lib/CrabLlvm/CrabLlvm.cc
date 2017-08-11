@@ -288,7 +288,8 @@ namespace crab_llvm {
       // -- run intra-procedural analysis
       // This analysis ignores the liveness information.
       intra_analyzer_t analyzer (cfg);
-      analyzer.run(Dom::top(), Dom::top(), !CrabBackward, 
+      typename intra_analyzer_t::assumption_map_t assumptions; // no assumptions
+      analyzer.run(Dom::top(), Dom::top(), !CrabBackward, assumptions,
 		   CrabWideningDelay, CrabNarrowingIters, CrabWideningJumpSet);
       CRAB_LOG("crabllvm", crab::outs() << "DONE\n"); 
       
