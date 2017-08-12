@@ -242,8 +242,8 @@ namespace crab_llvm {
 
       // -- Remove array shadow variables otherwise llvm will
       //    get choked
-      CrabLlvmPass* crab = &getAnalysis<CrabLlvmPass> ();
-      auto &vfac = crab->getVariableFactory ();
+      CrabLlvmPass* crab = &getAnalysis<CrabLlvmPass>();
+      auto &vfac = crab->get_var_factory();
       auto shadows = vfac.get_shadow_vars ();
       crab::domains::domain_traits<AbsDomain>::
 	forget(inv, shadows.begin(), shadows.end());
@@ -312,7 +312,7 @@ namespace crab_llvm {
 
     CrabLlvmPass* crab = &getAnalysis<CrabLlvmPass> ();
 
-    auto cfg_ptr = crab->getCfg (&F);
+    auto cfg_ptr = crab->get_cfg(&F);
     if (!cfg_ptr) return false;
 
     CallGraphWrapperPass *cgwp =getAnalysisIfAvailable<CallGraphWrapperPass>();
@@ -323,7 +323,7 @@ namespace crab_llvm {
 
       if (InsertInvs == BLOCK_ENTRY || InsertInvs == ALL) {
         // --- Instrument basic block entry
-        auto pre = crab->getPre (&B, false /*remove shadows*/);
+        auto pre = crab->get_pre(&B, false /*remove shadows*/);
         auto csts = pre->to_linear_constraints ();
         change |= instrument_entries (csts, &B, F.getContext(), cg);
       }
@@ -332,7 +332,7 @@ namespace crab_llvm {
         // --- We only instrument Load instructions
         if (reads_memory (B)) {
 
-          auto pre = crab->getPre (&B, true /*keep shadows*/);
+          auto pre = crab->get_pre(&B, true /*keep shadows*/);
 
           // --- Figure out the type of the wrappee
           switch (pre->getId ()) {
