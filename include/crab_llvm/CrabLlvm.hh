@@ -125,6 +125,8 @@ namespace crab_llvm {
 		  const crab::cfg::tracked_precision cfg_precision = crab::cfg::NUM,
 		  heap_abs_ptr heap_abs = nullptr);
 
+    ~IntraCrabLlvm();    
+
     /**
      * Call crab analysis on the CFG under assumptions.
      **/    

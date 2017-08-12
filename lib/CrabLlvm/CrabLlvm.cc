@@ -463,7 +463,9 @@ namespace crab_llvm {
       : m_cfg(nullptr), m_fun(fun), m_vfac(vfac) {
       // -- build a crab cfg for func
       CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
-      m_cfg = builder.getCfg();      
+      CRAB_LOG("crabllvm",
+	       llvm::outs () << "Built Crab CFG for " << fun.getName() << "\n");
+      m_cfg = builder.getCfg();
     }
 
     cfg_ptr_t Cfg () { return m_cfg; }
@@ -519,12 +521,16 @@ namespace crab_llvm {
    **/
   IntraCrabLlvm::IntraCrabLlvm(Function &fun, const TargetLibraryInfo &tli,
 			       crab::cfg::tracked_precision cfg_precision,
-			       heap_abs_ptr heap_abs)
-    : m_impl(make_unique<IntraCrabLlvm_Impl>
-	     (fun, cfg_precision, (!heap_abs ?
-				   boost::make_shared<DummyHeapAbstraction>():
-				   heap_abs), m_vfac, tli)) {}
+			       heap_abs_ptr heap_abs) : m_impl(nullptr) {
+    if (!heap_abs)
+      heap_abs = boost::make_shared<DummyHeapAbstraction>();
+    
+    m_impl = make_unique<IntraCrabLlvm_Impl>(fun, cfg_precision,
+					     heap_abs, m_vfac, tli);
+  }
 
+  IntraCrabLlvm::~IntraCrabLlvm() {}
+    
   void IntraCrabLlvm::analyze(AnalysisParams &params,
 			      const assumption_map_t &assumptions) {
     checks_db_ptr checksdb = nullptr;
@@ -552,7 +558,6 @@ namespace crab_llvm {
   /**
    *   End IntraCrabLlvm methods
    **/
-
     
   /** Run inter-procedural analysis on the whole call graph **/
   template<typename BUDom, typename TDDom>
