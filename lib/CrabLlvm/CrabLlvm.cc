@@ -26,10 +26,10 @@
 
 #include "crab/common/debug.hpp"
 #include "crab/common/stats.hpp"
-#include "crab/analysis/liveness.hpp"
 #include "crab/analysis/fwd_analyzer.hpp"
 #include "crab/analysis/bwd_analyzer.hpp"
 #include "crab/analysis/inter_fwd_analyzer.hpp"
+#include "crab/analysis/dataflow/liveness.hpp"
 #include "crab/checkers/assertion.hpp"
 #include "crab/checkers/null.hpp"
 #include "crab/checkers/checker.hpp"
