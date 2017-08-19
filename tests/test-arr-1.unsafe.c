@@ -1,4 +1,4 @@
-// RUN: %crabllvm -O0 --crab-dom=term-dis-int --crab-track=arr --crab-check=assert "%s" 2>&1 | OutputCheck %s
+// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-dom=term-dis-int --crab-track=arr --crab-check=assert "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
 extern int nd ();
@@ -18,6 +18,6 @@ int main ()
   }
 
   int res = a[i-1];
-  __CRAB_assert(res == 4); // it's actually false but the domain is too weak for that
+  __CRAB_assert(res == 4); 
   return res;
 }

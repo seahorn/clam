@@ -126,7 +126,7 @@ if (GIT_FOUND)
   endif ()
   
   add_custom_target (crab-git
-     		     ${GIT_EXECUTABLE} clone -b "crab-llvm" ${CRAB_REPO} ${CRAB_ROOT})
+     		     ${GIT_EXECUTABLE} clone ${CRAB_REPO} ${CRAB_ROOT})
   
   add_custom_target (crab ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
                      DEPENDS crab-git)    
@@ -162,6 +162,7 @@ if (TopLevel)
     -DLLVM_ENABLE_PEDANTIC=OFF 
     -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=TRUE
     -DLLVM_BUILD_LLVM_DYLIB:BOOL=${BUILD_CRABLLVM_LIBS_SHARED}
+    -DLLVM_BINDINGS_LIST=" "
     LOG_CONFIGURE 1
     LOG_BUILD 1
     LOG_INSTALL 1)
@@ -207,7 +208,7 @@ if (TopLevel)
 endif()
 
 add_definitions(-std=c++11)
-
+#add_definitions(-Wall)
 add_definitions(-Wno-redeclared-class-member)
 add_definitions(-Wno-sometimes-uninitialized)
 add_definitions(-Wno-deprecated-declarations)

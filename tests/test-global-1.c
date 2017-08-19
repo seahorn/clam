@@ -1,5 +1,5 @@
-// RUN: %crabllvm -O0 --crab-dom=int --crab-widening-jump-set=20 --crab-check=assert "%s"  2>&1 | OutputCheck %s
-// CHECK: ^1  Number of total safe checks$
+// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-dom=int --crab-widening-delay=2 --crab-check=assert "%s"  2>&1 | OutputCheck %s
+// CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
 
@@ -31,7 +31,7 @@ int main () {
       s=5;
     }
   }
-  __CRAB_assert (e >= 0 && e <=3);
+  __CRAB_assert (e >= 0 && e <=2);
   __CRAB_assert (s >= 2 && s <=5);
   
   return 42;
