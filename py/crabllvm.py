@@ -297,6 +297,9 @@ def parseArgs (argv):
     p.add_argument ('--crab-stats',
                     help='Display Crab statistics',
                     dest='print_stats', default=False, action='store_true')
+    p.add_argument ('--crab-print-unjustified-assumptions',
+                    help='Print unjustified assumptions done by the analyzer',
+                    dest='print_assumptions', default=False, action='store_true')
     p.add_argument ('--crab-disable-warnings',
                     help='Disable some crab-llvm warnings',
                     dest='crab_disable_warnings', default=False, action='store_true')
@@ -528,6 +531,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.print_preconds: crabllvm_cmd.append ('--crab-print-preconditions')    
     if args.print_cfg: crabllvm_cmd.append ('--crab-print-cfg')
     if args.print_stats: crabllvm_cmd.append ('--crab-stats')
+    if args.print_assumptions: crabllvm_cmd.append ('--crab-print-unjustified-assumptions')    
     if args.crab_disable_warnings: crabllvm_cmd.append('--crab-disable-warnings')
 
     # hidden options

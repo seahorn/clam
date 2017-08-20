@@ -30,6 +30,7 @@
 #include "crab/analysis/bwd_analyzer.hpp"
 #include "crab/analysis/inter_fwd_analyzer.hpp"
 #include "crab/analysis/dataflow/liveness.hpp"
+#include "crab/analysis/dataflow/assumptions.hpp"
 #include "crab/checkers/assertion.hpp"
 #include "crab/checkers/null.hpp"
 #include "crab/checkers/checker.hpp"
@@ -75,6 +76,11 @@ cl::opt<bool>
 CrabStats ("crab-stats", 
            cl::desc ("Show Crab statistics and analysis results"),
            cl::init (false));
+
+cl::opt<bool>
+CrabPrintAssumptions ("crab-print-unjustified-assumptions", 
+	cl::desc ("Print unjustified assumptions done by Crab (for now only integer overflow)"),
+	cl::init (false));
 
 cl::opt<unsigned int>
 CrabWideningDelay("crab-widening-delay", 
@@ -404,6 +410,17 @@ namespace crab_llvm {
 	results.checksdb = boost::make_shared<checks_db_t>();
 	(*results.checksdb) += checker.get_all_checks();
 	CRAB_LOG("crabllvm", crab::outs() << "DONE!\n");      
+      }
+
+      if (params.print_assumptions) {
+	// Print all the unjustified assumptions done by the analyzer
+	// while proving assertions.
+	// XXX: currently only integer overflows
+	
+	//assumption_naive_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
+	assumption_dataflow_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
+	assumption_analyzer.exec();
+	crab::outs() << "\n" << assumption_analyzer;
       }
       
       return;
@@ -876,6 +893,7 @@ namespace crab_llvm {
       params.stats = CrabStats;
       params.print_invars = CrabPrintAns;
       params.print_preconds = CrabPrintPreCond;
+      params.print_assumptions = CrabPrintAssumptions;
       params.keep_shadow_vars = CrabKeepShadows;
       params.check = CrabCheck;
       params.check_verbose = CrabCheckVerbose;
