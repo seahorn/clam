@@ -478,17 +478,28 @@ namespace crab_llvm {
 		       heap_abs_ptr mem, llvm_variable_factory &vfac,
 		       const TargetLibraryInfo &tli)
       : m_cfg(nullptr), m_fun(fun), m_vfac(vfac) {
-      // -- build a crab cfg for func
-      CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
-      CRAB_LOG("crabllvm",
-	       llvm::outs () << "Built Crab CFG for " << fun.getName() << "\n");
-      m_cfg = builder.getCfg();
+      if (isTrackable(m_fun)) {
+	// -- build a crab cfg for func
+	CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
+	  CRAB_LOG("crabllvm",
+		   llvm::outs () << "Built Crab CFG for " << fun.getName() << "\n");
+	  m_cfg = builder.getCfg();
+      } else {
+	  CRAB_LOG("crabllvm",
+		   llvm::outs () << "Cannot build CFG for " << fun.getName() << "\n");
+      }
     }
 
     cfg_ptr_t Cfg () { return m_cfg; }
 
     void Analyze(AnalysisParams &params, const assumption_map_t &assumptions,
 		 AnalysisResults &results) {
+
+      if (!m_cfg) {
+	CRAB_LOG("crabllvm",
+		 llvm::outs () << "Skipped analysis for " << m_fun.getName() << "\n");
+	return;
+      }
       
       // -- run liveness
       liveness_t* live = nullptr;
