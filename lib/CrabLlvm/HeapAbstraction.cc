@@ -230,7 +230,6 @@ namespace crab_llvm {
     m_max_id += n->getSize();
     return id + offset;
   }
-  
 
   // compute and cache the set of read, mod and new nodes of a whole
   // function such that mod nodes are a subset of the read nodes and
@@ -250,19 +249,18 @@ namespace crab_llvm {
     
     region_set_t reads, mods, news;
     for (const llvm::DSNode* n : reach) {
-      //CRAB_LOG("heap-abs", n->dump(););
       if (!n->isReadNode() && !n->isModifiedNode()) {
 	continue;
       }
       
       // Iterate over each node field and extract regions from there
-      for (auto &kv: boost::make_iterator_range(n->edge_begin(), n->edge_end())) {
+      for (auto &kv: boost::make_iterator_range(n->type_begin(), n->type_end())) {
 	unsigned o = kv.first;
 	region_type_t region_type = canBeDisambiguated(n, o);
 	if (region_type == UNTYPED_REGION) {
 	  continue;
 	}
-	
+
 	if ((n->isReadNode() || n->isModifiedNode()) && retReach.count(n) <= 0)
 	  reads.insert(region_t(static_cast<HeapAbstraction*>(this),
 				getId(n,o), region_type));
@@ -271,7 +269,7 @@ namespace crab_llvm {
 			       getId(n,o), region_type));
 	if (n->isModifiedNode() && retReach.count(n)) 
 	  news.insert(region_t(static_cast<HeapAbstraction*>(this),
-			       getId(n,o), region_type));
+			       getId(n,o), region_type));	
       }
     }
     m_func_accessed [&f] = reads;
@@ -324,9 +322,10 @@ namespace crab_llvm {
     for (const llvm::DSNode* n : reach) {
       if (!n->isReadNode() && !n->isModifiedNode())
 	continue;
+      
       // Iterate over all node's fields and extract regions from
       // there.
-      for (auto &kv: boost::make_iterator_range(n->edge_begin(), n->edge_end())) {
+      for (auto &kv: boost::make_iterator_range(n->type_begin(), n->type_end())) {
 	unsigned o = kv.first;
 	region_type_t region_type = canBeDisambiguated(n,o);
 	if (region_type == UNTYPED_REGION)

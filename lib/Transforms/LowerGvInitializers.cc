@@ -79,6 +79,7 @@ namespace crab_llvm {
       AttrBuilder AB;
       AttributeSet AS = AttributeSet::get(M.getContext(), AttributeSet::FunctionIndex, AB);
       Function* fun = dyn_cast<Function>(getInitFn(V->getType(), M));
+      fun->addFnAttr(Attribute::ReadNone);
       if (m_cg) m_cg->getOrInsertFunction(fun);
       return fun;
     }
@@ -90,7 +91,11 @@ namespace crab_llvm {
       Function *f = CreateZeroInitializerFunction(ptr, M);
       Builder.CreateCall(f, ptr);
     }
-    
+
+    void LowerIntInitializer(GlobalVariable &gv, Function* intfn, IRBuilder<> &Builder) {
+      assert(gv.hasInitializer() && "global without initializer");
+      Builder.CreateCall2(intfn, &gv, gv.getInitializer());
+    }
 
     template<typename S>
     bool LowerZeroInitializer(Type* T, Value &base,
@@ -174,7 +179,15 @@ namespace crab_llvm {
       m_intptrty = cast<IntegerType>(m_dl->getIntPtrType(M.getContext(), 0));
       m_intty = IntegerType::get(M.getContext(), 32);      
 
-      
+      AttrBuilder ab;
+      AttributeSet as = AttributeSet::get(M.getContext(), AttributeSet::FunctionIndex, ab);
+      Function* intfn = dyn_cast<Function>(
+			    M.getOrInsertFunction("verifier.int_initializer", as,
+						  m_voidty, m_intptrty->getPointerTo(),
+						  m_intty, NULL));
+      intfn->addFnAttr(Attribute::ReadNone);
+      if (m_cg) m_cg->getOrInsertFunction(intfn);
+
       //llvm::errs () << "IntegerPtrType:" << *m_intptrty << "\n";
       //llvm::errs () << "IntegerType:" << *m_intty << "\n";      
       
@@ -196,13 +209,14 @@ namespace crab_llvm {
 	// ConstantDataSequential constants. const char* are usually
 	// translated into that. We don't bother for now since
 	// crab-llvm does not focus on strings.
-	
-	if (!(isa<ConstantAggregateZero>(gv.getInitializer()) ||
-	      isa<ConstantInt>(gv.getInitializer()))) continue;
-	
-	std::vector<uint64_t> stack = {0};
-	change |= LowerZeroInitializer(gv.getInitializer()->getType(), gv,
-				       Builder, M, stack);
+	if (isa<ConstantInt>(gv.getInitializer())) {
+	  LowerIntInitializer(gv, intfn, Builder);
+	  change = true;
+	} else if (isa<ConstantAggregateZero>(gv.getInitializer())) {
+	  std::vector<uint64_t> stack = {0};
+	  change |= LowerZeroInitializer(gv.getInitializer()->getType(), gv,
+					 Builder, M, stack);
+	}
       }
       return change;
       

@@ -474,6 +474,10 @@ namespace crab_llvm {
   static bool isZeroInitializer(const Function *F) {
     return F->getName().startswith("verifier.zero_initializer");
   }
+
+  static bool isIntInitializer(const Function *F) {
+    return F->getName().startswith("verifier.int_initializer");
+  }
   
   static bool containsVerifierCall (BasicBlock &B) {
     for (auto &I: B) {
@@ -1261,7 +1265,7 @@ namespace crab_llvm {
       }
     }
 
-    void doZeroInitializer(CallInst &I) {
+    void doInitializer(CallInst &I) {
 
       CallSite CS (&I);
       // v is either a global variable or a gep instruction that
@@ -1274,6 +1278,13 @@ namespace crab_llvm {
 	// TODO: array of pointers	
 	varname_t a = GET_VAR_FROM_REGION(r, m_lfac);
 	ikos::z_number init_val(ikos::z_number(0));
+	if (CS.arg_size() == 2) {
+	  /* verifier.int_initializer(v,k) */
+	  boost::optional<crabNumLit> linit_val = m_lfac.getNumLit(*(CS.getArgument(1)));
+	  if (linit_val)
+	    init_val = (*linit_val).getNum();
+	}
+	
 	z_lin_exp_t lb_idx(ikos::z_number(0));
 	
 	Type* Ty = cast<PointerType>(v->getType())->getElementType();
@@ -1988,8 +1999,8 @@ namespace crab_llvm {
         return;
       }
 
-      if (isZeroInitializer(callee) && CrabArrayInit) {
-	doZeroInitializer(I);
+      if (CrabArrayInit && (isZeroInitializer(callee) || isIntInitializer(callee))) {
+	doInitializer(I);
 	return;
       }
       

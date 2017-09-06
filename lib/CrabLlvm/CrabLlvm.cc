@@ -30,6 +30,7 @@
 #include "crab/analysis/bwd_analyzer.hpp"
 #include "crab/analysis/inter_fwd_analyzer.hpp"
 #include "crab/analysis/dataflow/liveness.hpp"
+#include "crab/analysis/dataflow/assumptions.hpp"
 #include "crab/checkers/assertion.hpp"
 #include "crab/checkers/null.hpp"
 #include "crab/checkers/checker.hpp"
@@ -76,6 +77,11 @@ cl::opt<bool>
 CrabStats ("crab-stats", 
            cl::desc ("Show Crab statistics and analysis results"),
            cl::init (false));
+
+cl::opt<bool>
+CrabPrintAssumptions ("crab-print-unjustified-assumptions", 
+	cl::desc ("Print unjustified assumptions done by Crab (for now only integer overflow)"),
+	cl::init (false));
 
 cl::opt<unsigned int>
 CrabWideningDelay("crab-widening-delay", 
@@ -406,6 +412,17 @@ namespace crab_llvm {
 	(*results.checksdb) += checker.get_all_checks();
 	CRAB_LOG("crabllvm", crab::outs() << "DONE!\n");      
       }
+
+      if (params.print_assumptions) {
+	// Print all the unjustified assumptions done by the analyzer
+	// while proving assertions.
+	// XXX: currently only integer overflows
+	
+	//assumption_naive_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
+	assumption_dataflow_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
+	assumption_analyzer.exec();
+	crab::outs() << "\n" << assumption_analyzer;
+      }
       
       return;
     }
@@ -462,17 +479,28 @@ namespace crab_llvm {
 		       heap_abs_ptr mem, llvm_variable_factory &vfac,
 		       const TargetLibraryInfo &tli)
       : m_cfg(nullptr), m_fun(fun), m_vfac(vfac) {
-      // -- build a crab cfg for func
-      CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
-      CRAB_LOG("crabllvm",
-	       llvm::outs () << "Built Crab CFG for " << fun.getName() << "\n");
-      m_cfg = builder.getCfg();
+      if (isTrackable(m_fun)) {
+	// -- build a crab cfg for func
+	CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
+	  CRAB_LOG("crabllvm",
+		   llvm::outs () << "Built Crab CFG for " << fun.getName() << "\n");
+	  m_cfg = builder.getCfg();
+      } else {
+	  CRAB_LOG("crabllvm",
+		   llvm::outs () << "Cannot build CFG for " << fun.getName() << "\n");
+      }
     }
 
     cfg_ptr_t Cfg () { return m_cfg; }
 
     void Analyze(AnalysisParams &params, const assumption_map_t &assumptions,
 		 AnalysisResults &results) {
+
+      if (!m_cfg) {
+	CRAB_LOG("crabllvm",
+		 llvm::outs () << "Skipped analysis for " << m_fun.getName() << "\n");
+	return;
+      }
       
       // -- run liveness
       liveness_t* live = nullptr;
@@ -877,6 +905,7 @@ namespace crab_llvm {
       params.stats = CrabStats;
       params.print_invars = CrabPrintAns;
       params.print_preconds = CrabPrintPreCond;
+      params.print_assumptions = CrabPrintAssumptions;
       params.keep_shadow_vars = CrabKeepShadows;
       params.check = CrabCheck;
       params.check_verbose = CrabCheckVerbose;

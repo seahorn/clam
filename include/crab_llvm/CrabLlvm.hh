@@ -80,6 +80,7 @@ namespace crab_llvm {
     bool stats;
     bool print_invars;
     bool print_preconds;
+    bool print_assumptions;
     bool keep_shadow_vars;
     assert_check_kind_t check;
     unsigned check_verbose;
