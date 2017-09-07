@@ -94,7 +94,7 @@ namespace crab_llvm {
 
     void LowerIntInitializer(GlobalVariable &gv, Function* intfn, IRBuilder<> &Builder) {
       assert(gv.hasInitializer() && "global without initializer");
-      Builder.CreateCall2(intfn, &gv, gv.getInitializer());
+      Builder.CreateCall(intfn, {&gv, gv.getInitializer()});
     }
 
     template<typename S>
