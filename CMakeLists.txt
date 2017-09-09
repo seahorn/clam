@@ -110,9 +110,9 @@ if (GIT_FOUND)
       CACHE STRING "seahorn-llvm repo")
 
     add_custom_target (llvm-dsa-git
-      ${GIT_EXECUTABLE} clone -b "llvm-3.8" ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
+      ${GIT_EXECUTABLE} clone ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
     add_custom_target (seahorn-llvm-git
-      ${GIT_EXECUTABLE} clone -b "llvm-3.8" ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
+      ${GIT_EXECUTABLE} clone ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
 
     add_custom_target (extra DEPENDS llvm-dsa-git seahorn-llvm-git)
   endif ()
@@ -162,6 +162,10 @@ if (TopLevel)
     -DLLVM_ENABLE_PEDANTIC=OFF 
     -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=TRUE
     -DLLVM_BUILD_LLVM_DYLIB:BOOL=${BUILD_CRABLLVM_LIBS_SHARED}
+    -DLLVM_INCLUDE_TESTS:BOOL=OFF
+    -DLLVM_INCLUDE_GO_TESTS=OFF
+    -DLLVM_INCLUDE_EXAMPLES=OFF
+    -DLLVM_INCLUDE_DOCS=OFF    
     -DLLVM_BINDINGS_LIST=" "
     LOG_CONFIGURE 1
     LOG_BUILD 1
