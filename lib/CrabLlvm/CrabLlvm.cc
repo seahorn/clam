@@ -7,8 +7,8 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -45,6 +45,7 @@
 #include <memory>
 
 #ifdef HAVE_DSA
+#include "dsa/DSNode.h"
 #include "dsa/Steensgaard.hh"
 #endif 
 
@@ -740,7 +741,7 @@ namespace crab_llvm {
         // -- build cfg
         CfgBuilder B (F, m_vfac, *m_mem, CrabTrackLev,
                       /*include function decls and callsites*/
-                      true,  &getAnalysis<TargetLibraryInfo>());
+                      true,  &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI());
 
         auto cfg_ptr = B.getCfg();
         m_cfg_map [&F] = cfg_ptr;
@@ -890,7 +891,7 @@ namespace crab_llvm {
 
   bool CrabLlvmPass::runOnFunction (Function &F) {
     if (!CrabInter && isTrackable(F)) {
-      const TargetLibraryInfo &tli = getAnalysis<TargetLibraryInfo>();
+      const TargetLibraryInfo &tli = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
       IntraCrabLlvm_Impl crab(F, CrabTrackLev, m_mem, m_vfac, tli);
       m_cfg_map[&F] = crab.Cfg();
       AnalysisParams params;
@@ -920,8 +921,7 @@ namespace crab_llvm {
     #ifdef HAVE_DSA
     AU.addRequiredTransitive<SteensgaardDataStructures> ();
     #endif 
-    AU.addRequired<DataLayoutPass>();
-    AU.addRequired<TargetLibraryInfo>();
+    AU.addRequired<TargetLibraryInfoWrapperPass>();
     AU.addRequired<UnifyFunctionExitNodes>();
     AU.addRequired<crab_llvm::NameValues>();
   } 

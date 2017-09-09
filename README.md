@@ -126,7 +126,7 @@ command:
 
 **Important:** the first thing that `crabllvm.py` does is to compile
   the C program into LLVM bitcode by using Clang. Since Crab-llvm is
-  based on LLVM 3.6, the version of clang must be 3.6 as well. 
+  based on LLVM 3.8, the version of clang must be 3.8 as well. 
 
 
 If the above command succeeds, then the output should be something

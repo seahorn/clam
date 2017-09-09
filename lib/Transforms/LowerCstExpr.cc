@@ -27,7 +27,7 @@ namespace crab_llvm {
                                Instruction* InsertionLoc) {
       Instruction* NewI = CstExp->getAsInstruction ();
       // insert before
-      InsertionLoc->getParent()->getInstList().insert(InsertionLoc, NewI); 
+      InsertionLoc->getParent()->getInstList().insert(InsertionLoc->getIterator(), NewI); 
       return NewI;
     }
         

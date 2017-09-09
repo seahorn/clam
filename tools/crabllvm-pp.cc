@@ -3,7 +3,7 @@
 ///
 
 #include "llvm/LinkAllPasses.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
@@ -169,21 +169,28 @@ int main(int argc, char **argv) {
   // initialise and run passes //
   ///////////////////////////////
 
-  llvm::PassManager pass_manager;
+  llvm::legacy::PassManager pass_manager;
   llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
   llvm::initializeAnalysis(Registry);
   
   /// call graph and other IPA passes
-  llvm::initializeIPA (Registry);
-  
+  //llvm::initializeIPA (Registry);
+  // XXX: porting to 3.8 
+  llvm::initializeCallGraphWrapperPassPass(Registry);
+  llvm::initializeCallGraphPrinterPass(Registry);
+  llvm::initializeCallGraphViewerPass(Registry);
+  // XXX: not sure if needed anymore
+  llvm::initializeGlobalsAAWrapperPassPass(Registry);  
+    
   // add an appropriate DataLayout instance for the module
-  const llvm::DataLayout *dl = module->getDataLayout ();
-  if (!dl && !DefaultDataLayout.empty ()) {
+  const llvm::DataLayout *dl = &module->getDataLayout ();
+  if (!dl && !DefaultDataLayout.empty ())
+  {
     module->setDataLayout (DefaultDataLayout);
-    dl = module->getDataLayout ();
+    dl = &module->getDataLayout ();
   }
-  if (dl)
-    pass_manager.add (new llvm::DataLayoutPass ());
+
+  assert (dl && "Could not find Data Layout for the module");
   
   // -- turn all functions internal so that we can apply some global
   // -- optimizations inline them if requested
@@ -199,7 +206,12 @@ int main(int argc, char **argv) {
   pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
   // -- global optimizations
   pass_manager.add (llvm::createGlobalOptimizerPass());
-  
+
+  if (LowerGv) {
+    // -- lower initializers of global variables
+    pass_manager.add (crab_llvm::createLowerGvInitializersPass ());   
+  }
+
   // -- SSA
   pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
   #ifdef HAVE_LLVM_SEAHORN
@@ -275,22 +287,14 @@ int main(int argc, char **argv) {
   }
 
   // trivial invariants outside loops 
-  pass_manager.add (llvm::createBasicAliasAnalysisPass());
-  //LICM needs alias analysis  
-  pass_manager.add (llvm::createLICMPass()); 
+  pass_manager.add (llvm::createBasicAAWrapperPass());
+  pass_manager.add (llvm::createLICMPass()); //LICM needs alias analysis
   pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
   // dead loop elimination
   pass_manager.add (llvm::createLoopDeletionPass());
   // cleanup unnecessary blocks   
   pass_manager.add (llvm::createCFGSimplificationPass ()); 
   
-  if (LowerGv) {
-    // -- lower initializers of global variables
-    pass_manager.add (crab_llvm::createLowerGvInitializersPass ());   
-    // cleanup of dead initializers
-    pass_manager.add (llvm::createDeadCodeEliminationPass());
-  }
-
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   pass_manager.add (llvm::createGlobalDCEPass ()); 

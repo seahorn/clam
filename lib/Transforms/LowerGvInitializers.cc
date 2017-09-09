@@ -30,7 +30,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Support/raw_ostream.h"
-
+#include "llvm/Transforms/Utils/GlobalStatus.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/DenseMap.h"
@@ -42,8 +42,10 @@ using namespace llvm;
 
 //#define DEBUG_LOWER_GV
 
+#define DEBUG_TYPE "lower-gv"
+
 namespace crab_llvm {
-  
+
   class LowerGvInitializers : public ModulePass {
     
     static char ID;
@@ -63,7 +65,7 @@ namespace crab_llvm {
       return indices;
     }
     
-    Constant* getInitFn(Type *type, Module &m) {
+    Constant* getInitFn(Type *type, std::vector<Constant*> &LLVMUsed, Module &m) {
       Constant* res = m_initfn[type];
       if (res == NULL) {
 	res = m.getOrInsertFunction 
@@ -71,35 +73,45 @@ namespace crab_llvm {
 	   (boost::format ("verifier.zero_initializer.%d") % m_initfn.size ()), 
 	   m_voidty, type, NULL);
 	m_initfn[type] = res;
+
+	Type *i8PTy = Type::getInt8PtrTy(m.getContext ());
+	LLVMUsed.push_back(ConstantExpr::getBitCast(res, i8PTy));
       }
       return res;
     }
     
-    Function* CreateZeroInitializerFunction(Value * V, Module &M) {
+    Function* CreateZeroInitializerFunction(Value * V,
+					    std::vector<Constant*> &LLVMUsed,
+					    Module &M) {
       AttrBuilder AB;
       AttributeSet AS = AttributeSet::get(M.getContext(), AttributeSet::FunctionIndex, AB);
-      Function* fun = dyn_cast<Function>(getInitFn(V->getType(), M));
-      fun->addFnAttr(Attribute::ReadNone);
+      Function* fun = dyn_cast<Function>(getInitFn(V->getType(), LLVMUsed, M));
+      // XXX: do not mark it as ReadNone, otherwise LLVM will optimize
+      // it away.
+      //fun->addFnAttr(Attribute::ReadNone);
       if (m_cg) m_cg->getOrInsertFunction(fun);
       return fun;
     }
 
     template<typename S>
     void CreateZeroInitializerCallSite(Value &base, const S &stack,  
-				       IRBuilder<> &Builder, Module &M) {
+				       IRBuilder<> &Builder,
+				       std::vector<Constant*> &LLVMUsed,
+				       Module &M) {
       Value *ptr = Builder.CreateInBoundsGEP(&base, CreateGEPIndices(stack));
-      Function *f = CreateZeroInitializerFunction(ptr, M);
+      Function *f = CreateZeroInitializerFunction(ptr, LLVMUsed, M);
       Builder.CreateCall(f, ptr);
     }
 
     void LowerIntInitializer(GlobalVariable &gv, Function* intfn, IRBuilder<> &Builder) {
       assert(gv.hasInitializer() && "global without initializer");
-      Builder.CreateCall2(intfn, &gv, gv.getInitializer());
+      Builder.CreateCall(intfn, {&gv, gv.getInitializer()});
     }
 
     template<typename S>
     bool LowerZeroInitializer(Type* T, Value &base,
 			      IRBuilder<> &Builder, Module &M,
+			      std::vector<Constant*> &LLVMUsed,
 			      S &stack) {
       
       bool change = false;
@@ -112,13 +124,13 @@ namespace crab_llvm {
 	llvm::errs () << "TYPE=" << *IntTy << "\n";	  	
 	#endif
 
-	CreateZeroInitializerCallSite(base, stack, Builder, M);
+	CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);
 	change = true;
       } else if (StructType *STy = dyn_cast<StructType> (T)) {
 	for (unsigned i=0; i < STy->getNumElements(); i++) {
 	  Type* ETy = STy->getElementType(i);
 	  stack.push_back(i);
-	  change |= LowerZeroInitializer(ETy, base, Builder, M, stack);
+	  change |= LowerZeroInitializer(ETy, base, Builder, M, LLVMUsed, stack);
 	}
       } else if (ArrayType *ATy = dyn_cast<ArrayType> (T)) {
 	if (ATy->getElementType()->isIntegerTy()) {
@@ -130,7 +142,7 @@ namespace crab_llvm {
 	  llvm::errs () << "TYPE=" << *ATy << "\n";	  
 	  #endif
 
-	  CreateZeroInitializerCallSite(base, stack, Builder, M);	  
+	  CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);	  
 	  change = true;
 	} else {
 	  llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *ATy << "\n";
@@ -146,7 +158,7 @@ namespace crab_llvm {
 
 	// Note that we don't go recursively since it would require
 	// loading the pointer before continuing calculation.	
-	CreateZeroInitializerCallSite(base, stack, Builder, M);
+	CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);
 	change = true;
       } else {
 	llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *T << "\n";
@@ -156,6 +168,38 @@ namespace crab_llvm {
       return change;
     }
 
+    /// C may have non-instruction users, and
+    /// allNonInstructionUsersCanBeMadeInstructions has returned true. Convert the
+    /// non-instruction users to instructions.
+    void makeAllConstantUsesInstructions(Constant *C) {
+      SmallVector<ConstantExpr*,4> Users;
+      for (auto *U : C->users()) {
+	if (isa<ConstantExpr>(U))
+	  Users.push_back(cast<ConstantExpr>(U));
+	else
+	  // We should never get here; allNonInstructionUsersCanBeMadeInstructions
+	  // should not have returned true for C.
+	  assert(
+		 isa<Instruction>(U) &&
+		 "Can't transform non-constantexpr non-instruction to instruction!");
+      }
+      
+      SmallVector<Value*,4> UUsers;
+      for (auto *U : Users) {
+	UUsers.clear();
+	for (auto *UU : U->users())
+	  UUsers.push_back(UU);
+	for (auto *UU : UUsers) {
+	  Instruction *UI = cast<Instruction>(UU);
+	  Instruction *NewU = U->getAsInstruction();
+	  NewU->insertBefore(UI);
+	  UI->replaceUsesOfWith(U, NewU);
+	}
+	U->dropAllReferences();
+      }
+    }
+    
+    
     /** map for initializer functions */
     DenseMap<const Type*, Constant*> m_initfn;
     /** void type **/
@@ -172,59 +216,106 @@ namespace crab_llvm {
     LowerGvInitializers () : ModulePass (ID) {}
     
     virtual bool runOnModule (Module &M) {
-      m_dl = &getAnalysis<DataLayoutPass>().getDataLayout ();
+      m_dl = &M.getDataLayout();
       CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass> ();
       m_cg = cgwp ? &cgwp->getCallGraph () : nullptr;
       m_voidty = Type::getVoidTy(M.getContext());
       m_intptrty = cast<IntegerType>(m_dl->getIntPtrType(M.getContext(), 0));
       m_intty = IntegerType::get(M.getContext(), 32);      
 
-      AttrBuilder ab;
-      AttributeSet as = AttributeSet::get(M.getContext(), AttributeSet::FunctionIndex, ab);
-      Function* intfn = dyn_cast<Function>(
-			    M.getOrInsertFunction("verifier.int_initializer", as,
-						  m_voidty, m_intptrty->getPointerTo(),
-						  m_intty, NULL));
-      intfn->addFnAttr(Attribute::ReadNone);
-      if (m_cg) m_cg->getOrInsertFunction(intfn);
-
       //llvm::errs () << "IntegerPtrType:" << *m_intptrty << "\n";
       //llvm::errs () << "IntegerType:" << *m_intty << "\n";      
       
       Function *f = M.getFunction ("main");
       if (!f) return false;
-      
-      IRBuilder<> Builder (f->getContext ());
-      Builder.SetInsertPoint (&f->getEntryBlock (), 
-                              f->getEntryBlock ().begin ());
 
+      std::vector<GlobalVariable*> gvs;
+      for (GlobalVariable &gv : boost::make_iterator_range(M.global_begin(),
+							   M.global_end())) {
+        if (gv.hasInitializer ())
+	  gvs.push_back(&gv);
+      }
+      
+      if (gvs.empty()) return false;
+
+      /* add our verifier.zero_initializer functions to llvm used to
+	 avoid them to be optimized away by LLVM.
+      */
+      GlobalVariable *LLVMUsed = M.getGlobalVariable("llvm.used");
+      std::vector<Constant*> MergedVars;
+      if (LLVMUsed) {
+	ConstantArray *Inits = cast<ConstantArray>(LLVMUsed->getInitializer());
+	for (unsigned I = 0, E = Inits->getNumOperands(); I != E; ++I) {
+	  Value* V = Inits->getOperand(I)->stripPointerCasts();
+	  MergedVars.push_back(Inits->getOperand(I));
+	}
+	LLVMUsed->eraseFromParent();
+      }
+
+      // verifier.int_initializer
+      AttrBuilder ab;
+      AttributeSet as = AttributeSet::get(M.getContext(), AttributeSet::FunctionIndex, ab);
+      Function* intfn = dyn_cast<Function>(
+      			    M.getOrInsertFunction("verifier.int_initializer", as,
+      						  m_voidty, m_intptrty->getPointerTo(),
+      						  m_intty, NULL));
+      // XXX: do not mark it as ReadNone, otherwise LLVM will optimize
+      // it away.      
+      //intfn->addFnAttr(Attribute::ReadNone);
+      if (m_cg) m_cg->getOrInsertFunction(intfn);
+      Type *i8PTy = Type::getInt8PtrTy(M.getContext());
+      MergedVars.push_back(ConstantExpr::getBitCast(cast<llvm::Constant>(intfn), i8PTy));
+
+      
+      IRBuilder<> Builder(M.getContext());
+      Builder.SetInsertPoint(&f->getEntryBlock(), f->getEntryBlock().begin ());
       bool change=false;
-      for (GlobalVariable &gv :
-	     boost::make_iterator_range (M.global_begin (), M.global_end ())) {
-        if (!gv.hasInitializer ()) continue;
-	
+      for (GlobalVariable *gv : gvs) {
 	// -- We only lower ConstantAggregateZero and ConstantInt.
 	// 
 	// At some point we might want to lower also
 	// ConstantDataSequential constants. const char* are usually
 	// translated into that. We don't bother for now since
 	// crab-llvm does not focus on strings.
-	if (isa<ConstantInt>(gv.getInitializer())) {
-	  LowerIntInitializer(gv, intfn, Builder);
+	if (isa<ConstantInt>(gv->getInitializer())) {
+	  GlobalStatus GS;
+	  bool AddressTaken = GlobalStatus::analyzeGlobal(gv, GS);
+	  if (!AddressTaken &&
+	      !GS.HasMultipleAccessingFunctions &&
+	      GS.AccessingFunction &&
+	      GS.AccessingFunction->getName() == "main") {
+	    Type *ElemTy = gv->getType()->getElementType();
+	    // FIXME: Pass Global's alignment when globals have alignment	  	  
+	    AllocaInst* Alloca = Builder.CreateAlloca(ElemTy, nullptr, gv->getName());
+	    Builder.CreateStore(gv->getInitializer(), Alloca);
+	    makeAllConstantUsesInstructions(gv);
+	    gv->replaceAllUsesWith(Alloca);
+	    gv->eraseFromParent();
+	  } else {
+	    LowerIntInitializer(*gv, intfn, Builder);
+	  }
 	  change = true;
-	} else if (isa<ConstantAggregateZero>(gv.getInitializer())) {
+	} else if (isa<ConstantAggregateZero>(gv->getInitializer())) {
 	  std::vector<uint64_t> stack = {0};
-	  change |= LowerZeroInitializer(gv.getInitializer()->getType(), gv,
-					 Builder, M, stack);
+	  change |= LowerZeroInitializer(gv->getInitializer()->getType(), *gv,
+					 Builder, M, MergedVars, stack);
 	}
       }
+
+
+      // re-create llvm.used
+      ArrayType *ATy = ArrayType::get(i8PTy, MergedVars.size());
+      LLVMUsed = new llvm::GlobalVariable(M, ATy, false, llvm::GlobalValue::AppendingLinkage,
+					  llvm::ConstantArray::get(ATy, MergedVars),
+					  "llvm.used");
+      LLVMUsed->setSection("llvm.metadata");
+      
       return change;
       
     }
     
     void getAnalysisUsage (AnalysisUsage &AU) const {
       AU.setPreservesAll ();
-      AU.addRequired<llvm::DataLayoutPass>();
       AU.addRequired<llvm::CallGraphWrapperPass>();      
     }
 

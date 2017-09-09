@@ -151,7 +151,7 @@ endif()
 if (TopLevel)
   # if top-level, offer to build llvm
   ExternalProject_Add (llvm
-    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_360/final/
+    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_380/final/
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/llvm
     INSTALL_DIR ${CMAKE_BINARY_DIR}/run
     CMAKE_ARGS
@@ -162,12 +162,16 @@ if (TopLevel)
     -DLLVM_ENABLE_PEDANTIC=OFF 
     -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=TRUE
     -DLLVM_BUILD_LLVM_DYLIB:BOOL=${BUILD_CRABLLVM_LIBS_SHARED}
+    -DLLVM_INCLUDE_TESTS:BOOL=OFF
+    -DLLVM_INCLUDE_GO_TESTS=OFF
+    -DLLVM_INCLUDE_EXAMPLES=OFF
+    -DLLVM_INCLUDE_DOCS=OFF    
     -DLLVM_BINDINGS_LIST=" "
     LOG_CONFIGURE 1
     LOG_BUILD 1
     LOG_INSTALL 1)
 
-  find_package (LLVM 3.6.0 CONFIG NO_DEFAULT_PATH)
+  find_package (LLVM 3.8.0 CONFIG NO_DEFAULT_PATH)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})

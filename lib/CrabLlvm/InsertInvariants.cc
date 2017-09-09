@@ -378,7 +378,6 @@ namespace crab_llvm {
   void InsertInvariants::getAnalysisUsage (AnalysisUsage &AU) const {
     AU.setPreservesAll ();
     AU.addRequired<crab_llvm::CrabLlvmPass>();
-    AU.addRequired<DataLayoutPass>();
     AU.addRequired<UnifyFunctionExitNodes> ();
     AU.addRequired<CallGraphWrapperPass> ();
     AU.addPreserved<CallGraphWrapperPass> ();
