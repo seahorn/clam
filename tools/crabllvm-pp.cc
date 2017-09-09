@@ -206,7 +206,12 @@ int main(int argc, char **argv) {
   pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
   // -- global optimizations
   pass_manager.add (llvm::createGlobalOptimizerPass());
-  
+
+  if (LowerGv) {
+    // -- lower initializers of global variables
+    pass_manager.add (crab_llvm::createLowerGvInitializersPass ());   
+  }
+
   // -- SSA
   pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
   #ifdef HAVE_LLVM_SEAHORN
@@ -290,13 +295,6 @@ int main(int argc, char **argv) {
   // cleanup unnecessary blocks   
   pass_manager.add (llvm::createCFGSimplificationPass ()); 
   
-  if (LowerGv) {
-    // -- lower initializers of global variables
-    pass_manager.add (crab_llvm::createLowerGvInitializersPass ());   
-    // cleanup of dead initializers
-    pass_manager.add (llvm::createDeadCodeEliminationPass());
-  }
-
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   pass_manager.add (llvm::createGlobalDCEPass ()); 
