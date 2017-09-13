@@ -26,16 +26,11 @@ install:
   - until sudo apt-get -qq install g++-5; do echo retry; done
   - until sudo apt-get install --yes libgmp-dev; do echo retry; done
   - until sudo apt-get install --yes libmpfr-dev; do echo retry; done
-
-  ### binary for Clang 3.8.0
-  - export CLANG_BINDIR=$TRAVIS_BUILD_DIR/clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04/bin 
-  - wget http://releases.llvm.org/3.8.0/clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
-  - tar -xf clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
-  - export PATH=$CLANG_BINDIR:$PATH
-  ### precompiled binaries for LLVM 3.8.1
-  - export LLVM_ROOT="$TRAVIS_BUILD_DIR/LLVM-3.8.1-Linux"
-  - wget https://ece.uwaterloo.ca/~agurfink/llvm/LLVM-3.8.1-Linux.tar.gz  
-  - tar xf LLVM-3.8.1-Linux.tar.gz
+  - until sudo apt-get install -qq clang-3.8; do echo retry; done
+  ### precompiled binaries for LLVM 3.8  
+  - export LLVM_ROOT="$TRAVIS_BUILD_DIR/LLVM-3.8-Linux"
+  - wget https://jorgenavas.github.io/sw/LLVM-3.8-Linux.tar.gz  
+  - tar xf LLVM-3.8-Linux.tar.gz  
   ### BOOST
   - wget --no-verbose --output-document=boost-trunk.tar.bz2 http://sourceforge.net/projects/boost/files/boost/1.64.0/boost_1_64_0.tar.bz2/download
   - export BOOST_ROOT="$TRAVIS_BUILD_DIR/boost-trunk"
