@@ -168,6 +168,30 @@ namespace crab_llvm {
       return change;
     }
 
+    /// C may have non-instruction users. Can all of those users be turned into
+    /// instructions?
+    static bool allNonInstructionUsersCanBeMadeInstructions(Constant *C) {
+      // We don't do this exhaustively. The most common pattern that we really need
+      // to care about is a constant GEP or constant bitcast - so just looking
+      // through one single ConstantExpr.
+      //
+      // The set of constants that this function returns true for must be able to be
+      // handled by makeAllConstantUsesInstructions.
+      for (auto *U : C->users()) {
+	if (isa<Instruction>(U))
+	continue;
+	if (!isa<ConstantExpr>(U))
+	  // Non instruction, non-constantexpr user; cannot convert this.
+	  return false;
+	for (auto *UU : U->users())
+	  if (!isa<Instruction>(UU))
+	    // A constantexpr used by another constant. We don't try and recurse any
+	    // further but just bail out at this point.
+	    return false;
+      }    
+      return true;
+    }
+    
     /// C may have non-instruction users, and
     /// allNonInstructionUsersCanBeMadeInstructions has returned true. Convert the
     /// non-instruction users to instructions.
@@ -283,7 +307,8 @@ namespace crab_llvm {
 	  if (!AddressTaken &&
 	      !GS.HasMultipleAccessingFunctions &&
 	      GS.AccessingFunction &&
-	      GS.AccessingFunction->getName() == "main") {
+	      GS.AccessingFunction->getName() == "main" &&
+	      allNonInstructionUsersCanBeMadeInstructions(gv)) {
 	    Type *ElemTy = gv->getType()->getElementType();
 	    // FIXME: Pass Global's alignment when globals have alignment	  	  
 	    AllocaInst* Alloca = Builder.CreateAlloca(ElemTy, nullptr, gv->getName());
