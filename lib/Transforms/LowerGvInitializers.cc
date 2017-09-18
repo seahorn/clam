@@ -79,7 +79,7 @@ namespace crab_llvm {
       }
       return res;
     }
-    
+        
     Function* CreateZeroInitializerFunction(Value * V,
 					    std::vector<Constant*> &LLVMUsed,
 					    Module &M) {
@@ -103,8 +103,45 @@ namespace crab_llvm {
       Builder.CreateCall(f, ptr);
     }
 
-    void LowerIntInitializer(GlobalVariable &gv, Function* intfn, IRBuilder<> &Builder) {
+
+    Constant* getIntInitFn(Type *ty,std::vector<Constant*> &LLVMUsed, Module &m) {
+      assert(ty->isIntegerTy());
+      
+      Constant* res = m_initfn[ty];
+      if (res == NULL) {
+	res = m.getOrInsertFunction 
+	  (boost::str 
+	   (boost::format ("verifier.int_initializer.%d") % m_initfn.size ()), 
+	   m_voidty, ty->getPointerTo(), ty, NULL);
+	m_initfn[ty] = res;
+	Type *i8PTy = Type::getInt8PtrTy(m.getContext ());
+	LLVMUsed.push_back(ConstantExpr::getBitCast(res, i8PTy));
+      }
+      return res;
+    }
+    
+    Function* CreateIntInitializerFunction(GlobalVariable &gv,
+					   std::vector<Constant*> &LLVMUsed,
+					   Module &M) {      
+      AttrBuilder AB;
+      AttributeSet AS = AttributeSet::get(M.getContext(), AttributeSet::FunctionIndex, AB);
+      Function* fun = dyn_cast<Function>(getIntInitFn(gv.getInitializer()->getType(),
+						      LLVMUsed, M));
+      // XXX: do not mark it as ReadNone, otherwise LLVM will optimize
+      // it away.
+      //fun->addFnAttr(Attribute::ReadNone);
+      if (m_cg) m_cg->getOrInsertFunction(fun);
+      return fun;
+    }    
+    void CreateIntInitializerCallSite(GlobalVariable &gv,
+				      IRBuilder<> &Builder,				      
+				      std::vector<Constant*> &LLVMUsed,
+				      Module &M) {
+
       assert(gv.hasInitializer() && "global without initializer");
+      assert(gv.getInitializer()->getType()->isIntegerTy());
+      
+      Function *intfn = CreateIntInitializerFunction(gv, LLVMUsed, M);
       Builder.CreateCall(intfn, {&gv, gv.getInitializer()});
     }
 
@@ -262,8 +299,9 @@ namespace crab_llvm {
       
       if (gvs.empty()) return false;
 
-      /* add our verifier.zero_initializer functions to llvm used to
-	 avoid them to be optimized away by LLVM.
+      /* add our verifier.zero_initializer and
+	 verifier.int_initializer functions to llvm used to avoid them
+	 to be optimized away by LLVM.
       */
       GlobalVariable *LLVMUsed = M.getGlobalVariable("llvm.used");
       std::vector<Constant*> MergedVars;
@@ -275,20 +313,6 @@ namespace crab_llvm {
 	}
 	LLVMUsed->eraseFromParent();
       }
-
-      // verifier.int_initializer
-      AttrBuilder ab;
-      AttributeSet as = AttributeSet::get(M.getContext(), AttributeSet::FunctionIndex, ab);
-      Function* intfn = dyn_cast<Function>(
-      			    M.getOrInsertFunction("verifier.int_initializer", as,
-      						  m_voidty, m_intptrty->getPointerTo(),
-      						  m_intty, NULL));
-      // XXX: do not mark it as ReadNone, otherwise LLVM will optimize
-      // it away.      
-      //intfn->addFnAttr(Attribute::ReadNone);
-      if (m_cg) m_cg->getOrInsertFunction(intfn);
-      Type *i8PTy = Type::getInt8PtrTy(M.getContext());
-      MergedVars.push_back(ConstantExpr::getBitCast(cast<llvm::Constant>(intfn), i8PTy));
 
       
       IRBuilder<> Builder(M.getContext());
@@ -317,7 +341,7 @@ namespace crab_llvm {
 	    gv->replaceAllUsesWith(Alloca);
 	    gv->eraseFromParent();
 	  } else {
-	    LowerIntInitializer(*gv, intfn, Builder);
+	    CreateIntInitializerCallSite(*gv, Builder, MergedVars, M);    
 	  }
 	  change = true;
 	} else if (isa<ConstantAggregateZero>(gv->getInitializer())) {
@@ -329,12 +353,13 @@ namespace crab_llvm {
 
 
       // re-create llvm.used
+      Type *i8PTy = Type::getInt8PtrTy(M.getContext ());      
       ArrayType *ATy = ArrayType::get(i8PTy, MergedVars.size());
       LLVMUsed = new llvm::GlobalVariable(M, ATy, false, llvm::GlobalValue::AppendingLinkage,
 					  llvm::ConstantArray::get(ATy, MergedVars),
 					  "llvm.used");
       LLVMUsed->setSection("llvm.metadata");
-      
+
       return change;
       
     }
