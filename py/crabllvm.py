@@ -360,8 +360,12 @@ def getCrabLlvmPP ():
         raise IOError ("Cannot find crabllvm pre-processor")
     return crabpp
 
-def getClang ():
-    cmd_name = which (['clang-mp-3.8', 'clang-3.8', 'clang'])
+def getClang (is_plus_plus):
+    cmd_name = None
+    if is_plus_plus:
+        cmd_name = which (['clang++-mp-3.8', 'clang++-3.8', 'clang++'])
+    else:
+        cmd_name = which (['clang-mp-3.8', 'clang-3.8', 'clang'])
     if cmd_name is None: raise IOError ('clang was not found')
     return cmd_name
 
@@ -393,8 +397,14 @@ def defOutPPName (name, wd=None):
     fname = os.path.splitext (base)[0] + '.ll'
     return os.path.join (wd, fname)
 
+
+def _plus_plus_file (name):
+    ext = os.path.splitext (name)[1]
+    return ext == '.cpp' or ext == '.cc'
+
 # Run Clang
 def clang (in_name, out_name, arch=32, extra_args=[]):
+
     if os.path.splitext (in_name)[1] == '.bc':
         if verbose:
             print '--- Clang skipped: input file is already bitecode'
@@ -404,7 +414,7 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     if out_name == '' or out_name == None:
         out_name = defBCName (in_name)
 
-    clang_args = [getClang (), '-emit-llvm', '-o', out_name, '-c', in_name ]
+    clang_args = [getClang(_plus_plus_file(in_name)), '-emit-llvm', '-o', out_name, '-c', in_name ]
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
 
