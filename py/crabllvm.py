@@ -361,12 +361,12 @@ def getCrabLlvmPP ():
     return crabpp
 
 def getClang ():
-    cmd_name = which (['clang-mp-3.6', 'clang-3.6', 'clang', 'clang-mp-3.5', 'clang-mp-3.4'])
+    cmd_name = which (['clang-mp-3.8', 'clang-3.8', 'clang'])
     if cmd_name is None: raise IOError ('clang was not found')
     return cmd_name
 
 def getOptLlvm ():
-    cmd_name = which (['seaopt', 'opt-mp-3.6', 'opt-3.6', 'opt'])
+    cmd_name = which (['seaopt', 'opt-mp-3.8', 'opt-3.8', 'opt'])
     if cmd_name is None: raise IOError ('neither seaopt nor opt where found')
     return cmd_name
 
