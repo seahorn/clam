@@ -454,6 +454,8 @@ namespace crab_llvm {
   static bool isErrorFn(const Function* F) {
     return (F->getName().equals("seahorn.error") ||
 	    F->getName().equals("verifier.error") ||
+	    F->getName().equals("verifier.fail") ||
+	    F->getName().equals("seahorn.fail") ||	    	    
 	    F->getName().equals("__VERIFIER_error") || 	    	    
             F->getName().equals("__SEAHORN_error"));
   }
