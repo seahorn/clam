@@ -126,6 +126,12 @@ CrabUnsoundArrayInit("crab-arr-unsound-init",
 		     cl::Hidden);
 
 cl::opt<bool>
+CrabUnsoundUnsignedAsSigned("crab-unsigned-to-signed",
+	  cl::desc ("Convert (unsoundly) unsigned integer comparisons to signed."), 
+	  cl::init (false),
+	  cl::Hidden);
+
+cl::opt<bool>
 CrabDisableWarnings("crab-disable-warnings",
 	      cl::desc ("Disable warning messages"), 
 	      cl::init (false),
@@ -658,6 +664,13 @@ namespace crab_llvm {
 	bb.select(lhs, cst, 1, 0);
       break;
     }
+    case CmpInst::ICMP_ULT: 
+      if (!CrabUnsoundUnsignedAsSigned) {
+	// loss of precision
+	CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
+			 "Enable --lower-unsigned-icmp");	
+	break;		
+      }
     case CmpInst::ICMP_SLT: {
       z_lin_cst_t cst(op0 <= op1 - 1);
       if (isBool(I))
@@ -666,6 +679,13 @@ namespace crab_llvm {
 	bb.select(lhs, cst, 1, 0);
       break;
     }
+    case CmpInst::ICMP_ULE:
+      if (!CrabUnsoundUnsignedAsSigned) {
+	// loss of precision
+	CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
+			 "Enable --lower-unsigned-icmp");	
+	break;		
+      }      
     case CmpInst::ICMP_SLE: {
       z_lin_cst_t cst(op0 <= op1);
       if (isBool(I))
@@ -674,11 +694,6 @@ namespace crab_llvm {
 	bb.select(lhs, cst, 1, 0);
       break;
     }	
-    case CmpInst::ICMP_ULT: 
-    case CmpInst::ICMP_ULE:
-      CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
-		       "Enable --lower-unsigned-icmp");	
-      break;
     default:  
       llvm_unreachable ("ERROR: it should not happen while translating CmpInst");
     }
@@ -713,27 +728,37 @@ namespace crab_llvm {
       else
 	return z_lin_cst_t(op0 == op1);
 	break;
+    case CmpInst::ICMP_ULT: 
+      if (!CrabUnsoundUnsignedAsSigned) {
+	// loss of precision
+	CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
+			 "Enable --lower-unsigned-icmp");	
+	break;		
+      }
     case CmpInst::ICMP_SLT:
       if (!isNegated)
 	return z_lin_cst_t(op0 <= op1 - 1);
       else
 	return z_lin_cst_t(op0 >= op1);
-      break; 
+      break;
+    case CmpInst::ICMP_ULE:
+      if (!CrabUnsoundUnsignedAsSigned) {
+	// loss of precision      
+	CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
+			 "Enable --lower-unsigned-icmp");	
+	break;
+      }
     case CmpInst::ICMP_SLE:
       if (!isNegated)
 	return z_lin_cst_t(op0 <= op1);
       else
 	return z_lin_cst_t(op0 >= op1 + 1);
       break;
-    case CmpInst::ICMP_ULT: // loss of precision
-    case CmpInst::ICMP_ULE: 
-      CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
-		       "Enable --lower-unsigned-icmp");	
-      break;	
     default: ;;  
     }
     return boost::optional<z_lin_cst_t> ();
   }
+
 
   // Create statement lhs := c from constant c and return type of c
   static variable_type assignConstant(Constant *c, varname_t lhs,
