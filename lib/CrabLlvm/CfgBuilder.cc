@@ -457,11 +457,14 @@ namespace crab_llvm {
             F->getName().equals("__CRAB_assert"));
   }
 
+
+  static bool isSeaHornFail (const Function* F) {
+    return (F->getName().equals("seahorn.fail"));
+  }
+  
   static bool isErrorFn(const Function* F) {
     return (F->getName().equals("seahorn.error") ||
 	    F->getName().equals("verifier.error") ||
-	    F->getName().equals("verifier.fail") ||
-	    F->getName().equals("seahorn.fail") ||	    	    
 	    F->getName().equals("__VERIFIER_error") || 	    	    
             F->getName().equals("__SEAHORN_error"));
   }
@@ -476,7 +479,8 @@ namespace crab_llvm {
 
   static bool isVerifierCall (const Function *F) {
     return (isAssertFn (F) || isErrorFn (F) ||
-	    isAssumeFn(F) || isNotAssumeFn (F));
+	    isAssumeFn(F) || isNotAssumeFn (F) ||
+	    isSeaHornFail (F));
   }
 
   static bool isZeroInitializer(const Function *F) {
@@ -944,6 +948,7 @@ namespace crab_llvm {
     basic_block_t& m_bb;
     const bool m_is_inter_proc;
     unsigned int m_object_id;
+    bool m_has_seahorn_fail;
     
     typedef typename HeapAbstraction::region_t region_t;
     typedef typename HeapAbstraction::region_set_t region_set_t;
@@ -1353,6 +1358,16 @@ namespace crab_llvm {
         return;
       }
 
+      if (isSeaHornFail(callee)) {
+	// when seahorn inserts a call to "seahorn.fail" means that
+	// the program is safe iff the function cannot return.  Note
+	// that we cannot add "assert(false)" in the current
+	// block. Instead, we need to check whether the exit block of
+	// the function is reachable or not.
+	m_has_seahorn_fail = true;
+	return;
+      }
+
       if (!isAssertFn(callee) && !isAssumeFn(callee) && !isNotAssumeFn(callee))
 	return; 
 
@@ -1417,7 +1432,12 @@ namespace crab_llvm {
 	m_dl(dl), m_tli(tli), 
 	m_bb(bb), 
 	m_is_inter_proc (isInterProc),
-	m_object_id (0) {}
+	m_object_id (0),
+	m_has_seahorn_fail (false) {}
+
+    bool has_seahorn_fail() const { return m_has_seahorn_fail;}
+
+  public:
     
     /// skip PHI nodes (processed elsewhere)
     void visitPHINode (PHINode &I) {}
@@ -1989,7 +2009,7 @@ namespace crab_llvm {
     }
 
     void visitReturnInst (ReturnInst &I) {
-      // translated elsewhere
+      // translated elsewhere      
     }
 
     void visitCallInst (CallInst &I) {
@@ -2354,7 +2374,7 @@ namespace crab_llvm {
     basic_block_t *ret_block = nullptr;
     boost::optional<typed_variable_t> ret_val;
     
-    
+    bool has_seahorn_fail = false;
     // execBr can add new BasicBlock's in m_func and we do not want to
     // iterate over them.
     for (BasicBlock* B : blocks) {
@@ -2364,7 +2384,9 @@ namespace crab_llvm {
       // -- build a CFG block ignoring branches, phi-nodes, and return
       CrabInstVisitor v (lfac, m_mem, m_dl, m_tli, *BB, m_is_inter_proc);
       v.visit (*B);
-
+      // hook for seahorn
+      has_seahorn_fail |= (v.has_seahorn_fail() && m_func.getName().equals("main"));
+      
       // -- process the exit block of the function and its returned value.
       if (ReturnInst *RI = dyn_cast<ReturnInst> (B->getTerminator ())) {
 	if (ret_block)
@@ -2373,6 +2395,10 @@ namespace crab_llvm {
         basic_block_t &bb = *BB;
         ret_block = &bb;
 	m_cfg->set_exit(ret_block->label());
+
+	if (has_seahorn_fail) {
+	  ret_block->assertion(CST_FALSE, getDebugLoc(RI));	  
+	}
 	
 	if (m_is_inter_proc) {
 	  if (Value * RV = RI->getReturnValue()) {
