@@ -213,6 +213,10 @@ def parseArgs (argv):
                     dest='devirt', default=False, action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
+    p.add_argument ('--crab-verbose', type=int,
+                    help='Enable verbose messages',
+                    dest='crab_verbose',
+                    default=0, metavar='UINT')
     p.add_argument ('--crab-dom',
                     help="Choose abstract domain:\n"
                           "- int: intervals\n"
@@ -519,6 +523,8 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.log is not None:
         for l in args.log.split (':'): crabllvm_cmd.extend (['-log', l])
 
+    if args.crab_verbose: crabllvm_cmd.append('--crab-verbose={0}'.format(args.crab_verbose))
+    
     ## This option already run in crabpp    
     if args.undef_nondet: crabllvm_cmd.append( '--crab-turn-undef-nondet')
         

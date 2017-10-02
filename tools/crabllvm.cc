@@ -69,8 +69,10 @@ LowerSelect ("crab-lower-select",
              llvm::cl::init (false));
 
 
+/* logging and verbosity */
+
 struct LogOpt {
-  void operator= (const std::string &tag) const 
+  void operator=(const std::string &tag) const 
   { crab::CrabEnableLog (tag); } 
 };
 
@@ -82,6 +84,19 @@ LogClOption ("log",
              llvm::cl::location (loc),
              llvm::cl::value_desc ("string"),
              llvm::cl::ValueRequired, llvm::cl::ZeroOrMore);
+
+struct VerboseOpt {
+  void operator=(unsigned level) const 
+  { crab::CrabEnableVerbosity(level); } 
+};
+
+VerboseOpt verbose;
+
+static llvm::cl::opt<VerboseOpt, true, llvm::cl::parser<unsigned> > 
+CrabVerbose("crab-verbose",
+	    llvm::cl::desc ("Enable verbose messages"),
+	    llvm::cl::location (verbose),
+	    llvm::cl::value_desc ("uint"));
 
 using namespace crab_llvm;
 
