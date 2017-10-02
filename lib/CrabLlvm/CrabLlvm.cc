@@ -282,17 +282,6 @@ namespace crab_llvm {
     o << pre << " ==> " << post << "\n";
   }
   
-  struct isLlvmBlock: std::unary_function<const BasicBlock&, bool> {
-    boost::unordered_set<const BasicBlock*> m_llvm_blocks;
-    isLlvmBlock(const Function &fun) {
-      for (auto &b: boost::make_iterator_range(fun.begin(), fun.end()))
-	m_llvm_blocks.insert(&b);
-    }
-    bool operator()(const BasicBlock *b) const {
-      return m_llvm_blocks.find(b) != m_llvm_blocks.end();
-    }
-  };
-
   struct AnalysisResults {
     invariant_map_t &premap;
     invariant_map_t &postmap;
@@ -323,13 +312,13 @@ namespace crab_llvm {
       typedef assert_property_checker<intra_analyzer_t> assert_prop_t;
       typedef null_property_checker<intra_analyzer_t> null_prop_t;
       
-      CRAB_LOG("crabllvm",
-	       auto fdecl = m_cfg->get_func_decl ();            
-	       assert (fdecl);
-	       crab::outs() << "Running intra-procedural analysis with " 
-	                    << "\"" << Dom::getDomainName ()  << "\""
-	                    << " for "  << (*fdecl).get_func_name ()
-	                    << "  ... ";);
+      CRAB_VERBOSE_IF(1,
+		      auto fdecl = m_cfg->get_func_decl ();            
+		      assert (fdecl);
+		      crab::outs() << "Running intra-procedural analysis with " 
+		                   << "\"" << Dom::getDomainName ()  << "\""
+		                   << " for "  << (*fdecl).get_func_name ()
+		                   << "  ... \n";);
       
       // -- run intra-procedural analysis
       intra_analyzer_t analyzer (*m_cfg);
@@ -341,22 +330,21 @@ namespace crab_llvm {
 	absval += kv.second;
 	crab_assumptions.insert(binding_t(kv.first, absval));
       }
-      // TODO: This analysis ignores live
-      analyzer.run(Dom::top(), Dom::top(), !params.run_backward, crab_assumptions,
+      analyzer.run(Dom::top(), Dom::top(), !params.run_backward, crab_assumptions, live,
 		   params.widening_delay, params.narrowing_iters, params.widening_jumpset);
-      CRAB_LOG("crabllvm", crab::outs() << "DONE\n"); 
+      CRAB_VERBOSE_IF(1, crab::outs() << "Finished intra-procedural analysis.\n"); 
 
-      isLlvmBlock is_llvm_block(m_fun);
       // -- store invariants 
-      for (const BasicBlock* B: boost::make_iterator_range(m_cfg->label_begin(),
-      							   m_cfg->label_end())) {
-      	if (!is_llvm_block(B)) continue;
+      for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
+							      m_cfg->label_end())) {
+	const BasicBlock *B = bl.get_basic_block();
+	if (!B) continue; // we only store those which correspond to llvm basic blocks
 
 	// --- invariants that hold at the entry of the blocks
-	auto pre = analyzer.get_pre (B);
+	auto pre = analyzer.get_pre (bl);
 	update(results.premap, *B,  mkGenericAbsDomWrapper(pre));
 	// --- invariants that hold at the exit of the blocks
-	auto post = analyzer.get_post (B);
+	auto post = analyzer.get_post (bl);
 	update(results.postmap, *B,  mkGenericAbsDomWrapper(post));	
 	if (params.stats) {
 	  unsigned num_block_invars = 0;
@@ -372,45 +360,47 @@ namespace crab_llvm {
       if (params.print_invars) {
 	// -- print invariants
 	llvm::outs() << "\nInvariants for " << m_fun.getName() << "\n";
-	for (const BasicBlock* B: boost::make_iterator_range(m_cfg->label_begin(),
-							     m_cfg->label_end())) {
-	  if (!is_llvm_block(B)) continue;
-	  
-	  llvm::outs() << "\t";
-	  printInvariants(*B, m_vfac, results.premap, results.postmap,
-			   params.keep_shadow_vars, llvm::outs());
+	for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
+								m_cfg->label_end())) {
+	  if (const BasicBlock *B = bl.get_basic_block()) {
+	    // we only print those which correspond to llvm basic blocks
+	    llvm::outs() << "\t";
+	    printInvariants(*B, m_vfac, results.premap, results.postmap,
+			    params.keep_shadow_vars, llvm::outs());
+	  }
 	}
       }
     
       if (params.print_preconds && params.run_backward) {
 	// --- print preconditions
 	llvm::outs() << "\nNecessary preconditions for " << m_fun.getName() << "\n";
-	for (const BasicBlock* B : boost::make_iterator_range(m_cfg->label_begin(),
-							      m_cfg->label_end())) {
-	  if (!is_llvm_block(B)) continue;
-
-	  auto pre = analyzer.get_preconditions(B);
-	  llvm::outs() << "\t" << B->getName () << ": ";
-	  crab::outs() << pre << "\n";
+	for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
+								m_cfg->label_end())) {
+	  if (const BasicBlock *B = bl.get_basic_block()) {
+	    // we only print those which correspond to llvm basic blocks
+	    auto pre = analyzer.get_preconditions(bl);
+	    llvm::outs() << "\t" << bl.get_name() << ": ";
+	    crab::outs() << pre << "\n";
+	  }
 	}
 	llvm::outs() <<  "\n";
       }
       
       if (params.check) {
 	// --- checking assertions and collecting data
-	CRAB_LOG("crabllvm", crab::outs() << "Checking assertions ... \n"); 
+	CRAB_VERBOSE_IF(1, crab::outs() << "Checking assertions ... \n"); 
 	typename intra_checker_t::prop_checker_ptr
 	  prop (new assert_prop_t (params.check_verbose));
 	if (params.check == NULLITY)
 	  prop.reset (new null_prop_t(params.check_verbose));
 	intra_checker_t checker (analyzer, {prop});
 	checker.run ();
-	CRAB_LOG("crabllvm",
-		 llvm::outs() << "Function " << m_fun.getName() << "\n";
-		 checker.show (crab::outs()));
+	CRAB_VERBOSE_IF(1,
+			llvm::outs() << "Function " << m_fun.getName() << "\n";
+			checker.show (crab::outs()));
 	results.checksdb = boost::make_shared<checks_db_t>();
 	(*results.checksdb) += checker.get_all_checks();
-	CRAB_LOG("crabllvm", crab::outs() << "DONE!\n");      
+	CRAB_VERBOSE_IF(1, crab::outs() << "Finished assert checking.\n");      
       }
 
       if (params.print_assumptions) {
@@ -482,12 +472,13 @@ namespace crab_llvm {
       if (isTrackable(m_fun)) {
 	// -- build a crab cfg for func
 	CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
-	  CRAB_LOG("crabllvm",
-		   llvm::outs () << "Built Crab CFG for " << fun.getName() << "\n");
+	  CRAB_VERBOSE_IF(1, llvm::outs () << "Built Crab CFG for "
+			                   << fun.getName() << "\n");
+			  
 	  m_cfg = builder.getCfg();
       } else {
-	  CRAB_LOG("crabllvm",
-		   llvm::outs () << "Cannot build CFG for " << fun.getName() << "\n");
+	CRAB_VERBOSE_IF(1, llvm::outs () << "Cannot build CFG for "
+			                 << fun.getName() << "\n");
       }
     }
 
@@ -497,27 +488,27 @@ namespace crab_llvm {
 		 AnalysisResults &results) {
 
       if (!m_cfg) {
-	CRAB_LOG("crabllvm",
-		 llvm::outs () << "Skipped analysis for " << m_fun.getName() << "\n");
+	CRAB_VERBOSE_IF(1, llvm::outs () << "Skipped analysis for "
+			                 << m_fun.getName() << "\n");
 	return;
       }
       
       // -- run liveness
       liveness_t* live = nullptr;
       if (params.run_liveness || isRelationalDomain(params.dom)) {
-	CRAB_LOG("crabllvm",
-		 auto fdecl = m_cfg->get_func_decl ();            
-		 assert (fdecl);
-		 crab::outs() << "Running liveness analysis for " 
-		              << (*fdecl).get_func_name ()
-		              << "  ... ";);
+	CRAB_VERBOSE_IF(1,
+			auto fdecl = m_cfg->get_func_decl ();            
+			assert (fdecl);
+			crab::outs() << "Running liveness analysis for " 
+			             << (*fdecl).get_func_name ()
+		                     << "  ...\n";);
 	liveness_t ls (*m_cfg);
 	ls.exec ();
-	CRAB_LOG("crabllvm", crab::outs() << "DONE!\n");
+	CRAB_VERBOSE_IF(1, crab::outs() << "Finished liveness analysis.\n");
 	// some stats
 	unsigned total_live, avg_live_per_blk, max_live_per_blk;
 	ls.get_stats (total_live, max_live_per_blk, avg_live_per_blk);
-	CRAB_LOG("crabllvm", 
+	CRAB_VERBOSE_IF(1, 
 		 crab::outs() << "-- Max number of out live vars per block=" 
                               << max_live_per_blk << "\n"
                               << "-- Avg number of out live vars per block=" 
@@ -526,7 +517,7 @@ namespace crab_llvm {
 				    max_live_per_blk);
 
 	if (isRelationalDomain(params.dom)) {
-	  CRAB_LOG("crabllvm", 
+	  CRAB_VERBOSE_IF(1, 
 		   crab::outs() << "Max live per block: "
 		                << max_live_per_blk << "\n"
 		                << "Threshold: "
@@ -601,13 +592,13 @@ namespace crab_llvm {
     typedef assert_property_checker<inter_analyzer_t> assert_prop_t;
     typedef null_property_checker<inter_analyzer_t> null_prop_t;
     
-    CRAB_LOG("crabllvm", 
+    CRAB_VERBOSE_IF(1, 
 	     crab::outs() << "Running inter-procedural analysis with " 
 	                  << "forward domain:" 
 	                  << "\"" << TDDom::getDomainName () << "\""
 	                  << " and bottom-up domain:" 
                           << "\"" << BUDom::getDomainName () << "\"" 
-                          << "  ... ";);
+                          << "  ...\n";);
     
     inter_analyzer_t analyzer(cg, (CrabLive ? &live : nullptr),
 			      CrabWideningDelay, 
@@ -615,7 +606,7 @@ namespace crab_llvm {
 			      CrabWideningJumpSet);
     analyzer.Run (TDDom::top ());
     
-    CRAB_LOG("crabllvm", crab::outs() << "DONE\n");
+    CRAB_VERBOSE_IF(1, crab::outs() << "Finished inter-procedural analysis.\n");
     
     // -- store invariants     
     for (auto &n: boost::make_iterator_range (vertices (cg))) {
@@ -663,18 +654,17 @@ namespace crab_llvm {
     
     // --- checking assertions and collecting data
     if (CrabCheck) {
-      CRAB_LOG("crabllvm", crab::outs() << "Checking assertions ... \n"); 
+      CRAB_VERBOSE_IF(1, crab::outs() << "Checking assertions ... \n"); 
       typename inter_checker_t::prop_checker_ptr
 	prop(new assert_prop_t(CrabCheckVerbose));
       if (CrabCheck == NULLITY)
 	prop.reset (new null_prop_t(CrabCheckVerbose));      
       inter_checker_t checker (analyzer, {prop});
       checker.run ();
-      CRAB_LOG("crabllvm", checker.show (crab::outs()));
-      
+      //CRAB_VERBOSE_IF(1, checker.show (crab::outs()));
       checkdb = boost::make_shared<checks_db_t>();
       (*checkdb) += checker.get_all_checks();
-      CRAB_LOG("crabllvm", crab::outs() << "DONE!\n"); 
+      CRAB_VERBOSE_IF(1, crab::outs() << "Finished assert checking.\n"); 
     }
     return;
   }
@@ -719,7 +709,7 @@ namespace crab_llvm {
       (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>()));
     #endif     
 
-    CRAB_LOG("crabllvm",
+    CRAB_VERBOSE_IF(1,
              unsigned num_analyzed_funcs = 0;
              for (auto &F : M) {
 	       if (!isTrackable(F)) continue;
@@ -749,20 +739,20 @@ namespace crab_llvm {
 
         // -- build liveness
         if (CrabLive || isRelationalDomain(absdom)) {
-          CRAB_LOG("crabllvm",
+          CRAB_VERBOSE_IF(1,
                    auto fdecl = cfg_ptr->get_func_decl ();            
                    assert (fdecl);
                    crab::outs() << "Running liveness analysis for " 
-                                << (*fdecl).get_func_name () << "  ... ";);
+                                << (*fdecl).get_func_name () << "  ...\n";);
 
 	  liveness_t* live = new liveness_t (*cfg_ptr);
           live->exec ();
-          CRAB_LOG("crabllvm", crab::outs() << "DONE!\n";);
+          CRAB_VERBOSE_IF(1, crab::outs() << "Finished liveness analysis.\n";);
           // some stats
           unsigned total_live, max_live_per_blk_, avg_live_per_blk;
           live->get_stats (total_live, max_live_per_blk_, avg_live_per_blk);
           max_live_per_blk = std::max (max_live_per_blk, max_live_per_blk_);
-          CRAB_LOG("crabllvm",
+          CRAB_VERBOSE_IF(1,
                    crab::outs() << "-- Max number of out live vars per block=" 
                                 << max_live_per_blk_ << "\n";
                    crab::outs() << "-- Avg number of out live vars per block=" 
@@ -777,7 +767,7 @@ namespace crab_llvm {
 	    //        exceeds the threshold then the cheaper domain will be
 	    //        used for all functions. We should be able to change
 	    //        from one function to another.
-	    CRAB_LOG("crabllvm",
+	    CRAB_VERBOSE_IF(1,
 		     crab::outs() << "Max live per block: "
 		                  << max_live_per_blk << "\n"
 		                  << "Threshold: "

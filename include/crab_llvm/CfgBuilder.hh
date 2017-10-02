@@ -45,9 +45,6 @@ namespace crab_llvm {
     bool m_is_inter_proc;
     const llvm::DataLayout* m_dl;
     const llvm::TargetLibraryInfo *m_tli;
-    // Placeholder blocks added *temporary* to the LLVM bitecode for
-    // translating Branch instructions into Crab assume statements
-    std::vector<llvm::BasicBlock*> m_fake_assume_blocks;
 
    public:
     
@@ -72,17 +69,10 @@ namespace crab_llvm {
 
     void add_edge(llvm::BasicBlock &Src, const llvm::BasicBlock &Target);
 
-    opt_basic_block_t execBr(llvm::BasicBlock &Src, 
-                             const llvm::BasicBlock &Target); 
+    opt_basic_block_t execBr(llvm::BasicBlock &Src, const llvm::BasicBlock &Target); 
 
-    basic_block_t& add_block_in_between (basic_block_t &src, 
-                                         basic_block_t &dst, 
-                                         const llvm::BasicBlock* B) ;
-
-    const llvm::BasicBlock* create_fake_block(llvm::LLVMContext &ctx, 
-                                             const llvm::Twine &name,
-                                             llvm::Function *parent);
-    
+    void add_block_in_between (basic_block_t &src, basic_block_t &dst,  
+			       basic_block_t &between);
 
   }; // end class CfgBuilder
 

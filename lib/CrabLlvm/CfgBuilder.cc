@@ -2215,16 +2215,13 @@ namespace crab_llvm {
     : m_is_cfg_built(false),                          
       m_func(func),
       m_vfac(vfac), m_mem(mem), m_tracklev(tracklev), m_id(0),      
-      m_cfg(boost::make_shared<cfg_t>(&m_func.getEntryBlock(), tracklev)),
+      m_cfg(boost::make_shared<cfg_t>
+	    (llvm_basic_block_wrapper(&m_func.getEntryBlock()), tracklev)),
       m_is_inter_proc(isInterProc),
       m_dl(&(func.getParent()->getDataLayout())),
       m_tli(tli) { }
 
-  CfgBuilder::~CfgBuilder () { 
-    for (BasicBlock* B: m_fake_assume_blocks) {
-      delete B; // B->eraseFromParent ();
-    }
-  }
+  CfgBuilder::~CfgBuilder () {}
 
   cfg_ptr_t CfgBuilder::getCfg () { 
     if (!m_is_cfg_built) {
@@ -2247,23 +2244,15 @@ namespace crab_llvm {
   {
     assert (!lookup(B));
     BasicBlock *BB = &B;
-    basic_block_t &bb = m_cfg->insert ( BB);
+    basic_block_t &bb = m_cfg->insert (llvm_basic_block_wrapper(BB));
     m_bb_map.insert (llvm_bb_map_t::value_type (BB, bb));
   }  
 
-  basic_block_t& CfgBuilder::
-  add_block_in_between (basic_block_t &src, basic_block_t &dst,
-			const BasicBlock* BB) {
-
-    assert (m_bb_map.find (BB) == m_bb_map.end()); 
-
-    basic_block_t &bb = m_cfg->insert (BB);
-
+  void CfgBuilder:: add_block_in_between (basic_block_t &src, basic_block_t &dst,
+					  basic_block_t &bb) {
     src -= dst;
     src >> bb;
     bb >> dst;
-
-    return bb;
   }  
 
 
@@ -2281,21 +2270,6 @@ namespace crab_llvm {
     return prefix + id_str;
   }
   
-  // add a fake llvm BasicBlock into the function: this BasicBlock is
-  // needed because the translation cannot generate a Crab basic block
-  // without being associated with a llvm BasicBlock.  We do not
-  // attach it to a parent so we need to free them later.
-  const BasicBlock* CfgBuilder::create_fake_block(LLVMContext &ctx, 
-						  const Twine &name,
-						  Function *parent) {
-
-    BasicBlock* B = BasicBlock::Create (ctx, name, nullptr);
-    // IRBuilder<> Builder (B);
-    // Builder.CreateUnreachable (); // to make the block well formed.
-    m_fake_assume_blocks.push_back (B);
-    return B;
-  }
-
   //! return the new block inserted between src and dest if any
   CfgBuilder::opt_basic_block_t
   CfgBuilder::execBr (BasicBlock &src, const BasicBlock &dst) {
@@ -2307,11 +2281,8 @@ namespace crab_llvm {
         opt_basic_block_t Dst = lookup(dst);
         assert (Src && Dst);
 
-        const BasicBlock* BB = create_fake_block (m_func.getContext (),
-						  create_bb_name (m_id),
-						  &m_func);
-                                                                      
-        basic_block_t &bb = add_block_in_between (*Src, *Dst, BB);
+  	basic_block_t &bb = m_cfg->insert(llvm_basic_block_wrapper(create_bb_name (m_id)));
+        add_block_in_between (*Src, *Dst, bb);
         
         const Value &c = *br->getCondition ();
         if (const ConstantInt *ci = dyn_cast<const ConstantInt> (&c)) {
