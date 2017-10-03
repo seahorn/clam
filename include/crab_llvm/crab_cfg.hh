@@ -30,7 +30,7 @@ namespace crab_llvm {
     
     llvm_basic_block_wrapper(const llvm::BasicBlock *b):
 	 m_bb(b), m_name(b->getName()) {
-      assert(b.hasName());
+      assert(b->hasName());
     }
 
     explicit llvm_basic_block_wrapper(std::string name):
