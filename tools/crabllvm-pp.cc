@@ -70,6 +70,11 @@ LowerGv ("crab-lower-gv",
 	 llvm::cl::init (true));
 
 static llvm::cl::opt<bool>
+ExternalizeAddrTakenFuncs ("crab-externalize-addr-taken-funcs", 
+         llvm::cl::desc ("Externalize uses of address-taken functions"),
+         llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
 LowerUnsignedICmp("crab-lower-unsigned-icmp",
 	 llvm::cl::desc ("Lower ULT and ULE instructions"),
 	 llvm::cl::init (false));
@@ -200,7 +205,12 @@ int main(int argc, char **argv) {
     // -- resolve indirect calls
     pass_manager.add (crab_llvm::createDevirtualizeFunctionsPass ());
   }
-
+  
+  if (ExternalizeAddrTakenFuncs) {
+    // -- externalize uses of address-taken functions
+    pass_manager.add (crab_llvm::createExternalizeAddressTakenFunctionsPass ());
+  }
+  
   // kill unused internal global    
   pass_manager.add (llvm::createGlobalDCEPass ()); 
   pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());

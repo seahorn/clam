@@ -211,6 +211,10 @@ def parseArgs (argv):
     p.add_argument ('--devirt-functions',
                     help='Resolve indirect calls',
                     dest='devirt', default=False, action='store_true')
+    p.add_argument ('--externalize-addr-taken-functions',
+                    help='Externalize uses of address-taken functions',
+                    dest='enable_ext_funcs', default=False,
+                    action='store_true')
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-verbose', type=int,
@@ -502,7 +506,9 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append( '--crab-lower-unsigned-icmp')
     if args.devirt:
         crabpp_args.append ('--crab-devirt')
-
+    if args.enable_ext_funcs:
+        crabpp_args.append ('--crab-externalize-addr-taken-funcs')
+        
     crabpp_args.extend (extra_args)
     if verbose: print ' '.join (crabpp_args)
     returnvalue = run_command_with_limits(crabpp_args, cpu, mem)

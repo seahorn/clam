@@ -7,6 +7,7 @@ add_library(LlvmPasses ${CRABLLVM_LIBS_TYPE}
   MarkInternalInline.cc
   SimplifyAssume.cc
   DevirtFunctions.cc
+  ExternalizeAddressTakenFunctions.cc  
   )
 
 install(TARGETS LlvmPasses 
