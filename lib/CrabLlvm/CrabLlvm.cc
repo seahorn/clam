@@ -398,7 +398,8 @@ namespace crab_llvm {
 	CRAB_VERBOSE_IF(1,
 			llvm::outs() << "Function " << m_fun.getName() << "\n";
 			checker.show (crab::outs()));
-	results.checksdb = boost::make_shared<checks_db_t>();
+	if (!results.checksdb)
+	  results.checksdb = boost::make_shared<checks_db_t>();
 	(*results.checksdb) += checker.get_all_checks();
 	CRAB_VERBOSE_IF(1, crab::outs() << "Finished assert checking.\n");      
       }
