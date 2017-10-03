@@ -118,7 +118,7 @@ std::string getFileName(const std::string &str) {
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;  // calls llvm_shutdown() on exit
   llvm::cl::ParseCommandLineOptions(argc, argv,
-  "llvmpp-- LLVM bitcode Pre-Processor for static analysis\n");
+  "crabllvm-pp-- LLVM bitcode Pre-Processor for static analysis\n");
 
   llvm::sys::PrintStackTraceOnErrorSignal();
   llvm::PrettyStackTraceProgram PSTP(argc, argv);
@@ -276,8 +276,23 @@ int main(int argc, char **argv) {
   if (InlineAll) {
     pass_manager.add (crab_llvm::createMarkInternalInlinePass ());   
     pass_manager.add (llvm::createAlwaysInlinerPass ());
+    // after inlining we promote malloc to alloca instructions
+    pass_manager.add (crab_llvm::createPromoteMallocPass ());    
     // kill unused internal global    
-    pass_manager.add (llvm::createGlobalDCEPass ()); 
+    pass_manager.add (llvm::createGlobalDCEPass ());
+    // // break alloca's introduced by PromoteMallocPass into scalars
+    // pass_manager.add (llvm::createScalarReplAggregatesPass
+    // 		      (SROA_Threshold,
+    // 		       true,
+    // 		       SROA_StructMemThreshold,
+    // 		       SROA_ArrayElementThreshold,
+    // 		       SROA_ScalarLoadThreshold));
+    // #ifdef HAVE_LLVM_SEAHORN
+    // if (TurnUndefNondet) {
+    //   // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
+    //   pass_manager.add (llvm_seahorn::createNondetInitPass ());
+    // }
+    // #endif 
   }
   
   pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
