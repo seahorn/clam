@@ -5,8 +5,9 @@
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /><img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
 Crab-llvm is a static analyzer that computes inductive invariants for
-LLVM-based languages based on the
-[Crab](https://github.com/seahorn/crab) library.
+LLVM-based languages based on
+the [Crab](https://github.com/seahorn/crab) library. It currently
+supports LLVM 3.8.
 
 # Installation #
 
@@ -77,7 +78,7 @@ To install `crab-llvm` with Boxes and Apron:
 
 To run some regression tests:
 
-     cmake --build . --target tests
+     cmake --build . --target test-simple
 
 To run tests you need to install `lit` and `OutputCheck`. In Linux:
 
