@@ -175,6 +175,26 @@ CrabTrackLev("crab-track",
    cl::init (tracked_precision::NUM));
 
 
+// llvm-dsa options
+cl::opt<bool>
+CrabDsaDisambiguateUnknown ("crab-dsa-disambiguate-unknown",
+    cl::desc ("Disambiguate unknown pointers (unsound)"), 
+    cl::init (false),
+    cl::Hidden);
+
+cl::opt<bool>
+CrabDsaDisambiguatePtrCast ("crab-dsa-disambiguate-ptr-cast",
+    cl::desc ("Disambiguate pointers that have been casted from/to integers (unsound)"), 
+    cl::init (false),
+    cl::Hidden);
+
+cl::opt<bool>
+CrabDsaDisambiguateExternal ("crab-dsa-disambiguate-external",
+    cl::desc ("Disambiguate pointers that have been passed to external functions (unsound)"), 
+    cl::init (false),
+    cl::Hidden);
+
+// Prove assertions
 cl::opt<assert_check_kind_t>
 CrabCheck ("crab-check", 
 	   cl::desc ("Check user assertions"),
@@ -707,7 +727,10 @@ namespace crab_llvm {
   bool CrabLlvmPass::runOnModule (Module &M) {
     #ifdef HAVE_DSA
     m_mem.reset
-      (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>()));
+      (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
+				  CrabDsaDisambiguateUnknown,
+				  CrabDsaDisambiguatePtrCast,
+				  CrabDsaDisambiguateExternal));
     #endif     
 
     CRAB_VERBOSE_IF(1,

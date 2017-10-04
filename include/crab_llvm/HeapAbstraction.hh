@@ -216,6 +216,10 @@ namespace crab_llvm {
     llvm::DenseMap<const llvm::DSNode*, unsigned> m_node_ids;
     boost::unordered_map<unsigned, const llvm::DSNode*> m_rev_node_ids;
     unsigned m_max_id;
+
+    bool m_disambiguate_unknown;
+    bool m_disambiguate_ptr_cast;
+    bool m_disambiguate_external;
     
     /// reach - all reachable nodes from this function
     std::set<const llvm::DSNode*> m_reach;
@@ -252,7 +256,10 @@ namespace crab_llvm {
 
    public:
     
-    LlvmDsaHeapAbstraction(llvm::Module &M, llvm::DataStructures *dsa);
+    LlvmDsaHeapAbstraction(llvm::Module &M, llvm::DataStructures *dsa,
+			   bool disambiguate_unknown = false,
+			   bool disambiguate_ptr_cast = false,
+			   bool disambiguate_external = false);
     
     virtual region_t getRegion(llvm::Function &F, llvm::Value *V) override;
     virtual const llvm::Value* getSingleton(int region) const override;

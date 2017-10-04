@@ -312,6 +312,16 @@ def parseArgs (argv):
                     help='Disable some crab-llvm warnings',
                     dest='crab_disable_warnings', default=False, action='store_true')
     ######################################################################
+    p.add_argument ('--crab-dsa-disambiguate-unknown',
+                    help=a.SUPPRESS,
+                    dest='crab_dsa_unknown', default=False, action='store_true')
+    p.add_argument ('--crab-dsa-disambiguate-ptr-cast',
+                    help=a.SUPPRESS,
+                    dest='crab_dsa_ptr_cast', default=False, action='store_true')
+    p.add_argument ('--crab-dsa-disambiguate-external',
+                    help=a.SUPPRESS,
+                    dest='crab_dsa_external', default=False, action='store_true')
+    ######################################################################    
     p.add_argument ('--crab-cfg-simplify',
                     help=a.SUPPRESS,
                     dest='crab_cfg_simplify', default=False, action='store_true')
@@ -560,6 +570,10 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_disable_warnings: crabllvm_cmd.append('--crab-disable-warnings')
 
     # hidden options
+    if args.crab_dsa_unknown: crabllvm_cmd.append ('--crab-dsa-disambiguate-unknown')
+    if args.crab_dsa_ptr_cast: crabllvm_cmd.append ('--crab-dsa-disambiguate-ptr-cast')
+    if args.crab_dsa_external: crabllvm_cmd.append ('--crab-dsa-disambiguate-external')    
+    
     if args.crab_cfg_simplify: crabllvm_cmd.append ('--crab-cfg-simplify')
     if args.crab_keep_shadows: crabllvm_cmd.append ('--crab-keep-shadows')
     if not args.do_not_print_invariants: crabllvm_cmd.append ('--crab-print-invariants')
