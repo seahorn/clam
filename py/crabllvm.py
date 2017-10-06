@@ -411,10 +411,6 @@ def getClang (is_plus_plus):
         cmd_name = which (['clang-mp-3.8', 'clang-3.8', 'clang'])
     if cmd_name is None:
         raise IOError ('clang was not found')
-    clang_version = getClangVersion(cmd_name)
-    if not clang_version == "not-found":
-        if not clang_version == llvm_version:
-            raise IOError ('clang version different from ' + llvm_version)
     return cmd_name
 
 def getOptLlvm ():
@@ -462,7 +458,14 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     if out_name == '' or out_name == None:
         out_name = defBCName (in_name)
 
-    clang_args = [getClang(_plus_plus_file(in_name)), '-emit-llvm', '-o', out_name, '-c', in_name ]
+    clang_cmd = getClang(_plus_plus_file(in_name))
+    clang_version = getClangVersion(clang_cmd)
+    if not clang_version == "not-found":
+        if not clang_version == llvm_version:
+            print "WARNING crabllvm.py: clang version " + clang_version +  \
+                " different from " + llvm_version
+    
+    clang_args = [clang_cmd, '-emit-llvm', '-o', out_name, '-c', in_name ]
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
 
