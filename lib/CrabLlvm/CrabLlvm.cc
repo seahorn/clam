@@ -350,7 +350,15 @@ namespace crab_llvm {
 	absval += kv.second;
 	crab_assumptions.insert(binding_t(kv.first, absval));
       }
-      analyzer.run(Dom::top(), Dom::top(), !params.run_backward, crab_assumptions, live,
+      
+      Dom post_cond = Dom::top();
+      if (params.check && params.run_backward) {
+	// XXX: we compute preconditions that ensure that the program
+	// fail. If those preconditions are false then we can conclude
+	// the program is safe.
+	post_cond = Dom::bottom();
+      }
+      analyzer.run(Dom::top(), post_cond, !params.run_backward, crab_assumptions, live,
 		   params.widening_delay, params.narrowing_iters, params.widening_jumpset);
       CRAB_VERBOSE_IF(1, crab::outs() << "Finished intra-procedural analysis.\n"); 
 
