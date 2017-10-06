@@ -50,7 +50,8 @@ script:
   - /usr/bin/cmake --build . --target apron && /usr/bin/cmake ..
   - /usr/bin/cmake --build . --target install
   - /usr/bin/cmake --build . --target test-simple
-  # - /usr/bin/cmake --build . --target test-ssh  
+  - /usr/bin/cmake --build . --target test-ssh-simplified
+  - /usr/bin/cmake --build . --target test-ssh
 
 notifications:
    slack: seahornteam:NAUqZmZHFFviPH4ktQbJXgKu
