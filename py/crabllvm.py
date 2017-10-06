@@ -461,7 +461,7 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     clang_cmd = getClang(_plus_plus_file(in_name))
     clang_version = getClangVersion(clang_cmd)
     if not clang_version == "not-found":
-        if not clang_version == llvm_version:
+        if not clang_version.startswith(llvm_version):
             print "WARNING crabllvm.py: clang version " + clang_version +  \
                 " different from " + llvm_version
     
