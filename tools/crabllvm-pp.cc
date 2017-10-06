@@ -115,6 +115,27 @@ std::string getFileName(const std::string &str) {
   return filename;
 }
 
+void break_allocas(llvm::legacy::PassManager &pass_manager) {
+    #ifdef HAVE_LLVM_SEAHORN
+    // -- can remove bitcast from bitcast(alloca(...))
+    pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
+    #endif     
+    pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
+    // -- break alloca's into scalars
+    pass_manager.add (llvm::createScalarReplAggregatesPass
+    		      (SROA_Threshold,
+    		       true,
+    		       SROA_StructMemThreshold,
+    		       SROA_ArrayElementThreshold,
+    		       SROA_ScalarLoadThreshold));
+    #ifdef HAVE_LLVM_SEAHORN
+    if (TurnUndefNondet) {
+      // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
+      pass_manager.add (llvm_seahorn::createNondetInitPass ());
+    }
+    #endif
+}
+
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;  // calls llvm_shutdown() on exit
   llvm::cl::ParseCommandLineOptions(argc, argv,
@@ -236,21 +257,21 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
   #endif 
   pass_manager.add (llvm::createCFGSimplificationPass ());
-    
-  // -- break aggregates
-  pass_manager.add (llvm::createScalarReplAggregatesPass
-		    (SROA_Threshold,
-		     true,
-		     SROA_StructMemThreshold,
-		     SROA_ArrayElementThreshold,
-		     SROA_ScalarLoadThreshold));
+  break_allocas(pass_manager);
+  // // -- break aggregates
+  // pass_manager.add (llvm::createScalarReplAggregatesPass
+  // 		    (SROA_Threshold,
+  // 		     true,
+  // 		     SROA_StructMemThreshold,
+  // 		     SROA_ArrayElementThreshold,
+  // 		     SROA_ScalarLoadThreshold));
   
-  #ifdef HAVE_LLVM_SEAHORN
-  if (TurnUndefNondet) {
-     // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
-     pass_manager.add (llvm_seahorn::createNondetInitPass ());
-  }
-  #endif 
+  // #ifdef HAVE_LLVM_SEAHORN
+  // if (TurnUndefNondet) {
+  //    // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
+  //    pass_manager.add (llvm_seahorn::createNondetInitPass ());
+  // }
+  // #endif
 
   // -- global value numbering and redundant load elimination
   pass_manager.add (llvm::createGVNPass());
@@ -276,23 +297,18 @@ int main(int argc, char **argv) {
   if (InlineAll) {
     pass_manager.add (crab_llvm::createMarkInternalInlinePass ());   
     pass_manager.add (llvm::createAlwaysInlinerPass ());
-    // after inlining we promote malloc to alloca instructions
-    pass_manager.add (crab_llvm::createPromoteMallocPass ());    
-    // kill unused internal global    
-    pass_manager.add (llvm::createGlobalDCEPass ());
-    // // break alloca's introduced by PromoteMallocPass into scalars
-    // pass_manager.add (llvm::createScalarReplAggregatesPass
-    // 		      (SROA_Threshold,
-    // 		       true,
-    // 		       SROA_StructMemThreshold,
-    // 		       SROA_ArrayElementThreshold,
-    // 		       SROA_ScalarLoadThreshold));
-    // #ifdef HAVE_LLVM_SEAHORN
-    // if (TurnUndefNondet) {
-    //   // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
-    //   pass_manager.add (llvm_seahorn::createNondetInitPass ());
-    // }
-    // #endif 
+    // // after inlining we promote malloc to alloca instructions
+    // pass_manager.add (crab_llvm::createPromoteMallocPass ());    
+    // // kill unused internal global    
+    // pass_manager.add (llvm::createGlobalDCEPass ());
+    pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global
+    // -- promote malloc to alloca
+    pass_manager.add (crab_llvm::createPromoteMallocPass ());
+    pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global
+    // XXX: for svcomp ssh programs we need to run twice to break all
+    // relevant allocas
+    break_allocas(pass_manager);
+    break_allocas(pass_manager);
   }
   
   pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
