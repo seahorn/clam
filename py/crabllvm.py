@@ -29,6 +29,8 @@ ERR_PP = 24
 ERR_CRAB = 25
 #############################################################
 
+llvm_version = "3.8.0"
+
 def isexec (fpath):
     if fpath == None: return False
     return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
@@ -150,34 +152,40 @@ def parseArgs (argv):
     p = a.ArgumentParser(description='Abstract Interpretation-based Analyzer for LLVM bitecode',
                          formatter_class=RawTextHelpFormatter)
     p.add_argument ('-oll', dest='asm_out_name', metavar='FILE',
-                       help='Output analyzed bitecode')
+                    help='Output analyzed bitecode')
     p.add_argument ('--log', dest='log', default=None,
                     metavar='STR', help='Log level')
     p.add_argument ('-o', dest='out_name', metavar='FILE',
-                       help='Output file name')
+                    help='Output file name')
     p.add_argument ("--save-temps", dest="save_temps",
-                       help="Do not delete temporary files",
-                       action="store_true",
-                       default=False)
+                    help="Do not delete temporary files",
+                    action="store_true",
+                    default=False)
     p.add_argument ("--temp-dir", dest="temp_dir", metavar='DIR',
-                       help="Temporary directory",
-                       default=None)
+                    help="Temporary directory",
+                    default=None)
     p.add_argument ('-g', default=False, action='store_true', dest='debug_info',
                     help='Compile with debug information')
     p.add_argument ('-m', type=int, dest='machine',
-                       help='Machine architecture MACHINE:[32,64]', default=32)
+                    help='Machine architecture MACHINE:[32,64]', default=32)
     p.add_argument ("--no-preprocess", dest="preprocess", 
-                       help='Skip compilation and preprocessing', action='store_false',
-                       default=True)
+                    help='Skip compilation and preprocessing', action='store_false',
+                    default=True)
     p.add_argument ("--no-analyze", dest="analyze", 
-                       help='Skip analysis (for debugging)', action='store_false',
-                       default=True)
+                    help='Skip analysis (for debugging)', action='store_false',
+                    default=True)
     p.add_argument ('-O', type=int, dest='L', metavar='INT',
-                       help='Optimization level L:[0,1,2,3]', default=0)
+                    help='Optimization level L:[0,1,2,3]', default=0)
     p.add_argument ('--cpu', type=int, dest='cpu', metavar='SEC',
-                       help='CPU time limit (seconds)', default=-1)
+                    help='CPU time limit (seconds)', default=-1)
     p.add_argument ('--mem', type=int, dest='mem', metavar='MB',
-                       help='MEM limit (MB)', default=-1)
+                    help='MEM limit (MB)', default=-1)
+    p.add_argument ('--llvm-version', 
+                    help='Print llvm version', dest='llvm_version',
+                    default=False, action='store_true')
+    p.add_argument ('--clang-version', 
+                    help='Print clang version', dest='clang_version',
+                    default=False, action='store_true')    
     p.add_argument ('--llvm-dot-cfg',
                     help='Print LLVM CFG of function to dot file',
                     dest='dot_cfg', default=False, action='store_true')
@@ -381,13 +389,32 @@ def getCrabLlvmPP ():
         raise IOError ("Cannot find crabllvm pre-processor")
     return crabpp
 
+def getClangVersion(clang):
+    p = sub.Popen ([clang,'--version'], stdout = sub.PIPE)
+    out, _ = p.communicate()
+    clang_version = "not-found"
+    found = False # true if string 'version' is found
+    tokens = out.split()
+    for t in tokens:
+        if found is True:
+            clang_version = t
+            break
+        if t == 'version':
+            found = True
+    return clang_version
+    
 def getClang (is_plus_plus):
     cmd_name = None
     if is_plus_plus:
         cmd_name = which (['clang++-mp-3.8', 'clang++-3.8', 'clang++'])
     else:
         cmd_name = which (['clang-mp-3.8', 'clang-3.8', 'clang'])
-    if cmd_name is None: raise IOError ('clang was not found')
+    if cmd_name is None:
+        raise IOError ('clang was not found')
+    clang_version = getClangVersion(cmd_name)
+    if not clang_version == "not-found":
+        if not clang_version == llvm_version:
+            raise IOError ('clang version different from ' + llvm_version)
     return cmd_name
 
 def getOptLlvm ():
@@ -535,7 +562,7 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
 def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
     crabllvm_cmd = crabllvm_cmd + extra_opts
-
+    
     if args.log is not None:
         for l in args.log.split (':'): crabllvm_cmd.extend (['-log', l])
 
@@ -599,6 +626,14 @@ def main (argv):
     ## add directory containing this file to the PATH
     os.environ ['PATH'] =  os.path.dirname (os.path.realpath (__file__)) + \
                            os.pathsep + os.environ['PATH']
+
+    if '--llvm-version' in argv[1:] or '-llvm-version' in argv[1:]:
+        print "LLVM version " + llvm_version
+        return 0
+    
+    if '--clang-version' in argv[1:] or '-clang-version' in argv[1:]:
+        print "Clang version " + getClangVersion(getClang(False))
+        return 0
     
     args  = parseArgs (argv[1:])
     workdir = createWorkDir (args.temp_dir, args.save_temps)
