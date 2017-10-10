@@ -1092,12 +1092,13 @@ namespace crab_llvm {
 	break;
       case BinaryOperator::Shl:
 	if (op2.is_constant()) {
-	  ikos::z_number k = op2.constant ();
-	  int shift = (int) k;
-	  assert (shift >= 0);
-	  unsigned factor = 1;
-	  for (unsigned i = 0; i < (unsigned) shift; i++) 
-	    factor *= 2;
+	  ikos::z_number shift = op2.constant ();
+	  if (shift < 0)
+	    llvm_unreachable("shl shift operand cannot be negative");
+	  
+	  ikos::z_number factor = 1;
+	  for (ikos::z_number i = 0; i < shift; i++) 
+	  { factor *= 2; }
 	  m_bb.mul (lhs, op1, z_lin_exp_t (factor));            
 	} else {
 	  CRABLLVM_WARNING("translation skipped shl with non-constant shift");
@@ -1106,12 +1107,13 @@ namespace crab_llvm {
 	break;
       case BinaryOperator::AShr:
 	if (op2.is_constant()) {
-	  ikos::z_number k = op2.constant ();
-	  int shift = (int) k;
-	  assert (shift >= 0);
-	  unsigned factor = 1;
-	  for (unsigned i = 0; i < (unsigned) shift; i++) 
-	    factor *= 2;
+	  ikos::z_number shift = op2.constant ();
+	  if (shift < 0)
+	    llvm_unreachable("ashr shift operand cannot be negative");
+	  
+	  ikos::z_number factor = 1;
+	  for (ikos::z_number i = 0; i < shift; i++) 
+	  { factor *= 2; }
 	  m_bb.div (lhs, op1, z_lin_exp_t (factor));            
 	} else {
 	  CRABLLVM_WARNING("translation skipped ashr with non-constant shift");
