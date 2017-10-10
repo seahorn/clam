@@ -217,7 +217,10 @@ int main(int argc, char **argv) {
   }
 
   assert (dl && "Could not find Data Layout for the module");
-  
+
+  // -- promote top-level mallocs to alloca
+  pass_manager.add (crab_llvm::createPromoteMallocPass ());  
+
   // -- turn all functions internal so that we can apply some global
   // -- optimizations inline them if requested
   pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
