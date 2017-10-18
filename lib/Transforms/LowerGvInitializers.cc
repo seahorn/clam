@@ -334,9 +334,9 @@ namespace crab_llvm {
 	      GS.AccessingFunction->getName() == "main" &&
 	      allNonInstructionUsersCanBeMadeInstructions(gv)) {
 	    Type *ElemTy = gv->getType()->getElementType();
-	    // FIXME: Pass Global's alignment when globals have alignment	  	  
 	    AllocaInst* Alloca = Builder.CreateAlloca(ElemTy, nullptr, gv->getName());
-	    Builder.CreateStore(gv->getInitializer(), Alloca);
+	    Builder.CreateAlignedStore(gv->getInitializer(), Alloca,
+				       m_dl->getABITypeAlignment(ElemTy));
 	    makeAllConstantUsesInstructions(gv);
 	    gv->replaceAllUsesWith(Alloca);
 	    gv->eraseFromParent();
