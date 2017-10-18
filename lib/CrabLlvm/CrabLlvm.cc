@@ -355,22 +355,25 @@ namespace crab_llvm {
       }
 
       void operator()(basic_block_label_t bbl){
-	m_o << bbl.get_name() << ":\n";	
+	m_o << bbl.get_name() << ":\n";
 	if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
+	  wrapper_dom_ptr pre = lookup(m_premap, *bb, m_shadow_vars);	  
 	  m_o << "/**\n  INVARIANTS: ";
-	  auto pre = lookup(m_premap, *bb, m_shadow_vars);
 	  m_o << pre << "\n";
 	  m_o << "**/\n";
 	}
 	const basic_block_t &bb = m_cfg.get_node(bbl);
+	bool empty_block = (std::distance(bb.begin(), bb.end()) == 0);
 	for (auto const &s: bb) {
 	  m_o << "  " << s << ";\n";
 	}
-	if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
-	  m_o << "/**\n  INVARIANTS: ";
-	  auto post = lookup(m_postmap, *bb, m_shadow_vars);
-	  m_o << post << "\n";	  
-	  m_o << "**/\n";
+	if (!empty_block) {
+	  if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
+	    wrapper_dom_ptr post = lookup(m_postmap, *bb, m_shadow_vars);	  
+	    m_o << "/**\n  INVARIANTS: ";
+	    m_o << post << "\n";	  
+	    m_o << "**/\n";
+	  }
 	}
 	m_o << "--> [";
 	for (auto const &n : boost::make_iterator_range (bb.next_blocks ())) {
