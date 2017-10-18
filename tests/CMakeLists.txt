@@ -22,4 +22,12 @@ if (USE_LDD)
     PARAMS
     test_dir=${CMAKE_CURRENT_BINARY_DIR}/ssh-simplified
     DEPENDS crabllvm)
+
+  add_lit_testsuite(test-ntdrivers-simplified "Run SVCOMP ntdrivers-simplified benchmarks"
+    -v 
+    ${CMAKE_CURRENT_SOURCE_DIR}/ntdrivers-simplified  ## where .cfg file is located
+    PARAMS
+    test_dir=${CMAKE_CURRENT_BINARY_DIR}/ntdrivers-simplified
+    DEPENDS crabllvm)
+  
 endif()
