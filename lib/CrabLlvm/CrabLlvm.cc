@@ -291,7 +291,7 @@ namespace crab_llvm {
 			      const invariant_map_t &premap,
 			      const invariant_map_t &postmap,
 			      const bool keep_shadows,
-			      raw_ostream &o) {
+			      crab::crab_os &o) {
     o << block.getName() << ": ";
     std::vector<varname_t> shadows;
     if (!keep_shadows)
@@ -311,6 +311,76 @@ namespace crab_llvm {
       : premap(pre), postmap(post), checksdb(db) {}
   };
 
+  
+  namespace pretty_printer_impl {
+    typedef boost::unordered_set<basic_block_label_t> visited_t;
+    template<typename T>
+    void dfs_rec (cfg_ref_t cfg, basic_block_label_t curId, visited_t &visited, T f) {
+      if (visited.find (curId) != visited.end ()) return;
+      visited.insert (curId);
+      const basic_block_t &cur = cfg.get_node(curId);
+      f (curId);
+      for (auto const n : boost::make_iterator_range (cur.next_blocks ())) {
+	dfs_rec (cfg, n, visited, f);
+      }
+    }
+    
+    template<typename T>
+    void dfs (cfg_ref_t cfg, T f) {
+      visited_t visited;
+      dfs_rec (cfg, cfg.entry(), visited, f);
+    }
+    
+    struct print_block {
+      cfg_ref_t m_cfg;
+      const llvm_variable_factory &m_vfac;
+      const invariant_map_t &m_premap;
+      const invariant_map_t &m_postmap;
+      std::vector<varname_t> m_shadow_vars;
+      crab::crab_os &m_o;
+      
+      print_block (cfg_ref_t cfg, const llvm_variable_factory &vfac,
+		   const invariant_map_t &premap,
+		   const invariant_map_t &postmap,
+		   const bool keep_shadows, crab::crab_os &o)
+	: m_cfg(cfg), m_vfac(vfac), m_premap(premap), m_postmap(postmap),
+	  m_o(o) {
+	if (keep_shadows) {
+	  m_shadow_vars.reserve(std::distance(m_vfac.get_shadow_vars().begin(),
+					      m_vfac.get_shadow_vars().end()));
+	  m_shadow_vars.insert(m_shadow_vars.begin(),
+			       m_vfac.get_shadow_vars().begin(),
+			       m_vfac.get_shadow_vars().end());
+	}
+      }
+
+      void operator()(basic_block_label_t bbl){
+	m_o << bbl.get_name() << ":\n";	
+	if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
+	  m_o << "/**\n  INVARIANTS: ";
+	  auto pre = lookup(m_premap, *bb, m_shadow_vars);
+	  m_o << pre << "\n";
+	  m_o << "**/\n";
+	}
+	const basic_block_t &bb = m_cfg.get_node(bbl);
+	for (auto const &s: bb) {
+	  m_o << "  " << s << ";\n";
+	}
+	if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
+	  m_o << "/**\n  INVARIANTS: ";
+	  auto post = lookup(m_postmap, *bb, m_shadow_vars);
+	  m_o << post << "\n";	  
+	  m_o << "**/\n";
+	}
+	m_o << "--> [";
+	for (auto const &n : boost::make_iterator_range (bb.next_blocks ())) {
+	  m_o << n << ";";
+	}
+	m_o << "]\n";
+      }
+    };
+  }
+  
   /**
    * Internal implementation of the intra-procedural analysis
    **/
@@ -386,8 +456,13 @@ namespace crab_llvm {
       }
       
       if (params.print_invars) {
-	// -- print invariants
+	// -- print invariants	       
 	llvm::outs() << "\nInvariants for " << m_fun.getName() << "\n";
+	#if 1
+	pretty_printer_impl::print_block f(*m_cfg, m_vfac, results.premap, results.postmap,
+					   params.keep_shadow_vars, crab::outs());
+	pretty_printer_impl::dfs(*m_cfg, f);
+	#else
 	for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
 								m_cfg->label_end())) {
 	  if (const BasicBlock *B = bl.get_basic_block()) {
@@ -397,6 +472,7 @@ namespace crab_llvm {
 			    params.keep_shadow_vars, llvm::outs());
 	  }
 	}
+	#endif 
       }
     
       if (params.print_preconds && params.run_backward) {
@@ -665,11 +741,15 @@ namespace crab_llvm {
 	  // --- print invariants and summaries
 	  if (CrabPrintAns && isTrackable(*F)) {
 	    llvm::outs() << "\nInvariants for " << F->getName () << "\n";
+	    #if 1
+	    pretty_printer_impl::print_block f(cfg, vfac, premap, postmap, CrabKeepShadows, crab::outs());
+	    pretty_printer_impl::dfs(cfg, f);
+	    #else 
 	    for (auto &B : *F) {
 	      llvm::outs() << "\t";
-	      printInvariants(B, vfac, premap, postmap,
-			      CrabKeepShadows, llvm::outs());
+	      printInvariants(B, vfac, premap, postmap, CrabKeepShadows, crab::outs());
 	    }
+            #endif 
 	  }
 
 	  // Summaries are not currently stored but it would be easy to do so.	    
