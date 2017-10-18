@@ -19,8 +19,8 @@
  * - Ignore ashr and shl with non-constant shifts.
  * - Ignore integer bitwidths in most operations (this can affect
  *   soundness).
- * - Comparison between pointers
- * - Pointer cast instructions
+ * - Ignore comparison between pointers
+ * - Ignore pointer cast instructions
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -332,26 +332,24 @@ namespace crab_llvm {
     // which types are tracked or not. They only use type information
     // and not the track level.
     boost::optional<crabBoolLit> getBoolLit (const llvm::Value &v){
-      if (const llvm::ConstantInt *c =
-	  llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
-	// -- constant boolean
-	if (boost::optional<int64_t> n = getIntConstant(c))
-	  return crabBoolLit( (*n) > 0 ? true : false);
-      } else if (isBool(v) && !llvm::isa<llvm::ConstantExpr>(v)
-		 /*&& isTracked(v, m_tracklev)*/) {
-	// -- boolean variable 
-	return crabBoolLit(m_vfac[&v]);
+      if (isBool(v)) {
+	if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
+	  // -- constant boolean
+	  if (boost::optional<int64_t> n = getIntConstant(c))
+	    return crabBoolLit((*n) > 0 ? true : false);
+	} else if (!llvm::isa<llvm::ConstantExpr>(v)) {
+	  // -- boolean variable 
+	  return crabBoolLit(m_vfac[&v]);
+	}
       }
       return boost::optional<crabBoolLit>();
-
     }
 
     boost::optional<crabPtrLit> getPtrLit (const llvm::Value &v){
       if (llvm::isa<llvm::ConstantPointerNull> (&v)) {
 	// -- constant null
 	return crabPtrLit();
-      } else if (v.getType()->isPointerTy() && !llvm::isa<llvm::ConstantExpr>(v)
-		 /*&& isTracked(v, m_tracklev)*/) {
+      } else if (v.getType()->isPointerTy() && !llvm::isa<llvm::ConstantExpr>(v)) {
 	// -- pointer variable 
 	return crabPtrLit(m_vfac[&v]);
       }
@@ -359,15 +357,15 @@ namespace crab_llvm {
     }
 
     boost::optional<crabNumLit> getNumLit (const llvm::Value &v){
-      if (const llvm::ConstantInt *c =
-	  llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
-	// -- constant integer
-	if (boost::optional<int64_t> n = getIntConstant(c))
-	  return crabNumLit(*n);
-      } else if (isInteger(v) && !llvm::isa<llvm::ConstantExpr>(v) 
-		 /*&& isTracked(v, m_tracklev)*/) {
-	// -- integer variable 
-	return crabNumLit(m_vfac[&v]);
+      if (isInteger(v)) {
+	if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
+	  // -- constant integer
+	  if (boost::optional<int64_t> n = getIntConstant(c))
+	    return crabNumLit(*n);
+	} else if (!llvm::isa<llvm::ConstantExpr>(v)) {
+	  // -- integer variable 
+	  return crabNumLit(m_vfac[&v]);
+	}
       }
       return boost::optional<crabNumLit>();
     }
@@ -581,6 +579,15 @@ namespace crab_llvm {
     return nullptr;
   }
 
+  static variable_type getRegionType (HeapAbstraction::region_t r) {
+    switch  (r.get_type ()) {
+    case INT_REGION : return ARR_INT_TYPE;
+    case BOOL_REGION: return ARR_BOOL_TYPE;
+    case PTR_REGION : return ARR_PTR_TYPE;      
+    default: llvm_unreachable("Unsupported region type");
+    }
+  }
+  
   // static void mkUnsignedLtOrLeq (CmpInst &I,
   // 				    crabLitFactory &lfac,
   // 				    basic_block_t &bb,
@@ -970,24 +977,21 @@ namespace crab_llvm {
       V = V->stripPointerCasts();
       for (auto &U: V->uses ()) {
         if (StoreInst *SI = dyn_cast<StoreInst> (U.getUser())) {
-          Type* ty = SI->getOperand (0)->getType ();
-          if (ty->isIntegerTy ()) {
-            if (Instruction *I = dyn_cast<Instruction> (V))  {
-              if (GET_REGION((*I),V).isUnknown())
-                continue;
-            }
-            return false;
-          }
+	  if (Instruction *I = dyn_cast<Instruction> (V))  {
+	    if (GET_REGION((*I),SI->getPointerOperand()).isUnknown() &&
+		(!SI->getValueOperand()->getType()->isPointerTy() ||
+		 GET_REGION((*I),SI->getValueOperand()).isUnknown()))
+	      continue;
+	  }
+	  return false;
         }
         else if (LoadInst *LI = dyn_cast<LoadInst> (U.getUser())) {
-          Type *ty = LI->getType();
-          if (ty->isIntegerTy ()) {
-            if (Instruction *I = dyn_cast<Instruction> (V))  {
-              if (GET_REGION((*I),V).isUnknown ())
-                continue;
-            }
-            return false;
-          }
+	  if (Instruction *I = dyn_cast<Instruction> (V))  {
+	    if (GET_REGION((*I),LI->getPointerOperand()).isUnknown () &&
+		(!I->getType()->isPointerTy() || GET_REGION((*I),LI).isUnknown ()))
+	      continue;
+	  }
+	  return false;
         }
         else if (CallInst *CI = dyn_cast<CallInst> (U.getUser())) { 
           CallSite CS (CI);
@@ -1241,7 +1245,7 @@ namespace crab_llvm {
 	  // We need to figure out:
 	  // - the number of elements and the size of each element
 	  // - Otherwise, we create a fresh (unbounded) variable and use it
-	  //   for the upper bound. 
+	  //   for the upper bound.
         }
       }
 
@@ -1261,89 +1265,130 @@ namespace crab_llvm {
 	region_t src_reg = GET_REGION(I,src);
 	if (dst_reg.isUnknown () || src_reg.isUnknown ()) return;
 	m_bb.havoc (GET_VAR_FROM_REGION(dst_reg, m_lfac));
-	m_bb.array_assign (GET_VAR_FROM_REGION(dst_reg, m_lfac),
-			   GET_VAR_FROM_REGION(src_reg, m_lfac),
-			   /*TODO: adapt code if region contains booleans or pointers*/
-			   ARR_INT_TYPE);
+	if (dst_reg.get_type () == src_reg.get_type()) {
+	  m_bb.array_assign (GET_VAR_FROM_REGION(dst_reg, m_lfac),
+			     GET_VAR_FROM_REGION(src_reg, m_lfac),
+			     getRegionType(dst_reg));
+	}
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
 	
 	if (CrabUnsoundArrayInit && isInteger(*(MSI->getValue()))) {
-	  // TODO: array of booleans
-	  // TODO: array of pointers
 	  Value* dst = MSI->getDest();
 	  region_t r = GET_REGION(I,dst);
 	  if (r.isUnknown()) return;
 
-	  boost::optional<crabNumLit> len = m_lfac.getNumLit(*(MSI->getLength()));
-	  boost::optional<crabNumLit> val = m_lfac.getNumLit(*(MSI->getValue()));
-	  if (val && len) {
+	  if (boost::optional<crabNumLit> len = m_lfac.getNumLit(*(MSI->getLength()))) {
 	    z_lin_exp_t lb_idx(ikos::z_number(0));
 	    z_lin_exp_t ub_idx((*len).getExp());
-	    m_bb.havoc(GET_VAR_FROM_REGION(r, m_lfac));
+	    m_bb.havoc(GET_VAR_FROM_REGION(r, m_lfac));	    
 	    // FIXME/TODO: double check this
 	    uint64_t elem_size = MSI->getAlignment();
-	    if ((*val).isNum()) {
-	      m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
-				 ARR_INT_TYPE, elem_size,
-				 lb_idx, ub_idx,
-				 (*val).getNum());
-	    } else {
-	      m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
-				 ARR_INT_TYPE, elem_size,
-				 lb_idx, ub_idx,
-				 (*val).getVar());
-	      
+
+	    if (boost::optional<crabNumLit> v = m_lfac.getNumLit(*(MSI->getValue()))) {
+	      assert(getRegionType(r) == ARR_INT_TYPE && "This should not happen!");
+	      if ((*v).isNum()) {
+		m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
+				   getRegionType(r), elem_size,
+				   lb_idx, ub_idx, (*v).getNum());
+	      } else {
+		m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
+				   getRegionType(r), elem_size,
+				   lb_idx, ub_idx, (*v).getVar());
+	      }
+	    } else if (boost::optional<crabBoolLit> v = m_lfac.getBoolLit(*(MSI->getValue()))) {
+	      assert(getRegionType(r) == ARR_BOOL_TYPE && "This should not happen!");
+	      if ((*v).isConst()) {
+		z_number bv(0);
+		if ((*v).isTrue()) bv = z_number(1);
+		m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
+				   getRegionType(r), elem_size,
+				   lb_idx, ub_idx, bv);
+	      } else {
+		m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
+				   getRegionType(r), elem_size,
+				   lb_idx, ub_idx, varname_t((*v).getVar()));
+	      }
 	    }
+	    /** TODO: array of pointers **/
 	  }
 	}
       }
     }
 
+    /* verifier.zero_initializer(v) or verifier.int_initializer(v,k) */    
     void doInitializer(CallInst &I) {
 
       CallSite CS (&I);
       // v is either a global variable or a gep instruction that
       // indexes an address inside the global variable.
       Value *v =  CS.getArgument (0);
+      Type* Ty = cast<PointerType>(v->getType())->getElementType();
       
       auto r = GET_REGION(I, v);
       if (!r.isUnknown()) {
-	// TODO: array of booleans
-	// TODO: array of pointers	
-	varname_t a = GET_VAR_FROM_REGION(r, m_lfac);
-	ikos::z_number init_val(ikos::z_number(0));
-	if (CS.arg_size() == 2) {
-	  /* verifier.int_initializer(v,k) */
-	  boost::optional<crabNumLit> linit_val = m_lfac.getNumLit(*(CS.getArgument(1)));
-	  if (linit_val)
-	    init_val = (*linit_val).getNum();
-	}
-	
-	z_lin_exp_t lb_idx(ikos::z_number(0));
-	
-	Type* Ty = cast<PointerType>(v->getType())->getElementType();
-	if (isInteger(Ty)) {
-	  if (const Value* s = isGlobalSingleton(r)) {
-	    m_bb.assign (GET_VAR(*s, m_lfac), init_val);	    
+	if (const Value* s = isGlobalSingleton(r)) {
+	  if (isInteger(Ty)) {
+	    ikos::z_number init_val(ikos::z_number(0));
+	    if (CS.arg_size() == 2) {
+	      /* verifier.int_initializer(v,k) */
+	      if (boost::optional<crabNumLit> linit_val = m_lfac.getNumLit(*(CS.getArgument(1)))) {
+		init_val = (*linit_val).getNum();
+	      }
+	    }
+	    m_bb.assign (GET_VAR(*s, m_lfac), init_val);
+	  } else if (isBool(Ty)) {
+	    z_lin_cst_t init_val(z_lin_cst_t::get_false());
+	    if (CS.arg_size() == 2) {
+	      /* verifier.int_initializer(v,k) */	      
+	      if (boost::optional<crabBoolLit> linit_val = m_lfac.getBoolLit(*(CS.getArgument(1)))) {
+		if ((*linit_val).isTrue())
+		  init_val = z_lin_cst_t::get_true();
+	      }
+	    }
+	    m_bb.bool_assign(GET_VAR(*s, m_lfac), init_val);
 	  } else {
-	    uint64_t elem_size = storageSize(Ty);
-	    z_lin_exp_t ub_idx(ikos::z_number(0));
-	    m_bb.array_assume (a, ARR_INT_TYPE, elem_size,
-			       lb_idx, ub_idx,init_val);
+	    /** TODO: pointer singleton **/
 	  }
-	} else if (isIntArray(*Ty)){
-	  if (cast<ArrayType>(Ty)->getNumElements() == 0) {
-	    // TODO: zero-length array are possible inside structs We
-	    // can simply make ub_idx > 0.  However, DSA is very
-	    // likely that it will collapse anyway so the fact we skip
-	    // the translation won't make any difference.
-	    CRAB_WARN("translation skipped a zero-length array");
-	    return;
+	} else if (isInteger(Ty) || isBool(Ty) || isIntArray(*Ty) || isBoolArray(*Ty)){
+	  
+	  ikos::z_number init_val(ikos::z_number(0));
+	  z_lin_exp_t lb_idx(ikos::z_number(0));
+	  z_lin_exp_t ub_idx(ikos::z_number(0));
+	  uint64_t elem_size = storageSize(Ty);
+	  varname_t a = GET_VAR_FROM_REGION(r, m_lfac);
+	  
+	  if (CS.arg_size() == 2) { /* verifier.int_initializer(v,k) */
+	    if (boost::optional<crabNumLit> linit_val =
+		m_lfac.getNumLit(*(CS.getArgument(1)))) {
+	      init_val = (*linit_val).getNum();
+	    } else if (boost::optional<crabBoolLit> linit_val =
+		       m_lfac.getBoolLit(*(CS.getArgument(1)))) {
+	      if ((*linit_val).isTrue())
+		init_val = ikos::z_number(1);
+	    } else {
+	      // unreachable
+	      llvm_unreachable("2nd argument of verifier.int_initializer must be int or bool");
+	    }
 	  }
-	  uint64_t elem_size = storageSize(cast<ArrayType>(Ty)->getElementType());
-	  z_lin_exp_t ub_idx((cast<ArrayType>(Ty)->getNumElements() - 1)* elem_size);
-	  m_bb.array_assume (a, ARR_INT_TYPE, elem_size,
-			     lb_idx, ub_idx,init_val);
+	  
+	  if (isInteger(Ty) || isBool(Ty)) {
+	    m_bb.array_assume (a, getRegionType(r), elem_size, lb_idx, ub_idx, init_val);
+	  } else if (isIntArray(*Ty) || isBoolArray(*Ty)){
+	    if (cast<ArrayType>(Ty)->getNumElements() == 0) {
+	      // TODO: zero-length array are possible inside structs We
+	      // can simply make ub_idx > 0.  However, DSA is very
+	      // likely that it will collapse anyway so the fact we skip
+	      // the translation won't make any difference.
+	      CRAB_WARN("translation skipped a zero-length array");
+	    } else {
+	      elem_size = storageSize(cast<ArrayType>(Ty)->getElementType());
+	      ub_idx = z_lin_exp_t((cast<ArrayType>(Ty)->getNumElements() - 1)* elem_size);
+	      m_bb.array_assume (a, getRegionType(r), elem_size,
+				 lb_idx, ub_idx, init_val);
+	    }
+	  }
+	} else {
+	  /** TODO: array of pointers **/
 	}
       }
     }
@@ -1606,7 +1651,7 @@ namespace crab_llvm {
 		    m_bb.truncate(tmp, I.getSrcTy()->getIntegerBitWidth(),
 				  dst, I.getDestTy()->getIntegerBitWidth());
 		  } else {
-		  llvm_unreachable("ERROR: unexpected cast operation");
+		    llvm_unreachable("ERROR: unexpected cast operation");
 		  }
 		}
 	      }
@@ -1877,20 +1922,23 @@ namespace crab_llvm {
 	// -- lhs is a pointer -> add pointer statement
 	m_bb.ptr_load(lhs, (*ptr_lit).getVar());
 	return;
-      } else if (m_lfac.get_track() >= ARR && isInteger(I)) {
-	// -- lhs is an integer -> add array statement
+      } else if (m_lfac.get_track() >= ARR &&
+		 (isInteger(I) || isBool(I))) {
+	// -- lhs is an integer/bool -> add array statement
 	
-	// TODO: array of booleans.
 	// TODO: array of pointers. Note that we use the same variable
 	// name (lhs) whether the load instruction assigns to a
 	// pointer or integer variable. This is OK because these two
 	// cases cannot happen simultaneously.  However, if we allow
-	// array of pointers we need to have two different variable
-	// names.
+	// array of pointers we need to have two different variable names.
 	region_t r = GET_REGION(I, I.getPointerOperand ()); 
 	if (!(r.isUnknown ())) {
 	  if (const Value* s = isGlobalSingleton (r)) {
-	    m_bb.assign (lhs, z_lin_exp_t(GET_VAR(*s, m_lfac)));
+	    if (isInteger(I)) {
+	      m_bb.assign (lhs, z_lin_exp_t(GET_VAR(*s, m_lfac)));
+	    } else { //assert (isBool(I))
+	      m_bb.bool_assign(lhs, GET_VAR(*s, m_lfac), false);
+	    }
 	  } else {
 	    // We havoc the array index if we are not tracking it.
 	    if (!isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
@@ -1898,7 +1946,7 @@ namespace crab_llvm {
 	    }	    
 	    z_lin_exp_t idx((*ptr_lit).getVar());
 	    m_bb.array_load(lhs,
-			    GET_VAR_FROM_REGION(r, m_lfac), ARR_INT_TYPE,
+			    GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r),
 			    idx,
 			    m_dl->getTypeAllocSize (I.getType()));
 	  }
@@ -1934,44 +1982,78 @@ namespace crab_llvm {
 	} else if (!(*val_lit). isNull()) {
 	  // OVER-APPROXIMATION: we ignore the case if we store a null pointer. In
 	  // most cases, it will be fine since typical pointer analyses
-	  // ignore that case but it might be imprecise with certain
-	  // analyses.
+	  // ignore that case but it might be imprecise with certain analyses.
 	  m_bb.ptr_store((*ptr_lit).getVar(), (*val_lit).getVar());
 	}
-      } else if (m_lfac.get_track() >= ARR && isInteger(*I.getValueOperand())){
-	// -- value is an integer -> add array statement
-	// TODO: array of booleans
+      } else if (m_lfac.get_track() >= ARR &&
+		 (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))){
+	// -- value is an integer/bool -> add array statement
+	
 	// TODO: arrays of pointers
 	region_t r = GET_REGION(I, I.getPointerOperand()); 
 	if (!r.isUnknown()) {
-	  boost::optional<crabNumLit> val_lit = m_lfac.getNumLit(*I.getValueOperand());
 
-	  if (!val_lit) {
+	  boost::optional<crabNumLit> nval_lit = m_lfac.getNumLit(*I.getValueOperand());
+	  boost::optional<crabBoolLit> bval_lit = m_lfac.getBoolLit(*I.getValueOperand());
+	  if (!nval_lit && !bval_lit) {
 	    CRABLLVM_WARNING("unexpected value operand " << I);
 	    havoc((*ptr_lit).getVar(), m_bb);
 	    return;
 	  }
 	  
 	  if (const Value* s = isGlobalSingleton(r)) {
-	    m_bb.assign((*ptr_lit).getVar(), (*val_lit).getExp());
+	    if (isInteger(*I.getValueOperand()) && nval_lit) {
+	      m_bb.assign((*ptr_lit).getVar(), (*nval_lit).getExp());
+	    } else if (isBool(*I.getValueOperand()) && bval_lit) {
+	      if ((*bval_lit).isConst()) {
+		m_bb.bool_assign((*ptr_lit).getVar(),
+				 (*bval_lit).isTrue()?
+				 z_lin_cst_t::get_true() : z_lin_cst_t::get_false());
+	      } else { 
+		m_bb.bool_assign((*ptr_lit).getVar(), (*bval_lit).getVar(), false);
+	      }
+	    } else {
+	      /* TODO: pointer scalar */
+	    }
 	  } else {
 	    Type* ty = I.getOperand (0)->getType();
+	    z_lin_exp_t idx((*ptr_lit).getVar());
+	    
 	    // We havoc the array index if we are not tracking it.
 	    if (!isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
 	      m_bb.havoc((*ptr_lit).getVar());
 	    }	    
-	    z_lin_exp_t idx((*ptr_lit).getVar());
-	    if ((*val_lit).isNum()) {
-	      m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), ARR_INT_TYPE, 
-				idx, (*val_lit).getNum(),
-				m_dl->getTypeAllocSize(ty),
-				r.getSingleton () != nullptr);
-
+	    
+	    if (nval_lit) {
+	      assert (getRegionType(r) == ARR_INT_TYPE && "This should not happen");
+	      if ((*nval_lit).isNum()) {
+		m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r), 
+				  idx, (*nval_lit).getNum(),
+				  m_dl->getTypeAllocSize(ty),
+				  r.getSingleton () != nullptr);
+		
+	      } else {
+		m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r), 
+				  idx, (*nval_lit).getVar(),
+				  m_dl->getTypeAllocSize(ty),
+				  r.getSingleton () != nullptr);
+	      }
 	    } else {
-	      m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), ARR_INT_TYPE, 
-				idx, (*val_lit).getVar(),
-				m_dl->getTypeAllocSize(ty),
-				r.getSingleton () != nullptr);
+	      assert (bval_lit);
+	      assert (getRegionType(r) == ARR_BOOL_TYPE && "This should not happen");
+	      if ((*bval_lit).isConst()) {
+		z_number bv(0);
+		if ((*bval_lit).isTrue()) bv = z_number(1);
+		m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r), 
+				  idx, bv, m_dl->getTypeAllocSize(ty),
+				  r.getSingleton () != nullptr);
+		
+	      } else {
+		m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r), 
+				  idx, varname_t((*bval_lit).getVar()),
+				  m_dl->getTypeAllocSize(ty),
+				  r.getSingleton () != nullptr);
+	      }
 	    }
 	  }
 	}
@@ -1984,27 +2066,42 @@ namespace crab_llvm {
 	m_bb.ptr_new_object(GET_VAR(I, m_lfac), m_object_id++);
       }
 
-      if (m_lfac.get_track() >= ARR && CrabArrayInit &&
-	  isIntArray(*I.getAllocatedType())) {
-	// TODO: array of booleans
-	// TODO: array of pointers
+      if (m_lfac.get_track() >= ARR && CrabArrayInit) {
 	region_t r = GET_REGION(I,&I);
 	if (!r.isUnknown()) {
+	  
 	  // "Initialization hook": nodes which do not have an
 	  // explicit initialization are initially undefined. Instead,
 	  // we assume they are zero initialized so that Crab's array
 	  // smashing can infer something meaningful. This is correct
 	  // because in presence of undefined behaviour we can do
 	  // whatever we want.
-	  unsigned elem_size = storageSize (I.getAllocatedType()->getArrayElementType());
-	  if (elem_size > 0) {
-	    ikos::z_number init_val(0); /*any value we want*/
-	    z_lin_exp_t lb_idx(ikos::z_number(0));
-	    unsigned num_elems = I.getAllocatedType()->getArrayNumElements();
-	    z_lin_exp_t ub_idx((num_elems - 1) * elem_size);
-	    m_bb.array_assume (GET_VAR_FROM_REGION(r,m_lfac),
-			       ARR_INT_TYPE, elem_size,
-			       lb_idx, ub_idx, init_val);
+	  
+	  Type* elementTy = nullptr;
+	  unsigned numElems = 0;
+	  if (SequentialType *ST = dyn_cast<SequentialType>(I.getAllocatedType())) {
+	    elementTy = ST->getElementType();
+	    /* we only translate pointers or arrays */
+	    if (PointerType *PT = dyn_cast<PointerType> (ST)) {
+	      numElems = 1;
+	    } else if (ArrayType *AT = dyn_cast<ArrayType> (ST)) {
+	      numElems = AT->getArrayNumElements();
+	    } 
+	  }
+
+	  if (elementTy && numElems > 0) {
+	    unsigned elemSize = storageSize (elementTy);
+	    if (elemSize > 0) {
+	      /* any value we want. We choose zero because it has a
+		 valid interpretation whether it's integer, boolean or
+		 pointer */
+	      ikos::z_number init_val(0); 
+	      z_lin_exp_t lb_idx(ikos::z_number(0)); 
+	      z_lin_exp_t ub_idx((numElems - 1) * elemSize);
+	      m_bb.array_assume (GET_VAR_FROM_REGION(r,m_lfac),
+				 getRegionType(r), elemSize,
+				 lb_idx, ub_idx, init_val);
+	    }
 	  }
 	}
       }
@@ -2129,12 +2226,14 @@ namespace crab_llvm {
 
         // -- add only read regions as array input parameters
         for (auto a: onlyreads) {
-	  // TODO: adapt code if region contains booleans or pointers
           if (const Value* s = isGlobalSingleton(a)) {
-            inputs.push_back(typed_variable_t(GET_VAR(*s, m_lfac), INT_TYPE));
+            inputs.push_back(typed_variable_t(GET_VAR(*s, m_lfac),
+					      (isInteger(*s) ? INT_TYPE
+					       : isBool(*s)  ? BOOL_TYPE
+					       : /*default*/  PTR_TYPE)));
 	  } else {
             inputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, m_lfac),
-					      ARR_INT_TYPE));
+					      getRegionType(a)));
 	  }
         }
 	
@@ -2142,53 +2241,34 @@ namespace crab_llvm {
         for (auto a: mods) {
           if (news.find(a) != news.end()) continue;
 
-	  #if 0
-          // given "x" add the statements "x_in = x; x = *;" just
-          // before the callsite.	  
-          varname_t a_in = FRESH_VAR(m_lfac);
-          if (const Value* s = isGlobalSingleton(a)) {
-	    boost::optional<crabPtrLit> ptr_lit = m_lfac.getPtrLit(*s);
-	    if (ptr_lit && (*ptr_lit).isVar()) {
-	      // -- If singleton we don't add a pointer statement
-	      // -- but instead an integer one.
-	      // TODO: adapt code if region contains booleans or pointers
-	      m_bb.assign(a_in, z_lin_exp_t((*ptr_lit).getVar()));
-	    } else {
-	      CRABLLVM_WARNING("unexpected pointer region at callsite");
-	    }
-	    m_bb.havoc(GET_VAR(*s, m_lfac));
-          } else {
-	    // TODO: adapt code if region contains booleans or pointers	    
-            m_bb.array_assign(a_in, GET_VAR_FROM_REGION(a, m_lfac), ARR_INT_TYPE); 
-            m_bb.havoc(GET_VAR_FROM_REGION(a, m_lfac)); 
-          }
-	  #else
 	  varname_t a_in = GET_VAR_FROM_REGION(a, m_lfac);
-	  #endif
 	  
           // input version
-	  // TODO: adapt code if region contains booleans or pointers	    	  
           if (const Value* s = isGlobalSingleton(a)) {
-            inputs.push_back (typed_variable_t(a_in, INT_TYPE));  
+            inputs.push_back (typed_variable_t(a_in,
+					       (isInteger(*s) ? INT_TYPE
+					       : isBool(*s)   ? BOOL_TYPE
+					       : /*default*/   PTR_TYPE)));  
 	  } else {
-            inputs.push_back (typed_variable_t(a_in, ARR_INT_TYPE));
+            inputs.push_back (typed_variable_t(a_in, getRegionType(a)));
 	  }
 
           // output version
-	  // TODO: adapt code if region contains booleans or pointers	  
           if (const Value* s = isGlobalSingleton(a)) {
-            outputs.push_back(typed_variable_t(GET_VAR(*s, m_lfac), INT_TYPE));
+            outputs.push_back(typed_variable_t(GET_VAR(*s, m_lfac),
+					       (isInteger(*s) ? INT_TYPE
+					       : isBool(*s)   ? BOOL_TYPE
+					       : /*default*/   PTR_TYPE)));
 	  } else  {
             outputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, m_lfac),
-					       ARR_INT_TYPE));
+					       getRegionType(a)));
 	  }
           
         }	
         // -- add more output parameters
         for (auto a: news) {
-	  // TODO: adapt code if region contains booleans or pointers	  	  
           outputs.push_back (typed_variable_t(GET_VAR_FROM_REGION(a, m_lfac),
-					      ARR_INT_TYPE));
+					      getRegionType(a)));
 	}
       }
       // -- Finally, add the callsite
@@ -2485,12 +2565,14 @@ namespace crab_llvm {
 		 
         // -- add only read regions as input parameters
         for (auto a: onlyreads) {
-	  // TODO: adapt code if region contains booleans or pointers	  	  	  
           if (const Value* s = isGlobalSingleton (a)) {
-            inputs.push_back(typed_variable_t(GET_VAR(*s, lfac), INT_TYPE));
+            inputs.push_back(typed_variable_t(GET_VAR(*s, lfac),
+					      (isInteger(*s) ? INT_TYPE
+					       : isBool(*s)  ? BOOL_TYPE
+					       : /*default*/  PTR_TYPE)));
 	  } else {
             inputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, lfac),
-					      ARR_INT_TYPE));
+					      getRegionType(a)));
 	  }
         }
 
@@ -2499,7 +2581,6 @@ namespace crab_llvm {
 
           if (news.find(a) != news.end()) continue;
 
-	  #if 1
           varname_t a_in = FRESH_VAR(lfac);	  	  
           // -- for each parameter `a` we create a fresh version
           //    `a_in` where `a_in` acts as the input version of the
@@ -2512,42 +2593,46 @@ namespace crab_llvm {
 	    if (ptr_lit && (*ptr_lit).isVar()) {
 	      //-- If singleton we don't add a pointer statement but
 	      //-- instead an integer one.
-	      // TODO: adapt code if region contains booleans or pointers	      
-	      entry.assign((*ptr_lit).getVar(), z_lin_exp_t(a_in));
+	      if (isInteger(*s)) {
+		entry.assign((*ptr_lit).getVar(), z_lin_exp_t(a_in));
+	      } else if (isBool(*s)) {
+		entry.bool_assign((*ptr_lit).getVar(), a_in, false);
+	      } else {
+		/** TODO: pointer singleton **/
+	      }
 	    } else {
 	      CRABLLVM_WARNING("Array function parameter is not a pointer variable");
 	    }
 	  } else {
-	    // TODO: adapt code if region contains booleans or pointers	    
-            entry.array_assign(GET_VAR_FROM_REGION(a, lfac), a_in, ARR_INT_TYPE);
+            entry.array_assign(GET_VAR_FROM_REGION(a, lfac), a_in, getRegionType(a));
 	  }
-	  #else
-	  varname_t a_in = GET_VAR_FROM_REGION(a, lfac);
-	  #endif 
 
           // input version
-	  // TODO: adapt code if region contains booleans or pointers
           if (const Value *s = isGlobalSingleton (a)) {
-            inputs.push_back(typed_variable_t(a_in, INT_TYPE));
+            inputs.push_back(typed_variable_t(a_in,
+					      (isInteger(*s) ? INT_TYPE
+					       : isBool(*s)  ? BOOL_TYPE
+					       : /*default*/  PTR_TYPE)));
 	  } else {
-	    inputs.push_back(typed_variable_t(a_in, ARR_INT_TYPE));
+	    inputs.push_back(typed_variable_t(a_in, getRegionType(a)));
 	  }
 	  
           // output version
-	  // TODO: adapt code if region contains booleans or pointers
           if (const Value* s = isGlobalSingleton (a)) { 
-            outputs.push_back(typed_variable_t(GET_VAR(*s, lfac), INT_TYPE));
+            outputs.push_back(typed_variable_t(GET_VAR(*s, lfac),
+					       (isInteger(*s) ? INT_TYPE
+					       : isBool(*s)   ? BOOL_TYPE
+					       : /*default*/   PTR_TYPE)));
 	  } else {
             outputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, lfac),
-					       ARR_INT_TYPE));
+					       getRegionType(a)));
 	  }
         }
 
         // -- add more output parameters
         for (auto a: news) {
-	  // TODO: adapt code if region contains booleans or pointers
           outputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, lfac),
-					     ARR_INT_TYPE));
+					     getRegionType(a)));
         }
         
       }

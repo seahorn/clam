@@ -14,9 +14,6 @@
  *   definitions. This means that we could have an array of a struct
  *   type but if only an integer field is used in the program then
  *   it's considered as an array of integers.
- * 
- * TODO: consider pointer and arrays containing other pointers or
- *       booleans.
  */
 
 #ifdef HAVE_DSA
@@ -55,26 +52,37 @@ namespace crab_llvm {
     std::swap(s3, s1);
   }
 
-  static bool isInteger(const llvm::Type *t) {
-    return (t->isIntegerTy() && !t->isIntegerTy(1));
-  }
+  struct isInteger: std::unary_function<const llvm::Type*, bool>
+  { bool operator()(const llvm::Type* t) const {
+    return (t->isIntegerTy() && !t->isIntegerTy(1)); } };
+
+  struct isBool: std::unary_function<const llvm::Type*, bool>
+  { bool operator()(const llvm::Type* t) const {
+    return t->isIntegerTy(1); } };
+
+  struct isIntegerOrBool: std::unary_function<const llvm::Type*, bool>
+  { bool operator()(const llvm::Type* t) const {
+    return t->isIntegerTy(); } };
   
-  //! return a value if the node corresponds to a single-cell global
-  //  memory cell, or nullptr otherwise.
-  static const llvm::Value* getIntegerSingleton(const llvm::DSNode *n) {
+  // return a value if the node corresponds to a typed single-cell
+  // global memory cell, or nullptr otherwise.
+  template<typename Pred>
+  static const llvm::Value* getTypedSingleton(const llvm::DSNode *n, Pred is_typed) {
     if (!n) return nullptr;
     if (const llvm::Value* v = n->getUniqueScalar()) {
       if (const llvm::GlobalVariable *gv =
 	  llvm::dyn_cast<const llvm::GlobalVariable>(v)) {
-	if (isInteger(gv->getType()->getElementType()))
+	if (is_typed(gv->getType()->getElementType()))
 	  return v;
       }
     }
     return nullptr;
   }
 
-  // return true if the cell (n,o) contains an integer
-  static bool isInteger(const llvm::DSNode *n, unsigned  o) {
+  // return true if the cell (n,o) contains a value of a specified
+  // type by is_typed
+  template<typename Pred>
+  static bool isTypedCell(const llvm::DSNode *n, unsigned  o, Pred is_typed) {
     if (!n) return false;
 
     // We need to traverse all types of the node
@@ -82,15 +90,17 @@ namespace crab_llvm {
       if (kv.first == o) {
 	// Check that all types of field are integers
 	for (auto ty: *(kv.second))
-	  if (!isInteger(ty)) return false;
+	  if (!is_typed(ty)) return false;
 	return true;
       }
     }
     return false;
   }
-
-  // return true if the cell (n,o) points to an array of integers
-  static bool isIntegerArray(const llvm::DSNode *n, unsigned o) {
+  
+  // return true if the cell (n,o) points to an array of elements of
+  // some type specified by is_typed.
+  template<typename Pred>
+  static bool isTypedArray(const llvm::DSNode *n, unsigned o, Pred is_typed) {
     if (!n) return false;
 
     // llvm-dsa only allows arrays at offset 0, otherwise it collapses
@@ -105,7 +115,7 @@ namespace crab_llvm {
 
     // Check that all types of the array are integers
     for (auto ty: *(it->second))
-      if (!isInteger(ty)) return false;
+      if (!is_typed(ty)) return false;
     
     return true;
   }
@@ -158,15 +168,23 @@ namespace crab_llvm {
       }
     }
     
-    // TODO: modify here to consider cells containing booleans or
-    //       pointers.
-    if (isInteger(n, offset) || isIntegerArray(n, offset)) {
+    isInteger int_pred;
+    if (isTypedCell(n, offset, int_pred) || isTypedArray(n, offset, int_pred)) {
       CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
       return INT_REGION;
     } 
 
+    isBool bool_pred;
+    if (isTypedCell(n, offset, bool_pred) || isTypedArray(n, offset, bool_pred)) {
+      CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
+      return BOOL_REGION;
+    } 
+
+    // TODO: modify here to consider cells containing pointers.
+    
     CRAB_LOG("heap-abs",
-	     llvm::errs() << "\tCannot be disambiguated: do not contain integer.\n";); 
+	     llvm::errs() << "\tCannot be disambiguated: do not contain integer.\n";);
+    
     return UNTYPED_REGION;
   }
   
@@ -442,8 +460,9 @@ namespace crab_llvm {
     auto const it = m_rev_node_ids.find(region);
     if (it == m_rev_node_ids.end()) 
       return nullptr;
-    //  TODO: consider also singleton containing booleans or pointers.
-    return getIntegerSingleton(it->second);
+    //  TODO: consider also singleton containing pointers.
+    isIntegerOrBool pred;
+    return getTypedSingleton(it->second, pred);
   }
   
   LlvmDsaHeapAbstraction::region_set_t
