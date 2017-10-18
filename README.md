@@ -133,35 +133,68 @@ command:
 If the above command succeeds, then the output should be something
 like this:
 
-	Function main
+```
+Invariants for main
+_1:
+/**
+  INVARIANTS: ({}, {})
+**/
+  _2 =* ;
+  _3 =* ;
+  _4 = (-_2 <= -1);
+  zext _4:1 to _call:32;
+  _6 = (-_3 <= -1);
+  zext _6:1 to _call1:32;
+  x.0 = _2;
+  y.0 = _2;
+/**
+  INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _2-x.0<=0, y.0-x.0<=0, x.0-_2<=0, y.0-_2<=0, _2-y.0<=0, x.0-y.0<=0})
+**/
+--> [_x.0;]
+_x.0:
+/**
+  INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _2-x.0<=0, y.0-x.0<=0, _2-y.0<=0, x.0-y.0<=0})
+**/
+--> [__@bb_1;__@bb_2;]
+__@bb_1:
+  assume (-_3+x.0 <= -1);
+--> [_10;]
+_10:
+/**
+  INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _2-x.0<=0, y.0-x.0<=0, _2-y.0<=0, x.0-y.0<=0, x.0-_3<=-1, _2-_3<=-1, y.0-_3<=-1})
+**/
+  _11 = x.0+1;
+  _br2 = y.0+1;
+  x.0 = _11;
+  y.0 = _br2;
+/**
+  INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _br2-y.0<=0, _11-y.0<=0, _2-y.0<=-1, x.0-y.0<=0, x.0-_3<=0, _2-_3<=-1, y.0-_3<=0, _11-_3<=0, _br2-_3<=0, x.0-_11<=0, _2-_11<=-1, y.0-_11<=0, _br2-_11<=0, y.0-_br2<=0, _2-_br2<=-1, x.0-_br2<=0, _11-_br2<=0, _11-x.0<=0, _br2-x.0<=0, _2-x.0<=-1, y.0-x.0<=0})
+**/
+--> [_x.0;]
+__@bb_2:
+  assume (_3-x.0 <= 0);
+  y.0.lcssa = y.0;
+  x.0.lcssa = x.0;
+--> [_y.0.lcssa;]
+_y.0.lcssa:
+/**
+  INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _2-x.0<=0, y.0-x.0<=0, _3-x.0<=0, y.0.lcssa-x.0<=0, x.0.lcssa-x.0<=0, _2-y.0<=0, x.0-y.0<=0, _3-y.0<=0, y.0.lcssa-y.0<=0, x.0.lcssa-y.0<=0, y.0-y.0.lcssa<=0, _2-y.0.lcssa<=0, x.0-y.0.lcssa<=0, _3-y.0.lcssa<=0, x.0.lcssa-y.0.lcssa<=0, x.0-x.0.lcssa<=0, _2-x.0.lcssa<=0, y.0-x.0.lcssa<=0, _3-x.0.lcssa<=0, y.0.lcssa-x.0.lcssa<=0})
+**/
+  _14 = (y.0.lcssa-x.0.lcssa <= 0);
+  zext _14:1 to _call3:32;
+  assert (-_call3 <= -1);
+  _16 = (-y.0.lcssa+x.0.lcssa <= 0);
+  zext _16:1 to _call4:32;
+  assert (-_call4 <= -1);
+  @V_17 = 0;
+  return @V_17;
+/**
+  INVARIANTS: ({_14 -> true; _16 -> true}, {_call -> [0, 1], _call1 -> [0, 1], _call3 -> [1, 1], _call4 -> [1, 1], @V_17 -> [0, 0], _2-x.0<=0, y.0-x.0<=0, _3-x.0<=0, y.0.lcssa-x.0<=0, x.0.lcssa-x.0<=0, _2-y.0<=0, x.0-y.0<=0, _3-y.0<=0, y.0.lcssa-y.0<=0, x.0.lcssa-y.0<=0, y.0-y.0.lcssa<=0, _2-y.0.lcssa<=0, x.0-y.0.lcssa<=0, _3-y.0.lcssa<=0, x.0.lcssa-y.0.lcssa<=0, x.0-x.0.lcssa<=0, _2-x.0.lcssa<=0, y.0-x.0.lcssa<=0, _3-x.0.lcssa<=0, y.0.lcssa-x.0.lcssa<=0})
+**/
+--> []
+```
 
-	_1: {} ==> { ..., y.0-x.0<=0, x.0-y.0<=0}
-	
-	_x.0: { ..., y.0-x.0<=0, x.0-y.0<=0} ==> { ..., y.0-x.0<=0, x.0-y.0<=0}
-	
-	_12: { ..., y.0-x.0<=0, x.0-y.0<=0, x.0-_5<=-1, y.0-_5<=-1} ==>
-	     { ..., _br2-y.0<=0, _13-y.0<=0, x.0-y.0<=0, x.0-_5<=0, y.0-_5<=0, _13-_5<=0, _br2-_5<=0,
-	       x.0-_13<=0, y.0-_13<=0, _br2-_13<=0, y.0-_br2<=0, x.0-_br2<=0, _13-_br2<=0, _13-x.0<=0,
-	       _br2-x.0<=0, y.0-x.0<=0}
-	       
-	_y.0.lcssa: { ..., y.0-x.0<=0, _5-x.0<=0, y.0.lcssa-x.0<=0, x.0.lcssa-x.0<=0, x.0-y.0<=0,
-	              _5-y.0<=0, y.0.lcssa-y.0<=0,x.0.lcssa-y.0<=0, y.0-y.0.lcssa<=0, x.0-y.0.lcssa<=0,
-		      _5-y.0.lcssa<=0, x.0.lcssa-y.0.lcssa<=0, x.0-x.0.lcssa<=0,
-		      y.0-x.0.lcssa<=0, _5-x.0.lcssa<=0, y.0.lcssa-x.0.lcssa<=0} ==>
- 	            { ..., _call3 -> [1, 1], _call4 -> [1, 1], x.0.lcssa-y.0.lcssa<=0,
-		      y.0.lcssa-x.0.lcssa<=0}
-
-It shows the invariants inferred for function `main`. The format of
-this output is:
-
-	bb_1: pre_invariants_1 => post_invariants_1
-	...
-	bb_n: pre_invariants_n => post_invariants_n
-
-where `bb` is a basic block identifier and `pre_invariants`
-(`post_invariants`) is a conjunction of linear constraints over
-program variables that hold at the entry (exit) of the basic block
-`bb`.
+It shows the Control-Flow Graph analyzed by Crab together with the invariants inferred for function `main` that hold at the entry and and the exit of each basic block. 
 
 Note that Crab-llvm does not provide a translation from the basic
 block identifiers and variable names to the original C program. The
