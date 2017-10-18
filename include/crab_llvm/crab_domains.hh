@@ -16,6 +16,7 @@
 //#include "crab/domains/nullity.hpp"
 #include "crab/domains/flat_boolean_domain.hpp"
 #include "crab/domains/combined_domains.hpp"
+//#include "crab/domains/diff_domain.hpp" /* only debugging */
 
 /*
    Definition of the abstract domains (no instantiation done here)
@@ -63,6 +64,8 @@ namespace crab_llvm {
   typedef SplitDBM<z_number, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
   /// -- Boxes
   typedef boxes_domain<z_number, varname_t> BASE(boxes_domain_t);
+  // typedef diff_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>,
+  // 		         boxes_domain<z_number, varname_t> > BASE(boxes_domain_t);
   /// -- DisIntervals
   typedef dis_interval_domain <z_number, varname_t> BASE(dis_interval_domain_t);
   /// -- Elina/Apron domains
