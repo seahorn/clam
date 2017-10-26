@@ -93,7 +93,7 @@ namespace crab_llvm {
             bb2: 
                  br %cont
             cont:
-                 %b = PHI (%b2, %bb2) (true, %bb2)
+                 %b = PHI (%b2, %bb1) (true, %bb2)
 	 */
 	
 	// Check whether the non-constant operand is >= 0
@@ -112,19 +112,16 @@ namespace crab_llvm {
 	CmpInst *newCI = CmpInst::Create (Instruction::ICmp,
 					  CI->getSignedPredicate(),
 					  op1, op2, CI->getName(),
-					  is_nonneg_op2 ?
-					  tt->getTerminator():
-					  ff->getTerminator());
+					  tt->getTerminator());
 	
 	// Insert a phi node just before the unsigned instruction in
 	// cont
-	PHINode *PHI=PHINode::Create (CI->getType(), 0, CI->getName(), CI); 
+	PHINode *PHI=PHINode::Create (CI->getType(), 0, CI->getName(), CI);
+	PHI->addIncoming (newCI,tt);  
 	if (is_nonneg_op2) {
-	  PHI->addIncoming (newCI,tt);  
 	  PHI->addIncoming (ConstantInt::getTrue(newCI->getType()),ff); 
 	} else {
-	  PHI->addIncoming (newCI,ff);  
-	  PHI->addIncoming (ConstantInt::getTrue(newCI->getType()),tt); 
+	  PHI->addIncoming (ConstantInt::getFalse(newCI->getType()),ff); 
 	}
 	
 	// Make sure any users of the unsigned comparison is now an
