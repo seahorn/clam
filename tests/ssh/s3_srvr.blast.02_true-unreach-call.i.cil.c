@@ -1,4 +1,4 @@
-// RUN: %crabllvm --turn-undef-nondet --inline  --lower-select --devirt-functions --lower-unsigned-icmp --do-not-print-invariants --crab-dom=boxes --crab-check=assert --externalize-addr-taken-functions --crab-narrowing-iterations=2 --crab-widening-delay=2 --crab-widening-jump-set=20 "%s" 2>&1 | OutputCheck -l debug %s
+// RUN: %crabllvm --turn-undef-nondet --inline  --lower-select --devirt-functions --lower-unsigned-icmp --do-not-print-invariants --crab-dom=boxes --crab-check=assert --externalize-addr-taken-functions  %opts "%s" 2>&1 | OutputCheck -l debug %s
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
