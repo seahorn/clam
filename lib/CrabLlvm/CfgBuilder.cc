@@ -636,6 +636,38 @@ namespace crab_llvm {
     if (CrabIncludeHavoc)
       bb.havoc(v);
   }
+
+  #if 0
+  // this is unsound in general.
+  static z_lin_cst_t promote_inequality(z_lin_cst_t cst) {
+    if (cst.is_equality()) {
+      if (cst.constant() == ikos::z_number(0)) {
+    	if (auto v = cst.expression().get_variable()) {
+    	  // v == 0  <---> v <= 0
+    	  return z_lin_cst_t (*v <= ikos::z_number(0));
+    	}
+      } else if (cst.constant() == ikos::z_number(1)) {
+    	if (auto v = cst.expression().get_variable()) {
+    	  // v == 1  <---> v >= 1
+    	  return z_lin_cst_t (*v >= ikos::z_number(1));
+    	}
+      }
+    }  else if (cst.is_disequation()) {
+      if (cst.constant() == ikos::z_number(0)) {
+    	if (auto v = cst.expression().get_variable()) {
+    	  // v != 0  <---> v >= 1
+    	  return z_lin_cst_t (*v >= ikos::z_number(1));
+    	}
+      } else if (cst.constant() == ikos::z_number(1)) {
+    	if (auto v = cst.expression().get_variable()) {
+    	  // v != 1  <---> v <= 0
+    	  return z_lin_cst_t (*v <= ikos::z_number(0));
+    	}
+      }
+    }
+    return cst;
+  }
+  #endif 
   
   // Perform one of these translations depending on CrabDisableBoolean:
   //    %x = icmp geq %y, 10  ---> select(%x, %y >= 10, 1, 0)
@@ -1130,9 +1162,9 @@ namespace crab_llvm {
       }
     }
 
-    void doBoolLogicOp(varname_t lhs, BinaryOperator &i) {
-      const Value& v1 = *i.getOperand(0);
-      const Value& v2 = *i.getOperand(1);
+    void doBoolLogicOp(Instruction::BinaryOps op,
+		       varname_t lhs, const Value& v1, const Value& v2, 
+		       BinaryOperator *i = nullptr) {
 
       boost::optional<crabBoolLit> l1 = m_lfac.getBoolLit(v1);
       if (!l1) {havoc(lhs,m_bb); return;}
@@ -1142,7 +1174,7 @@ namespace crab_llvm {
       crabBoolLit b1 = *l1;
       crabBoolLit b2 = *l2;
       
-      switch(i.getOpcode()) {
+      switch(op) {
       case BinaryOperator::And:
 	if (b1.isConst() && b2.isConst ()) {
 	  m_bb.bool_assign (lhs, b1.isTrue() && b2.isTrue()?
@@ -1195,7 +1227,11 @@ namespace crab_llvm {
 	}
 	break;
       default:
-	CRABLLVM_WARNING("translation skipped " << i);
+	if (i) {
+	  CRABLLVM_WARNING("translation skipped " << *i);
+	} else  {
+	  CRABLLVM_WARNING("translation skipped bool logic operation");
+	}
 	havoc(lhs,m_bb);
       }
     }
@@ -1509,18 +1545,36 @@ namespace crab_llvm {
 	return;
       }
       
-      // make sure we only translate if both operands are integers
+      // make sure we only translate if both operands are integers or booleans
       if (!I.getOperand(0)->getType()->isIntegerTy() ||
 	  !I.getOperand(1)->getType()->isIntegerTy()) {
 	havoc(GET_VAR(I, m_lfac), m_bb);	
 	return;
       }
 
-      // already lowered elsewhere
-      if (AllUsesAreBrOrIntSelectCondInst(&I)) return;
+      if (AllUsesAreBrOrIntSelectCondInst(&I)) {
+	if (isBool(*(I.getOperand(0))) && isBool(*(I.getOperand(1)))) {
+	  // we lower it here
+	  if (I.getPredicate() == CmpInst::ICMP_EQ) { // eq <-> not xor
+	    varname_t tmp = FRESH_VAR(m_lfac);
+	    doBoolLogicOp(BinaryOperator::Xor, tmp, *I.getOperand(0), *I.getOperand(1));
+	    varname_t lhs = GET_VAR(I, m_lfac);	    	    
+	    m_bb.bool_assign(lhs, tmp, true); // not(tmp)
+	  } else if (I.getPredicate() == CmpInst::ICMP_NE) { // ne <-> xor
+	    varname_t lhs = GET_VAR(I, m_lfac);	    
+	    doBoolLogicOp(BinaryOperator::Xor, lhs, *I.getOperand(0), *I.getOperand(1));
+	  } else {	    
+	    CRABLLVM_WARNING("translation skipped " << I << "\n");	    
+	  }
+	} else {} // already lowered elsewhere
+	return;
+      }
       
-      // otherwise we lower the ICmpInst
-      cmpInstToCrabBool(I, m_lfac, m_bb);
+      // otherwise we lower the ICmpInst here
+      if (isInteger(*(I.getOperand(0))) && isInteger(*(I.getOperand(1))))
+	cmpInstToCrabBool(I, m_lfac, m_bb);
+      else
+	CRABLLVM_WARNING("translation skipped " << I << "\n");
     }
       
     void visitBinaryOperator(BinaryOperator &I) {
@@ -1543,7 +1597,7 @@ namespace crab_llvm {
       case BinaryOperator::Or:
       case BinaryOperator::Xor:
 	if (isBool(I))
-	  doBoolLogicOp(lhs, I);
+	  doBoolLogicOp(I.getOpcode(), lhs, *I.getOperand(0), *I.getOperand(1), &I);
 	else
 	  doIntLogicOp(lhs, I);
 	break;
