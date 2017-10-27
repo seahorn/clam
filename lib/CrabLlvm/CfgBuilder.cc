@@ -2723,15 +2723,15 @@ namespace crab_llvm {
       
     }
 
-    #if 1
-    // -- Connect all sink blocks with an unreachable instruction to
-    //    the exit block.  For a forward analysis this doesn't have
-    //    any impact since unreachable becomes bottom anyway.
-    //    However, a backward analysis starting with an invariant that
-    //    says the exit is unreachable may incorrectly infer that the
-    //    preconditions of the error states is false just because it
-    //    never propagates backwards from these special sink blocks.
     if (m_cfg->has_exit()) {
+      #if 1
+      // -- Connect all sink blocks with an unreachable instruction to
+      //    the exit block.  For a forward analysis this doesn't have
+      //    any impact since unreachable becomes bottom anyway.
+      //    However, a backward analysis starting with an invariant that
+      //    says the exit is unreachable may incorrectly infer that the
+      //    preconditions of the error states is false just because it
+      //    never propagates backwards from these special sink blocks.      
       basic_block_t &exit = m_cfg->get_node (m_cfg->exit());
       for (auto &B: m_func) {
 	if (opt_basic_block_t b = lookup(B)) {
@@ -2747,8 +2747,22 @@ namespace crab_llvm {
 	  }
 	}
       }
+      #endif 
+    } else {
+      // If there is no exit block so far, we search for the first
+      // block without successors.
+      // XXX: we won't have an exit block with programs like this:
+      //   entry: goto loop;
+      //    loop: goto loop;
+      for (auto &B: m_func) {
+	if (opt_basic_block_t b = lookup(B)) {
+	  auto it_pair = (*b).next_blocks();
+	  if (it_pair.first == it_pair.second) {
+	    m_cfg->set_exit((*b).label());
+	  }
+	}
+      }
     }
-    #endif
     
     if (CrabCFGSimplify) m_cfg->simplify ();
     if (CrabPrintCFG) crab::outs() << *m_cfg << "\n";
