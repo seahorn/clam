@@ -256,7 +256,21 @@ namespace crab_llvm {
   static bool isTrackable(const Function &fun) {
     return !fun.isDeclaration () && !fun.empty () && !fun.isVarArg ();
   }
-  
+
+  /** convenient wrapper for the invariance analysis datastructures **/
+  struct InvarianceAnalysisResults {
+    // invariants that hold at the entry of a block
+    invariant_map_t &premap;
+    // invariants that hold at the exit of a block
+    invariant_map_t &postmap;
+    // database with all the checks
+    checks_db_ptr &checksdb;
+
+    InvarianceAnalysisResults(invariant_map_t &pre, invariant_map_t &post,
+			      checks_db_ptr &db)
+      : premap(pre), postmap(post), checksdb(db) {}
+  };
+
   /** return invariant for block in table but filtering out shadow_vars **/
   static wrapper_dom_ptr lookup(const invariant_map_t &table,
 				const llvm::BasicBlock &block,
@@ -272,6 +286,7 @@ namespace crab_llvm {
     }
   }   
 
+  /** update table with pre or post invariants **/
   static bool update(invariant_map_t &table, 
 		     const llvm::BasicBlock &block, wrapper_dom_ptr absval) {
     bool already = false;
@@ -284,95 +299,172 @@ namespace crab_llvm {
     }
     return already;
   }
-  
-  /** print invariants that hold at the entry and exit of block **/
-  static void printInvariants(const BasicBlock &block,
-			      const llvm_variable_factory &vfac,
-			      const invariant_map_t &premap,
-			      const invariant_map_t &postmap,
-			      const bool keep_shadows,
-			      crab::crab_os &o) {
-    o << block.getName() << ": ";
-    std::vector<varname_t> shadows;
-    if (!keep_shadows)
-      shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
-				       vfac.get_shadow_vars().end());    
-    auto pre = lookup(premap, block, shadows);
-    auto post = lookup(postmap, block, shadows);
-    o << pre << " ==> " << post << "\n";
-  }
-  
-  struct AnalysisResults {
-    invariant_map_t &premap;
-    invariant_map_t &postmap;
-    checks_db_ptr &checksdb;
-
-    AnalysisResults(invariant_map_t &pre, invariant_map_t &post, checks_db_ptr &db)
-      : premap(pre), postmap(post), checksdb(db) {}
-  };
-
-  
+      
+  /** Pretty-printer utilities **/
   namespace pretty_printer_impl {
-    typedef boost::unordered_set<basic_block_label_t> visited_t;
-    template<typename T>
-    void dfs_rec (cfg_ref_t cfg, basic_block_label_t curId, visited_t &visited, T f) {
-      if (visited.find (curId) != visited.end ()) return;
-      visited.insert (curId);
-      const basic_block_t &cur = cfg.get_node(curId);
-      f (curId);
-      for (auto const n : boost::make_iterator_range (cur.next_blocks ())) {
-	dfs_rec (cfg, n, visited, f);
-      }
-    }
-    
-    template<typename T>
-    void dfs (cfg_ref_t cfg, T f) {
-      visited_t visited;
-      dfs_rec (cfg, cfg.entry(), visited, f);
-    }
-    
-    struct print_block {
-      cfg_ref_t m_cfg;
-      const llvm_variable_factory &m_vfac;
+
+    /** Generic class for a block annotation **/
+    class block_annotation {
+    public:
+      typedef typename cfg_ref_t::statement_t statement_t;
+      
+      block_annotation() {}
+      virtual ~block_annotation() {}
+
+      virtual std::string name() const = 0;
+      virtual void print_begin(basic_block_label_t bbl, crab::crab_os &o) const {}
+      virtual void print_end(basic_block_label_t bbl, crab::crab_os &o) const {}
+      virtual void print_begin(const statement_t &s, crab::crab_os &o) const {}
+      virtual void print_end(const statement_t &s, crab::crab_os &o) const {}
+			      
+    };
+
+    /** Annotation for invariants **/
+    class invariant_annotation: public block_annotation {
+    private:
       const invariant_map_t &m_premap;
       const invariant_map_t &m_postmap;
       std::vector<varname_t> m_shadow_vars;
-      crab::crab_os &m_o;
       
-      print_block (cfg_ref_t cfg, const llvm_variable_factory &vfac,
-		   const invariant_map_t &premap,
-		   const invariant_map_t &postmap,
-		   const bool keep_shadows, crab::crab_os &o)
-	: m_cfg(cfg), m_vfac(vfac), m_premap(premap), m_postmap(postmap),
-	  m_o(o) {
+    public:
+      invariant_annotation (const llvm_variable_factory &vfac,
+			    const invariant_map_t &premap,
+			    const invariant_map_t &postmap,
+			    const bool keep_shadows)
+	: block_annotation(), m_premap(premap), m_postmap(postmap) {
 	if (keep_shadows) {
-	  m_shadow_vars.reserve(std::distance(m_vfac.get_shadow_vars().begin(),
-					      m_vfac.get_shadow_vars().end()));
+	  m_shadow_vars.reserve(std::distance(vfac.get_shadow_vars().begin(),
+					      vfac.get_shadow_vars().end()));
 	  m_shadow_vars.insert(m_shadow_vars.begin(),
-			       m_vfac.get_shadow_vars().begin(),
-			       m_vfac.get_shadow_vars().end());
+			       vfac.get_shadow_vars().begin(),
+			       vfac.get_shadow_vars().end());
 	}
       }
-
-      void operator()(basic_block_label_t bbl){
-	m_o << bbl.get_name() << ":\n";
+      
+      std::string name() const { return "INVARIANTS";}
+      
+      void print_begin(basic_block_label_t bbl, crab::crab_os &o) const {
 	if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
-	  wrapper_dom_ptr pre = lookup(m_premap, *bb, m_shadow_vars);	  
-	  m_o << "/**\n  INVARIANTS: ";
-	  m_o << pre << "\n";
-	  m_o << "**/\n";
+	  wrapper_dom_ptr pre = lookup(m_premap, *bb, m_shadow_vars);
+	  o << "  " << name() << ": " << pre << "\n";
 	}
+      }
+      
+      void print_end(basic_block_label_t bbl, crab::crab_os &o) const {
+	if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
+	  wrapper_dom_ptr post = lookup(m_postmap, *bb, m_shadow_vars);
+	  o << "  " << name() << ": " << post << "\n";
+	}
+      }
+    };
+
+    /** Annotation for neccesary_preconditions **/
+    template<typename Analyzer>
+    class nec_precondition_annotation: public block_annotation {
+    private:
+      Analyzer &m_analyzer;
+      
+    public:
+      nec_precondition_annotation (Analyzer &analyzer)
+	: block_annotation(), m_analyzer(analyzer) {}
+      
+      std::string name() const { return "NECESSARY PRECONDITIONS";}
+      
+      void print_begin(basic_block_label_t bbl, crab::crab_os &o) const {
+	auto pre = m_analyzer.get_preconditions(bbl);
+	o << "  " << name() << ": " << pre << "\n";	
+      }
+    };
+
+    /** Annotation for unjustified assumptions done by the analysis **/
+    class assumption_annotation: public block_annotation {
+    private:
+      typedef typename assumption_analysis<cfg_ref_t>::assumption_ptr assumption_ptr;
+      typedef assumption_analysis<cfg_ref_t> assumption_analysis_t;
+      typedef typename cfg_ref_t::statement_t statement_t;
+      
+      cfg_ref_t m_cfg;
+      assumption_analysis_t *m_analyzer;
+      
+    public:
+      assumption_annotation (cfg_ref_t cfg, assumption_analysis_t *analyzer)
+	: block_annotation(), m_cfg(cfg), m_analyzer(analyzer) { }
+      
+      std::string name() const { return "UNJUSTIFIED ASSUMPTIONS";}
+      
+      void print_begin(const statement_t &s, crab::crab_os &o) const {
+	std::vector<assumption_ptr> assumes;
+	if (s.is_assert()) {
+	  typedef typename cfg_ref_t::basic_block_t::assert_t assert_t;
+	  m_analyzer->get_assumptions(static_cast<const assert_t *>(&s), assumes);
+	  if (!assumes.empty()) {
+	    o << "  /** assert verified as ";
+	    for (std::vector<assumption_ptr>::iterator it = assumes.begin(), et = assumes.end();
+		 it!=et;) {
+	      o << (*it)->get_id_str();
+	      ++it;
+	      if (it != et)
+		o << ",";
+	      else
+		o << ";";
+	    }
+	    o << "**/\n";
+	  }
+	} else {
+	  m_analyzer->get_originated_assumptions(&s, assumes);
+	  for (auto assume_ptr: assumes) {
+	    o << "  /** "; assume_ptr->write(o); o << "**/\n";
+	  }
+	}
+      }
+      
+    };
+    
+    /** Print a block together with its annotations **/
+    class print_block {
+      cfg_ref_t m_cfg;
+      crab::crab_os &m_o;
+      const std::vector<block_annotation*> &m_annotations;
+
+    public:
+      
+      print_block (cfg_ref_t cfg, crab::crab_os &o,
+		   const std::vector<block_annotation*> &annotations)
+	: m_cfg(cfg), m_o(o), m_annotations(annotations) {} 
+
+      void operator()(basic_block_label_t bbl) const {
+	// do not print block if no annotations
+	if (m_annotations.empty()) return;
+	
+	m_o << bbl.get_name() << ":\n";
+
+	crab::crab_string_os o;
+	for (auto p: m_annotations) {
+	  p->print_begin(bbl,o);
+	}
+	if (o.str() != "") {
+	  m_o << "/**\n" << o.str() << "**/\n";
+	}
+	
 	const basic_block_t &bb = m_cfg.get_node(bbl);
 	bool empty_block = (std::distance(bb.begin(), bb.end()) == 0);
 	for (auto const &s: bb) {
+	  for (auto p: m_annotations) {
+	    p->print_begin(s, m_o);
+	  }	  
 	  m_o << "  " << s << ";\n";
+	  for (auto p: m_annotations) {
+	    p->print_end(s, m_o);
+	  }	  
 	}
 	if (!empty_block) {
-	  if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
-	    wrapper_dom_ptr post = lookup(m_postmap, *bb, m_shadow_vars);	  
-	    m_o << "/**\n  INVARIANTS: ";
-	    m_o << post << "\n";	  
-	    m_o << "**/\n";
+
+	  crab::crab_string_os o;
+	  for (auto p: m_annotations) {
+	    p->print_end(bbl, o);
+	  }
+	  if (o.str() != "") {
+	    m_o << "/**\n" << o.str() << "**/\n";
 	  }
 	}
 	m_o << "--> [";
@@ -382,7 +474,30 @@ namespace crab_llvm {
 	m_o << "]\n";
       }
     };
-  }
+
+    typedef boost::unordered_set<basic_block_label_t> visited_t;
+    template<typename T>
+    void dfs_rec (cfg_ref_t cfg, basic_block_label_t curId, visited_t &visited, T f) {
+      if (visited.find (curId) != visited.end ()) return;
+      visited.insert (curId);
+      const basic_block_t &cur = cfg.get_node(curId);
+      f (curId);
+      for (auto const n : boost::make_iterator_range (cur.next_blocks ())) {
+    	dfs_rec (cfg, n, visited, f);
+      }
+    }
+    
+    template<typename T>
+    void dfs (cfg_ref_t cfg, T f) {
+      visited_t visited;
+      dfs_rec (cfg, cfg.entry(), visited, f);
+    }
+
+    void print_annotations(cfg_ref_t cfg, const std::vector<block_annotation*> &annotations) {
+      print_block f(cfg, crab::outs(), annotations);
+      dfs(cfg, f);
+    }
+  } //end namespace
   
   /**
    * Internal implementation of the intra-procedural analysis
@@ -396,7 +511,7 @@ namespace crab_llvm {
     template<typename Dom>
     void analyzeCfg(const AnalysisParams &params,
 		    const assumption_map_t &assumptions, liveness_t *live,
-		    AnalysisResults &results) {
+		    InvarianceAnalysisResults &results) {
       
       // -- we use the combined forward/backward analyzer
       typedef intra_forward_backward_analyzer<cfg_ref_t,Dom> intra_analyzer_t;
@@ -457,41 +572,45 @@ namespace crab_llvm {
 	  if (num_block_invars > 0) num_nontrivial_blocks++;
 	}
       }
-      
-      if (params.print_invars) {
-	// -- print invariants	       
-	llvm::outs() << "\nInvariants for " << m_fun.getName() << "\n";
-	#if 1
-	pretty_printer_impl::print_block f(*m_cfg, m_vfac, results.premap, results.postmap,
-					   params.keep_shadow_vars, crab::outs());
-	pretty_printer_impl::dfs(*m_cfg, f);
-	#else
-	for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
-								m_cfg->label_end())) {
-	  if (const BasicBlock *B = bl.get_basic_block()) {
-	    // we only print those which correspond to llvm basic blocks
-	    llvm::outs() << "\t";
-	    printInvariants(*B, m_vfac, results.premap, results.postmap,
-			    params.keep_shadow_vars, llvm::outs());
-	  }
+
+      // -- print all cfg annotations (if any)
+      if (params.print_invars ||
+	  (params.print_preconds && params.run_backward) ||
+	  params.print_assumptions) {
+	
+	llvm::outs() << "\n" << "function " << m_fun.getName() << "\n";
+	std::vector<pretty_printer_impl::block_annotation*> pool_annotations;
+
+	if (params.print_invars) {
+	  pretty_printer_impl::invariant_annotation inv(m_vfac, results.premap, results.postmap,
+							params.keep_shadow_vars);
+	  pool_annotations.push_back(&inv);
 	}
+
+	if (params.print_preconds && params.run_backward) {
+	  pretty_printer_impl::nec_precondition_annotation<intra_analyzer_t> pre(analyzer);
+	  pool_annotations.push_back(&pre);
+	}
+
+
+	// XXX: it must be alive when print_annotations is called.
+	#if 0
+	assumption_naive_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
+	#else
+	assumption_dataflow_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
 	#endif 
+	
+	if (params.print_assumptions) {
+	  // -- runf first the analysis
+	  assumption_analyzer.exec();
+	  
+	  pretty_printer_impl::assumption_annotation assume(*m_cfg, &assumption_analyzer);
+	  pool_annotations.push_back(&assume);
+	}
+
+	pretty_printer_impl::print_annotations(*m_cfg, pool_annotations);
       }
     
-      if (params.print_preconds && params.run_backward) {
-	// --- print preconditions
-	llvm::outs() << "\nNecessary preconditions for " << m_fun.getName() << "\n";
-	for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
-								m_cfg->label_end())) {
-	  if (const BasicBlock *B = bl.get_basic_block()) {
-	    // we only print those which correspond to llvm basic blocks
-	    auto pre = analyzer.get_preconditions(bl);
-	    llvm::outs() << "\t" << bl.get_name() << ": ";
-	    crab::outs() << pre << "\n";
-	  }
-	}
-	llvm::outs() <<  "\n";
-      }
       
       if (params.check) {
 	// --- checking assertions and collecting data
@@ -511,23 +630,13 @@ namespace crab_llvm {
 	CRAB_VERBOSE_IF(1, crab::outs() << "Finished assert checking.\n");      
       }
 
-      if (params.print_assumptions) {
-	// Print all the unjustified assumptions done by the analyzer
-	// while proving assertions.
-	// XXX: currently only integer overflows
-	
-	//assumption_naive_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
-	assumption_dataflow_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
-	assumption_analyzer.exec();
-	crab::outs() << "\n" << assumption_analyzer;
-      }
       
       return;
     }
 
     void wrapperAnalyze(const AnalysisParams &params,
 			const assumption_map_t &assumptions, liveness_t *live,
-			AnalysisResults &results) {
+			InvarianceAnalysisResults &results) {
       
       switch (params.dom) {
       #ifndef FASTER_COMPILATION
@@ -593,7 +702,7 @@ namespace crab_llvm {
     cfg_ptr_t Cfg () { return m_cfg; }
 
     void Analyze(AnalysisParams &params, const assumption_map_t &assumptions,
-		 AnalysisResults &results) {
+		 InvarianceAnalysisResults &results) {
 
       if (!m_cfg) {
 	CRAB_VERBOSE_IF(1, llvm::outs () << "Skipped analysis for "
@@ -662,7 +771,7 @@ namespace crab_llvm {
   void IntraCrabLlvm::analyze(AnalysisParams &params,
 			      const assumption_map_t &assumptions) {
     checks_db_ptr checksdb = nullptr;
-    AnalysisResults results = { m_pre_map, m_post_map, checksdb};
+    InvarianceAnalysisResults results = { m_pre_map, m_post_map, checksdb};
     m_impl->Analyze(params, assumptions, results);
   }
 
@@ -743,16 +852,11 @@ namespace crab_llvm {
 	  
 	  // --- print invariants and summaries
 	  if (CrabPrintAns && isTrackable(*F)) {
-	    llvm::outs() << "\nInvariants for " << F->getName () << "\n";
-	    #if 1
-	    pretty_printer_impl::print_block f(cfg, vfac, premap, postmap, CrabKeepShadows, crab::outs());
-	    pretty_printer_impl::dfs(cfg, f);
-	    #else 
-	    for (auto &B : *F) {
-	      llvm::outs() << "\t";
-	      printInvariants(B, vfac, premap, postmap, CrabKeepShadows, crab::outs());
-	    }
-            #endif 
+	    llvm::outs() << "\n" << "function " << F->getName () << "\n";
+	    pretty_printer_impl::invariant_annotation inv_annot (vfac, premap, postmap,
+								 CrabKeepShadows);
+	    std::vector<pretty_printer_impl::block_annotation*> annotations = {&inv_annot};
+	    pretty_printer_impl::print_annotations(cfg, annotations);	    
 	  }
 
 	  // Summaries are not currently stored but it would be easy to do so.	    
@@ -1014,7 +1118,7 @@ namespace crab_llvm {
       params.keep_shadow_vars = CrabKeepShadows;
       params.check = CrabCheck;
       params.check_verbose = CrabCheckVerbose;
-      AnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
+      InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
       crab.Analyze(params, assumption_map_t(), results);
     }
     
