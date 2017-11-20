@@ -2470,10 +2470,8 @@ namespace crab_llvm {
 
     crab::ScopedCrabStats __st__("CFG Construction");
 
-    std::vector<BasicBlock*> blocks;
     for (auto &B : m_func) { 
       add_block (B); 
-      blocks.push_back (&B);
     }
 
     crabLitFactory lfac(m_vfac, m_tracklev);
@@ -2482,20 +2480,18 @@ namespace crab_llvm {
     boost::optional<typed_variable_t> ret_val;
     
     bool has_seahorn_fail = false;
-    // execBr can add new BasicBlock's in m_func and we do not want to
-    // iterate over them.
-    for (BasicBlock* B : blocks) {
-      opt_basic_block_t BB = lookup (*B);
+    for (auto &B : m_func) {     
+      opt_basic_block_t BB = lookup (B);
       if (!BB) continue;
 
       // -- build a CFG block ignoring branches, phi-nodes, and return
       CrabInstVisitor v (lfac, m_mem, m_dl, m_tli, *BB, m_is_inter_proc);
-      v.visit (*B);
+      v.visit (B);
       // hook for seahorn
       has_seahorn_fail |= (v.has_seahorn_fail() && m_func.getName().equals("main"));
       
       // -- process the exit block of the function and its returned value.
-      if (ReturnInst *RI = dyn_cast<ReturnInst> (B->getTerminator ())) {
+      if (ReturnInst *RI = dyn_cast<ReturnInst> (B.getTerminator ())) {
 	if (ret_block)
 	  llvm_unreachable("LLVM UnifyFunctionExitNodes pass should have been run first");
 	
@@ -2517,14 +2513,14 @@ namespace crab_llvm {
 	}
 	
       } else {
-        for (const BasicBlock *dst : succs (*B)) {
+        for (const BasicBlock *dst : succs (B)) {
           // -- move branch condition in bb to a new block inserted
           //    between bb and dst
-          opt_basic_block_t mid_bb = execBr (*B, *dst);
+          opt_basic_block_t mid_bb = execBr (B, *dst);
 
           // -- phi nodes in dst are translated into assignments in
           //    the predecessor
-          CrabPhiVisitor v (lfac, m_mem, (mid_bb ? *mid_bb : *BB), *B);
+          CrabPhiVisitor v (lfac, m_mem, (mid_bb ? *mid_bb : *BB), B);
           v.visit (const_cast<BasicBlock &>(*dst));
         }
       }
