@@ -711,7 +711,7 @@ namespace crab_llvm {
       }
       
       // -- run liveness
-      liveness_t* live = nullptr;
+      liveness_t live(*m_cfg);
       if (params.run_liveness || isRelationalDomain(params.dom)) {
 	CRAB_VERBOSE_IF(1,
 			auto fdecl = m_cfg->get_func_decl ();            
@@ -719,12 +719,11 @@ namespace crab_llvm {
 			crab::outs() << "Running liveness analysis for " 
 			             << (*fdecl).get_func_name ()
 		                     << "  ...\n";);
-	liveness_t ls (*m_cfg);
-	ls.exec ();
+	live.exec ();
 	CRAB_VERBOSE_IF(1, crab::outs() << "Finished liveness analysis.\n");
 	// some stats
 	unsigned total_live, avg_live_per_blk, max_live_per_blk;
-	ls.get_stats (total_live, max_live_per_blk, avg_live_per_blk);
+	live.get_stats (total_live, max_live_per_blk, avg_live_per_blk);
 	CRAB_VERBOSE_IF(1, 
 		 crab::outs() << "-- Max number of out live vars per block=" 
                               << max_live_per_blk << "\n"
@@ -747,9 +746,8 @@ namespace crab_llvm {
           #endif 
 	  }
 	}
-	if (params.run_liveness) live = &ls;
       }
-      wrapperAnalyze(params, assumptions, live, results);
+      wrapperAnalyze(params, assumptions, (params.run_liveness)? &live : nullptr, results);
     }
   }; // end class
 
@@ -1002,6 +1000,8 @@ namespace crab_llvm {
 	  
 	  if (CrabLive) {
 	    live_map.insert(std::make_pair(cfg_ref_t(*cfg_ptr), live));
+	  } else {
+	    delete live;
 	  }
         }
       }
