@@ -84,7 +84,6 @@ namespace crab_llvm {
 					    std::vector<Constant*> &LLVMUsed,
 					    Module &M) {
       AttrBuilder AB;
-      AttributeSet AS = AttributeSet::get(M.getContext(), AttributeSet::FunctionIndex, AB);
       Function* fun = dyn_cast<Function>(getInitFn(V->getType(), LLVMUsed, M));
       // XXX: do not mark it as ReadNone, otherwise LLVM will optimize
       // it away.
@@ -124,7 +123,6 @@ namespace crab_llvm {
 					   std::vector<Constant*> &LLVMUsed,
 					   Module &M) {      
       AttrBuilder AB;
-      AttributeSet AS = AttributeSet::get(M.getContext(), AttributeSet::FunctionIndex, AB);
       Function* fun = dyn_cast<Function>(getIntInitFn(gv.getInitializer()->getType(),
 						      LLVMUsed, M));
       // XXX: do not mark it as ReadNone, otherwise LLVM will optimize
@@ -152,8 +150,9 @@ namespace crab_llvm {
 			      S &stack) {
       
       bool change = false;
-      if (IntegerType * IntTy = dyn_cast<IntegerType> (T)) {
+      if (isa<IntegerType> (T)) {
 	#ifdef DEBUG_LOWER_GV
+	IntegerType * IntTy = cast<IntegerType> (T);
 	llvm::errs () << "GEP " << base.getName() << " ";
 	for (unsigned j=0; j<stack.size();j++)
 	  llvm::errs () << stack[j] << " ";
@@ -184,8 +183,9 @@ namespace crab_llvm {
 	} else {
 	  llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *ATy << "\n";
 	}
-      } else if (PointerType *PTy = dyn_cast<PointerType> (T)) {
+      } else if (isa<PointerType> (T)) {
         #ifdef DEBUG_LOWER_GV
+	PointerType *PTy = cast<PointerType> (T);
 	llvm::errs () << "GEP " << base.getName() << " ";
 	for (unsigned j=0; j<stack.size();j++)
 	  llvm::errs () << stack[j] << " ";
@@ -308,7 +308,6 @@ namespace crab_llvm {
       if (LLVMUsed) {
 	ConstantArray *Inits = cast<ConstantArray>(LLVMUsed->getInitializer());
 	for (unsigned I = 0, E = Inits->getNumOperands(); I != E; ++I) {
-	  Value* V = Inits->getOperand(I)->stripPointerCasts();
 	  MergedVars.push_back(Inits->getOperand(I));
 	}
 	LLVMUsed->eraseFromParent();

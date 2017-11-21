@@ -107,7 +107,7 @@ namespace crab_llvm {
       }
       return Changed;
     }
-    void getAnalysisUsage (AnalysisUsage &AU) {
+    void getAnalysisUsage (AnalysisUsage &AU) const {
       AU.setPreservesAll ();
     }
 

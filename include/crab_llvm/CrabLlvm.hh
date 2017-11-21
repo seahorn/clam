@@ -26,7 +26,7 @@ namespace crab {
 
 namespace crab_llvm {
   class HeapAbstraction;
-  class GenericAbsDomWrapper;
+  struct GenericAbsDomWrapper;
   class IntraCrabLlvm_Impl;
 }
 

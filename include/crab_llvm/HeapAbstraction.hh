@@ -120,6 +120,8 @@ namespace crab_llvm {
     public:
 
      HeapAbstraction() { }
+
+     virtual ~HeapAbstraction() { }
      
     // f is used to know in which DSGraph we should search for V
      virtual region_t getRegion(llvm::Function&, llvm::Value*) = 0;

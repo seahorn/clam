@@ -130,7 +130,6 @@ namespace crab_llvm {
 	                   << " can be disambiguated ... \n";
 	     n->dump(););
 
-    region_type_t res = UNTYPED_REGION;
     if (n->isNodeCompletelyFolded() || n->isCollapsedNode()) {
       CRAB_LOG("heap-abs", 
 	       llvm::errs() << "\tCannot be disambiguated: node is already collapsed.\n";);

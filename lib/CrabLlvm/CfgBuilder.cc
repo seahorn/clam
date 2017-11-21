@@ -156,7 +156,7 @@ namespace crab_llvm {
   // XXX: we do not create a datatype for literals (via inheritance)
   // because literals are very simple so we prefer to save allocation
   // of pointers and casts across subclasses.
-  struct crabLitFactory;
+  class crabLitFactory;
 
   class crabBoolLit {
     // A boolean literal is either a variable or constants true and false.
@@ -404,20 +404,20 @@ namespace crab_llvm {
     }
   }
 
-  static bool isLogicalOp(const Instruction &I) {
-    return (I.getOpcode() >= Instruction::Shl &&
-            I.getOpcode() <= Instruction::Xor);
-  }
+  // static bool isLogicalOp(const Instruction &I) {
+  //   return (I.getOpcode() >= Instruction::Shl &&
+  //           I.getOpcode() <= Instruction::Xor);
+  // }
 
-  static bool isIntArithOp(const Instruction &I) {
-    return (I.getOpcode() == Instruction::Add ||
-            I.getOpcode() == Instruction::Sub ||
-            I.getOpcode() == Instruction::Mul ||
-            I.getOpcode() == Instruction::UDiv ||
-            I.getOpcode() == Instruction::SDiv ||
-            I.getOpcode() == Instruction::URem ||
-              I.getOpcode() == Instruction::SRem);
-  }
+  // static bool isIntArithOp(const Instruction &I) {
+  //   return (I.getOpcode() == Instruction::Add ||
+  //           I.getOpcode() == Instruction::Sub ||
+  //           I.getOpcode() == Instruction::Mul ||
+  //           I.getOpcode() == Instruction::UDiv ||
+  //           I.getOpcode() == Instruction::SDiv ||
+  //           I.getOpcode() == Instruction::URem ||
+  //             I.getOpcode() == Instruction::SRem);
+  // }
 
   static bool isIntCast(const CastInst &I) {
     return I.isIntegerCast();
@@ -445,9 +445,9 @@ namespace crab_llvm {
 	    !(T.getArrayElementType()->isIntegerTy(1)));
   }
 
-  static bool isPointerArray (const Type &T) {
-    return (T.isArrayTy() && T.getArrayElementType()->isPointerTy());
-  }
+  // static bool isPointerArray (const Type &T) {
+  //   return (T.isArrayTy() && T.getArrayElementType()->isPointerTy());
+  // }
   
   static bool isAssertFn(const Function* F) {
     return (F->getName().equals("verifier.assert") || 
@@ -489,20 +489,19 @@ namespace crab_llvm {
     return F->getName().startswith("verifier.int_initializer");
   }
   
-  static bool containsVerifierCall (BasicBlock &B) {
-    for (auto &I: B) {
-      if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-        CallSite CS (CI);
-	const Value *calleeV = CS.getCalledValue ();
-	const Function *callee =
-	  dyn_cast<Function>(calleeV->stripPointerCasts());	
-        if (callee && isVerifierCall (callee)) 
-          return true;
-      }
-    }
-    return false;
-  }
-
+  // static bool containsVerifierCall (BasicBlock &B) {
+  //   for (auto &I: B) {
+  //     if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+  //       CallSite CS (CI);
+  // 	const Value *calleeV = CS.getCalledValue ();
+  // 	const Function *callee =
+  // 	  dyn_cast<Function>(calleeV->stripPointerCasts());	
+  //       if (callee && isVerifierCall (callee)) 
+  //         return true;
+  //     }
+  //   }
+  //   return false;
+  // }
 
   // Return true if all uses are BranchInst's
   static bool AllUsesAreBrInst (Value* V) {
@@ -944,7 +943,7 @@ namespace crab_llvm {
       }
 
       curr = BB.begin ();
-      for (unsigned i = 0; isa<PHINode> (curr); ++curr) {
+      for (; isa<PHINode> (curr); ++curr) {
         PHINode &phi = *cast<PHINode> (curr);
         if (!isTracked(phi, m_lfac.get_track())) continue;
 	
@@ -2055,7 +2054,7 @@ namespace crab_llvm {
 	    return;
 	  }
 	  
-	  if (const Value* s = isGlobalSingleton(r)) {
+	  if (isGlobalSingleton(r)) {
 	    if (isInteger(*I.getValueOperand()) && nval_lit) {
 	      m_bb.assign((*ptr_lit).getVar(), (*nval_lit).getExp());
 	    } else if (isBool(*I.getValueOperand()) && bval_lit) {
@@ -2136,7 +2135,7 @@ namespace crab_llvm {
 	  if (SequentialType *ST = dyn_cast<SequentialType>(I.getAllocatedType())) {
 	    elementTy = ST->getElementType();
 	    /* we only translate pointers or arrays */
-	    if (PointerType *PT = dyn_cast<PointerType> (ST)) {
+	    if (isa<PointerType> (ST)) {
 	      numElems = 1;
 	    } else if (ArrayType *AT = dyn_cast<ArrayType> (ST)) {
 	      numElems = AT->getArrayNumElements();
@@ -2532,12 +2531,14 @@ namespace crab_llvm {
       // getNewRegions returns all the new nodes created by the
       // function (via malloc-like functions) except if the function
       // is main.
+      #if 0
       basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
       auto news =  m_mem.getNewRegions (m_func);
       for (auto n: news) {
 	entry.set_insert_point_front ();
 	// TODO: we can apply here the "Initialization hook".
       }
+      #endif 
     }
 
     /// Add function declaration
