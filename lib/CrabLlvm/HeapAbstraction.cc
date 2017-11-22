@@ -145,9 +145,11 @@ namespace crab_llvm {
     }
 
     if (n->isIncompleteNode()) {
-      CRAB_LOG("heap-abs", 
-	       llvm::errs() << "\tCannot be disambiguated: node is incomplete.\n";);
-      return UNTYPED_REGION;
+      if (!disambiguate_external) {
+	CRAB_LOG("heap-abs", 
+		 llvm::errs() << "\tCannot be disambiguated: node is incomplete.\n";);
+	return UNTYPED_REGION;
+      }
     }
     
     if (n->isIntToPtrNode() || n->isPtrToIntNode()) {
