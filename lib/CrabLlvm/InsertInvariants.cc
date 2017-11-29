@@ -366,8 +366,24 @@ namespace crab_llvm {
 			 cfg_ptr->get_node(&B), F.getContext(), cg, change);
               break;
             }
+            case GenericAbsDomWrapper::opt_oct_apron: {
+              INSTR_LOAD(opt_oct_apron_domain_t, pre,
+			 cfg_ptr->get_node(&B), F.getContext(), cg, change);
+              break;
+            }
+            case GenericAbsDomWrapper::pk_apron: {
+              INSTR_LOAD(pk_apron_domain_t, pre,
+			 cfg_ptr->get_node(&B), F.getContext(), cg, change);
+              break;
+            }
+            case GenericAbsDomWrapper::num: {
+              INSTR_LOAD(num_domain_t, pre,
+			 cfg_ptr->get_node(&B), F.getContext(), cg, change);
+              break;
+            }
+	      
             default :
-              report_fatal_error("Abstract domain not supported by InsertInvariants");
+              report_fatal_error("abstract domain not supported by --crab-add-invariants");
           }
         }
       }
