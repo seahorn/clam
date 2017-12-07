@@ -1156,7 +1156,7 @@ namespace crab_llvm {
 	}
 	break;
       default:
-	CRABLLVM_WARNING("translation skipped " << i);
+	CRABLLVM_WARNING("translation skipped " << i << " at line " << __LINE__);
 	havoc(lhs,m_bb);
       }
     }
@@ -1227,7 +1227,7 @@ namespace crab_llvm {
 	break;
       default:
 	if (i) {
-	  CRABLLVM_WARNING("translation skipped " << *i);
+	  CRABLLVM_WARNING("translation skipped " << *i << " at line " << __LINE__);
 	} else  {
 	  CRABLLVM_WARNING("translation skipped bool logic operation");
 	}
@@ -1258,7 +1258,7 @@ namespace crab_llvm {
           m_bb.bitwise_xor(lhs, op1, op2);
           break;
         default:
-	  CRABLLVM_WARNING("translation skipped " << i);
+	  CRABLLVM_WARNING("translation skipped " << i << " at line " << __LINE__);
           havoc(lhs,m_bb);
       }
     }
@@ -1551,29 +1551,27 @@ namespace crab_llvm {
 	return;
       }
 
-      if (AllUsesAreBrOrIntSelectCondInst(&I)) {
-	if (isBool(*(I.getOperand(0))) && isBool(*(I.getOperand(1)))) {
-	  // we lower it here
-	  if (I.getPredicate() == CmpInst::ICMP_EQ) { // eq <-> not xor
-	    varname_t tmp = FRESH_VAR(m_lfac);
-	    doBoolLogicOp(BinaryOperator::Xor, tmp, *I.getOperand(0), *I.getOperand(1));
-	    varname_t lhs = GET_VAR(I, m_lfac);	    	    
-	    m_bb.bool_assign(lhs, tmp, true); // not(tmp)
-	  } else if (I.getPredicate() == CmpInst::ICMP_NE) { // ne <-> xor
-	    varname_t lhs = GET_VAR(I, m_lfac);	    
-	    doBoolLogicOp(BinaryOperator::Xor, lhs, *I.getOperand(0), *I.getOperand(1));
-	  } else {	    
-	    CRABLLVM_WARNING("translation skipped " << I << "\n");	    
-	  }
-	} else {} // already lowered elsewhere
-	return;
+      if (isBool(*(I.getOperand(0))) && isBool(*(I.getOperand(1)))) {
+	// we lower it here
+	if (I.getPredicate() == CmpInst::ICMP_EQ) { // eq <-> not xor
+	  varname_t tmp = FRESH_VAR(m_lfac);
+	  doBoolLogicOp(BinaryOperator::Xor, tmp, *I.getOperand(0), *I.getOperand(1));
+	  varname_t lhs = GET_VAR(I, m_lfac);	    	    
+	  m_bb.bool_assign(lhs, tmp, true); // not(tmp)
+	} else if (I.getPredicate() == CmpInst::ICMP_NE) { // ne <-> xor
+	  varname_t lhs = GET_VAR(I, m_lfac);	    
+	  doBoolLogicOp(BinaryOperator::Xor, lhs, *I.getOperand(0), *I.getOperand(1));
+	} else {	    
+	  CRABLLVM_WARNING("translation skipped " << I << " at line " << __LINE__ );
+	}
+      } else {
+	assert(isInteger(*(I.getOperand(0))) && isInteger(*(I.getOperand(1))));
+	if (AllUsesAreBrOrIntSelectCondInst(&I)) {
+	  // do nothing: already lowered elsewhere
+	} else {
+	  cmpInstToCrabBool(I, m_lfac, m_bb);	  
+	}
       }
-      
-      // otherwise we lower the ICmpInst here
-      if (isInteger(*(I.getOperand(0))) && isInteger(*(I.getOperand(1))))
-	cmpInstToCrabBool(I, m_lfac, m_bb);
-      else
-	CRABLLVM_WARNING("translation skipped " << I << "\n");
     }
       
     void visitBinaryOperator(BinaryOperator &I) {
@@ -1730,7 +1728,7 @@ namespace crab_llvm {
 	    else {} // unreachable
 	    return;
 	  }
-	  CRABLLVM_WARNING("translation skipped " << I);	  
+	  CRABLLVM_WARNING("translation skipped " << I << " at line " << __LINE__);	  
 	}
       }
       
