@@ -234,7 +234,7 @@ namespace crab_llvm {
   typedef crab::cg::call_graph<cfg_ref_t> call_graph_t; 
   typedef crab::cg::call_graph_ref<call_graph_t> call_graph_ref_t;
   typedef boost::unordered_map<cfg_ref_t, const liveness_t*> liveness_map_t;
-  typedef DenseMap<const BasicBlock*, z_lin_cst_sys_t> assumption_map_t;
+  typedef DenseMap<const BasicBlock*, lin_cst_sys_t> assumption_map_t;
   typedef typename IntraCrabLlvm::wrapper_dom_ptr wrapper_dom_ptr;    
   typedef typename IntraCrabLlvm::checks_db_t checks_db_t;
   typedef typename IntraCrabLlvm::checks_db_ptr checks_db_ptr;
@@ -271,15 +271,21 @@ namespace crab_llvm {
       : premap(pre), postmap(post), checksdb(db) {}
   };
 
-  /** return invariant for block in table but filtering out shadow_vars **/
+  /** return invariant for block in table but filtering out shadow_varnames **/
   static wrapper_dom_ptr lookup(const invariant_map_t &table,
 				const llvm::BasicBlock &block,
-				const std::vector<varname_t> &shadow_vars) {
+				const std::vector<varname_t> &shadow_varnames) {
     auto it = table.find (&block);
     assert (it != table.end ());
-    if (shadow_vars.empty()) {
+    if (shadow_varnames.empty()) {
       return it->second;
     } else {
+      std::vector<var_t> shadow_vars;
+      shadow_vars.reserve(shadow_varnames.size());
+      for(unsigned i=0; i<shadow_vars.size(); ++i) {
+	// we need to create a typed variable
+	shadow_vars.push_back(var_t(shadow_varnames[i], crab::UNK_TYPE, 0));
+      }
       auto invs = it->second->clone();
       invs->forget(shadow_vars); 
       return invs;
@@ -458,7 +464,6 @@ namespace crab_llvm {
 	  }	  
 	}
 	if (!empty_block) {
-
 	  crab::crab_string_os o;
 	  for (auto p: m_annotations) {
 	    p->print_end(bbl, o);
@@ -467,11 +472,24 @@ namespace crab_llvm {
 	    m_o << "/**\n" << o.str() << "**/\n";
 	  }
 	}
-	m_o << "--> [";
-	for (auto const &n : boost::make_iterator_range (bb.next_blocks ())) {
-	  m_o << n << ";";
+
+	std::pair<cfg_ref_t::const_succ_iterator, 
+		  cfg_ref_t::const_succ_iterator> p = bb.next_blocks();
+	cfg_ref_t::const_succ_iterator it = p.first;
+	cfg_ref_t::const_succ_iterator et = p.second;
+	if (it != et) {
+	  m_o << "  " << "goto ";
+	  for (; it != et; ) {
+	    m_o << crab::cfg_impl::get_label_str (*it);
+	    ++it;
+	    if (it == et) {
+	      m_o << ";";
+	    } else {
+	      m_o << ",";
+	    }
+	  }
 	}
-	m_o << "]\n";
+	m_o << "\n";
       }
     };
 
@@ -826,42 +844,39 @@ namespace crab_llvm {
     // -- store invariants     
     for (auto &n: boost::make_iterator_range (vertices (cg))) {
       cfg_ref_t cfg = n.get_cfg ();
-      boost::optional<const Value *> v = n.name ().get ();
-      if (v) {
-	if (const Function *F = dyn_cast<Function> (*v)) {
-	  for (auto &B : *F) {
-	    // --- invariants that hold at the entry of the blocks
-	    auto pre = analyzer.get_pre (cfg, &B);
-	    premap.insert(std::make_pair(&B, mkGenericAbsDomWrapper(pre)));
-	    // --- invariants that hold at the exit of the blocks
-	    auto post = analyzer.get_post (cfg, &B);
-	    postmap.insert(std::make_pair(&B,mkGenericAbsDomWrapper(post)));
-	    
-	    if (CrabStats) {
-	      unsigned num_block_invars = 0;
-	      // TODO CRAB: for boxes we would like to use
-	      // to_disjunctive_linear_constraint_system() but it needs to
-	      // be exposed to all domains
-	      num_block_invars += pre.to_linear_constraint_system().size();
-	      num_invars += num_block_invars;
-	      if (num_block_invars > 0) num_nontrivial_blocks++;
-	    }
-	  }
+      if (const Function *F = M.getFunction(n.name())) {
+	for (auto &B : *F) {
+	  // --- invariants that hold at the entry of the blocks
+	  auto pre = analyzer.get_pre (cfg, &B);
+	  premap.insert(std::make_pair(&B, mkGenericAbsDomWrapper(pre)));
+	  // --- invariants that hold at the exit of the blocks
+	  auto post = analyzer.get_post (cfg, &B);
+	  postmap.insert(std::make_pair(&B,mkGenericAbsDomWrapper(post)));
 	  
-	  // --- print invariants and summaries
-	  if (CrabPrintAns && isTrackable(*F)) {
-	    llvm::outs() << "\n" << "function " << F->getName () << "\n";
-	    pretty_printer_impl::invariant_annotation inv_annot (vfac, premap, postmap,
-								 CrabKeepShadows);
-	    std::vector<pretty_printer_impl::block_annotation*> annotations = {&inv_annot};
-	    pretty_printer_impl::print_annotations(cfg, annotations);	    
+	  if (CrabStats) {
+	    unsigned num_block_invars = 0;
+	    // TODO CRAB: for boxes we would like to use
+	    // to_disjunctive_linear_constraint_system() but it needs to
+	    // be exposed to all domains
+	    num_block_invars += pre.to_linear_constraint_system().size();
+	    num_invars += num_block_invars;
+	    if (num_block_invars > 0) num_nontrivial_blocks++;
 	  }
-
-	  // Summaries are not currently stored but it would be easy to do so.	    
-	  if (CrabPrintSumm && analyzer.has_summary (cfg)) {
-	      auto summ = analyzer.get_summary (cfg);
-	      crab::outs() << "SUMMARY " << *summ << "\n";
-	  }
+	}
+	
+	// --- print invariants and summaries
+	if (CrabPrintAns && isTrackable(*F)) {
+	  llvm::outs() << "\n" << "function " << F->getName () << "\n";
+	  pretty_printer_impl::invariant_annotation inv_annot (vfac, premap, postmap,
+							       CrabKeepShadows);
+	  std::vector<pretty_printer_impl::block_annotation*> annotations = {&inv_annot};
+	  pretty_printer_impl::print_annotations(cfg, annotations);	    
+	}
+	
+	// Summaries are not currently stored but it would be easy to do so.	    
+	if (CrabPrintSumm && analyzer.has_summary (cfg)) {
+	  auto summ = analyzer.get_summary (cfg);
+	  crab::outs() << "SUMMARY " << *summ << "\n";
 	}
       }
     }

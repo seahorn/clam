@@ -23,7 +23,7 @@ namespace crab_llvm {
 
     // TODO: move this to InsertInvariants.cc so this header file does
     // not expose crab_llvm/crab_cfg.hh
-    bool instrument_entries (z_lin_cst_sys_t csts, llvm::BasicBlock* bb, 
+    bool instrument_entries (lin_cst_sys_t csts, llvm::BasicBlock* bb, 
                              llvm::LLVMContext &ctx, llvm::CallGraph* cg);
       
     template<typename AbsDomain> 

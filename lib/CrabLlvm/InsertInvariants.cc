@@ -89,7 +89,7 @@ namespace crab_llvm {
       }
     }
        
-    Value* mk_num (ikos::z_number n, LLVMContext &ctx) {
+    Value* mk_num (number_t n, LLVMContext &ctx) {
       Type * ty = Type::getInt64Ty (ctx); 
       return ConstantInt::get (ty, APInt (64, n.get_str(), 10));
     }
@@ -105,7 +105,7 @@ namespace crab_llvm {
 
     //! Generate llvm bitecode from a set of linear constraints    
     //  TODO: generate bitecode from disjunctive linear constraints.
-    bool gen_code (z_lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
+    bool gen_code (lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
                    Function* assumeFn, CallGraph* cg,
 		   const Function* insertFun, const Twine &Name = "") {
       bool change = false;
@@ -127,7 +127,7 @@ namespace crab_llvm {
     
     // post: return a value of bool type (Int1Ty) that contains the
     // computation of cst
-    Value* gen_code (z_lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx, 
+    Value* gen_code (lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx, 
                      const Twine &Name) {
       if (cst.is_tautology ())     
         return mk_bool (B, ctx, true);
@@ -136,10 +136,10 @@ namespace crab_llvm {
         return mk_bool (B, ctx, false);
       
       auto e = cst.expression() - cst.expression().constant();
-      Value * ee = mk_num ( ikos::z_number ("0"), ctx);
+      Value * ee = mk_num (number_t("0"), ctx);
 
       for (auto t : e) {
-        ikos::z_number n  = t.first;
+        number_t n  = t.first;
         if (n == 0) continue; 
 
         varname_t v = t.second.name();
@@ -164,7 +164,7 @@ namespace crab_llvm {
           return nullptr;
       }
       
-      ikos::z_number c = -cst.expression().constant();
+      number_t c = -cst.expression().constant();
       Value* cc = mk_num (c, ctx);
 
       if (cst.is_inequality ()) {
@@ -180,7 +180,7 @@ namespace crab_llvm {
 
   //! Instrument basic block entries.
   bool InsertInvariants::
-  instrument_entries (z_lin_cst_sys_t csts, llvm::BasicBlock* bb, 
+  instrument_entries (lin_cst_sys_t csts, llvm::BasicBlock* bb, 
 		      LLVMContext &ctx, CallGraph* cg) {
 
     // If the block is an exit we do not instrument it.
@@ -206,13 +206,13 @@ namespace crab_llvm {
   // invariants at each program point.
   template<typename AbsDomain>
   bool InsertInvariants::
-  instrument_loads (AbsDomain inv, basic_block_t& bb, 
-		    LLVMContext &ctx, CallGraph* cg) {
-
+  instrument_loads(AbsDomain inv, basic_block_t& bb, LLVMContext &ctx, CallGraph* cg) {
     // -- it will propagate forward inv through the basic block
     //    but ignoring callsites    
     typedef crab::analyzer::intra_abs_transformer<AbsDomain> abs_tr_t; 
-      
+    typedef array_load_stmt<number_t,varname_t> array_load_stmt_t;
+    typedef ptr_load_stmt<number_t,varname_t> ptr_load_stmt_t;    
+    
     IRBuilder<> Builder (ctx);
     bool change=false;
     abs_tr_t vis (&inv);
@@ -220,19 +220,17 @@ namespace crab_llvm {
     for (auto &s: bb) {
       s.accept (&vis); //propagate the invariant one statement forward
       const LoadInst* I = nullptr;
-      z_lin_cst_t::variable_set_t load_vs;
+      lin_cst_t::variable_set_t load_vs;
       if (s.is_arr_read()) { 
-        const array_load_stmt<z_number, varname_t>* load_stmt = 
-	  static_cast<const array_load_stmt<z_number, varname_t> *>(&s);
-        if (boost::optional<const Value *> v = load_stmt->lhs().get()) {
+        const array_load_stmt_t* load_stmt = static_cast<const array_load_stmt_t*>(&s);
+        if (boost::optional<const Value *> v = load_stmt->lhs().name().get()) {
           I = dyn_cast<const LoadInst>(*v);
           load_vs += load_stmt->lhs();
         }
       }
       else if (s.is_ptr_read()) { 
-        const ptr_load_stmt <z_number, varname_t>* load_stmt = 
-	  static_cast<const ptr_load_stmt<z_number, varname_t> *>(&s);
-        if (boost::optional<const Value *> v = load_stmt->lhs().get()) {
+        const ptr_load_stmt_t* load_stmt = static_cast<const ptr_load_stmt_t*>(&s); 
+        if (boost::optional<const Value *> v = load_stmt->lhs().name().get()) {
           load_vs += load_stmt->lhs();
           I = dyn_cast<const LoadInst>(*v);
         }
@@ -240,18 +238,11 @@ namespace crab_llvm {
       
       if (!I) continue;
 
-      // -- Remove array shadow variables otherwise llvm will
-      //    get choked
       CrabLlvmPass* crab = &getAnalysis<CrabLlvmPass>();
-      auto &vfac = crab->get_var_factory();
-      auto shadows = vfac.get_shadow_vars ();
-      crab::domains::domain_traits<AbsDomain>::
-	forget(inv, shadows.begin(), shadows.end());
 
       if (inv.is_top ()) continue;
-        
       // -- Filter out all constraints that do not use x.
-      z_lin_cst_sys_t rel_csts;
+      lin_cst_sys_t rel_csts;
       for (auto cst: inv.to_linear_constraint_system ()) {
         auto vs = cst.variables();
         if (!(vs & load_vs).empty ())
@@ -272,8 +263,7 @@ namespace crab_llvm {
     return change;
   }
 
-  bool InsertInvariants::runOnModule (Module &M)
-  {
+  bool InsertInvariants::runOnModule (Module &M) {
     if (InsertInvs == NONE) return false;
 
     LLVMContext& ctx = M.getContext ();

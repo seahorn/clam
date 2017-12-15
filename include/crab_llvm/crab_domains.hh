@@ -27,11 +27,6 @@ namespace crab_llvm {
   using namespace crab::domains;
   using namespace ikos;
 
-  /// --- Types for linear constraints and expressions
-  typedef ikos::linear_expression<z_number, varname_t> z_lin_exp_t;
-  typedef ikos::linear_constraint<z_number, varname_t> z_lin_cst_t;
-  typedef ikos::linear_constraint_system<z_number, varname_t> z_lin_cst_sys_t;
-
   /* BEGIN MACROS only for internal use */
   // The base numerical domain 
   #define BASE(DOM) base_ ## DOM
@@ -50,39 +45,39 @@ namespace crab_llvm {
   
   /// -- Intervals
   #if 1
-  typedef interval_domain<z_number, varname_t> BASE(interval_domain_t);
+  typedef interval_domain<number_t, varname_t> BASE(interval_domain_t);
   #else
   // -- enable apron version for more precise backward operations
-  typedef apron_domain<z_number, varname_t, apron_domain_id_t::APRON_INT>
+  typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_INT>
   BASE(interval_domain_t);
   #endif 
   /// -- Zones using sparse DBMs (SAS'16)
-  typedef SpDBM_impl::DefaultParams<z_number> SparseDBMGraph;
-  typedef SparseDBM<z_number, varname_t, SparseDBMGraph> BASE(dbm_domain_t);
+  typedef SpDBM_impl::DefaultParams<number_t> SparseDBMGraph;
+  typedef SparseDBM<number_t, varname_t, SparseDBMGraph> BASE(dbm_domain_t);
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
-  typedef SDBM_impl::DefaultParams<z_number> SplitDBMGraph;
-  typedef SplitDBM<z_number, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
+  typedef SDBM_impl::DefaultParams<number_t> SplitDBMGraph;
+  typedef SplitDBM<number_t, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
   /// -- Boxes
-  typedef boxes_domain<z_number, varname_t> BASE(boxes_domain_t);
+  typedef boxes_domain<number_t, varname_t> BASE(boxes_domain_t);
   // typedef diff_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>,
-  // 		         boxes_domain<z_number, varname_t> > BASE(boxes_domain_t);
+  // 		         boxes_domain<number_t, varname_t> > BASE(boxes_domain_t);
   /// -- DisIntervals
-  typedef dis_interval_domain <z_number, varname_t> BASE(dis_interval_domain_t);
+  typedef dis_interval_domain <number_t, varname_t> BASE(dis_interval_domain_t);
   /// -- Elina/Apron domains
-  typedef apron_domain<z_number, varname_t, apron_domain_id_t::APRON_OPT_OCT>
+  typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_OPT_OCT>
   BASE(opt_oct_apron_domain_t);
-  typedef apron_domain<z_number, varname_t, apron_domain_id_t::APRON_PK>
+  typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_PK>
   BASE(pk_apron_domain_t);
   /// -- Reduced product of intervals with congruences
   typedef numerical_congruence_domain<BASE(interval_domain_t)> BASE(ric_domain_t);
   /// -- Term functor domain with Intervals (VMCAI'16)
   typedef crab::cfg::var_factory_impl::str_var_alloc_col::varname_t str_varname_t;
-  typedef interval_domain<z_number, str_varname_t> str_interval_dom_t;
-  typedef term::TDomInfo<z_number, varname_t, str_interval_dom_t> idom_info;
+  typedef interval_domain<number_t, str_varname_t> str_interval_dom_t;
+  typedef term::TDomInfo<number_t, varname_t, str_interval_dom_t> idom_info;
   typedef term_domain<idom_info> BASE(term_int_domain_t);
   /// -- Term functor domain with DisIntervals (VMCAI'16)
-  typedef dis_interval_domain<z_number, str_varname_t> str_dis_interval_dom_t;
-  typedef term::TDomInfo<z_number, varname_t, str_dis_interval_dom_t> dis_idom_info;
+  typedef dis_interval_domain<number_t, str_varname_t> str_dis_interval_dom_t;
+  typedef term::TDomInfo<number_t, varname_t, str_dis_interval_dom_t> dis_idom_info;
   typedef term_domain<dis_idom_info> BASE(term_dis_int_domain_t);
   /// -- Reduced product of Term(DisIntervals) with split zones
   typedef reduced_numerical_domain_product2<BASE(term_dis_int_domain_t),

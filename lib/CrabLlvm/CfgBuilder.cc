@@ -17,10 +17,8 @@
  * 
  * - Ignore floating point instructions.
  * - Ignore ashr and shl with non-constant shifts.
- * - Ignore integer bitwidths in most operations (this can affect
- *   soundness).
- * - Ignore comparison between pointers
- * - Ignore pointer cast instructions
+ * - Ignore comparison between pointers.
+ * - Ignore pointer cast instructions.
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -36,7 +34,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 
-#include "boost/tuple/tuple.hpp"
+#include "boost/unordered_map.hpp"
 #include "boost/range/iterator_range.hpp"
 #include "boost/range/algorithm/set_algorithm.hpp"
 #include "boost/optional.hpp"
@@ -54,6 +52,8 @@ using namespace boost;
 using namespace crab;
 using namespace crab::cfg;
 using namespace ikos;
+
+#define SANITY_CHECK
 
 cl::opt<bool>
 CrabCFGSimplify("crab-cfg-simplify",
@@ -139,109 +139,21 @@ CrabDisableWarnings("crab-disable-warnings",
 
 namespace crab_llvm {
 
-  #define CRABLLVM_WARNING(MSG) \
-    if (!CrabDisableWarnings) \
-      {llvm::errs () << "CRABLLVM WARNING: " << MSG << "\n";}
-  #define GET_VAR(V,LFAC) LFAC.get_vfac()[&V]
-  #define FRESH_VAR(LFAC) LFAC.get_vfac().get()
-  #define GET_VAR_FROM_REGION(R,LFAC) LFAC.get_vfac().get(R.get_id())
-  // Note: getRegion only returns regions containing integers
-  #define GET_REGION(I,V) m_mem.getRegion(*(I.getParent()->getParent()),V)
-  #define CST_TRUE z_lin_cst_t::get_true()
-  #define CST_FALSE z_lin_cst_t::get_false()
-
-  // Factory to create crab literals (variables or constants)
-  // A literal can be of type: boolean, integer or pointer.
-  //
-  // XXX: we do not create a datatype for literals (via inheritance)
-  // because literals are very simple so we prefer to save allocation
-  // of pointers and casts across subclasses.
-  class crabLitFactory;
-
-  class crabBoolLit {
-    // A boolean literal is either a variable or constants true and false.
-    friend class crabLitFactory;
-    
-    // invariant class: m_cst ^ m_var
-    boost::optional<bool> m_cst;
-    boost::optional<varname_t> m_var;
-
-    crabBoolLit(bool cst): m_cst(cst) {}
-    crabBoolLit(varname_t var): m_var(var) {}
-
-  public:
-    
-    bool isConst() const { return (m_cst ? true: false); }
-    bool isVar() const { return (m_var ? true: false); }
-    varname_t getVar() const {
-      assert (isVar());
-      return *m_var;
-    }
-    bool isTrue () const {
-      if (!isConst()) return false;
-      return *m_cst;
-    }
-    bool isFalse () const {
-      if (!isConst()) return false;
-      return !(*m_cst); 
-    }
-  };
-
-  class crabPtrLit {
-
-    // A pointer literal is either a variable or constant null
-    friend class crabLitFactory;
-    
-    boost::optional<varname_t> m_lit;
-
-    crabPtrLit() {} // null
-    crabPtrLit(varname_t v): m_lit(v) {}
-
-  public:
-    
-    bool isNull() const { return (m_lit ? false : true); }
-    bool isVar() const { return !isNull(); }
-    varname_t getVar() const {
-      assert (isVar());
-      return *(m_lit);
-    }
-  };
-
-  class crabNumLit {
-
-    // A numerical literal is either a number or variable
-    friend class crabLitFactory;
-
-    // invariant class: m_num ^ m_var     
-    boost::optional<ikos::z_number> m_num;
-    boost::optional<varname_t> m_var;
-
-    crabNumLit(ikos::z_number n): m_num(n) {}
-    crabNumLit(varname_t v): m_var(v) {}
-
-  public:
-    
-    bool isNum() const { return (m_num ? true : false); }
-    bool isVar() const { return (m_var ? true : false); }
-    ikos::z_number getNum() const {
-      assert (isNum());
-      return *(m_num);
-    }
-    varname_t getVar() const {
-      assert (isVar());
-      return *(m_var);
-    }
-    z_lin_exp_t getExp () const {
-      if (isNum())
-	return z_lin_exp_t(getNum());
-      else {
-	assert (isVar());
-	return z_lin_exp_t(getVar());
-      }
-    }
-    
-  };
-
+  static void CRABLLVM_ERROR(std::string msg, const char *file, unsigned line) {
+    llvm::errs() << "CRABLLVM ERROR: " << msg << "\n";
+    llvm::errs() << "File: " << file << "\n";
+    llvm::errs() << "Line: " << line << "\n";    
+    abort();
+  }
+  
+  #define CRABLLVM_WARNING(MSG)				    \
+    if (!CrabDisableWarnings) {				    \
+      llvm::errs () << "CRABLLVM WARNING: " << MSG << "\n"; \
+    }							    \
+  
+  typedef typename HeapAbstraction::region_t mem_region_t;
+  typedef typename HeapAbstraction::region_set_t mem_region_set_t;  
+  
   static bool isBool(const llvm::Type *t){
     return (t->isIntegerTy(1) && !CrabBoolAsInt);
   }
@@ -281,7 +193,7 @@ namespace crab_llvm {
     
     return v.isNegative () ? mpz_class(-res) : res;
   }
-  
+
   static boost::optional<int64_t> getIntConstant(const ConstantInt* CI){
     if (CI->getType ()->isIntegerTy(1)) {
       return (int64_t) CI->getZExtValue();
@@ -290,13 +202,19 @@ namespace crab_llvm {
       return CI->getSExtValue();
     }
     else {
-      CRABLLVM_WARNING("Warning: " <<
-		       toMpz(CI->getValue()).get_str() <<   
-		       " does not fit in int64_t.");
+      CRABLLVM_WARNING(toMpz(CI->getValue()).get_str() +  " does not fit in int64_t.");
       return boost::optional<int64_t>();
     }
   }
 
+  // static std::string getIntConstant(const ConstantInt* CI){
+  //   if (CI->getType ()->isIntegerTy(1)) {
+  //     return CI->getValue().toString(10 /*radix*/, false /*unsigned*/);
+  //   } else {
+  //     return CI->getValue().toString(10 /*radix*/, true /*signed*/);
+  //   }
+  // }
+  
   static bool isTracked (const llvm::Value &v,
 			 const crab::cfg::tracked_precision tracklev) {
     // -- ignore any shadow variable created by seahorn
@@ -310,67 +228,511 @@ namespace crab_llvm {
     // -- always track integer and boolean registers
     return v.getType ()->isIntegerTy ();
   }
-
-  // Convert a llvm::Value to either a boolean, pointer or numerical
-  // literal.
-  class crabLitFactory {
-
-    llvm_variable_factory &m_vfac;
-    crab::cfg::tracked_precision m_tracklev;
-
+  
+  // Convenient wrapper for a LLVM variable or constant
+  class crabLit {
   public:
+    enum lit_class_t {
+      CRAB_LITERAL_BOOL,
+      CRAB_LITERAL_INT,
+      CRAB_LITERAL_PTR,
+    };
+    
+    crabLit(lit_class_t lit_class) : m_lit_class(lit_class) {}
 
-    crabLitFactory(llvm_variable_factory &vfac,
-		   crab::cfg::tracked_precision tracklev)
-      : m_vfac (vfac), m_tracklev(tracklev) {}
+    virtual ~crabLit() {}
 
+    bool isBool() const { return m_lit_class == CRAB_LITERAL_BOOL; }
 
-    llvm_variable_factory& get_vfac() { return m_vfac; }
-    crab::cfg::tracked_precision get_track() const { return m_tracklev;}
+    bool isInt() const { return m_lit_class == CRAB_LITERAL_INT; }
 
-    // Note that getBoolLit, getPtrLit and getNumLit are not aware of
-    // which types are tracked or not. They only use type information
-    // and not the track level.
-    boost::optional<crabBoolLit> getBoolLit (const llvm::Value &v){
-      if (isBool(v)) {
-	if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
-	  // -- constant boolean
-	  if (boost::optional<int64_t> n = getIntConstant(c))
-	    return crabBoolLit((*n) > 0 ? true : false);
-	} else if (!llvm::isa<llvm::ConstantExpr>(v)) {
-	  // -- boolean variable 
-	  return crabBoolLit(m_vfac[&v]);
-	}
-      }
-      return boost::optional<crabBoolLit>();
+    bool isPtr() const { return m_lit_class == CRAB_LITERAL_PTR; }
+        
+    virtual bool isVar() const = 0;
+    
+    virtual var_t getVar() const = 0;
+
+    virtual void write(crab::crab_os &out) const = 0;
+    
+  private:
+    lit_class_t m_lit_class;
+  };
+
+  crab_os& operator<<(crab_os& out, const crabLit& l){
+    l.write(out);
+    return out;
+  }
+  
+  /** A Boolean literal is either a variable or constants true and false. **/   
+  class crabBoolLit: public crabLit {
+    friend class crabLitFactoryImpl;
+    
+    bool m_cst; // only considered if m_var.is_null()
+    var_ref_t m_var;
+    
+    crabBoolLit(bool cst): crabLit(CRAB_LITERAL_BOOL), m_cst(cst) {}
+    
+    crabBoolLit(var_t var): crabLit(CRAB_LITERAL_BOOL), m_var(var) {}
+    
+  public:
+    
+    bool isVar() const override {
+      return (!m_var.is_null());
     }
-
-    boost::optional<crabPtrLit> getPtrLit (const llvm::Value &v){
-      if (llvm::isa<llvm::ConstantPointerNull> (&v)) {
-	// -- constant null
-	return crabPtrLit();
-      } else if (v.getType()->isPointerTy() && !llvm::isa<llvm::ConstantExpr>(v)) {
-	// -- pointer variable 
-	return crabPtrLit(m_vfac[&v]);
-      }
-      return boost::optional<crabPtrLit>();
+    
+    var_t getVar() const override {
+      assert (isVar());
+      return m_var.get();
     }
-
-    boost::optional<crabNumLit> getNumLit (const llvm::Value &v){
-      if (isInteger(v)) {
-	if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
-	  // -- constant integer
-	  if (boost::optional<int64_t> n = getIntConstant(c))
-	    return crabNumLit(*n);
-	} else if (!llvm::isa<llvm::ConstantExpr>(v)) {
-	  // -- integer variable 
-	  return crabNumLit(m_vfac[&v]);
-	}
+    
+    bool isConst() const {
+      return (m_var.is_null());
+    }
+    
+    bool isTrue () const {
+      if (!isConst()) return false;
+      return m_cst;
+    }
+    
+    bool isFalse () const {
+      if (!isConst()) return false;
+      return !m_cst; 
+    }
+    
+    void write(crab::crab_os &out) const override {
+      if (isVar()) {
+	out << getVar();
+      } else if (isTrue()) {
+	out << "true";
+      } else {
+	out << "false";
       }
-      return boost::optional<crabNumLit>();
     }
   };
+  
+  /** A pointer literal is either a variable or constant null.**/
+  class crabPtrLit: public crabLit {
+    friend class crabLitFactoryImpl;
     
+    var_ref_t m_lit; // if m_lit.is_null() then the literal represents null
+    
+    crabPtrLit()
+      : crabLit(CRAB_LITERAL_PTR) {} // null
+    crabPtrLit(var_t v)
+      : crabLit(CRAB_LITERAL_PTR), m_lit(v) {}
+    
+  public:
+    
+    bool isVar() const override { return !m_lit.is_null(); }
+    
+    var_t getVar() const override {
+      assert (isVar());
+      return m_lit.get();
+    }
+    
+    bool isNull() const { return m_lit.is_null(); }
+
+    void write(crab::crab_os &out) const override {
+      if (isVar()) {
+	out << getVar();
+      } else {
+	out << "NULL";
+      }
+    }
+  };
+  
+  /** A numerical literal is either a variable or constant number.**/
+  class crabIntLit: public crabLit {
+    friend class crabLitFactoryImpl;
+    
+    number_t m_num; // only considered if m_var.is_null();
+    var_ref_t m_var;
+    
+    crabIntLit(number_t n): crabLit(CRAB_LITERAL_INT), m_num(n) {}
+    
+    crabIntLit(var_t v): crabLit(CRAB_LITERAL_INT), m_var(v) {}
+    
+  public:
+    
+    bool isVar() const override { return !m_var.is_null(); }
+    
+    var_t getVar() const override{
+      assert (isVar());
+      return m_var.get();
+    }
+    
+    bool isInt() const { return m_var.is_null(); }
+    
+    number_t getInt() const {
+      assert (isInt());
+      return m_num;
+    }
+    
+    lin_exp_t getExp () const {
+      if (isInt())
+	return lin_exp_t(getInt());
+      else {
+	assert (isVar());
+	return lin_exp_t(getVar());
+      }
+    }
+
+    void write(crab::crab_os &out) const override {
+      if (isVar()) {
+	out << getVar();
+      } else {
+	out << getInt();
+      }
+    }
+    
+  };
+
+  class crabLitFactoryImpl {
+  public:
+    
+    crabLitFactoryImpl(llvm_variable_factory &vfac, crab::cfg::tracked_precision tracklev);
+
+    llvm_variable_factory& get_vfac() { return m_vfac; }
+    
+    crab::cfg::tracked_precision get_track() const { return m_tracklev;}
+
+    // Translate v into a crab literal based on v's type
+    crab_lit_ref_t getLit(const llvm::Value &v);
+
+    // Create a fresh integer array variable
+    var_t mkIntArrayVar(unsigned bitwidth);
+
+    // Create a fresh boolean array variable    
+    var_t mkBoolArrayVar();
+
+    // Create a fresh pointer array variable        
+    var_t mkPtrArrayVar();        
+    
+    // Create an array variable associated with region r.
+    var_t mkArrayVar(mem_region_t r);
+
+    // Create an scalar variable associated with region r.
+    var_t mkArraySingletonVar(mem_region_t r);
+    
+    // Create a fresh integer variable of bitwidth bits
+    var_t mkIntVar(unsigned bitwidth);
+
+    // Create a fresh boolean variable
+    var_t mkBoolVar();
+
+    // Create a fresh pointer variable
+    var_t mkPtrVar();
+
+    // Common accessors to crab_lit_ref_t subclasses.
+    bool isBoolTrue(const crab_lit_ref_t ref) const;
+    
+    bool isBoolFalse(const crab_lit_ref_t ref) const;
+
+    bool isPtrNull(const crab_lit_ref_t ref) const;
+    
+    number_t getIntCst(const crab_lit_ref_t ref) const;
+
+    lin_exp_t getExp(const crab_lit_ref_t ref) const;
+        
+  private:
+
+    typedef boost::unordered_map<const Value*, crab_lit_ref_t> lit_cache_t;
+    typedef typename lit_cache_t::value_type binding_t;
+    
+    llvm_variable_factory &m_vfac;
+    crab::cfg::tracked_precision m_tracklev;
+    lit_cache_t m_lit_cache;
+
+    boost::optional<crabBoolLit> getBoolLit (const llvm::Value &v);
+    boost::optional<crabIntLit> getIntLit (const llvm::Value &v);
+    boost::optional<crabPtrLit> getPtrLit (const llvm::Value &v);    
+  };
+  
+  crabLitFactoryImpl::crabLitFactoryImpl(llvm_variable_factory &vfac,
+					 crab::cfg::tracked_precision tracklev)
+    : m_vfac (vfac), m_tracklev(tracklev) {}
+
+  crab_lit_ref_t crabLitFactoryImpl::getLit(const llvm::Value &v) {
+    auto it = m_lit_cache.find(&v);
+    if (it != m_lit_cache.end()) {
+      return it->second;
+    }
+    const llvm::Type &t = *v.getType();
+    // Note that getBoolLit, getPtrLit and getIntLit are not aware of
+    // which types are tracked or not. They only use type information
+    // and not the track level.
+    if (isBool(&t)) {
+      if (boost::optional<crabBoolLit> lit = getBoolLit(v)) {
+	crab_lit_ref_t ref =
+	  boost::static_pointer_cast<crabLit>(boost::make_shared<crabBoolLit>(*lit));
+	m_lit_cache.insert(binding_t(&v, ref));
+	return ref;	  
+      }
+    } else if (isInteger(&t)) {
+      if (boost::optional<crabIntLit> lit = getIntLit(v)) {
+	crab_lit_ref_t ref =
+	  boost::static_pointer_cast<crabLit>(boost::make_shared<crabIntLit>(*lit));
+	m_lit_cache.insert(binding_t(&v, ref));
+	return ref;
+	}
+    } else if (t.isPointerTy()) {
+      if (boost::optional<crabPtrLit> lit = getPtrLit(v)) {
+	crab_lit_ref_t ref =
+	  boost::static_pointer_cast<crabLit>(boost::make_shared<crabPtrLit>(*lit));
+	m_lit_cache.insert(binding_t(&v, ref));
+	return ref;
+      }
+    }
+    return nullptr;
+  }
+  
+  var_t crabLitFactoryImpl::mkArrayVar(mem_region_t mem_region) {
+    crab::variable_type type = crab::UNK_TYPE;
+    unsigned bitwidth = 0; /* unknown */
+    switch  (mem_region.get_type ()) {
+    case INT_REGION : type = ARR_INT_TYPE; break;
+    case BOOL_REGION: type = ARR_BOOL_TYPE; bitwidth = 1; break;
+    case PTR_REGION : type = ARR_PTR_TYPE; break;
+    default: CRABLLVM_ERROR("unsupported region type", __FILE__, __LINE__);
+    }
+    // TODO: bitwidth is missing if INT_REGION
+    // This information must be provided by HeapAbstraction.
+    return var_t(m_vfac.get(mem_region.get_id()), type, bitwidth);
+  }
+
+  var_t crabLitFactoryImpl::mkArraySingletonVar(mem_region_t mem_region) {
+    crab::variable_type type = crab::UNK_TYPE;
+    unsigned bitwidth = 0; /* unknown */
+    if (const Value* v= mem_region.getSingleton()) {
+      Type* ty = cast<PointerType>(v->getType())->getElementType();      
+      bitwidth = ty->getIntegerBitWidth();
+      // If the singleton contains a pointer then getIntegerBitWidth()
+      // returns zero which means for us "unknown" bitwidth so we are
+      // good.
+    } else {
+      CRABLLVM_ERROR("Memory region does not belong to a global singleton",
+		     __FILE__, __LINE__);
+    }
+    switch  (mem_region.get_type ()) {
+    case INT_REGION : type = INT_TYPE; break;
+    case BOOL_REGION: type = BOOL_TYPE; break;
+    case PTR_REGION : type = PTR_TYPE; break;
+    default: CRABLLVM_ERROR("unsupported region type", __FILE__, __LINE__);
+    }
+    return var_t(m_vfac.get(mem_region.get_id()), type, bitwidth);
+  }
+
+  var_t crabLitFactoryImpl::mkIntArrayVar(unsigned bitwidth)
+  { return var_t(m_vfac.get(), ARR_INT_TYPE, bitwidth); }     
+  
+  var_t crabLitFactoryImpl::mkBoolArrayVar()
+  { return var_t(m_vfac.get(), ARR_BOOL_TYPE, 1); }
+  
+  var_t crabLitFactoryImpl::mkPtrArrayVar() 
+  {  return var_t(m_vfac.get(), ARR_PTR_TYPE); }     
+  
+  var_t crabLitFactoryImpl::mkIntVar(unsigned bitwidth)
+  { return var_t(m_vfac.get(), INT_TYPE, bitwidth); }     
+  
+  var_t crabLitFactoryImpl::mkBoolVar()
+  { return var_t(m_vfac.get(), BOOL_TYPE, 1); }
+  
+  var_t crabLitFactoryImpl::mkPtrVar() 
+  {  return var_t(m_vfac.get(), PTR_TYPE); }     
+  
+  bool crabLitFactoryImpl::isBoolTrue(const crab_lit_ref_t ref) const {
+    if (!ref || !ref->isBool())
+      CRABLLVM_ERROR("Literal is not a Boolean", __FILE__, __LINE__);
+    auto lit = boost::static_pointer_cast<const crabBoolLit>(ref);
+    return lit->isTrue();
+  }
+    
+  bool crabLitFactoryImpl::isBoolFalse(const crab_lit_ref_t ref) const {
+    if (!ref || !ref->isBool())
+      CRABLLVM_ERROR("Literal is not a Boolean", __FILE__, __LINE__);    
+    auto lit = boost::static_pointer_cast<const crabBoolLit>(ref);
+    return lit->isFalse();
+  }
+  
+  bool crabLitFactoryImpl::isPtrNull(const crab_lit_ref_t ref) const {
+    if (!ref || !ref->isPtr())
+      CRABLLVM_ERROR("Literal is not a pointer", __FILE__, __LINE__);        
+    auto lit = boost::static_pointer_cast<const crabPtrLit>(ref);
+    return lit->isNull();
+  }
+  
+  lin_exp_t crabLitFactoryImpl::getExp(const crab_lit_ref_t ref) const {
+    if (!ref || !ref->isInt())
+      CRABLLVM_ERROR("Literal is not an integer", __FILE__, __LINE__);            
+    auto lit = boost::static_pointer_cast<const crabIntLit>(ref);
+    return lit->getExp();
+  }
+
+  number_t crabLitFactoryImpl::getIntCst(const crab_lit_ref_t ref) const {
+    if (!ref || !ref->isInt())
+      CRABLLVM_ERROR("Literal is not an integer", __FILE__, __LINE__);                
+    auto lit = boost::static_pointer_cast<const crabIntLit>(ref);
+    return lit->getInt();
+  }
+  
+  boost::optional<crabBoolLit> crabLitFactoryImpl::getBoolLit (const llvm::Value &v){
+    if (isBool(v)) {
+      if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
+	// -- constant boolean
+	if (boost::optional<int64_t> n = getIntConstant(c))
+	  return crabBoolLit((*n) > 0 ? true : false);
+      } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
+	// -- boolean variable 
+	return crabBoolLit(var_t(m_vfac[&v], BOOL_TYPE, 1));
+	}
+    }
+    return boost::optional<crabBoolLit>();
+  }
+  
+  boost::optional<crabPtrLit> crabLitFactoryImpl::getPtrLit (const llvm::Value &v){
+    if (llvm::isa<llvm::ConstantPointerNull> (&v)) {
+      // -- constant null
+      return crabPtrLit();
+    } else if (v.getType()->isPointerTy() && !llvm::isa<llvm::ConstantExpr>(v)) {
+      // -- pointer variable 
+      return crabPtrLit(var_t(m_vfac[&v], PTR_TYPE));
+    }
+    return boost::optional<crabPtrLit>();
+  }
+  
+  boost::optional<crabIntLit> crabLitFactoryImpl::getIntLit (const llvm::Value &v){
+    if (isInteger(v)) {
+      if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
+	// -- constant integer
+	if (boost::optional<int64_t> n = getIntConstant(c)) {
+	  return crabIntLit(*n);
+	}
+      } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
+	// -- integer variable
+	unsigned bitwidth = v.getType()->getIntegerBitWidth();
+	return crabIntLit(var_t(m_vfac[&v], INT_TYPE, bitwidth));
+      }
+    }
+    return boost::optional<crabIntLit>();
+  }
+
+  crabLitFactory::crabLitFactory(llvm_variable_factory &vfac,
+				crab::cfg::tracked_precision tracklev)
+    : m_impl(new crabLitFactoryImpl(vfac, tracklev)) { }
+    
+  crabLitFactory::~crabLitFactory() {
+    delete m_impl;
+  }
+
+  llvm_variable_factory& crabLitFactory::get_vfac()
+  { return m_impl->get_vfac(); }
+    
+  crab::cfg::tracked_precision crabLitFactory::get_track() const
+  { return m_impl->get_track(); }
+
+  crab_lit_ref_t crabLitFactory::getLit(const llvm::Value &v)
+  { return m_impl->getLit(v);}
+
+  var_t crabLitFactory::mkIntArrayVar(unsigned bitwidth)
+  { return m_impl->mkIntArrayVar(bitwidth);}
+    
+  var_t crabLitFactory::mkBoolArrayVar()
+  { return m_impl->mkBoolArrayVar();}    
+    
+  var_t crabLitFactory::mkPtrArrayVar()
+  { return m_impl->mkPtrArrayVar();}        
+  
+  template<>
+  var_t crabLitFactory::mkArrayVar(mem_region_t r)
+  { return m_impl->mkArrayVar(r);}
+
+  template<>
+  var_t crabLitFactory::mkArraySingletonVar(mem_region_t r)
+  { return m_impl->mkArraySingletonVar(r);}
+  
+  var_t crabLitFactory::mkIntVar(unsigned bitwidth)
+  { return m_impl->mkIntVar(bitwidth);}
+    
+  var_t crabLitFactory::mkBoolVar()
+  { return m_impl->mkBoolVar();}    
+    
+  var_t crabLitFactory::mkPtrVar()
+  { return m_impl->mkPtrVar();}        
+    
+  bool crabLitFactory::isBoolTrue(const crab_lit_ref_t ref) const
+  { return m_impl->isBoolTrue(ref);}
+    
+  bool crabLitFactory::isBoolFalse(const crab_lit_ref_t ref) const
+  { return m_impl->isBoolFalse(ref);}    
+  
+  bool crabLitFactory::isPtrNull(const crab_lit_ref_t ref) const
+  { return m_impl->isPtrNull(ref);}
+  
+  lin_exp_t crabLitFactory::getExp(const crab_lit_ref_t ref) const
+  { return m_impl->getExp(ref);}
+
+  number_t crabLitFactory::getIntCst(const crab_lit_ref_t ref) const
+  { return m_impl->getIntCst(ref);}
+
+
+  /* 
+     Helpers for memory regions.
+
+     We don't add array statements for memory regions containing
+     pointers. This means that if the load's lhs or store pointer
+     operand is a pointer we only add the corresponding pointer
+     statement (ptr_load/ptr_store) but not any extra array statement
+     (array_load/array_store). The reason is that, e.g., for the lhs
+     of a load instruction, the same variable name would be used both
+     for ptr_load and array_load with contraditing types.
+  */
+
+  static inline mem_region_t
+  get_region(HeapAbstraction &mem, Function& f, Value*v) {
+    mem_region_t res = mem.getRegion(f, v);
+    if (res.get_type() == INT_REGION || res.get_type() == BOOL_REGION) {
+      return res;
+    } else {
+      return mem_region_t();
+    }
+  }
+
+  #define GET_REGION(I,V) get_region(m_mem, *(I.getParent()->getParent()), V)
+
+  template<typename V>
+  static inline mem_region_set_t get_only_read_regions(HeapAbstraction &mem, V& v) {
+    mem_region_set_t res;
+    auto regions = mem.getOnlyReadRegions(v);
+    std::copy_if(regions.begin(), regions.end(), std::inserter(res, res.begin()),
+		 [](mem_region_t r){
+		   return r.get_type() == INT_REGION || r.get_type() == BOOL_REGION;
+		 });
+    return res;
+  }
+
+  template<typename V>
+  static inline mem_region_set_t get_modified_regions(HeapAbstraction &mem, V& v) {
+    mem_region_set_t res;
+    auto regions = mem.getModifiedRegions(v);
+    std::copy_if(regions.begin(), regions.end(), std::inserter(res, res.begin()),
+		 [](mem_region_t r){
+		   return r.get_type() == INT_REGION || r.get_type() == BOOL_REGION;
+		 });
+    return res;
+  }
+
+  template<typename V>
+  static inline mem_region_set_t get_new_regions(HeapAbstraction &mem, V& v) {
+    mem_region_set_t res;
+    auto regions = mem.getNewRegions(v);
+    std::copy_if(regions.begin(), regions.end(), std::inserter(res, res.begin()),
+		 [](mem_region_t r){
+		   return r.get_type() == INT_REGION || r.get_type() == BOOL_REGION;
+		 });
+    return res;
+  }
+
+
   static bool hasDebugLoc (const Instruction *inst) {
     if (!inst) return false;
     const DebugLoc &dloc = inst->getDebugLoc ();
@@ -380,7 +742,6 @@ namespace crab_llvm {
   static crab::cfg::debug_info getDebugLoc (const Instruction *inst) {
     if (!hasDebugLoc(inst))
       return crab::cfg::debug_info();
-
     const DebugLoc &dloc = inst->getDebugLoc ();
     unsigned Line = dloc.getLine ();
     unsigned Col = dloc.getCol ();
@@ -403,21 +764,6 @@ namespace crab_llvm {
       default: ;
     }
   }
-
-  // static bool isLogicalOp(const Instruction &I) {
-  //   return (I.getOpcode() >= Instruction::Shl &&
-  //           I.getOpcode() <= Instruction::Xor);
-  // }
-
-  // static bool isIntArithOp(const Instruction &I) {
-  //   return (I.getOpcode() == Instruction::Add ||
-  //           I.getOpcode() == Instruction::Sub ||
-  //           I.getOpcode() == Instruction::Mul ||
-  //           I.getOpcode() == Instruction::UDiv ||
-  //           I.getOpcode() == Instruction::SDiv ||
-  //           I.getOpcode() == Instruction::URem ||
-  //             I.getOpcode() == Instruction::SRem);
-  // }
 
   static bool isIntCast(const CastInst &I) {
     return I.isIntegerCast();
@@ -489,20 +835,6 @@ namespace crab_llvm {
     return F->getName().startswith("verifier.int_initializer");
   }
   
-  // static bool containsVerifierCall (BasicBlock &B) {
-  //   for (auto &I: B) {
-  //     if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-  //       CallSite CS (CI);
-  // 	const Value *calleeV = CS.getCalledValue ();
-  // 	const Function *callee =
-  // 	  dyn_cast<Function>(calleeV->stripPointerCasts());	
-  //       if (callee && isVerifierCall (callee)) 
-  //         return true;
-  //     }
-  //   }
-  //   return false;
-  // }
-
   // Return true if all uses are BranchInst's
   static bool AllUsesAreBrInst (Value* V) {
     // XXX: do not strip pointers here
@@ -549,161 +881,70 @@ namespace crab_llvm {
 	return false;
     return true;
   }
-      
-  // internal type for typed variables
-  typedef std::pair<varname_t, variable_type> typed_variable_t;
-
-  /* Used only during the translation of formal/actual function parameters */
-  static variable_type getCrabType (Type * ty) {
-    if (ty->isIntegerTy(1) && !CrabBoolAsInt)
-      return BOOL_TYPE;
-    
-    if (ty->isIntegerTy())
-      return INT_TYPE;
-    
-    if (ty->isPointerTy())
-      return PTR_TYPE;
-    
-    return UNK_TYPE;
-  }
-
 
   // helper to handle option CrabEnableUniqueScalars
   template<typename HeapAbstraction>
   static const Value* isGlobalSingleton (Region<HeapAbstraction> r) {
     if (CrabEnableUniqueScalars) {
       if (r.isUnknown()) return nullptr;
-      if (const Value* v = r.getSingleton()) return v;
+      if (r.get_type() == INT_REGION || r.get_type() == BOOL_REGION) {
+	if (const Value* v = r.getSingleton()) {
+	  return v;
+	}
+      }
     }
     return nullptr;
   }
 
-  static variable_type getRegionType (HeapAbstraction::region_t r) {
-    switch  (r.get_type ()) {
-    case INT_REGION : return ARR_INT_TYPE;
-    case BOOL_REGION: return ARR_BOOL_TYPE;
-    case PTR_REGION : return ARR_PTR_TYPE;      
-    default: llvm_unreachable("Unsupported region type");
-    }
-  }
-  
-  // static void mkUnsignedLtOrLeq (CmpInst &I,
-  // 				    crabLitFactory &lfac,
-  // 				    basic_block_t &bb,
-  // 				    z_lin_exp_t op1, z_lin_exp_t op2) {
-  //   /*
-  //      if (op1 >= 0)
-  // 	      if (op2 >= 0)
-  // 	         op1 LT|LEQ op2
-  //          else 
-  //             false
-  //      else 
-  //          if (op2 < 0)
-  //             op1 LT|LEQ op2
-  //          else 
-  //             true
-  //   */
-  //   assert (I.getPredicate () == CmpInst::ICMP_ULT ||
-  // 	       I.getPredicate () == CmpInst::ICMP_ULE);
-    
-  //   if (CrabBoolAsInt) {
-  //     /*
-  // 	b1 := op1 LT|LEQ op2 ? 1  : 0
-  // 	b2 := op2 >= 0       ? b1 : 0
-  // 	b3 := op2 < 0        ? b1 : 1
-  // 	b4 := op1 >= 0       ? b2 : b3
-  //     */
-  //     varname_t b1 = FRESH_VAR(lfac);
-  //     z_lin_cst_t c1  = ((I.getPredicate () == CmpInst::ICMP_ULT) ?
-  // 			    z_lin_cst_t(op1 <= op2 - 1) :
-  // 			    z_lin_cst_t(op1 <= op2));
-  //     bb.select (b1, c1 , 1, 0);	  
-  //     varname_t b2 = FRESH_VAR(lfac);
-  //     z_lin_cst_t c2 (op2 >= z_number (0));
-  //     bb.select (b2, c2, z_var(b1), 0);	  
-  //     varname_t b3 = FRESH_VAR(lfac);
-  //     z_lin_cst_t c3 (op2 <= -1);	  
-  //     bb.select (b3, c3, z_var(b1), 1);
-  //     z_lin_cst_t c4 (op1 >= 0);	  
-  //     bb.select (GET_VAR(I,lfac), c4, z_var(b2),z_var(b3));
-  //   } else {
-  //     
-  //   }
-  // }
-
-  static void havoc(varname_t v, basic_block_t &bb) {
-    if (CrabIncludeHavoc)
+  // helper to handle option CrabIncludeHavoc
+  static void havoc(var_t v, basic_block_t &bb) {
+    if (CrabIncludeHavoc) {
       bb.havoc(v);
-  }
-
-  #if 0
-  // this is unsound in general.
-  static z_lin_cst_t promote_inequality(z_lin_cst_t cst) {
-    if (cst.is_equality()) {
-      if (cst.constant() == ikos::z_number(0)) {
-    	if (auto v = cst.expression().get_variable()) {
-    	  // v == 0  <---> v <= 0
-    	  return z_lin_cst_t (*v <= ikos::z_number(0));
-    	}
-      } else if (cst.constant() == ikos::z_number(1)) {
-    	if (auto v = cst.expression().get_variable()) {
-    	  // v == 1  <---> v >= 1
-    	  return z_lin_cst_t (*v >= ikos::z_number(1));
-    	}
-      }
-    }  else if (cst.is_disequation()) {
-      if (cst.constant() == ikos::z_number(0)) {
-    	if (auto v = cst.expression().get_variable()) {
-    	  // v != 0  <---> v >= 1
-    	  return z_lin_cst_t (*v >= ikos::z_number(1));
-    	}
-      } else if (cst.constant() == ikos::z_number(1)) {
-    	if (auto v = cst.expression().get_variable()) {
-    	  // v != 1  <---> v <= 0
-    	  return z_lin_cst_t (*v <= ikos::z_number(0));
-    	}
-      }
     }
-    return cst;
   }
-  #endif 
-  
+    
   // Perform one of these translations depending on CrabDisableBoolean:
   //    %x = icmp geq %y, 10  ---> select(%x, %y >= 10, 1, 0)
   //                          ---> bool_assign(%x, y >= 0)
-  static void cmpInstToCrabBool(CmpInst &I,
-				crabLitFactory &lfac, basic_block_t &bb) {
+  static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac, basic_block_t &bb) {
 				
     normalizeCmpInst(I);
     
     const Value& v0 = *I.getOperand(0);
     const Value& v1 = *I.getOperand(1);
 
-    varname_t lhs = GET_VAR(I, lfac);
+    crab_lit_ref_t ref = lfac.getLit(I);
+    if (!ref || !(ref->isBool()) || !(ref->isVar())) {
+      CRABLLVM_ERROR("lhs of CmpInst should be a Boolean", __FILE__, __LINE__);
+    }
+    var_t lhs = ref->getVar();
+
+    crab_lit_ref_t ref0 = lfac.getLit(v0);
+    if (!(ref0->isInt()))
+    { havoc(lhs,bb); return;}
+
+    crab_lit_ref_t ref1 = lfac.getLit(v1);
+    if (!(ref1->isInt()))
+    { havoc(lhs,bb); return;}
     
-    boost::optional<crabNumLit> l0 = lfac.getNumLit(v0);
-    if (!l0) { havoc(lhs,bb); return;}
-    boost::optional<crabNumLit> l1 = lfac.getNumLit(v1); 
-    if (!l1) { havoc(lhs,bb); return;}
-    
-    z_lin_exp_t op0 = (*l0).getExp();
-    z_lin_exp_t op1 = (*l1).getExp();
+    lin_exp_t op0 = lfac.getExp(ref0);
+    lin_exp_t op1 = lfac.getExp(ref1);
 
     switch (I.getPredicate ()) {
     case CmpInst::ICMP_EQ: {
-      z_lin_cst_t cst(op0 == op1);
+      lin_cst_t cst(op0 == op1);
       if (isBool(I))
 	bb.bool_assign(lhs, cst);
       else 
-	bb.select(lhs, cst, 1, 0);
+	bb.select(lhs, cst, number_t(1), number_t(0));
       break;
     }
     case CmpInst::ICMP_NE: {
-      z_lin_cst_t cst(op0 != op1);
+      lin_cst_t cst(op0 != op1);
       if (isBool(I))
 	bb.bool_assign(lhs, cst);
       else
-	bb.select(lhs, cst, 1, 0);
+	bb.select(lhs, cst, number_t(1), number_t(0));
       break;
     }
     case CmpInst::ICMP_ULT: 
@@ -714,11 +955,11 @@ namespace crab_llvm {
 	break;		
       }
     case CmpInst::ICMP_SLT: {
-      z_lin_cst_t cst(op0 <= op1 - 1);
+      lin_cst_t cst(op0 <= op1 - number_t(1));
       if (isBool(I))
 	bb.bool_assign(lhs, cst);
       else 
-	bb.select(lhs, cst, 1, 0);
+	bb.select(lhs, cst, number_t(1), number_t(0));
       break;
     }
     case CmpInst::ICMP_ULE:
@@ -729,46 +970,49 @@ namespace crab_llvm {
 	break;		
       }      
     case CmpInst::ICMP_SLE: {
-      z_lin_cst_t cst(op0 <= op1);
+      lin_cst_t cst(op0 <= op1);
       if (isBool(I))
 	bb.bool_assign(lhs, cst);
       else	    
-	bb.select(lhs, cst, 1, 0);
+	bb.select(lhs, cst, number_t(1), number_t(0));
       break;
     }	
     default:  
-      llvm_unreachable ("ERROR: it should not happen while translating CmpInst");
+      CRABLLVM_ERROR ("unexpected problem while translating CmpInst", __FILE__, __LINE__);
     }
   }
 
   /* If possible, return a linear constraint from CmpInst */
-  static boost::optional<z_lin_cst_t>
+  static boost::optional<lin_cst_t>
   cmpInstToCrabInt (CmpInst &I, crabLitFactory &lfac, const bool isNegated = false) {
     normalizeCmpInst(I);
     
     const Value& v0 = *I.getOperand (0);
     const Value& v1 = *I.getOperand (1);
 
-    boost::optional<crabNumLit> l0 = lfac.getNumLit(v0);
-    if (!l0) return boost::optional<z_lin_cst_t>();
-    boost::optional<crabNumLit> l1 = lfac.getNumLit(v1); 
-    if (!l1) return boost::optional<z_lin_cst_t>();
+    crab_lit_ref_t ref0 = lfac.getLit(v0);
+    if (!ref0 || !(ref0->isInt()))
+      return boost::optional<lin_cst_t>();
+
+    crab_lit_ref_t ref1 = lfac.getLit(v1);
+    if (!ref1 || !(ref1->isInt()))
+      return boost::optional<lin_cst_t>();
     
-    z_lin_exp_t op0 = (*l0).getExp();
-    z_lin_exp_t op1 = (*l1).getExp();
+    lin_exp_t op0 = lfac.getExp(ref0);
+    lin_exp_t op1 = lfac.getExp(ref1);
     
     switch (I.getPredicate()) {
     case CmpInst::ICMP_EQ:
       if (!isNegated)
-	return z_lin_cst_t(op0 == op1);
+	return lin_cst_t(op0 == op1);
       else
-	return z_lin_cst_t(op0 != op1);
+	return lin_cst_t(op0 != op1);
       break;
     case CmpInst::ICMP_NE:
       if (!isNegated)
-	return z_lin_cst_t(op0 != op1);
+	return lin_cst_t(op0 != op1);
       else
-	return z_lin_cst_t(op0 == op1);
+	return lin_cst_t(op0 == op1);
 	break;
     case CmpInst::ICMP_ULT: 
       if (!CrabUnsoundUnsignedAsSigned) {
@@ -779,9 +1023,9 @@ namespace crab_llvm {
       }
     case CmpInst::ICMP_SLT:
       if (!isNegated)
-	return z_lin_cst_t(op0 <= op1 - 1);
+	return lin_cst_t(op0 <= op1 - number_t(1));
       else
-	return z_lin_cst_t(op0 >= op1);
+	return lin_cst_t(op0 >= op1);
       break;
     case CmpInst::ICMP_ULE:
       if (!CrabUnsoundUnsignedAsSigned) {
@@ -792,55 +1036,44 @@ namespace crab_llvm {
       }
     case CmpInst::ICMP_SLE:
       if (!isNegated)
-	return z_lin_cst_t(op0 <= op1);
+	return lin_cst_t(op0 <= op1);
       else
-	return z_lin_cst_t(op0 >= op1 + 1);
+	return lin_cst_t(op0 >= op1 + number_t(1));
       break;
     default: ;;  
     }
-    return boost::optional<z_lin_cst_t> ();
+    return boost::optional<lin_cst_t> ();
   }
 
-
-  // Create statement lhs := c from constant c and return type of c
-  static variable_type assignConstant(Constant *c, varname_t lhs,
-				      basic_block_t &bb, crabLitFactory &lfac) {
-    if (isa<ConstantInt> (c)) {
-      if (isBool(*c)) {
-	boost::optional<crabBoolLit> lit = lfac.getBoolLit(*c);
-	if (lit && (*lit).isConst()) {
-	  bb.bool_assign(lhs, (*lit).isTrue() ? CST_TRUE: CST_FALSE);
-	  return BOOL_TYPE;
-	}
+  // This function makes sure that all actual parameters and function
+  // return values are variables. This is required by crab.
+  // precondition: v is tracked.
+  static var_t normalizeFuncParamOrRet(Value& v, basic_block_t &bb, crabLitFactory &lfac) {
+    if (crab_lit_ref_t ref = lfac.getLit(v)) {
+      if (ref->isVar()) {
+	return ref->getVar();
       } else {
-	boost::optional<crabNumLit> lit = lfac.getNumLit(*c);
-	if (lit && (*lit).isNum()) {
-	  bb.assign(lhs, (*lit).getExp());
-	  return INT_TYPE;
-	}
-      }
-    } else if (isa<ConstantPointerNull>(c)) {
-      if (isPointer(*c, lfac.get_track())) {
-	boost::optional<crabPtrLit> lit = lfac.getPtrLit(*c);
-	if (lit && (*lit).isNull()) {
-	  bb.ptr_null(lhs);
-	  return PTR_TYPE;
+	// must be constant
+	if (ref->isInt()) {
+	  unsigned bitwidth = v.getType()->getIntegerBitWidth();      
+	  var_t res = lfac.mkIntVar(bitwidth);
+	  bb.assign(res, lfac.getExp(ref));
+	  return res;
+	} else if (ref->isBool()) {
+	  var_t res = lfac.mkBoolVar();
+	  bb.bool_assign(res, lfac.isBoolTrue(ref) ?
+   			 lin_cst_t::get_true(): lin_cst_t::get_false());
+	  return res;
+	} else if (ref->isPtr()) {
+	  var_t res = lfac.mkPtrVar();
+	  bb.ptr_null(res);
+	  return res;
 	}
       }
     }
-    bb.havoc (lhs);
-    return UNK_TYPE;
-  }
-  
-  static typed_variable_t normalizeFuncParamOrRet(Value& V, basic_block_t &bb,
-						  crabLitFactory &lfac) {
-    if (Constant *c = dyn_cast< Constant> (&V)) {
-      varname_t lhs = FRESH_VAR(lfac);
-      variable_type c_ty = assignConstant(c, lhs, bb, lfac);
-      return typed_variable_t(lhs, c_ty);      
-    }  else {
-      return typed_variable_t(GET_VAR(V, lfac), getCrabType(V.getType()));
-    }
+    // we should not reach this point since v is tracked.
+    CRABLLVM_ERROR("cannot normalize function parameter or return value", __FILE__, __LINE__);
+    abort(); /* to remove warning */
   }
   
   //! Translate PHI nodes
@@ -858,53 +1091,12 @@ namespace crab_llvm {
 		    basic_block_t& bb, 
                     const BasicBlock& inc_BB): 
       m_lfac(lfac), m_mem(mem), m_bb(bb), m_inc_BB(inc_BB) {}
-
-
-    bool doBoolPHINode(varname_t lhs, const Value& v){
-      boost::optional<crabBoolLit> lit = m_lfac.getBoolLit(v);
-      bool res = true;
-      if (lit && (*lit).isConst())
-	m_bb.bool_assign (lhs, (*lit).isTrue() ? CST_TRUE : CST_FALSE);		
-      else if (lit && (*lit).isVar())				
-	m_bb.bool_assign (lhs, (*lit).getVar());		
-      else {
-	CRABLLVM_WARNING("unexpected boolean PHI node");
-	res = false;
-      }
-      return res;
-    }
-
-    bool doNumPHINode(varname_t lhs, const Value& v) {
-      boost::optional<crabNumLit> lit = m_lfac.getNumLit(v);
-      bool res = true;
-      if (lit)
-	m_bb.assign (lhs, (*lit).getExp());
-      else {
-	CRABLLVM_WARNING("unexpected integer PHI node");
-	res = false;
-      }
-      return res;
-    }
-
-    bool doPtrPHINode(varname_t lhs, const Value& v) {
-      boost::optional<crabPtrLit> lit = m_lfac.getPtrLit(v);
-      bool res = true;
-      if (lit && (*lit).isNull())
-	m_bb.ptr_null(lhs);
-      else if (lit && (*lit).isVar())
-	m_bb.ptr_assign(lhs, (*lit).getVar(), z_lin_exp_t(0));		  
-      else {
-	CRABLLVM_WARNING("unexpected pointer PHI node");
-	res = false;
-      }
-      return res;
-    }
     
     void visitBasicBlock (BasicBlock &BB) {
       auto curr = BB.begin ();
       if (!isa<PHINode> (curr)) return;
 
-      DenseMap<const Value*, varname_t> old_val_map;
+      DenseMap<const Value*, var_t> old_val_map;
 
       // --- All the phi-nodes must be evaluated atomically. This
       //     means that if one phi node v1 has as incoming value
@@ -912,69 +1104,90 @@ namespace crab_llvm {
       //     the v2's old value (i.e., before v2's evaluation).
 
       for (; PHINode *phi = dyn_cast<PHINode> (curr); ++curr) {        
-
         const Value &v = *phi->getIncomingValueForBlock (&m_inc_BB);
-
         if (!isTracked(v, m_lfac.get_track())) continue;
-	
         const PHINode* phi_v = dyn_cast<PHINode> (&v);
         if (phi_v && (phi_v->getParent () == &BB)) {
 	  // -- save the old version of the variable that maps to the
 	  //    phi node v
 	  auto it = old_val_map.find(&v);
 	  if (it == old_val_map.end()) {
-	    varname_t old_val = FRESH_VAR(m_lfac);	    
-	    bool success = true;
-	    if (isBool(*phi_v)) {
-	      success &= doBoolPHINode(old_val, v);
-	    } else if (phi_v->getType()->isIntegerTy()) {
-	      success &= doNumPHINode(old_val, v);
-	    } else if (isPointer(*phi_v, m_lfac.get_track())){
-	      success &= doPtrPHINode(old_val, v);
-	    }
-	    if (success) {
-	      old_val_map.insert (std::make_pair(&v, old_val));
+	    if (crab_lit_ref_t phi_val_ref = m_lfac.getLit(v)) {
+	      if (phi_val_ref->isBool()) {
+		var_t lhs = m_lfac.mkBoolVar();
+		if (phi_val_ref->isVar()) {
+		  m_bb.bool_assign(lhs, phi_val_ref->getVar());
+		} else {
+		  m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref) ?
+				   lin_cst_t::get_true() : lin_cst_t::get_false());		
+		}		
+	    	old_val_map.insert(std::make_pair(&v, lhs));
+	      } else if (phi_val_ref->isInt()) {
+		var_t lhs = m_lfac.mkIntVar(phi_v->getType()->getIntegerBitWidth());
+		m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
+	    	old_val_map.insert(std::make_pair(&v, lhs));		
+	      } else if (phi_val_ref->isPtr()) {
+		var_t lhs = m_lfac.mkPtrVar();
+		if (phi_val_ref->isVar()) {
+		  m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));		  	
+		} else {
+		  m_bb.ptr_null(lhs);
+		}
+	    	old_val_map.insert(std::make_pair(&v, lhs));		
+	      }
 	    } else {
-	      // var leaking: it not success we would have created a
-	      // useless fresh variable
+	      CRABLLVM_ERROR("unexpected PHI node", __FILE__, __LINE__);
 	    }
 	  }
 	}
       }
-
+      
       curr = BB.begin ();
       for (; isa<PHINode> (curr); ++curr) {
         PHINode &phi = *cast<PHINode> (curr);
-        if (!isTracked(phi, m_lfac.get_track())) continue;
-	
+        if (!isTracked(phi, m_lfac.get_track())) continue;	
         const Value &v = *phi.getIncomingValueForBlock (&m_inc_BB);
-        varname_t lhs = GET_VAR(phi, m_lfac);
+
+	crab_lit_ref_t lhs_ref = m_lfac.getLit(phi);
+	if (!lhs_ref || !lhs_ref->isVar()) {
+	  CRABLLVM_ERROR("unexpected PHI instruction", __FILE__, __LINE__);
+	} 
+	var_t lhs = lhs_ref->getVar();
         auto it = old_val_map.find (&v);
         if (it != old_val_map.end ()) {
 	  // -- use old version if exists
 	  if (isBool(phi)) {
 	    m_bb.bool_assign(lhs, it->second);
 	  } else if (phi.getType()->isIntegerTy()) {
-	    m_bb.assign (lhs, z_lin_exp_t(it->second));
+	    m_bb.assign (lhs, it->second);
 	  } else if (isPointer(phi, m_lfac.get_track())){
-	    m_bb.ptr_assign(lhs, it->second, z_lin_exp_t(0));
+	    m_bb.ptr_assign(lhs, it->second, number_t(0));
 	  }
         } else {
-	  bool success=true;
-	  if (isBool(phi)) {
-	    success &= doBoolPHINode(lhs, v);
-	  } else if (phi.getType()->isIntegerTy()) {
-	    success &= doNumPHINode(lhs,v);
-	  } else if (isPointer(phi, m_lfac.get_track())){
-	    success &= doPtrPHINode(lhs, v);
+	  if (crab_lit_ref_t phi_val_ref = m_lfac.getLit(v)) {
+	    if (phi_val_ref->isBool()) {
+	      if (phi_val_ref->isVar()) {
+		m_bb.bool_assign(lhs, phi_val_ref->getVar());
+	      } else {
+		m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref) ?
+				 lin_cst_t::get_true() : lin_cst_t::get_false());		
+	      }
+	    } else if (phi_val_ref->isInt()) {
+	      m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
+	    } else if (phi_val_ref->isPtr()) {
+	      if (phi_val_ref->isVar()) {
+		m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));		  	
+	      } else {
+		m_bb.ptr_null(lhs);
+	      }
+	    } else { /* unreachable*/ }
+	  } else {
+	    CRABLLVM_ERROR("unexpected PHI node", __FILE__, __LINE__);
 	  }
-	  
-	  if (!success) havoc(lhs,m_bb);
 	}
       }
     }
   };
-
 			     
   //! Translate the rest of instructions
   class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
@@ -987,10 +1200,7 @@ namespace crab_llvm {
     const bool m_is_inter_proc;
     unsigned int m_object_id;
     bool m_has_seahorn_fail;
-    
-    typedef typename HeapAbstraction::region_t region_t;
-    typedef typename HeapAbstraction::region_set_t region_set_t;
-    
+        
     unsigned fieldOffset (const StructType *t, unsigned field) {
       return m_dl->getStructLayout (const_cast<StructType*>(t))->
           getElementOffset (field);
@@ -1039,224 +1249,261 @@ namespace crab_llvm {
       return true;
     }
     
-    void doArithmetic (varname_t lhs, BinaryOperator &i) {
+    void doBinOp(unsigned op, var_t lhs, lin_exp_t op1, lin_exp_t op2) {
+      switch(op) {
+      case BinaryOperator::Add:
+	if (op1.get_variable() && op2.get_variable())	  
+	  m_bb.add(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.add(lhs, (*op1.get_variable()), op2.constant());	    
+	return;
+      case BinaryOperator::Sub:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.sub(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.sub(lhs, (*op1.get_variable()), op2.constant());	    
+	return;
+      case BinaryOperator::Mul:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.mul(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.mul(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      case BinaryOperator::SDiv:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.div(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.div(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      case BinaryOperator::UDiv:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.udiv(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.udiv(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      case BinaryOperator::SRem:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	    m_bb.rem(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.rem(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      case BinaryOperator::URem:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.urem(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.urem(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      case BinaryOperator::And:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.bitwise_and(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.bitwise_and(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      case BinaryOperator::Or:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.bitwise_or(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	    m_bb.bitwise_or(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      case BinaryOperator::Xor:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.bitwise_xor(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.bitwise_xor(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      default:;;
+      }
+      CRABLLVM_ERROR("unexpected problem with binary operator", __FILE__, __LINE__);
+    }
+
+    
+    void doArithmetic (crab_lit_ref_t ref, BinaryOperator &i) {
+      if (!ref || !ref->isVar() || !(ref->isInt())) {
+	CRABLLVM_ERROR("lhs of arithmetic operation must be an integer", __FILE__, __LINE__);
+      }
+      var_t lhs = ref->getVar();
+
       const Value& v1 = *i.getOperand(0);
       const Value& v2 = *i.getOperand(1);
-
-      boost::optional<crabNumLit> l1 = m_lfac.getNumLit(v1);
-      if (!l1) {havoc(lhs,m_bb); return;}
-      boost::optional<crabNumLit> l2 = m_lfac.getNumLit(v2); 
-      if (!l2) {havoc(lhs,m_bb); return;}
       
-      z_lin_exp_t op1 = (*l1).getExp();
-      z_lin_exp_t op2 = (*l2).getExp();
+      crab_lit_ref_t ref1 = m_lfac.getLit(v1);
+      if (!ref1 || !(ref1->isInt()))
+      {havoc(lhs,m_bb); return;}
+
+      crab_lit_ref_t ref2 = m_lfac.getLit(v2);
+      if (!ref2 || !(ref2->isInt()))
+      {havoc(lhs,m_bb); return;}
+      
+      lin_exp_t op1 = m_lfac.getExp(ref1);
+      lin_exp_t op2 = m_lfac.getExp(ref2);
+
+      if (op1.is_constant() && op2.is_constant ()) {
+	// Crab cfg api does not support arithmetic operations with
+	// both constant operands.  Llvm frontend should get rid of them.
+	CRABLLVM_WARNING("ignored arithmetic operation with both constant operands");
+	havoc(lhs, m_bb);
+	return;
+      }
       
       switch(i.getOpcode()) {
       case BinaryOperator::Add:
-	m_bb.add(lhs, op1, op2);
-	break;
       case BinaryOperator::Sub:
-	if (op1.is_constant()) { 
-	  // Crab cfg does not support subtraction of a constant by a
-	  // variable because the crab api for abstract domains
-	  // does not support it.
-	  m_bb.assign(lhs, z_lin_exp_t (op1.constant ()));
-	  m_bb.sub(lhs, z_lin_exp_t (lhs), op2);
-	} else {
-	  m_bb.sub(lhs, op1, op2);
-	}
-	break;
       case BinaryOperator::Mul:
-	m_bb.mul(lhs, op1, op2);
-	break;
       case BinaryOperator::SDiv:
-	if (op1.is_constant()) {            
-	  // Crab cfg does not support division of a constant by a
-	  // variable because the crab api for abstract domains
-	  // does not support it.
-	  m_bb.assign (lhs, z_lin_exp_t (op1.constant ()));
-	  m_bb.div (lhs, z_lin_exp_t (lhs), op2);
-	} else {
-	  m_bb.div (lhs, op1, op2);
-	}
-	break;
       case BinaryOperator::UDiv:
-	if (op1.is_constant() && op2.is_constant ()) {
-	  // Crab cfg api does not support unsigned arithmetic operations
-	  // with both constant operands. Llvm frontend should get
-	  // rid of them.
-	  CRABLLVM_WARNING("ignored udiv with both constant operands");
-	  havoc(lhs,m_bb);
-	} else if (op1.is_constant()) {  
-	  // Crab cfg does not support division of a constant by a
-	  // variable because the crab api for abstract domains
-	  // does not support it.
-	  m_bb.assign(lhs, z_lin_exp_t (op1.constant ()));
-	  m_bb.udiv(lhs, z_lin_exp_t (lhs), op2);
-	} else {
-	  m_bb.udiv(lhs, op1, op2);
-	}
-	break;
       case BinaryOperator::SRem:
-	if (op1.is_constant()) {           
-	  // Crab cfg does not support rem of a constant by a
-	  // variable because the crab api for abstract domains
-	  // does not support it.
-	  m_bb.assign(lhs, z_lin_exp_t (op1.constant ()));
-	  m_bb.rem(lhs, z_lin_exp_t (lhs), op2);
+      case BinaryOperator::URem:	
+	if (op1.is_constant()) { 
+	  // Crab cfg does not support add/sub/mul/div of a constant and variable.
+	  m_bb.assign(lhs, op1.constant ());
+	  doBinOp(i.getOpcode(), lhs, lhs, op2);
 	} else {
-	  m_bb.rem(lhs, op1, op2);
-	}
-	break;
-      case BinaryOperator::URem:
-	if (op1.is_constant() && op2.is_constant ()) {
-	  // Crab cfg does not support unsigned arithmetic
-	  // operations with both constant operands. Llvm frontend
-	  // should get rid of them.
-	  CRABLLVM_WARNING("ignored urem with constant operands");
-	  havoc(lhs,m_bb);
-	} else if (op1.is_constant()) {
-	  // Crab cfg does not support rem of a constant by a
-	  // variable because the crab api for abstract domains does
-	  // not support it.
-	  m_bb.assign (lhs, z_lin_exp_t (op1.constant ()));
-	  m_bb.urem (lhs, z_lin_exp_t (lhs), op2);
-	} else {
-	  m_bb.urem (lhs, op1, op2);
+	  doBinOp(i.getOpcode(), lhs, op1, op2);	  
 	}
 	break;
       case BinaryOperator::Shl:
 	if (op2.is_constant()) {
-	  ikos::z_number shift = op2.constant ();
-	  if (shift < 0)
-	    llvm_unreachable("shl shift operand cannot be negative");
-	  
-	  ikos::z_number factor = 1;
-	  for (ikos::z_number i = 0; i < shift; i++) 
+	  number_t shift = op2.constant ();
+	  if (shift < 0) {
+	    CRABLLVM_ERROR("shl shift operand cannot be negative", __FILE__, __LINE__);
+	  }
+	  number_t factor = 1;
+	  for (number_t i = 0; i < shift; i++) 
 	  { factor *= 2; }
-	  m_bb.mul (lhs, op1, z_lin_exp_t (factor));            
+	  doBinOp(BinaryOperator::Mul, lhs, op1, factor);
 	} else {
+	  // TODO: shl with non-constant shift
 	  CRABLLVM_WARNING("translation skipped shl with non-constant shift");
 	  havoc(lhs,m_bb);
 	}
 	break;
       case BinaryOperator::AShr:
 	if (op2.is_constant()) {
-	  ikos::z_number shift = op2.constant ();
-	  if (shift < 0)
-	    llvm_unreachable("ashr shift operand cannot be negative");
-	  
-	  ikos::z_number factor = 1;
-	  for (ikos::z_number i = 0; i < shift; i++) 
+	  number_t shift = op2.constant ();
+	  if (shift < 0) {
+	    CRABLLVM_ERROR("ashr shift operand cannot be negative", __FILE__, __LINE__);
+	  }
+	  number_t factor = 1;
+	  for (number_t i = 0; i < shift; i++) 
 	  { factor *= 2; }
-	  m_bb.div (lhs, op1, z_lin_exp_t (factor));            
+	  doBinOp(BinaryOperator::SDiv, lhs, op1, factor);	  
 	} else {
+	  // TODO: ashr with non-constant shift
 	  CRABLLVM_WARNING("translation skipped ashr with non-constant shift");
 	  havoc(lhs,m_bb);
 	}
 	break;
       default:
 	CRABLLVM_WARNING("translation skipped " << i << " at line " << __LINE__);
-	havoc(lhs,m_bb);
+	havoc(lhs, m_bb);
       }
     }
-
-    void doBoolLogicOp(Instruction::BinaryOps op,
-		       varname_t lhs, const Value& v1, const Value& v2, 
-		       BinaryOperator *i = nullptr) {
-
-      boost::optional<crabBoolLit> l1 = m_lfac.getBoolLit(v1);
-      if (!l1) {havoc(lhs,m_bb); return;}
-      boost::optional<crabBoolLit> l2 = m_lfac.getBoolLit(v2); 
-      if (!l2) {havoc(lhs,m_bb); return;}
+    
+    var_t doBoolLogicOp(Instruction::BinaryOps op,
+			/* ref can null */
+			crab_lit_ref_t ref, const Value& v1, const Value& v2) {
       
-      crabBoolLit b1 = *l1;
-      crabBoolLit b2 = *l2;
+      if (ref && !(ref->isBool())) {
+	CRABLLVM_ERROR("lhs of arithmetic operation must be an Boolean", __FILE__, __LINE__);
+      }
       
+      var_t lhs = (ref ? ref->getVar() : m_lfac.mkBoolVar());
+      
+      crab_lit_ref_t b1 = m_lfac.getLit(v1);
+      if (!b1 || !(b1->isBool()))
+      {havoc(lhs, m_bb); return lhs;}
+
+      crab_lit_ref_t b2 = m_lfac.getLit(v2);
+      if (!b2 || !(b2->isBool()))
+      {havoc(lhs, m_bb); return lhs;}
+           
       switch(op) {
       case BinaryOperator::And:
-	if (b1.isConst() && b2.isConst ()) {
-	  m_bb.bool_assign (lhs, b1.isTrue() && b2.isTrue()?
-			    CST_TRUE : CST_FALSE);
-	} else if (b1.isFalse() || b2.isFalse()) {
-	  m_bb.bool_assign (lhs, CST_FALSE);
-	} else if (b1.isTrue()) {
-	  m_bb.bool_assign (lhs, b2.getVar());
-	} else if (b2.isTrue()) {
-	  m_bb.bool_assign (lhs, b1.getVar());
-	} else if (b1.isVar() && b2.isVar()) {
-	  m_bb.bool_and(lhs, b1.getVar(), b2.getVar());
+	if (b1->isVar() && b2->isVar()) {
+	  m_bb.bool_and(lhs, b1->getVar(), b2->getVar());
+	} else if (!b1->isVar() && !b2->isVar()) {	
+	  m_bb.bool_assign (lhs, m_lfac.isBoolTrue(b1) && m_lfac.isBoolTrue(b2)?
+			    lin_cst_t::get_true() : lin_cst_t::get_false());
+	} else if (m_lfac.isBoolFalse(b1) || m_lfac.isBoolFalse(b2)) {
+	  m_bb.bool_assign (lhs, lin_cst_t::get_false());
+	} else if (m_lfac.isBoolTrue(b1)) {
+	  m_bb.bool_assign (lhs, b2->getVar());
+	} else if (m_lfac.isBoolTrue(b2)) {
+	  m_bb.bool_assign (lhs, b1->getVar());
 	} else {
-	  llvm_unreachable("ERROR: unexpected uncovered case in doBoolLogicOp And");
+	  CRABLLVM_ERROR("unexpected uncovered case in doBoolLogicOp And", __FILE__, __LINE__);
 	}
 	break;
       case BinaryOperator::Or:
-	if (b1.isConst() && b2.isConst ()) {
-	  m_bb.bool_assign (lhs,  b1.isTrue() || b2.isTrue()?
-			    CST_TRUE: CST_FALSE);
-	} else if (b1.isTrue() || b2.isTrue()){
-	  m_bb.bool_assign (lhs, CST_TRUE);
-	} else if (b1.isFalse()) {
-	  m_bb.bool_assign (lhs, b2.getVar());
-	} else if (b2.isFalse()) {
-	  m_bb.bool_assign (lhs, b1.getVar());
-	} else if (b1.isVar() && b2.isVar()) {
-	  m_bb.bool_or(lhs, b1.getVar(), b2.getVar());
+	if (b1->isVar() && b2->isVar()) {
+	  m_bb.bool_or(lhs, b1->getVar(), b2->getVar());
+	} else if (!b1->isVar() && !b2->isVar()) {	 
+	  m_bb.bool_assign (lhs,  m_lfac.isBoolTrue(b1) || m_lfac.isBoolTrue(b2)?
+			    lin_cst_t::get_true(): lin_cst_t::get_false());
+	} else if (m_lfac.isBoolTrue(b1) || m_lfac.isBoolTrue(b2)){
+	  m_bb.bool_assign (lhs, lin_cst_t::get_true());
+	} else if (m_lfac.isBoolFalse(b1)) {
+	  m_bb.bool_assign (lhs, b2->getVar());
+	} else if (m_lfac.isBoolFalse(b2)) {
+	  m_bb.bool_assign (lhs, b1->getVar());
 	} else {
-	  llvm_unreachable("ERROR: unexpected uncovered case in doBoolLogicOp Or");
-	  }
+	  CRABLLVM_ERROR("unexpected uncovered case in doBoolLogicOp Or", __FILE__, __LINE__);
+	}
 	break;
       case BinaryOperator::Xor:
-	if (b1.isConst() && b2.isConst ()) {
-	  m_bb.bool_assign (lhs, (((b1.isTrue() && b2.isFalse()) ||
-				   (b1.isFalse() && b2.isTrue())) ?
-				  CST_TRUE: CST_FALSE));
-	} else if (b1.isTrue()){
-	  m_bb.bool_assign (lhs, b2.getVar(), true /*negate rhs*/);
-	} else if (b1.isFalse()){
-	  m_bb.bool_assign (lhs, b2.getVar());
-	} else if (b2.isTrue()) {
-	    m_bb.bool_assign (lhs, b1.getVar(), true /*negate rhs*/);
-	} else if (b2.isFalse()) {
-	  m_bb.bool_assign (lhs, b1.getVar());	    
-	} else if (b1.isVar() && b2.isVar()){
-	  m_bb.bool_xor(lhs, b1.getVar(), b2.getVar());
+	if (b1->isVar() && b2->isVar()){
+	  m_bb.bool_xor(lhs, b1->getVar(), b2->getVar());
+	} else if (!b1->isVar() && !b2->isVar()) {	 
+	  m_bb.bool_assign (lhs, (((m_lfac.isBoolTrue(b1)  && m_lfac.isBoolFalse(b2)) ||
+				   (m_lfac.isBoolFalse(b1) && m_lfac.isBoolTrue(b2))) ?
+				  lin_cst_t::get_true(): lin_cst_t::get_false()));
+	} else if (m_lfac.isBoolTrue(b1)){
+	  m_bb.bool_assign (lhs, b2->getVar(), true /*negate rhs*/);
+	} else if (m_lfac.isBoolFalse(b1)){
+	  m_bb.bool_assign (lhs, b2->getVar());
+	} else if (m_lfac.isBoolTrue(b2)) {
+	  m_bb.bool_assign (lhs, b1->getVar(), true /*negate rhs*/);
+	} else if (m_lfac.isBoolFalse(b2)) {
+	  m_bb.bool_assign (lhs, b1->getVar());	    
 	} else {
-	  llvm_unreachable("ERROR: unexpected uncovered case in doBoolLogicOp Xor");
+	  CRABLLVM_ERROR("unexpected uncovered case in doBoolLogicOp Xor", __FILE__, __LINE__);
 	}
 	break;
       default:
-	if (i) {
-	  CRABLLVM_WARNING("translation skipped " << *i << " at line " << __LINE__);
-	} else  {
-	  CRABLLVM_WARNING("translation skipped bool logic operation");
-	}
-	havoc(lhs,m_bb);
+	CRABLLVM_WARNING("translation skipped bool logic operation at line " << __LINE__);
+	havoc(lhs, m_bb);
       }
+      return lhs;
     }
 
-    void doIntLogicOp(varname_t lhs, BinaryOperator &i) {
+    void doIntLogicOp(crab_lit_ref_t ref, BinaryOperator &i) {
+      assert (ref && ref->isVar());
+
+      if (!(ref->isInt())) {
+	CRABLLVM_ERROR("lhs of bitwise operation must be an integer", __FILE__, __LINE__);
+      }
+      var_t lhs = ref->getVar();
+
       const Value& v1 = *i.getOperand(0);
       const Value& v2 = *i.getOperand(1);
 
-      boost::optional<crabNumLit> l1 = m_lfac.getNumLit(v1);
-      if (!l1) {havoc(lhs,m_bb); return;}
-      boost::optional<crabNumLit> l2 = m_lfac.getNumLit(v2); 
-      if (!l2) {havoc(lhs,m_bb); return;}
+      crab_lit_ref_t ref1 = m_lfac.getLit(v1);
+      if (!ref1 || !(ref1->isInt()))
+      {havoc(lhs,m_bb); return;}
+
+      crab_lit_ref_t ref2 = m_lfac.getLit(v2);
+      if (!ref2 || !(ref2->isInt()))
+      {havoc(lhs,m_bb); return;}
       
-      z_lin_exp_t op1 = (*l1).getExp();
-      z_lin_exp_t op2 = (*l2).getExp();
-      
+      lin_exp_t op1 = m_lfac.getExp(ref1);
+      lin_exp_t op2 = m_lfac.getExp(ref2);
+
       switch(i.getOpcode()) {
         case BinaryOperator::And:
-          m_bb.bitwise_and(lhs, op1, op2);
-          break;
         case BinaryOperator::Or:
-          m_bb.bitwise_or(lhs, op1, op2);
-          break;
         case BinaryOperator::Xor:
-          m_bb.bitwise_xor(lhs, op1, op2);
-          break;
+	  doBinOp(BinaryOperator::And, lhs, op1, op2);
+	  break;
         default:
 	  CRABLLVM_WARNING("translation skipped " << i << " at line " << __LINE__);
           havoc(lhs,m_bb);
@@ -1264,18 +1511,22 @@ namespace crab_llvm {
     }
 
     void doAllocFn (Instruction &I) {
-      
-      if (isPointer(I, m_lfac.get_track())) {
-	m_bb.ptr_new_object(GET_VAR(I, m_lfac), m_object_id++);
-      }
 
-      if (false &&
-	  m_lfac.get_track() >= ARR && CrabArrayInit && CrabUnsoundArrayInit) {
-        region_t r = GET_REGION(I,&I);
-        bool isMainCaller =
-	  I.getParent()->getParent()->getName().equals("main");
+      if (!I.getType()->isVoidTy()) {
+	crab_lit_ref_t ref = m_lfac.getLit(I);
+	assert(ref->isVar());
+	if (isPointer(I, m_lfac.get_track())) {
+	  m_bb.ptr_new_object(ref->getVar(), m_object_id++);
+	} else if (isTracked(I, m_lfac.get_track())) {
+	  // -- havoc return value	  
+	  havoc(ref->getVar(), m_bb);
+	}
+      }
+      
+      if (false && m_lfac.get_track() >= ARR && CrabArrayInit && CrabUnsoundArrayInit) {
+        mem_region_t r = GET_REGION(I,&I);
+        bool isMainCaller = I.getParent()->getParent()->getName().equals("main");
         if (isMainCaller && !r.isUnknown()) {
-          // We apply here again the "Initialization hook"
 	  // TODO: add an array_assume statement.
 	  // We need to figure out:
 	  // - the number of elements and the size of each element
@@ -1284,11 +1535,6 @@ namespace crab_llvm {
         }
       }
 
-      // -- havoc return value
-      if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track()) &&
-	  !isPointer(I, m_lfac.get_track())) {
-	havoc(GET_VAR(I, m_lfac), m_bb);
-      }
     }
 
     void doMemIntrinsic(MemIntrinsic& I) {
@@ -1296,55 +1542,45 @@ namespace crab_llvm {
       if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(&I)) {
 	Value* src = MCI->getSource ();
 	Value* dst = MCI->getDest ();
-	region_t dst_reg = GET_REGION(I,dst); 
-	region_t src_reg = GET_REGION(I,src);
+	mem_region_t src_reg = GET_REGION(I,src);
+	mem_region_t dst_reg = GET_REGION(I,dst); 
 	if (dst_reg.isUnknown () || src_reg.isUnknown ()) return;
-	m_bb.havoc (GET_VAR_FROM_REGION(dst_reg, m_lfac));
+	m_bb.havoc (m_lfac.mkArrayVar(dst_reg));
 	if (dst_reg.get_type () == src_reg.get_type()) {
-	  m_bb.array_assign (GET_VAR_FROM_REGION(dst_reg, m_lfac),
-			     GET_VAR_FROM_REGION(src_reg, m_lfac),
-			     getRegionType(dst_reg));
+	  m_bb.array_assign (m_lfac.mkArrayVar(dst_reg), m_lfac.mkArrayVar(src_reg));
 	}
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
 	
 	if (CrabUnsoundArrayInit && isInteger(*(MSI->getValue()))) {
 	  Value* dst = MSI->getDest();
-	  region_t r = GET_REGION(I,dst);
+	  mem_region_t r = GET_REGION(I,dst);
 	  if (r.isUnknown()) return;
 
-	  if (boost::optional<crabNumLit> len = m_lfac.getNumLit(*(MSI->getLength()))) {
-	    z_lin_exp_t lb_idx(ikos::z_number(0));
-	    z_lin_exp_t ub_idx((*len).getExp());
-	    m_bb.havoc(GET_VAR_FROM_REGION(r, m_lfac));	    
-	    // FIXME/TODO: double check this
-	    uint64_t elem_size = MSI->getAlignment();
-
-	    if (boost::optional<crabNumLit> v = m_lfac.getNumLit(*(MSI->getValue()))) {
-	      assert(getRegionType(r) == ARR_INT_TYPE && "This should not happen!");
-	      if ((*v).isNum()) {
-		m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
-				   getRegionType(r), elem_size,
-				   lb_idx, ub_idx, (*v).getNum());
+	  crab_lit_ref_t len_ref = m_lfac.getLit(*(MSI->getLength()));
+	  crab_lit_ref_t val_ref = m_lfac.getLit(*(MSI->getValue()));
+	  
+	  if (len_ref->isInt()) {
+	    lin_exp_t lb_idx(number_t(0));
+	    lin_exp_t ub_idx(m_lfac.getExp(len_ref));
+	    var_t arr_var = m_lfac.mkArrayVar(r);
+	    uint64_t elem_size = MSI->getAlignment(); /*double check this*/
+	    if (val_ref->isInt()) {
+	      if (val_ref->isVar()) {
+		m_bb.array_assume (arr_var, elem_size, lb_idx, ub_idx, val_ref->getVar());
 	      } else {
-		m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
-				   getRegionType(r), elem_size,
-				   lb_idx, ub_idx, (*v).getVar());
+		m_bb.array_assume (arr_var, elem_size, lb_idx, ub_idx, m_lfac.getIntCst(val_ref));
 	      }
-	    } else if (boost::optional<crabBoolLit> v = m_lfac.getBoolLit(*(MSI->getValue()))) {
-	      assert(getRegionType(r) == ARR_BOOL_TYPE && "This should not happen!");
-	      if ((*v).isConst()) {
-		z_number bv(0);
-		if ((*v).isTrue()) bv = z_number(1);
-		m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
-				   getRegionType(r), elem_size,
-				   lb_idx, ub_idx, bv);
+	    } else if (val_ref->isBool()) {
+	      if (val_ref->isVar()) {
+		m_bb.array_assume (arr_var, elem_size,lb_idx, ub_idx, val_ref->getVar());
 	      } else {
-		m_bb.array_assume (GET_VAR_FROM_REGION(r, m_lfac),
-				   getRegionType(r), elem_size,
-				   lb_idx, ub_idx, varname_t((*v).getVar()));
+		m_bb.array_assume (arr_var, elem_size, lb_idx, ub_idx,
+				   m_lfac.isBoolTrue(val_ref) ? number_t(1): number_t(0));
 	      }
+	    } else if (val_ref->isPtr()) {
+	      /** This should not happen since we ignore array of pointers **/
+	      m_bb.havoc(arr_var);	      
 	    }
-	    /** TODO: array of pointers **/
 	  }
 	}
       }
@@ -1352,78 +1588,68 @@ namespace crab_llvm {
 
     /* verifier.zero_initializer(v) or verifier.int_initializer(v,k) */    
     void doInitializer(CallInst &I) {
-
       CallSite CS (&I);
       // v is either a global variable or a gep instruction that
       // indexes an address inside the global variable.
-      Value *v =  CS.getArgument (0);
-      Type* Ty = cast<PointerType>(v->getType())->getElementType();
+      Value *v = CS.getArgument (0);
+      Type* ty = cast<PointerType>(v->getType())->getElementType();
       
       auto r = GET_REGION(I, v);
       if (!r.isUnknown()) {
-	if (const Value* s = isGlobalSingleton(r)) {
-	  if (isInteger(Ty)) {
-	    ikos::z_number init_val(ikos::z_number(0));
-	    if (CS.arg_size() == 2) {
-	      /* verifier.int_initializer(v,k) */
-	      if (boost::optional<crabNumLit> linit_val = m_lfac.getNumLit(*(CS.getArgument(1)))) {
-		init_val = (*linit_val).getNum();
-	      }
-	    }
-	    m_bb.assign (GET_VAR(*s, m_lfac), init_val);
-	  } else if (isBool(Ty)) {
-	    z_lin_cst_t init_val(z_lin_cst_t::get_false());
-	    if (CS.arg_size() == 2) {
-	      /* verifier.int_initializer(v,k) */	      
-	      if (boost::optional<crabBoolLit> linit_val = m_lfac.getBoolLit(*(CS.getArgument(1)))) {
-		if ((*linit_val).isTrue())
-		  init_val = z_lin_cst_t::get_true();
-	      }
-	    }
-	    m_bb.bool_assign(GET_VAR(*s, m_lfac), init_val);
-	  } else {
-	    /** TODO: pointer singleton **/
-	  }
-	} else if (isInteger(Ty) || isBool(Ty) || isIntArray(*Ty) || isBoolArray(*Ty)){
-	  
-	  ikos::z_number init_val(ikos::z_number(0));
-	  z_lin_exp_t lb_idx(ikos::z_number(0));
-	  z_lin_exp_t ub_idx(ikos::z_number(0));
-	  uint64_t elem_size = storageSize(Ty);
-	  varname_t a = GET_VAR_FROM_REGION(r, m_lfac);
-	  
-	  if (CS.arg_size() == 2) { /* verifier.int_initializer(v,k) */
-	    if (boost::optional<crabNumLit> linit_val =
-		m_lfac.getNumLit(*(CS.getArgument(1)))) {
-	      init_val = (*linit_val).getNum();
-	    } else if (boost::optional<crabBoolLit> linit_val =
-		       m_lfac.getBoolLit(*(CS.getArgument(1)))) {
-	      if ((*linit_val).isTrue())
-		init_val = ikos::z_number(1);
+	crab_lit_ref_t ref = nullptr;
+	if (CS.arg_size() == 2) {
+	  ref= m_lfac.getLit(*(CS.getArgument(1)));
+	  assert(ref);
+	}
+	if (isGlobalSingleton(r)) {
+	  // Promote the global to an integer/boolean scalar
+	  var_t s = m_lfac.mkArraySingletonVar(r);
+	  if (isInteger(ty)) {
+	    number_t init_val = ((CS.arg_size() == 2) && !ref->isVar() ?
+				 m_lfac.getIntCst(ref) : number_t(0));
+	    m_bb.assign (s, init_val);
+	  } else if (isBool(ty)) {
+	    lin_cst_t init_val = ((CS.arg_size() == 2) &&
+				  !ref->isVar() && m_lfac.isBoolTrue(ref) ?
+				  lin_cst_t::get_true() : lin_cst_t::get_false());
+	    m_bb.bool_assign(s, init_val);
+	  } else { /* unreachable*/ }
+	} else {
+	  number_t init_val(0);
+	  lin_exp_t lb_idx(number_t(0));
+	  lin_exp_t ub_idx(number_t(0));
+	  uint64_t elem_size = storageSize(ty);
+	  var_t a = m_lfac.mkArrayVar(r);
+
+	  /* verifier.int_initializer(v,k) */
+	  if (CS.arg_size() == 2) { 
+	    if (ref->isInt()) {
+	      init_val = m_lfac.getIntCst(ref);
+	    } else if (ref->isBool()) {
+	      if (m_lfac.isBoolTrue(ref)) init_val = number_t(1);
 	    } else {
 	      // unreachable
-	      llvm_unreachable("2nd argument of verifier.int_initializer must be int or bool");
+	      CRABLLVM_ERROR("second argument of verifier.int_initializer must be int or bool",
+			     __FILE__, __LINE__);
 	    }
 	  }
-	  
-	  if (isInteger(Ty) || isBool(Ty)) {
-	    m_bb.array_assume (a, getRegionType(r), elem_size, lb_idx, ub_idx, init_val);
-	  } else if (isIntArray(*Ty) || isBoolArray(*Ty)){
-	    if (cast<ArrayType>(Ty)->getNumElements() == 0) {
+
+	  /* verifier.zero_initializer(v) */
+	  if (isInteger(ty) || isBool(ty)) {
+	    m_bb.array_assume (a, elem_size, lb_idx, ub_idx, init_val);
+	  } else if (isIntArray(*ty) || isBoolArray(*ty)) {
+	    if (cast<ArrayType>(ty)->getNumElements() == 0) {
 	      // TODO: zero-length array are possible inside structs We
 	      // can simply make ub_idx > 0.  However, DSA is very
 	      // likely that it will collapse anyway so the fact we skip
 	      // the translation won't make any difference.
-	      CRAB_WARN("translation skipped a zero-length array");
+	      CRABLLVM_WARNING("translation skipped a zero-length array");
 	    } else {
-	      elem_size = storageSize(cast<ArrayType>(Ty)->getElementType());
-	      ub_idx = z_lin_exp_t((cast<ArrayType>(Ty)->getNumElements() - 1)* elem_size);
-	      m_bb.array_assume (a, getRegionType(r), elem_size,
-				 lb_idx, ub_idx, init_val);
+	      elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
+	      ub_idx = lin_exp_t((cast<ArrayType>(ty)->getNumElements() - 1)* elem_size);
+	      m_bb.array_assume (a, elem_size, lb_idx, ub_idx, init_val);
 	    }
-	  }
-	} else {
-	  /** TODO: array of pointers **/
+	  } else { /** unreachable **/ }
 	}
       }
     }
@@ -1436,7 +1662,7 @@ namespace crab_llvm {
       if (!callee) return;
             
       if (isErrorFn(callee)) {
-        m_bb.assertion(CST_FALSE, getDebugLoc(&I));
+        m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
         return;
       }
 
@@ -1456,7 +1682,7 @@ namespace crab_llvm {
       Value *cond = CS.getArgument (0);
       
       if (!isTracked(*cond, m_lfac.get_track())) return;
-
+      
       if (ConstantInt *CI = dyn_cast<ConstantInt> (cond)) {
         // -- cond is a constant
 	if (auto n = getIntConstant(CI)) {
@@ -1466,40 +1692,41 @@ namespace crab_llvm {
 	      // do nothing
 	    } else {
 	      assert(isNotAssumeFn(callee));
-	      m_bb.assume(CST_FALSE); 	      
+	      m_bb.assume(lin_cst_t::get_false()); 	      
 	    }
 	  } else {
 	    if (isNotAssumeFn(callee)) {
 	      // do nothing
 	    } else if (isAssumeFn(callee)) {
-	      m_bb.assume(CST_FALSE);
+	      m_bb.assume(lin_cst_t::get_false());
 	    } else {
 	      assert(isAssertFn(callee));
-	      m_bb.assertion(CST_FALSE, getDebugLoc(&I));
+	      m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
 	    }
 	  }
 	}
       } else {
-	varname_t lhs = GET_VAR(*cond, m_lfac);
-	// -- cond is not a constant
-	if (isBool(*cond)) {
+	crab_lit_ref_t cond_ref = m_lfac.getLit(*cond);
+	assert(cond_ref->isVar());
+	var_t v = cond_ref->getVar();
+	// -- cond is variable
+	if (cond_ref->isBool()) {
 	  if (isNotAssumeFn(callee))
-	    m_bb.bool_not_assume(lhs);
+	    m_bb.bool_not_assume(v);
 	  else if (isAssumeFn(callee))
-	    m_bb.bool_assume(lhs);
+	    m_bb.bool_assume(v);
 	  else  {
 	    assert(isAssertFn(callee));
-	    m_bb.bool_assert(lhs, getDebugLoc(&I));
+	    m_bb.bool_assert(v, getDebugLoc(&I));
 	  }
-	} else {
+	} else if (cond_ref->isInt()){
 	  if (isNotAssumeFn(callee))
-	    m_bb.assume(z_lin_exp_t(lhs) <= z_lin_exp_t(0));
+	    m_bb.assume(v <= number_t(0));
 	  else if (isAssumeFn(callee))
-	    m_bb.assume(z_lin_exp_t(lhs) >= z_lin_exp_t(1));
+	    m_bb.assume(v >= number_t(1));
 	  else  {
 	    assert(isAssertFn(callee));
-	    m_bb.assertion(z_lin_exp_t(lhs) >= z_lin_exp_t(1),
-			   getDebugLoc(&I));
+	    m_bb.assertion(v >= number_t(1), getDebugLoc(&I));
 	  }
 	}
       }
@@ -1534,12 +1761,15 @@ namespace crab_llvm {
       
       if (!isTracked(I, m_lfac.get_track())) return;
 
+      crab_lit_ref_t ref = m_lfac.getLit(I);
+      assert(ref->isVar());
+      
       if (isPointer(*I.getOperand(0),m_lfac.get_track()) &&
 	  isPointer(*I.getOperand(1),m_lfac.get_track())) {
 	
 	if (!AllUsesAreBrInst(&I)) {
 	  CRABLLVM_WARNING("translation skipped comparison between pointers");
-	  havoc(GET_VAR(I, m_lfac), m_bb);		  
+	  havoc(ref->getVar(), m_bb);		  
 	}
 	return;
       }
@@ -1547,25 +1777,25 @@ namespace crab_llvm {
       // make sure we only translate if both operands are integers or booleans
       if (!I.getOperand(0)->getType()->isIntegerTy() ||
 	  !I.getOperand(1)->getType()->isIntegerTy()) {
-	havoc(GET_VAR(I, m_lfac), m_bb);	
+	havoc(ref->getVar(), m_bb);	
 	return;
       }
 
-      if (isBool(*(I.getOperand(0))) && isBool(*(I.getOperand(1)))) {
+      const Value& v0 = *(I.getOperand(0));
+      const Value& v1 = *(I.getOperand(1));
+      
+      if (isBool(v0) && isBool(v1)) {
 	// we lower it here
 	if (I.getPredicate() == CmpInst::ICMP_EQ) { // eq <-> not xor
-	  varname_t tmp = FRESH_VAR(m_lfac);
-	  doBoolLogicOp(BinaryOperator::Xor, tmp, *I.getOperand(0), *I.getOperand(1));
-	  varname_t lhs = GET_VAR(I, m_lfac);	    	    
-	  m_bb.bool_assign(lhs, tmp, true); // not(tmp)
+	  var_t tmp = doBoolLogicOp(BinaryOperator::Xor, nullptr, v0, v1);
+	  m_bb.bool_assign(ref->getVar(), tmp, true); // not(tmp)
 	} else if (I.getPredicate() == CmpInst::ICMP_NE) { // ne <-> xor
-	  varname_t lhs = GET_VAR(I, m_lfac);	    
-	  doBoolLogicOp(BinaryOperator::Xor, lhs, *I.getOperand(0), *I.getOperand(1));
+	  doBoolLogicOp(BinaryOperator::Xor, ref, v0, v1);
 	} else {	    
 	  CRABLLVM_WARNING("translation skipped " << I << " at line " << __LINE__ );
 	}
       } else {
-	assert(isInteger(*(I.getOperand(0))) && isInteger(*(I.getOperand(1))));
+	assert(isInteger(v0) && isInteger(v1));
 	if (AllUsesAreBrOrIntSelectCondInst(&I)) {
 	  // do nothing: already lowered elsewhere
 	} else {
@@ -1577,7 +1807,11 @@ namespace crab_llvm {
     void visitBinaryOperator(BinaryOperator &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
       
-      varname_t lhs = GET_VAR(I, m_lfac);
+      crab_lit_ref_t ref = m_lfac.getLit(I);
+      if (!ref || !(ref->isVar())) {
+	CRABLLVM_ERROR("unexpected lhs of binary operator",__FILE__, __LINE__);
+      }
+      
       switch (I.getOpcode()) {
       case BinaryOperator::Add:
       case BinaryOperator::Sub:
@@ -1588,20 +1822,20 @@ namespace crab_llvm {
       case BinaryOperator::URem:
       case BinaryOperator::Shl:
       case BinaryOperator::AShr:
-	doArithmetic(lhs, I);
+	doArithmetic(ref, I);
 	break;
       case BinaryOperator::And:
       case BinaryOperator::Or:
       case BinaryOperator::Xor:
 	if (isBool(I))
-	  doBoolLogicOp(I.getOpcode(), lhs, *I.getOperand(0), *I.getOperand(1), &I);
+	  doBoolLogicOp(I.getOpcode(), ref, *I.getOperand(0), *I.getOperand(1));
 	else
-	  doIntLogicOp(lhs, I);
+	  doIntLogicOp(ref, I);
 	break;
       case BinaryOperator::LShr:
 	// FALL-THROUGH
       default:
-	havoc(lhs, m_bb);
+	havoc(ref->getVar(), m_bb);
       }
     }
         
@@ -1622,89 +1856,72 @@ namespace crab_llvm {
       if (AllUsesAreNonTrackMem (&I) || AllUsesAreIndirectCalls (&I)) {
 	return;
       }
-      
-      varname_t dst = GET_VAR(I, m_lfac);
+
+      crab_lit_ref_t dst = m_lfac.getLit(I);
+      assert(dst && dst->isVar());
+      crab_lit_ref_t src = m_lfac.getLit(*(I.getOperand(0)));
       
       // -- INTEGER OR BOOLEAN CAST
       if (isIntCast(I)) {
 	if (I.getSrcTy() == I.getDestTy()) {
 	  // assume the frontend removes useless casts.
 	  CRABLLVM_WARNING("translation does not support non-op integer casts");
-	  havoc(dst, m_bb);
+	  havoc(dst->getVar(), m_bb);
 	} else {
 	  if (CrabBoolAsInt) {
 	    if (isIntToBool(I)) {
 	      // OVER-APPROXIMATION
-	      m_bb.havoc(dst);
-	      m_bb.assume(z_lin_exp_t(dst) >= z_lin_exp_t(0));
-	      m_bb.assume(z_lin_exp_t(dst) <= z_lin_exp_t(1));
+	      m_bb.havoc(dst->getVar());
+	      m_bb.assume(dst->getVar() >= lin_exp_t(0));
+	      m_bb.assume(dst->getVar() <= lin_exp_t(1));
 	    } else {
 	      // it might be UNSOUND in cases like:
 	      //- if sext i1 true to i8 then it will assign 1 to dst
 	      // rather than -1 (the actual result of sext).
 	      //- if zext i8 -128 to i32 then it will assign -128
 	      // to dst rather 128 (the actual result of zext)
-	      if (boost::optional<crabNumLit> lsrc = m_lfac.getNumLit(*I.getOperand(0))) {
-		m_bb.assign(dst, (*lsrc).getExp());
+	      if (src->isInt()) {
+		m_bb.assign(dst->getVar(), m_lfac.getExp(src));
 	      }
 	    } 
 	  } else {
-	    if (isBoolToInt(I)) {
-	      if (boost::optional<crabBoolLit> lsrc = m_lfac.getBoolLit(*I.getOperand(0))) {
-		if ((*lsrc).isConst()) {
-		  varname_t tmp = FRESH_VAR(m_lfac);
-		  m_bb.bool_assign(tmp, (*lsrc).isTrue() ? CST_TRUE: CST_FALSE);
-		  if (isa<SExtInst>(I)) {
-		    m_bb.sext(tmp, I.getSrcTy()->getIntegerBitWidth(),
-			      dst, I.getDestTy()->getIntegerBitWidth());
-		  } else if (isa<ZExtInst>(I)) {
-		    m_bb.zext(tmp, I.getSrcTy()->getIntegerBitWidth(),
-			      dst, I.getDestTy()->getIntegerBitWidth());
-		  }
+	    if (!src->isVar()) {
+	      // We store the constant into a variable
+	      if (src->isBool()) {
+		var_t tmp = m_lfac.mkBoolVar();
+		m_bb.bool_assign(tmp, m_lfac.isBoolTrue(src) ?
+				 lin_cst_t::get_true() : lin_cst_t::get_false());
+		if (isa<SExtInst>(I)) {		    
+		  m_bb.sext(tmp, dst->getVar());
+		} else if (isa<ZExtInst>(I)) {
+		  m_bb.zext(tmp, dst->getVar());
 		} else {
-		  if (isa<SExtInst>(I)) {
-		    m_bb.sext((*lsrc).getVar(), I.getSrcTy()->getIntegerBitWidth(),
-			      dst, I.getDestTy()->getIntegerBitWidth());
-		  } else if (isa<ZExtInst>(I)) {
-		    m_bb.zext((*lsrc).getVar(), I.getSrcTy()->getIntegerBitWidth(),
-			      dst, I.getDestTy()->getIntegerBitWidth());
-		  }
+		  CRABLLVM_ERROR("unexpected cast operation on Booleans",__FILE__, __LINE__); 
 		}
+	      } else if (src->isInt()) {
+		var_t tmp = m_lfac.mkIntVar(I.getOperand(0)->getType()->getIntegerBitWidth());
+		m_bb.assign(tmp, m_lfac.getIntCst(src));
+		if (isa<SExtInst>(I)) {
+		  m_bb.sext(tmp, dst->getVar());
+		} else if (isa<ZExtInst>(I)) {
+		  m_bb.zext(tmp, dst->getVar());
+		} else if (isa<TruncInst>(I)) {
+		  m_bb.truncate(tmp, dst->getVar());
+		} else {
+		  CRABLLVM_ERROR("unexpected cast operation",__FILE__, __LINE__);
+		}
+	      } else {
+		CRABLLVM_ERROR("unexpected cast operand type",__FILE__, __LINE__); 
 	      }
-	    } else { // src is in integer
-	      if (boost::optional<crabNumLit> lsrc = m_lfac.getNumLit(*I.getOperand(0))) {
-		if ((*lsrc).isVar()) {
-		  if (isa<SExtInst>(I)) {
-		    m_bb.sext((*lsrc).getVar(), I.getSrcTy()->getIntegerBitWidth(),
-			      dst, I.getDestTy()->getIntegerBitWidth());
-		  } else if (isa<ZExtInst>(I)) {
-		    m_bb.zext((*lsrc).getVar(), I.getSrcTy()->getIntegerBitWidth(),
-			      dst, I.getDestTy()->getIntegerBitWidth());
-		    
-		  } else if (isa<TruncInst>(I)) {
-		    m_bb.truncate((*lsrc).getVar(), I.getSrcTy()->getIntegerBitWidth(),
-				  dst, I.getDestTy()->getIntegerBitWidth());
-		    
-		  } else {
-		    llvm_unreachable("ERROR: unexpected cast operation");		    
-		  }
-		} else {
-		  varname_t tmp = FRESH_VAR(m_lfac);
-		  m_bb.assign(tmp, (*lsrc).getNum());
-		  if (isa<SExtInst>(I)) {
-		    m_bb.sext(tmp, I.getSrcTy()->getIntegerBitWidth(),
-			      dst, I.getDestTy()->getIntegerBitWidth());
-		  } else if (isa<ZExtInst>(I)) {
-		  m_bb.zext(tmp, I.getSrcTy()->getIntegerBitWidth(),
-			    dst, I.getDestTy()->getIntegerBitWidth());
-		  
-		  } else if (isa<TruncInst>(I)) {
-		    m_bb.truncate(tmp, I.getSrcTy()->getIntegerBitWidth(),
-				  dst, I.getDestTy()->getIntegerBitWidth());
-		  } else {
-		    llvm_unreachable("ERROR: unexpected cast operation");
-		  }
-		}
+	    } else {
+	      if (isa<SExtInst>(I)) {
+		m_bb.sext(src->getVar(), dst->getVar());
+	      } else if (isa<ZExtInst>(I)) {
+		m_bb.zext(src->getVar(), dst->getVar());
+	      } else if (isa<TruncInst>(I)) {
+		m_bb.truncate(src->getVar(), dst->getVar());
+	      } else {
+		CRABLLVM_ERROR("unexpected cast operation",__FILE__, __LINE__);
 	      }
 	    }
 	  }
@@ -1719,20 +1936,20 @@ namespace crab_llvm {
 	} else if (isa<IntToPtrInst>(I)) {
 	  CRABLLVM_WARNING("translation skipped integer to pointer cast");
 	} else if (isa<BitCastInst>(I) && isPointer(*I.getOperand(0), m_lfac.get_track())) {
-	  boost::optional<crabPtrLit> lsrc = m_lfac.getPtrLit(*I.getOperand(0));
-	  if (lsrc) {
-	    if ((*lsrc).isNull())
-	      m_bb.ptr_null(dst);
-	    else if ((*lsrc).isVar())
-	      m_bb.ptr_assign(dst, (*lsrc).getVar(), z_lin_exp_t(0));
-	    else {} // unreachable
+
+	  if (src->isPtr()) {
+	    if (m_lfac.isPtrNull(src)) {
+	      m_bb.ptr_null(dst->getVar());
+	    } else {
+	      assert (src->isVar());
+	      m_bb.ptr_assign(dst->getVar(), src->getVar(), number_t(0));
+	    }
 	    return;
 	  }
 	  CRABLLVM_WARNING("translation skipped " << I << " at line " << __LINE__);	  
 	}
       }
-      
-      havoc(dst, m_bb);
+      havoc(dst->getVar(), m_bb);
     }
 
     // Analysis of select instructions is cumbersome since it requires
@@ -1749,95 +1966,110 @@ namespace crab_llvm {
     // here.
     void visitSelectInst(SelectInst &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
-      
-      varname_t lhs = GET_VAR(I, m_lfac);
+
+      crab_lit_ref_t lhs = m_lfac.getLit(I);
+      assert(lhs && lhs->isVar());
       
       if (isPointer(I, m_lfac.get_track())) {
 	// We don't even bother with pointers
 	CRABLLVM_WARNING("skipped " << I << "\n" << "Enable --lower-select.");
-	havoc(lhs, m_bb);
+	havoc(lhs->getVar(), m_bb);
 	return;
       }
       
       Value& cond = *I.getCondition ();
+      crab_lit_ref_t c = m_lfac.getLit(cond);
+      assert(c);
+      crab_lit_ref_t op1 = m_lfac.getLit(*I.getTrueValue());
+      assert(op1);
+      crab_lit_ref_t op2 = m_lfac.getLit(*I.getFalseValue());
+      assert(op2);
       
       if (isBool(I)) {
 	// --- All operands are BOOL
-	boost::optional<crabBoolLit> l1 = m_lfac.getBoolLit(*I.getTrueValue ());
-	if (!l1) {havoc(lhs, m_bb); return;}
-	boost::optional<crabBoolLit> l2 = m_lfac.getBoolLit(*I.getFalseValue ()); 
-	if (!l2) {havoc(lhs, m_bb); return;}
-    
-	crabBoolLit b1 = *l1;
-	crabBoolLit b2 = *l2;
+	if (!op1->isBool()) {havoc(lhs->getVar(), m_bb); return;}
+	if (!op2->isBool()) {havoc(lhs->getVar(), m_bb); return;}	
 	
 	// -- simple cases first: we know the condition is either true or false
 	if (ConstantInt *ci = dyn_cast<ConstantInt> (&cond)) {
 	  if (ci->isOne ()) {
-	    if (b1.isConst())
-	      m_bb.bool_assign(lhs, (b1.isTrue()? CST_TRUE: CST_FALSE));
-	    else  
-	      m_bb.bool_assign(lhs, b1.getVar());
-	    return;
-	  } else if (ci->isZero ()) {
-	    if (b2.isConst())
-	      m_bb.bool_assign(lhs, (b2.isTrue()? CST_TRUE: CST_FALSE));
-	    else  
-	      m_bb.bool_assign(lhs, b2.getVar());
-	    return;
+	    if (!op1->isVar()) {
+	      m_bb.bool_assign(lhs->getVar(), (m_lfac.isBoolTrue(op1) ?
+					       lin_cst_t::get_true():lin_cst_t::get_false()));
+	    } else { 
+	      m_bb.bool_assign(lhs->getVar(), op1->getVar());
+	    }
+	  } else {
+	    if (!ci->isZero ())
+	      CRABLLVM_ERROR("unexpected select condition",__FILE__, __LINE__);
+	    if (!op2->isVar()) {
+	      m_bb.bool_assign(lhs->getVar(), (m_lfac.isBoolTrue(op2) ?
+					       lin_cst_t::get_true(): lin_cst_t::get_false()));
+	    } else {
+	      m_bb.bool_assign(lhs->getVar(), op2->getVar());
+	    }
 	  }
+	  return;
 	}
 
+	assert(c->isVar());
+	
 	// -- general case: we don't know whether condition is true or not.
-	if (b1.isConst() && b2.isConst()) {
-	  varname_t tt_v = FRESH_VAR(m_lfac);
-	  varname_t ff_v = FRESH_VAR(m_lfac);
-	  m_bb.bool_assign(tt_v, (b1.isTrue()? CST_TRUE: CST_FALSE));
-	  m_bb.bool_assign(ff_v, (b2.isTrue()? CST_TRUE: CST_FALSE));
-	  m_bb.bool_select(lhs, GET_VAR(cond,m_lfac), tt_v, ff_v);	
-	} else if (b1.isConst()) {
-	  varname_t tt_v = FRESH_VAR(m_lfac);
-	  m_bb.bool_assign(tt_v, (b1.isTrue()? CST_TRUE: CST_FALSE));
-	  m_bb.bool_select(lhs, GET_VAR(cond,m_lfac), tt_v, b2.getVar());	
-	} else if (b2.isConst()) {
-	  varname_t ff_v = FRESH_VAR(m_lfac);
-	  m_bb.bool_assign(ff_v, (b2.isTrue()? CST_TRUE: CST_FALSE));
-	  m_bb.bool_select(lhs, GET_VAR(cond,m_lfac), b1.getVar(), ff_v);	
+	if (!op1->isVar() && !op2->isVar()) {
+	  var_t tt_v = m_lfac.mkBoolVar();
+	  var_t ff_v = m_lfac.mkBoolVar();
+	  m_bb.bool_assign(tt_v, (m_lfac.isBoolTrue(op1)?
+				  lin_cst_t::get_true(): lin_cst_t::get_false()));
+	  m_bb.bool_assign(ff_v, (m_lfac.isBoolTrue(op2)?
+				  lin_cst_t::get_true(): lin_cst_t::get_false()));
+	  m_bb.bool_select(lhs->getVar(), c->getVar(), tt_v, ff_v);	
+	} else if (!op1->isVar()) {
+	  var_t tt_v = m_lfac.mkBoolVar();
+	  m_bb.bool_assign(tt_v, (m_lfac.isBoolTrue(op1)?
+				  lin_cst_t::get_true(): lin_cst_t::get_false()));
+	  m_bb.bool_select(lhs->getVar(), c->getVar(), tt_v, op2->getVar());	
+	} else if (!op2->isVar()) {
+	  var_t ff_v = m_lfac.mkBoolVar();
+	  m_bb.bool_assign(ff_v, (m_lfac.isBoolTrue(op2)?
+				  lin_cst_t::get_true(): lin_cst_t::get_false()));
+	  m_bb.bool_select(lhs->getVar(), c->getVar(), op1->getVar(), ff_v);	
 	} else {
-	  m_bb.bool_select(lhs, GET_VAR(cond,m_lfac), b1.getVar(), b2.getVar());
+	  m_bb.bool_select(lhs->getVar(), c->getVar(), op1->getVar(), op1->getVar());
 	}
       } else if (isInteger(I)) {
 	
 	// --- All operands except the condition are INTEGERS
-	boost::optional<crabNumLit> l1 = m_lfac.getNumLit(*I.getTrueValue ());
-	if (!l1) {havoc(lhs, m_bb); return;}
-	boost::optional<crabNumLit> l2 = m_lfac.getNumLit(*I.getFalseValue ()); 
-	if (!l2) {havoc(lhs, m_bb); return;}
-    
-	z_lin_exp_t op1 = (*l1).getExp();
-	z_lin_exp_t op2 = (*l2).getExp();
+	if (!op1->isInt()) {havoc(lhs->getVar(), m_bb); return;}
+	if (!op2->isInt()) {havoc(lhs->getVar(), m_bb); return;}	
+	
+	lin_exp_t e1 = m_lfac.getExp(op1);
+	lin_exp_t e2 = m_lfac.getExp(op2);
 	
 	// -- simple cases first: we know the condition is either true or false
 	if (ConstantInt *ci = dyn_cast<ConstantInt> (&cond)) {
-	  if (ci->isOne ()) {
-	    m_bb.assign (lhs, op1);
-	    return;
-	  } else if (ci->isZero ()) {
-	    m_bb.assign (lhs, op2);
-	    return;
+	  if (ci->isOne()) {
+	    m_bb.assign(lhs->getVar(), e1);
+	  } else { 
+	    if (!ci->isZero ())
+	      CRABLLVM_ERROR("Unexpected select condition",__FILE__, __LINE__);
+	    m_bb.assign(lhs->getVar(), e2);
 	  }
+	  return;
 	}
+
+	assert(c->isVar());
 	
 	// -- general case: we don't know whether the condition is true or not
 	if (CmpInst* CI = dyn_cast<CmpInst> (&cond)) {
 	  if (auto cst_opt = cmpInstToCrabInt(*CI, m_lfac)) {
-	    m_bb.select (lhs, *cst_opt, op1, op2);
+	    m_bb.select (lhs->getVar(), *cst_opt, e1, e2);
 	    return;
 	  }
 	}
+
 	if (CrabBoolAsInt) {      
 	  //  select will transform the select condition to "cond >= 1"
-	  m_bb.select(lhs, GET_VAR(cond, m_lfac), op1, op2);
+	  m_bb.select(lhs->getVar(), c->getVar(), e1, e2);
 	} else {
 	  // The condition is a boolean but neither select or
 	  // bool_select are the right choice. The latter is only when
@@ -1848,14 +2080,14 @@ namespace crab_llvm {
 	  // another solution is to allow select to be a variable rather
 	  // than constraint.
           #if 1
-	  auto icond = FRESH_VAR(m_lfac);
-	  m_bb.zext(GET_VAR(cond, m_lfac), 1, icond, 64 /*any bitwdith >1*/);
-	  m_bb.select(lhs, icond, op1, op2);
+	  var_t icond = m_lfac.mkIntVar(8 /*any bitwdith >1*/);
+	  m_bb.zext(c->getVar(), icond);
+	  m_bb.select(lhs->getVar(), icond, e1, e2);
           #else
 	  CRABLLVM_WARNING("skipped " << I << "\n" <<
 			   "Crab select does not support natively boolean conditions.\n" << 
 			   "Meanwhile, enable --lower-select or --crab-bool-as-int");
-	  havoc(lhs, m_bb);
+	  havoc(lhs->getVar(), m_bb);
           #endif 
 	}
       } 
@@ -1866,35 +2098,36 @@ namespace crab_llvm {
       
       CRAB_LOG ("cfg-gep", llvm::errs () << "Translating " << I << "\n");
 
-      region_t r = GET_REGION(I, &I); 
+      mem_region_t r = GET_REGION(I, &I); 
       if (isGlobalSingleton(r)) {
 	CRAB_LOG("cfg-gep", llvm::errs() << "Skipped singleton region\n");
 	return;
       }
+
+      crab_lit_ref_t lhs = m_lfac.getLit(I);
+      assert(lhs && lhs->isVar());
+      crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand ());
       
-      boost::optional<crabPtrLit> ptr_lit = m_lfac.getPtrLit(*I.getPointerOperand ());
-      if (!ptr_lit) {
-        havoc(GET_VAR(I, m_lfac), m_bb);
+      if (!ptr) {
+        havoc(lhs->getVar(), m_bb);
         return;
       }
       
-      if ((*ptr_lit).isNull()) {
+      if (m_lfac.isPtrNull(ptr)) {
 	CRABLLVM_WARNING(I << " doing pointer arithmetic with null pointer.");
-        havoc(GET_VAR(I, m_lfac), m_bb);
+        havoc(lhs->getVar(), m_bb);
         return;
       }
-
-      varname_t ptr = (*ptr_lit).getVar();
-      varname_t res = GET_VAR(I, m_lfac);
-
+      assert(ptr->isVar());
+      
       // -- translation if the GEP offset is constant
       unsigned BitWidth = m_dl->getPointerTypeSizeInBits(I.getType());
       APInt Offset(BitWidth, 0);
       if (I.accumulateConstantOffset (*m_dl, Offset)) {
-        z_lin_exp_t offset (toMpz (Offset).get_str ());
-	m_bb.ptr_assign (res, ptr, offset);
+        lin_exp_t offset (toMpz (Offset).get_str ());
+	m_bb.ptr_assign (lhs->getVar(), ptr->getVar(), offset);
 	CRAB_LOG("cfg-gep",
-		 crab::outs() << "-- " << res << ":=" << ptr  << "+" << offset << "\n");
+		 crab::outs() << "-- " << *lhs << ":=" << *ptr  << "+" << offset << "\n");
         return;
       }
 
@@ -1919,17 +2152,18 @@ namespace crab_llvm {
       for (unsigned i = 0; i < ps.size (); ++i) {
         if (const StructType *st = dyn_cast<const StructType> (ts [i])) {
           if (const ConstantInt *ci = dyn_cast<const ConstantInt> (ps [i])) {
-            ikos::z_number offset (fieldOffset (st, ci->getZExtValue ()));
-	    m_bb.ptr_assign (res, (!already_assigned) ? ptr : res, offset);
+            number_t offset (fieldOffset (st, ci->getZExtValue ()));
+	    m_bb.ptr_assign (lhs->getVar(), (!already_assigned) ?
+			     ptr->getVar() : lhs->getVar(), offset);
 	    CRAB_LOG("cfg-gep",
 		     if (!already_assigned) {
-		       crab::outs() << res << ":=" << ptr << "+" << offset << "\n";
+		       crab::outs() << *lhs << ":=" << *ptr << "+" << offset << "\n";
 		     } else {
-		       crab::outs() << res << ":=" << res << "+" << offset << "\n";
+		       crab::outs() << *lhs << ":=" << *lhs << "+" << offset << "\n";
 		     }); 
 	    already_assigned = true;
           } else {
-            llvm_unreachable ("ERROR: GEP index expected only to be an integer");
+            CRABLLVM_ERROR("GEP index expected only to be an integer",__FILE__, __LINE__);
 	  }
         }
         else if (const SequentialType *seqt = dyn_cast<const SequentialType>(ts[i])) {
@@ -1937,16 +2171,18 @@ namespace crab_llvm {
             if (ci->isZero ())
               continue;
           }
-	  boost::optional<crabNumLit> lp = m_lfac.getNumLit(*ps[i]);
-	  if (!lp) llvm_unreachable ("ERROR: unexpected GEP index");
-	  z_lin_exp_t offset((*lp).getExp() *
-			     ikos::z_number(storageSize(seqt->getElementType())));
-	  m_bb.ptr_assign(res, (!already_assigned) ? ptr : res, offset);
+	  crab_lit_ref_t idx = m_lfac.getLit(*ps[i]); 
+	  if (!idx || !idx->isInt())
+	    CRABLLVM_ERROR("unexpected GEP index",__FILE__, __LINE__);
+	  lin_exp_t offset(m_lfac.getExp(idx) *
+			     number_t(storageSize(seqt->getElementType())));
+	  m_bb.ptr_assign(lhs->getVar(), (!already_assigned) ?
+			  ptr->getVar() : lhs->getVar(), offset);
 	  CRAB_LOG("cfg-gep",
 		   if (!already_assigned) {
-		     crab::outs() << res << ":=" << ptr << "+" << offset << "\n";
+		     crab::outs() << *lhs << ":=" << *ptr << "+" << offset << "\n";
 		   } else {
-		     crab::outs() << res << ":=" << res << "+" << offset << "\n";
+		     crab::outs() << *lhs << ":=" << *lhs << "+" << offset << "\n";
 		   }); 
 	  already_assigned = true;
         }
@@ -1955,50 +2191,46 @@ namespace crab_llvm {
 
     void visitLoadInst (LoadInst &I) {
 
-      varname_t lhs = GET_VAR(I, m_lfac);      
-      boost::optional<crabPtrLit> ptr_lit = m_lfac.getPtrLit(*I.getPointerOperand ());
-      if (!ptr_lit) {
-	CRABLLVM_WARNING("unexpected pointer operand " << I);
-	havoc(lhs, m_bb);
-	return;
-      }
-      if ((*ptr_lit).isNull()) {
-	// OVER-APPROXIMATING: we don't translate this case	
-	CRABLLVM_WARNING(I << " is possibly dereferencing a null pointer");
-	havoc(lhs, m_bb);
-	return;
+      crab_lit_ref_t lhs = m_lfac.getLit(I);
+      crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand ());
+
+      if (!lhs || !lhs->isVar()) {
+	CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
       }
       
+      if (!ptr || !ptr->isPtr()) {
+	CRABLLVM_ERROR("unexpected pointer operand of load instruction",__FILE__, __LINE__);
+      }
+      
+      if (m_lfac.isPtrNull(ptr)) {
+	CRABLLVM_WARNING(I << " is possibly dereferencing a null pointer");
+	havoc(lhs->getVar(), m_bb);
+	return;
+      }
+
       if (isPointer(I, m_lfac.get_track())) {
 	// -- lhs is a pointer -> add pointer statement
-	m_bb.ptr_load(lhs, (*ptr_lit).getVar());
+	m_bb.ptr_load(lhs->getVar(), ptr->getVar());
 	return;
-      } else if (m_lfac.get_track() >= ARR &&
-		 (isInteger(I) || isBool(I))) {
+      } else if (m_lfac.get_track() >= ARR && (isInteger(I) || isBool(I))) {
 	// -- lhs is an integer/bool -> add array statement
-	
-	// TODO: array of pointers. Note that we use the same variable
-	// name (lhs) whether the load instruction assigns to a
-	// pointer or integer variable. This is OK because these two
-	// cases cannot happen simultaneously.  However, if we allow
-	// array of pointers we need to have two different variable names.
-	region_t r = GET_REGION(I, I.getPointerOperand ()); 
+	mem_region_t r = GET_REGION(I, I.getPointerOperand ()); 
 	if (!(r.isUnknown ())) {
-	  if (const Value* s = isGlobalSingleton (r)) {
+	  if (isGlobalSingleton (r)) {
+	    // Promote the global to an integer/boolean scalar
+	    var_t s = m_lfac.mkArraySingletonVar(r); 
 	    if (isInteger(I)) {
-	      m_bb.assign (lhs, z_lin_exp_t(GET_VAR(*s, m_lfac)));
-	    } else { //assert (isBool(I))
-	      m_bb.bool_assign(lhs, GET_VAR(*s, m_lfac), false);
-	    }
+	      m_bb.assign (lhs->getVar(), s);
+	    } else if (isBool(I)) {  
+	      m_bb.bool_assign(lhs->getVar(), s, false);
+	    } else { /* unreachable */ }
 	  } else {
 	    // We havoc the array index if we are not tracking it.
 	    if (!isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
-	      m_bb.havoc((*ptr_lit).getVar());
+	      m_bb.havoc(ptr->getVar());
 	    }	    
-	    z_lin_exp_t idx((*ptr_lit).getVar());
-	    m_bb.array_load(lhs,
-			    GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r),
-			    idx,
+	    var_t idx = ptr->getVar();
+	    m_bb.array_load(lhs->getVar(), m_lfac.mkArrayVar(r), idx,
 			    m_dl->getTypeAllocSize (I.getType()));
 	  }
 	  return;
@@ -2006,105 +2238,76 @@ namespace crab_llvm {
       }
       
       if (isTracked(I, m_lfac.get_track()) && !isPointer(I, m_lfac.get_track()))
-	havoc(lhs, m_bb);
+	havoc(lhs->getVar(), m_bb);
     }
 
     void visitStoreInst (StoreInst &I) {
 
-      boost::optional<crabPtrLit> ptr_lit = m_lfac.getPtrLit(*I.getPointerOperand());
-      if (!ptr_lit) {
-	CRABLLVM_WARNING("unexpected pointer operand " << I);
-	return;
+      crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
+      crab_lit_ref_t val = m_lfac.getLit(*I.getValueOperand());
+      
+      if (!ptr || !ptr->isPtr()) {
+	CRABLLVM_ERROR("unexpected pointer operand of store instruction",__FILE__, __LINE__);
+      }
+
+      if (!val) {
+	CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
       }
       
-      if ((*ptr_lit).isNull()) {
-	// OVER-APPROXIMATING: we don't translate this case
+      if (m_lfac.isPtrNull(ptr)) {
 	CRABLLVM_WARNING(I << " is possibly dereferencing a null pointer");
 	return;
       }
-            
+      
       if (isPointer(*I.getValueOperand(), m_lfac.get_track())) {
 	// -- value is a pointer -> add pointer statement
-
-	boost::optional<crabPtrLit> val_lit = m_lfac.getPtrLit(*I.getValueOperand());
-	if (!val_lit) {
-	  CRABLLVM_WARNING("unexpected value operand " << I);
-	  havoc((*ptr_lit).getVar(), m_bb);
-	} else if (!(*val_lit). isNull()) {
-	  // OVER-APPROXIMATION: we ignore the case if we store a null pointer. In
+	if (!m_lfac.isPtrNull(val)) {
+	  // We ignore the case if we store a null pointer. In
 	  // most cases, it will be fine since typical pointer analyses
 	  // ignore that case but it might be imprecise with certain analyses.
-	  m_bb.ptr_store((*ptr_lit).getVar(), (*val_lit).getVar());
+	  m_bb.ptr_store(ptr->getVar(), val->getVar());
 	}
       } else if (m_lfac.get_track() >= ARR &&
 		 (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))){
 	// -- value is an integer/bool -> add array statement
-	
-	// TODO: arrays of pointers
-	region_t r = GET_REGION(I, I.getPointerOperand()); 
+	mem_region_t r = GET_REGION(I, I.getPointerOperand()); 
 	if (!r.isUnknown()) {
-
-	  boost::optional<crabNumLit> nval_lit = m_lfac.getNumLit(*I.getValueOperand());
-	  boost::optional<crabBoolLit> bval_lit = m_lfac.getBoolLit(*I.getValueOperand());
-	  if (!nval_lit && !bval_lit) {
-	    CRABLLVM_WARNING("unexpected value operand " << I);
-	    havoc((*ptr_lit).getVar(), m_bb);
-	    return;
-	  }
-	  
 	  if (isGlobalSingleton(r)) {
-	    if (isInteger(*I.getValueOperand()) && nval_lit) {
-	      m_bb.assign((*ptr_lit).getVar(), (*nval_lit).getExp());
-	    } else if (isBool(*I.getValueOperand()) && bval_lit) {
-	      if ((*bval_lit).isConst()) {
-		m_bb.bool_assign((*ptr_lit).getVar(),
-				 (*bval_lit).isTrue()?
-				 z_lin_cst_t::get_true() : z_lin_cst_t::get_false());
+	    // Promote the global to an integer/boolean scalar
+	    var_t s = m_lfac.mkArraySingletonVar(r);
+	    if (isInteger(*I.getValueOperand())) {
+	      assert(val->isInt());
+	      m_bb.assign(s, m_lfac.getExp(val));
+	    } else if (isBool(*I.getValueOperand())) {
+	      assert(val->isBool());
+	      if (!val->isVar()) {
+		m_bb.bool_assign(s, (m_lfac.isBoolTrue(val) ?
+				     lin_cst_t::get_true() : lin_cst_t::get_false()));
 	      } else { 
-		m_bb.bool_assign((*ptr_lit).getVar(), (*bval_lit).getVar(), false);
+		m_bb.bool_assign(s, val->getVar(), false);
 	      }
-	    } else {
-	      /* TODO: pointer scalar */
-	    }
+	    } else { /* unreachable */ }
 	  } else {
 	    Type* ty = I.getOperand (0)->getType();
-	    z_lin_exp_t idx((*ptr_lit).getVar());
+	    var_t idx = ptr->getVar();
 	    
 	    // We havoc the array index if we are not tracking it.
 	    if (!isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
-	      m_bb.havoc((*ptr_lit).getVar());
+	      m_bb.havoc(idx);
 	    }	    
-	    
-	    if (nval_lit) {
-	      assert (getRegionType(r) == ARR_INT_TYPE && "This should not happen");
-	      if ((*nval_lit).isNum()) {
-		m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r), 
-				  idx, (*nval_lit).getNum(),
-				  m_dl->getTypeAllocSize(ty),
-				  r.getSingleton () != nullptr);
-		
-	      } else {
-		m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r), 
-				  idx, (*nval_lit).getVar(),
-				  m_dl->getTypeAllocSize(ty),
-				  r.getSingleton () != nullptr);
-	      }
+
+	    if (val->isVar()) {
+	      m_bb.array_store (m_lfac.mkArrayVar(r), idx, val->getVar(), 
+				m_dl->getTypeAllocSize(ty), r.getSingleton () != nullptr);
 	    } else {
-	      assert (bval_lit);
-	      assert (getRegionType(r) == ARR_BOOL_TYPE && "This should not happen");
-	      if ((*bval_lit).isConst()) {
-		z_number bv(0);
-		if ((*bval_lit).isTrue()) bv = z_number(1);
-		m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r), 
-				  idx, bv, m_dl->getTypeAllocSize(ty),
-				  r.getSingleton () != nullptr);
-		
-	      } else {
-		m_bb.array_store (GET_VAR_FROM_REGION(r, m_lfac), getRegionType(r), 
-				  idx, varname_t((*bval_lit).getVar()),
-				  m_dl->getTypeAllocSize(ty),
-				  r.getSingleton () != nullptr);
-	      }
+	      if (val->isInt()) {
+		m_bb.array_store (m_lfac.mkArrayVar(r), idx, m_lfac.getIntCst(val),
+				  m_dl->getTypeAllocSize(ty), r.getSingleton () != nullptr);
+	      } else if (val->isBool()){
+		m_bb.array_store (m_lfac.mkArrayVar(r), idx, 
+				  m_lfac.isBoolTrue(val) ? number_t(1): number_t(0),
+				  m_dl->getTypeAllocSize(ty), r.getSingleton () != nullptr);
+	      } else { /* unreachable */}
 	    }
 	  }
 	}
@@ -2112,21 +2315,22 @@ namespace crab_llvm {
     }
 
     void visitAllocaInst (AllocaInst &I) {
-      
+
       if (isPointer(I, m_lfac.get_track())) {
-	m_bb.ptr_new_object(GET_VAR(I, m_lfac), m_object_id++);
+	crab_lit_ref_t lhs = m_lfac.getLit(I);
+	assert(lhs && lhs->isVar());
+	m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
       }
 
       if (m_lfac.get_track() >= ARR && CrabArrayInit) {
-	region_t r = GET_REGION(I,&I);
+	mem_region_t r = GET_REGION(I,&I);
 	if (!r.isUnknown()) {
 	  
-	  // "Initialization hook": nodes which do not have an
-	  // explicit initialization are initially undefined. Instead,
-	  // we assume they are zero initialized so that Crab's array
-	  // smashing can infer something meaningful. This is correct
-	  // because in presence of undefined behaviour we can do
-	  // whatever we want.
+	  // Nodes which do not have an explicit initialization are
+	  // initially undefined. Instead, we assume they are zero
+	  // initialized so that Crab's array smashing can infer
+	  // something meaningful. This is correct because in presence
+	  // of undefined behaviour we can do whatever we want.
 	  
 	  Type* elementTy = nullptr;
 	  unsigned numElems = 0;
@@ -2144,14 +2348,12 @@ namespace crab_llvm {
 	    unsigned elemSize = storageSize (elementTy);
 	    if (elemSize > 0) {
 	      /* any value we want. We choose zero because it has a
-		 valid interpretation whether it's integer, boolean or
-		 pointer */
-	      ikos::z_number init_val(0); 
-	      z_lin_exp_t lb_idx(ikos::z_number(0)); 
-	      z_lin_exp_t ub_idx((numElems - 1) * elemSize);
-	      m_bb.array_assume (GET_VAR_FROM_REGION(r,m_lfac),
-				 getRegionType(r), elemSize,
-				 lb_idx, ub_idx, init_val);
+		 valid interpretation whether it's integer, boolean or pointer */
+	      number_t init_val(0); 
+	      number_t lb_idx(0); 
+	      number_t ub_idx((numElems - 1) * elemSize);
+	      m_bb.array_assume (m_lfac.mkArrayVar(r),
+				 elemSize, lb_idx, ub_idx, init_val);
 	    }
 	  }
 	}
@@ -2176,7 +2378,9 @@ namespace crab_llvm {
 	  
 	  if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
 	    // havoc return value
-	    havoc(GET_VAR(I, m_lfac), m_bb);
+	    crab_lit_ref_t lhs = m_lfac.getLit(I);
+	    assert(lhs && lhs->isVar());
+	    havoc(lhs->getVar(), m_bb);
 	  }
 	}
 	return;
@@ -2207,7 +2411,9 @@ namespace crab_llvm {
         } else {
 	  if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
 	    // -- havoc return value of the intrinsics
-            havoc(GET_VAR(I, m_lfac), m_bb);
+	    crab_lit_ref_t lhs = m_lfac.getLit(I);
+	    assert(lhs && lhs->isVar());
+	    havoc(lhs->getVar(), m_bb);
 	  }
 	}
 	return;
@@ -2220,13 +2426,18 @@ namespace crab_llvm {
       if (callee->isDeclaration() || callee->isVarArg() || !m_is_inter_proc) {
         // -- havoc return value
         if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
-	  havoc(GET_VAR(I, m_lfac), m_bb);
+	  crab_lit_ref_t lhs = m_lfac.getLit(I);
+	  assert(lhs && lhs->isVar());
+	  havoc(lhs->getVar(), m_bb);
 	}
         // -- havoc all modified regions by the callee
         if (m_lfac.get_track() == ARR) {
-          region_set_t mods = m_mem.getModifiedRegions (I);
+	  mem_region_set_t mods = get_modified_regions(m_mem, I);
           for (auto a : mods) {
-            m_bb.havoc (GET_VAR_FROM_REGION(a, m_lfac));
+	    if (isGlobalSingleton(a))
+	      m_bb.havoc(m_lfac.mkArraySingletonVar(a));
+	    else
+	      m_bb.havoc(m_lfac.mkArrayVar(a));
           }
         }
         return;
@@ -2246,28 +2457,28 @@ namespace crab_llvm {
        **/
 
       
-      std::vector<typed_variable_t> inputs, outputs;
+      std::vector<var_t> inputs, outputs;
       
       // -- add the actual parameters of the llvm callsite: i1,...in.
-      for (auto &a : boost::make_iterator_range (CS.arg_begin(),
-                                                 CS.arg_end())) {
+      for (auto &a : boost::make_iterator_range (CS.arg_begin(), CS.arg_end())) {
         Value *v = a.get();
         if (!isTracked(*v, m_lfac.get_track())) continue;
         inputs.push_back (normalizeFuncParamOrRet(*v, m_bb, m_lfac));
       }
       
       // -- add the return value of the llvm calliste: o
-      if ((getCrabType(I.getType ()) != UNK_TYPE) && isTracked(I, m_lfac.get_track())) {
-	outputs.push_back(typed_variable_t(GET_VAR(I, m_lfac),
-					   getCrabType(I.getType())));
+      if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+	crab_lit_ref_t ret = m_lfac.getLit(I);
+	assert(ret && ret->isVar());
+	outputs.push_back(ret->getVar());
       }
       
       if (m_lfac.get_track() == ARR) {
 	// -- add the input and output array parameters a_i1,...,a_in
 	// -- and a_o1,...,a_om.
-        region_set_t onlyreads = m_mem.getOnlyReadRegions (I);
-        region_set_t mods = m_mem.getModifiedRegions (I);
-        region_set_t news = m_mem.getNewRegions (I);
+        mem_region_set_t onlyreads = get_only_read_regions(m_mem, I);
+        mem_region_set_t mods = get_modified_regions(m_mem, I);
+        mem_region_set_t news = get_new_regions(m_mem, I);
         
         CRAB_LOG("cfg-mem",
                  llvm::errs() << "Callsite " << I << "\n"
@@ -2277,53 +2488,42 @@ namespace crab_llvm {
 
         // -- add only read regions as array input parameters
         for (auto a: onlyreads) {
-          if (const Value* s = isGlobalSingleton(a)) {
-            inputs.push_back(typed_variable_t(GET_VAR(*s, m_lfac),
-					      (isInteger(*s) ? INT_TYPE
-					       : isBool(*s)  ? BOOL_TYPE
-					       : /*default*/  PTR_TYPE)));
+          if (isGlobalSingleton(a)) {
+	    // Promote the global to a scalar
+	    inputs.push_back(m_lfac.mkArraySingletonVar(a));
 	  } else {
-            inputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, m_lfac),
-					      getRegionType(a)));
+            inputs.push_back(m_lfac.mkArrayVar(a));
 	  }
         }
 	
         // -- add modified regions as both input and output parameters
         for (auto a: mods) {
           if (news.find(a) != news.end()) continue;
-
-	  varname_t a_in = GET_VAR_FROM_REGION(a, m_lfac);
 	  
           // input version
-          if (const Value* s = isGlobalSingleton(a)) {
-            inputs.push_back (typed_variable_t(a_in,
-					       (isInteger(*s) ? INT_TYPE
-					       : isBool(*s)   ? BOOL_TYPE
-					       : /*default*/   PTR_TYPE)));  
+          if (isGlobalSingleton(a)) {
+	    // Promote the global to a scalar
+            inputs.push_back (m_lfac.mkArraySingletonVar(a));  
 	  } else {
-            inputs.push_back (typed_variable_t(a_in, getRegionType(a)));
+            inputs.push_back (m_lfac.mkArrayVar(a));
 	  }
 
           // output version
-          if (const Value* s = isGlobalSingleton(a)) {
-            outputs.push_back(typed_variable_t(GET_VAR(*s, m_lfac),
-					       (isInteger(*s) ? INT_TYPE
-					       : isBool(*s)   ? BOOL_TYPE
-					       : /*default*/   PTR_TYPE)));
+          if (isGlobalSingleton(a)) {
+	    // Promote the global to a scalar
+            outputs.push_back(m_lfac.mkArraySingletonVar(a));  	    
 	  } else  {
-            outputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, m_lfac),
-					       getRegionType(a)));
+            outputs.push_back(m_lfac.mkArrayVar(a));
 	  }
           
         }	
         // -- add more output parameters
         for (auto a: news) {
-          outputs.push_back (typed_variable_t(GET_VAR_FROM_REGION(a, m_lfac),
-					      getRegionType(a)));
+          outputs.push_back (m_lfac.mkArrayVar(a));
 	}
       }
       // -- Finally, add the callsite
-      m_bb.callsite(GET_VAR(*callee, m_lfac), outputs, inputs);
+      m_bb.callsite(callee->getName().str(), outputs, inputs);
       
     }
 
@@ -2334,7 +2534,10 @@ namespace crab_llvm {
     /// base case. if all else fails.
     void visitInstruction (Instruction &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
-      havoc(GET_VAR(I, m_lfac), m_bb);
+      crab_lit_ref_t lhs = m_lfac.getLit(I);
+      if (lhs->isVar()) {
+	havoc(lhs->getVar(), m_bb);
+      }
     }
     
   }; // end class
@@ -2347,7 +2550,7 @@ namespace crab_llvm {
 			 const TargetLibraryInfo* tli)
     : m_is_cfg_built(false),                          
       m_func(func),
-      m_vfac(vfac), m_mem(mem), m_tracklev(tracklev), m_id(0),      
+      m_lfac(vfac, tracklev), m_mem(mem), m_id(0),      
       m_cfg(boost::make_shared<cfg_t>
 	    (llvm_basic_block_wrapper(&m_func.getEntryBlock()), tracklev)),
       m_is_inter_proc(isInterProc),
@@ -2406,7 +2609,7 @@ namespace crab_llvm {
   //! return the new block inserted between src and dest if any
   CfgBuilder::opt_basic_block_t
   CfgBuilder::execBr (BasicBlock &src, const BasicBlock &dst) {
-    crabLitFactory lfac(m_vfac, m_tracklev);    
+    
     // -- the branch condition
     if (const BranchInst *br=dyn_cast<const BranchInst>(src.getTerminator())) {
       if (br->isConditional ()) {
@@ -2429,11 +2632,11 @@ namespace crab_llvm {
 	    if (isBool(*(CI->getOperand(0))) && isBool(*(CI->getOperand(1)))) {
 	      lower_cond_as_bool = true;
 	    } else if (isInteger(*(CI->getOperand(0))) && isInteger(*(CI->getOperand(1)))) {
-	      if (auto cst_opt = cmpInstToCrabInt(*CI, lfac, isNegated)) {
+	      if (auto cst_opt = cmpInstToCrabInt(*CI, m_lfac, isNegated)) {
 		bb.assume (*cst_opt); 
 	      }
-	    } else if (isPointer(*(CI->getOperand(0)), lfac.get_track()) &&
-		       isPointer(*(CI->getOperand(1)), lfac.get_track())) {
+	    } else if (isPointer(*(CI->getOperand(0)), m_lfac.get_track()) &&
+		       isPointer(*(CI->getOperand(1)), m_lfac.get_track())) {
 	      // TODO: add ptr_assume statement	      
 	      CRABLLVM_WARNING("translation skipped comparison between pointers");
 	    }
@@ -2449,11 +2652,13 @@ namespace crab_llvm {
 	  }
 
 	  if (lower_cond_as_bool) {
-            varname_t lhs = GET_VAR(c, lfac);
+	    crab_lit_ref_t lhs = m_lfac.getLit(c);
+	    assert(lhs && lhs->isVar());
+	    assert(lhs->isBool());
 	    if (isNegated)
-	      bb.bool_not_assume(lhs);
+	      bb.bool_not_assume(lhs->getVar());
 	    else
-	      bb.bool_assume(lhs);
+	      bb.bool_assume(lhs->getVar());
 	  }
         }
         return opt_basic_block_t(bb);
@@ -2471,10 +2676,8 @@ namespace crab_llvm {
       add_block (B); 
     }
 
-    crabLitFactory lfac(m_vfac, m_tracklev);
-
     basic_block_t *ret_block = nullptr;
-    boost::optional<typed_variable_t> ret_val;
+    var_ref_t ret_val;
     
     bool has_seahorn_fail = false;
     for (auto &B : m_func) {     
@@ -2482,7 +2685,7 @@ namespace crab_llvm {
       if (!BB) continue;
 
       // -- build a CFG block ignoring branches, phi-nodes, and return
-      CrabInstVisitor v (lfac, m_mem, m_dl, m_tli, *BB, m_is_inter_proc);
+      CrabInstVisitor v (m_lfac, m_mem, m_dl, m_tli, *BB, m_is_inter_proc);
       v.visit (B);
       // hook for seahorn
       has_seahorn_fail |= (v.has_seahorn_fail() && m_func.getName().equals("main"));
@@ -2490,21 +2693,21 @@ namespace crab_llvm {
       // -- process the exit block of the function and its returned value.
       if (ReturnInst *RI = dyn_cast<ReturnInst> (B.getTerminator ())) {
 	if (ret_block)
-	  llvm_unreachable("LLVM UnifyFunctionExitNodes pass should have been run first");
+	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first",__FILE__, __LINE__);
 	
         basic_block_t &bb = *BB;
         ret_block = &bb;
 	m_cfg->set_exit(ret_block->label());
 
 	if (has_seahorn_fail) {
-	  ret_block->assertion(CST_FALSE, getDebugLoc(RI));	  
+	  ret_block->assertion(lin_cst_t::get_false(), getDebugLoc(RI));	  
 	}
 	
 	if (m_is_inter_proc) {
 	  if (Value * RV = RI->getReturnValue()) {
-	    if (isTracked(*RV, lfac.get_track())) {
-	      ret_val = normalizeFuncParamOrRet(*RV, *ret_block, lfac);
-	      bb.ret((*ret_val).first, (*ret_val).second);
+	    if (isTracked(*RV, m_lfac.get_track())) {
+	      ret_val = var_ref_t(normalizeFuncParamOrRet(*RV, *ret_block, m_lfac));
+	      bb.ret(ret_val.get());
 	    }
 	  }
 	}
@@ -2517,7 +2720,7 @@ namespace crab_llvm {
 
           // -- phi nodes in dst are translated into assignments in
           //    the predecessor
-          CrabPhiVisitor v (lfac, m_mem, (mid_bb ? *mid_bb : *BB), B);
+          CrabPhiVisitor v (m_lfac, m_mem, (mid_bb ? *mid_bb : *BB), B);
           v.visit (const_cast<BasicBlock &>(*dst));
         }
       }
@@ -2525,16 +2728,16 @@ namespace crab_llvm {
 
         
     /// Allocate arrays with initial values 
-    if (m_tracklev == ARR && CrabArrayInit && CrabUnsoundArrayInit) {
+    if (m_lfac.get_track() == ARR && CrabArrayInit && CrabUnsoundArrayInit) {
       // getNewRegions returns all the new nodes created by the
       // function (via malloc-like functions) except if the function
       // is main.
       #if 0
       basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
-      auto news =  m_mem.getNewRegions (m_func);
+      mem_region_set_t news =  get_new_regions(m_mem, m_func);
       for (auto n: news) {
 	entry.set_insert_point_front ();
-	// TODO: we can apply here the "Initialization hook".
+	// TODO: we can the same as we do for AllocaInst.
       }
       #endif 
     }
@@ -2564,47 +2767,51 @@ namespace crab_llvm {
        * {a_o1,....,a_om}, otherwise crab will complain.
        **/
       
-      std::vector<typed_variable_t> inputs, outputs;
+      std::vector<var_t> inputs, outputs;
 
       basic_block_t & entry = m_cfg->get_node (m_cfg->entry ());
       
       // -- add the returned value of the llvm function: o
-      if (ret_val) {
-	outputs.push_back(*ret_val);
+      if (!ret_val.is_null()) {
+	outputs.push_back(ret_val.get());
       }
       
       // -- add input parameters i1,...,in
       for (Value &arg : boost::make_iterator_range (m_func.arg_begin (),
 						    m_func.arg_end ())) {
-        if (!isTracked(arg, lfac.get_track())) continue;
+        if (!isTracked(arg, m_lfac.get_track())) continue;
 
-	typed_variable_t i(GET_VAR(arg, lfac), getCrabType(arg.getType()));
-	if (ret_val && i == *ret_val) {
+	crab_lit_ref_t i = m_lfac.getLit(arg);
+	assert(i && i->isVar());
+	if (!ret_val.is_null() && i->getVar() == ret_val.get()) {
 	  // rename i to avoid having same name as output (crab requirement)
-          varname_t fresh_i = FRESH_VAR(lfac);	  	  
-	  if (i.second == BOOL_TYPE) {
-	    entry.bool_assign(fresh_i, i.first);
-	  } else if (i.second == INT_TYPE) {
-	    entry.assign(fresh_i, z_lin_exp_t(i.first));
-	  } else if (i.second == PTR_TYPE) {
-	    entry.ptr_assign(fresh_i, i.first, z_lin_exp_t(0));
+	  if (i->isBool()) {
+	    var_t fresh_i = m_lfac.mkBoolVar();
+	    entry.bool_assign(fresh_i, i->getVar());
+	    inputs.push_back (fresh_i);	    	    
+	  } else if (i->isInt()) {
+	    unsigned bitwidth = arg.getType()->getIntegerBitWidth();      
+	    var_t fresh_i = m_lfac.mkIntVar(bitwidth);	    
+	    entry.assign(fresh_i, i->getVar());
+	    inputs.push_back (fresh_i);	    	    
+	  } else if (i->isPtr()) {
+	    var_t fresh_i = m_lfac.mkPtrVar();	    	    
+	    entry.ptr_assign(fresh_i, i->getVar(), number_t(0));
+	    inputs.push_back (fresh_i);	    
 	  } else {
-	    llvm_unreachable("ERROR: unexpected function parameter type\n");
+	    CRABLLVM_ERROR("unexpected function parameter type",__FILE__, __LINE__);
 	  }
-	  inputs.push_back (typed_variable_t(fresh_i, i.second));
 	} else {
-	  inputs.push_back (i);
+	  inputs.push_back (i->getVar());
 	}
       }
 
 	
-      if (m_tracklev == ARR && (!m_func.getName ().equals ("main"))) {
-	
+      if (m_lfac.get_track() == ARR && (!m_func.getName ().equals ("main"))) {
         // -- add the input and output array parameters 
-
-        auto onlyreads = m_mem.getOnlyReadRegions (m_func);
-        auto mods = m_mem.getModifiedRegions (m_func);
-        auto news = m_mem.getNewRegions (m_func);
+        mem_region_set_t onlyreads = get_only_read_regions(m_mem, m_func);
+        mem_region_set_t mods = get_modified_regions(m_mem, m_func);
+        mem_region_set_t news = get_new_regions(m_mem, m_func);
 
         CRAB_LOG("cfg-mem",
                  llvm::errs() << "Function " << m_func.getName () 
@@ -2614,108 +2821,97 @@ namespace crab_llvm {
 		 
         // -- add only read regions as input parameters
         for (auto a: onlyreads) {
-          if (const Value* s = isGlobalSingleton (a)) {
-            inputs.push_back(typed_variable_t(GET_VAR(*s, lfac),
-					      (isInteger(*s) ? INT_TYPE
-					       : isBool(*s)  ? BOOL_TYPE
-					       : /*default*/  PTR_TYPE)));
+          if (isGlobalSingleton (a)) {
+	    // Promote the global to a scalar
+	    inputs.push_back(m_lfac.mkArraySingletonVar(a));
 	  } else {
-            inputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, lfac),
-					      getRegionType(a)));
+            inputs.push_back(m_lfac.mkArrayVar(a));	    
 	  }
         }
 
         // -- add input/output parameters
         for (auto a: mods) {
-
           if (news.find(a) != news.end()) continue;
-
-          varname_t a_in = FRESH_VAR(lfac);	  	  
+	  var_ref_t a_in;
+	  
           // -- for each parameter `a` we create a fresh version
           //    `a_in` where `a_in` acts as the input version of the
           //    parameter and `a` is the output version. Note that the
           //    translation of the function will not produce new
           //    versions of `a` since all array stores overwrite `a`.
+
+	  /** Added in the entry block of the function **/
           entry.set_insert_point_front ();
-          if (const Value* s = isGlobalSingleton (a)) {
-	    boost::optional<crabPtrLit> ptr_lit = lfac.getPtrLit(*s);	    	    
-	    if (ptr_lit && (*ptr_lit).isVar()) {
-	      //-- If singleton we don't add a pointer statement but
-	      //-- instead an integer one.
-	      if (isInteger(*s)) {
-		entry.assign((*ptr_lit).getVar(), z_lin_exp_t(a_in));
-	      } else if (isBool(*s)) {
-		entry.bool_assign((*ptr_lit).getVar(), a_in, false);
-	      } else {
-		/** TODO: pointer singleton **/
-	      }
-	    } else {
-	      CRABLLVM_WARNING("Array function parameter is not a pointer variable");
-	    }
+          if (const Value *v = isGlobalSingleton (a)) {
+	    // Promote the global to a scalar
+	    Type* ty = cast<PointerType>(v->getType())->getElementType();
+	    var_t s = m_lfac.mkArraySingletonVar(a);
+	    if (isInteger(ty)) {
+	      a_in = var_ref_t(m_lfac.mkIntVar(ty->getIntegerBitWidth()));
+	      entry.assign(s, a_in.get());
+	    } else if (isBool(ty)) {
+	      a_in = var_ref_t(m_lfac.mkBoolVar());
+	      entry.bool_assign(s, a_in.get(), false);	      
+	    } else { /* unreachable */ }
 	  } else {
-            entry.array_assign(GET_VAR_FROM_REGION(a, lfac), a_in, getRegionType(a));
+	    switch (a.get_type()){
+	    case INT_REGION:
+	      a_in = var_ref_t(m_lfac.mkIntArrayVar(0 /*unknown bitwidth*/));
+	      break;
+	    case BOOL_REGION:
+	      a_in = var_ref_t(m_lfac.mkBoolArrayVar());
+	      break;
+	    default: /*unreachable*/ ;;
+	    }
+	    if (!a_in.is_null())
+	      entry.array_assign(m_lfac.mkArrayVar(a), a_in.get());
 	  }
 
           // input version
-          if (const Value *s = isGlobalSingleton (a)) {
-            inputs.push_back(typed_variable_t(a_in,
-					      (isInteger(*s) ? INT_TYPE
-					       : isBool(*s)  ? BOOL_TYPE
-					       : /*default*/  PTR_TYPE)));
-	  } else {
-	    inputs.push_back(typed_variable_t(a_in, getRegionType(a)));
-	  }
+	  if (!a_in.is_null())
+	    inputs.push_back(a_in.get());
 	  
           // output version
-          if (const Value* s = isGlobalSingleton (a)) { 
-            outputs.push_back(typed_variable_t(GET_VAR(*s, lfac),
-					       (isInteger(*s) ? INT_TYPE
-					       : isBool(*s)   ? BOOL_TYPE
-					       : /*default*/   PTR_TYPE)));
+          if (isGlobalSingleton (a)) {
+	    // Promote the global to a scalar
+	    outputs.push_back(m_lfac.mkArraySingletonVar(a));
 	  } else {
-            outputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, lfac),
-					       getRegionType(a)));
+            outputs.push_back(m_lfac.mkArrayVar(a));
 	  }
         }
 
         // -- add more output parameters
         for (auto a: news) {
-          outputs.push_back(typed_variable_t(GET_VAR_FROM_REGION(a, lfac),
-					     getRegionType(a)));
+          outputs.push_back(m_lfac.mkArrayVar(a));
         }
         
       }
 
       // -- Finally, we add the function declaration
 
-      #if 0
-      // SANITY CHECK
-      std::vector<varname_t> sorted_ins, sorted_outs;
-      sorted_ins.reserve(inputs.size());
-      sorted_outs.reserve(outputs.size());
-      for (auto kv: inputs) sorted_ins.push_back(kv.first);
-      for (auto kv: outputs) sorted_outs.push_back(kv.first);
+      #ifdef SANITY_CHECK
+      std::vector<var_t> sorted_ins(inputs.begin(), inputs.end());
+      std::vector<var_t> sorted_outs(outputs.begin(), outputs.end());
       std::sort(sorted_ins.begin(), sorted_ins.end());
       std::sort(sorted_outs.begin(), sorted_outs.end());
-      std::vector<varname_t> intersect;
+      std::vector<var_t> intersect;
       std::set_intersection(sorted_ins.begin(), sorted_ins.end(),
 			    sorted_outs.begin(), sorted_outs.end(),
 			    std::back_inserter(intersect));
       if (!intersect.empty()) {
-	llvm::errs () << "Function inputs and outputs should not intersect\n";
-	crab::outs () << "INPUTS: {";
-	for (auto kv: inputs) { crab::outs () << kv.first << ":" << kv.second << ";"; }
-	crab::outs () << "}\n";
-	crab::outs () << "OUTPUTS: {";
-	for (auto kv: outputs) { crab::outs () << kv.first << ":" << kv.second  << ";"; }
-	crab::outs () << "}\n";
+	llvm::errs () << "CRALLVM ERROR: function inputs and outputs should not intersect\n";
+	crab::errs () << "INPUTS: {";
+	for (auto i: inputs) { crab::outs () << i << ";"; }
+	crab::errs () << "}\n";
+	crab::errs () << "OUTPUTS: {";
+	for (auto o: outputs) { crab::outs () << o << ";"; }
+	crab::errs () << "}\n";
+	abort();
       }
       #endif
 
-      
-      function_decl<varname_t> decl(GET_VAR(m_func, lfac), inputs, outputs);
-      m_cfg->set_func_decl (decl);
-      
+      typedef function_decl<number_t, varname_t> function_decl_t;
+      m_cfg->set_func_decl(function_decl_t(m_func.getName().str(), inputs, outputs));
     }
 
     if (m_cfg->has_exit()) {

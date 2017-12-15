@@ -111,15 +111,17 @@ namespace crab_llvm {
      typedef typename variable_factory_t::varname_t varname_t;
   
      // CFG over integers
-     typedef ikos::variable< ikos::z_number, varname_t > z_var;
+     typedef ikos::z_number number_t;
+     typedef ikos::variable<number_t, varname_t> var_t;
+     typedef ikos::variable_ref<number_t, varname_t> var_ref_t;  
      typedef llvm_basic_block_wrapper basic_block_label_t;
-     typedef crab::cfg::Cfg<basic_block_label_t,varname_t,ikos::z_number> cfg_t;
+     typedef crab::cfg::Cfg<basic_block_label_t,varname_t,number_t> cfg_t;
      typedef boost::shared_ptr<cfg_t> cfg_ptr_t;
      typedef crab::cfg::cfg_ref<cfg_t> cfg_ref_t;
      typedef cfg_t::basic_block_t basic_block_t;
-     typedef typename cfg_t::basic_block_t::lin_exp_t z_lin_exp_t;
-     typedef typename cfg_t::basic_block_t::lin_cst_t z_lin_cst_t;
-     typedef ikos::linear_constraint_system<ikos::z_number, varname_t> z_lin_cst_sys_t;
+     typedef typename cfg_t::basic_block_t::lin_exp_t lin_exp_t;
+     typedef typename cfg_t::basic_block_t::lin_cst_t lin_cst_t;
+     typedef ikos::linear_constraint_system<number_t, varname_t> lin_cst_sys_t;
 
 } // end namespace crab_llvm
 

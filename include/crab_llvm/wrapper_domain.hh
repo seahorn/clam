@@ -25,9 +25,9 @@ namespace llvm {
     o << s.str ();                                           \
     return o; }                                                        
 
-  DUMP_TO_LLVM_STREAM(crab_llvm::z_lin_exp_t)
-  DUMP_TO_LLVM_STREAM(crab_llvm::z_lin_cst_t)
-  DUMP_TO_LLVM_STREAM(crab_llvm::z_lin_cst_sys_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::lin_exp_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::lin_cst_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::lin_cst_sys_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::interval_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::ric_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::dbm_domain_t)
@@ -94,7 +94,7 @@ namespace crab_llvm {
                                                                      \
      ABS_DOM& get() { return m_abs; }                                \
                                                                      \
-     z_lin_cst_sys_t to_linear_constraints() {                       \
+     lin_cst_sys_t to_linear_constraints() {			     \
        return m_abs.to_linear_constraint_system();                   \
      }                                                               \
                                                                      \
@@ -102,7 +102,7 @@ namespace crab_llvm {
        m_abs.write (o);                                              \
      }                                                               \
                                                                      \
-     void forget (const std::vector<varname_t>& vars) {		     \
+     void forget (const std::vector<var_t>& vars) {		     \
        crab::domains::domain_traits<ABS_DOM>::forget (m_abs,         \
                                                       vars.begin (), \
                                                       vars.end ());  \
@@ -151,9 +151,9 @@ namespace crab_llvm {
     
     virtual void write(crab::crab_os& o) = 0;
     
-    virtual z_lin_cst_sys_t to_linear_constraints() = 0;
+    virtual lin_cst_sys_t to_linear_constraints() = 0;
     
-    virtual void forget(const std::vector<varname_t>& vars) = 0;
+    virtual void forget(const std::vector<var_t>& vars) = 0;
    };
   
    typedef GenericAbsDomWrapper::GenericAbsDomWrapperPtr GenericAbsDomWrapperPtr;

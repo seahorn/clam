@@ -104,7 +104,7 @@ namespace crab_llvm {
     
     typedef boost::shared_ptr<GenericAbsDomWrapper> wrapper_dom_ptr;
     typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
-    typedef llvm::DenseMap<const llvm::BasicBlock*, z_lin_cst_sys_t> assumption_map_t;
+    typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
     typedef crab::checker::checks_db checks_db_t;
     typedef boost::shared_ptr<checks_db_t> checks_db_ptr;
     typedef boost::shared_ptr<HeapAbstraction> heap_abs_ptr;

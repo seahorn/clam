@@ -23,7 +23,65 @@ namespace crab_llvm {
 }
 
 namespace crab_llvm {
+
+  // forward declarations
+  class crabLit;
+  class crabLitFactoryImpl;
   
+  typedef boost::shared_ptr<crabLit> crab_lit_ref_t;
+  
+  /** 
+      Factory to create crab literals: typed variable or number.
+  **/
+  class crabLitFactory {
+  public:
+    
+    crabLitFactory(llvm_variable_factory &vfac, crab::cfg::tracked_precision tracklev);
+
+    ~crabLitFactory();
+    
+    llvm_variable_factory& get_vfac();
+    
+    crab::cfg::tracked_precision get_track() const;
+
+    /** convert a Value to a crabLit **/
+    crab_lit_ref_t getLit(const llvm::Value &v);
+
+    /** make typed variables **/
+    var_t mkIntVar(unsigned bitwidth);
+    
+    var_t mkBoolVar();
+    
+    var_t mkPtrVar();
+
+    var_t mkIntArrayVar(unsigned bitwidth);
+    
+    var_t mkBoolArrayVar();
+    
+    var_t mkPtrArrayVar();
+    
+    template<typename Region> var_t mkArrayVar(Region r);
+    
+    template<typename Region> var_t mkArraySingletonVar(Region r);    
+
+    /** direct accessors to crabLit subclasses **/
+    bool isBoolTrue(const crab_lit_ref_t ref) const;
+    
+    bool isBoolFalse(const crab_lit_ref_t ref) const;
+
+    bool isPtrNull(const crab_lit_ref_t ref) const;
+
+    lin_exp_t getExp(const crab_lit_ref_t ref) const;
+    
+    number_t getIntCst(const crab_lit_ref_t ref) const;    
+          
+  private:
+    crabLitFactoryImpl* m_impl;
+  };
+
+  /** 
+     Build a Crab CFG from LLVM Function
+  **/
   class CfgBuilder: public boost::noncopyable {
    public:
 
@@ -36,9 +94,8 @@ namespace crab_llvm {
 
     bool m_is_cfg_built;
     llvm::Function &m_func;
-    llvm_variable_factory &m_vfac;
+    crabLitFactory m_lfac; 
     HeapAbstraction &m_mem;
-    crab::cfg::tracked_precision m_tracklev;
     unsigned m_id;
     cfg_ptr_t m_cfg;
     llvm_bb_map_t m_bb_map;
@@ -49,10 +106,8 @@ namespace crab_llvm {
    public:
     
     CfgBuilder(llvm::Function& func, 
-	       llvm_variable_factory &vfac,
-	       HeapAbstraction &mem, 
-	       crab::cfg::tracked_precision tracklev,
-	       bool isInterProc,
+	       llvm_variable_factory &vfac, HeapAbstraction &mem, 
+	       crab::cfg::tracked_precision tracklev, bool isInterProc,
 	       const llvm::TargetLibraryInfo *tli);
     
     ~CfgBuilder();
@@ -71,8 +126,7 @@ namespace crab_llvm {
 
     opt_basic_block_t execBr(llvm::BasicBlock &Src, const llvm::BasicBlock &Target); 
 
-    void add_block_in_between (basic_block_t &src, basic_block_t &dst,  
-			       basic_block_t &between);
+    void add_block_in_between (basic_block_t &src, basic_block_t &dst, basic_block_t &between); 
 
   }; // end class CfgBuilder
 
