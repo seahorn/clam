@@ -142,8 +142,8 @@ namespace crab_llvm {
   static void CRABLLVM_ERROR(std::string msg, const char *file, unsigned line) {
     llvm::errs() << "CRABLLVM ERROR: " << msg << "\n";
     llvm::errs() << "File: " << file << "\n";
-    llvm::errs() << "Line: " << line << "\n";    
-    abort();
+    llvm::errs() << "Line: " << line << "\n";
+    std::exit (EXIT_FAILURE);           
   }
   
   #define CRABLLVM_WARNING(MSG)				    \
@@ -1841,17 +1841,19 @@ namespace crab_llvm {
         
     void visitCastInst (CastInst &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
-      
-      if ((isa<SExtInst>(I) || isa<ZExtInst> (I)) && AllUsesAreGEP(&I)) {
-	/* 
-	 *  This optimization tries to reduce the number variables within
-	 *  a basic block. This will put less pressure on the numerical
-	 *  abstract domain later on. Search for this idiom: 
-	 *  %_14 = zext i8 %_13 to i32
-	 *  %_15 = getelementptr inbounds [10 x i8]* @_ptr, i32 0, i32 %_14
-	 */
-	return;
-      }
+
+      // XXX: Once we respect integer bitwidths, this optimization
+      // cannot be applied.
+      // if ((isa<SExtInst>(I) || isa<ZExtInst> (I)) && AllUsesAreGEP(&I)) {
+      // 	/* 
+      // 	 *  This optimization tries to reduce the number variables within
+      // 	 *  a basic block. This will put less pressure on the numerical
+      // 	 *  abstract domain later on. Search for this idiom: 
+      // 	 *  %_14 = zext i8 %_13 to i32
+      // 	 *  %_15 = getelementptr inbounds [10 x i8]* @_ptr, i32 0, i32 %_14
+      // 	 */
+      // 	return;
+      // }
       
       if (AllUsesAreNonTrackMem (&I) || AllUsesAreIndirectCalls (&I)) {
 	return;
@@ -2138,13 +2140,16 @@ namespace crab_llvm {
       SmallVector<const Type*, 4> ts;
       gep_type_iterator typeIt = gep_type_begin (I);
       for (unsigned i = 1; i < I.getNumOperands (); ++i, ++typeIt) {
-        // strip zext/sext if there is one
-        if (const ZExtInst *ze = dyn_cast<const ZExtInst> (I.getOperand (i)))
-          ps.push_back (ze->getOperand (0));
-        else if(const SExtInst *se = dyn_cast<const SExtInst>(I.getOperand(i)))
-          ps.push_back (se->getOperand (0));
-        else 
-          ps.push_back (I.getOperand (i));
+	// XXX we cannot strip zext/sext since we model now integer
+	// bitwidths.
+        // // strip zext/sext if there is one
+        // if (const ZExtInst *ze = dyn_cast<const ZExtInst> (I.getOperand (i)))
+        //   ps.push_back (ze->getOperand (0));
+        // else if(const SExtInst *se = dyn_cast<const SExtInst>(I.getOperand(i)))
+        //   ps.push_back (se->getOperand (0));
+        // else 
+        //   ps.push_back (I.getOperand (i));
+	ps.push_back (I.getOperand (i));
         ts.push_back (*typeIt);
       }
 
@@ -2172,8 +2177,9 @@ namespace crab_llvm {
               continue;
           }
 	  crab_lit_ref_t idx = m_lfac.getLit(*ps[i]); 
-	  if (!idx || !idx->isInt())
+	  if (!idx || !idx->isInt()){
 	    CRABLLVM_ERROR("unexpected GEP index",__FILE__, __LINE__);
+	  }
 	  lin_exp_t offset(m_lfac.getExp(idx) *
 			     number_t(storageSize(seqt->getElementType())));
 	  m_bb.ptr_assign(lhs->getVar(), (!already_assigned) ?
@@ -2193,10 +2199,6 @@ namespace crab_llvm {
 
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand ());
-
-      if (!lhs || !lhs->isVar()) {
-	CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
-      }
       
       if (!ptr || !ptr->isPtr()) {
 	CRABLLVM_ERROR("unexpected pointer operand of load instruction",__FILE__, __LINE__);
@@ -2209,11 +2211,18 @@ namespace crab_llvm {
       }
 
       if (isPointer(I, m_lfac.get_track())) {
-	// -- lhs is a pointer -> add pointer statement
-	m_bb.ptr_load(lhs->getVar(), ptr->getVar());
+	if (!lhs || !lhs->isVar()) {
+	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
+	} else {
+	  // -- lhs is a pointer -> add pointer statement
+	  m_bb.ptr_load(lhs->getVar(), ptr->getVar());
+	}
 	return;
       } else if (m_lfac.get_track() >= ARR && (isInteger(I) || isBool(I))) {
 	// -- lhs is an integer/bool -> add array statement
+	if (!lhs || !lhs->isVar()) {
+	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
+	} 	
 	mem_region_t r = GET_REGION(I, I.getPointerOperand ()); 
 	if (!(r.isUnknown ())) {
 	  if (isGlobalSingleton (r)) {
@@ -2249,10 +2258,6 @@ namespace crab_llvm {
       if (!ptr || !ptr->isPtr()) {
 	CRABLLVM_ERROR("unexpected pointer operand of store instruction",__FILE__, __LINE__);
       }
-
-      if (!val) {
-	CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
-      }
       
       if (m_lfac.isPtrNull(ptr)) {
 	CRABLLVM_WARNING(I << " is possibly dereferencing a null pointer");
@@ -2261,7 +2266,9 @@ namespace crab_llvm {
       
       if (isPointer(*I.getValueOperand(), m_lfac.get_track())) {
 	// -- value is a pointer -> add pointer statement
-	if (!m_lfac.isPtrNull(val)) {
+	if (!val) {
+	  CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
+	} else if (!m_lfac.isPtrNull(val)) {
 	  // We ignore the case if we store a null pointer. In
 	  // most cases, it will be fine since typical pointer analyses
 	  // ignore that case but it might be imprecise with certain analyses.
@@ -2270,6 +2277,9 @@ namespace crab_llvm {
       } else if (m_lfac.get_track() >= ARR &&
 		 (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))){
 	// -- value is an integer/bool -> add array statement
+	if (!val) {
+	  CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
+	}
 	mem_region_t r = GET_REGION(I, I.getPointerOperand()); 
 	if (!r.isUnknown()) {
 	  if (isGlobalSingleton(r)) {
