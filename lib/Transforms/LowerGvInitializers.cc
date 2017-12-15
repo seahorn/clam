@@ -306,13 +306,12 @@ namespace crab_llvm {
       GlobalVariable *LLVMUsed = M.getGlobalVariable("llvm.used");
       std::vector<Constant*> MergedVars;
       if (LLVMUsed) {
-	ConstantArray *Inits = cast<ConstantArray>(LLVMUsed->getInitializer());
-	for (unsigned I = 0, E = Inits->getNumOperands(); I != E; ++I) {
+      	ConstantArray *Inits = cast<ConstantArray>(LLVMUsed->getInitializer());
+      	for (unsigned I = 0, E = Inits->getNumOperands(); I != E; ++I) {
 	  MergedVars.push_back(Inits->getOperand(I));
-	}
-	LLVMUsed->eraseFromParent();
+      	}
+      	LLVMUsed->eraseFromParent();
       }
-
       
       IRBuilder<> Builder(M.getContext());
       Builder.SetInsertPoint(&f->getEntryBlock(), f->getEntryBlock().begin ());
@@ -352,12 +351,14 @@ namespace crab_llvm {
 
 
       // re-create llvm.used
-      Type *i8PTy = Type::getInt8PtrTy(M.getContext ());      
-      ArrayType *ATy = ArrayType::get(i8PTy, MergedVars.size());
-      LLVMUsed = new llvm::GlobalVariable(M, ATy, false, llvm::GlobalValue::AppendingLinkage,
-					  llvm::ConstantArray::get(ATy, MergedVars),
-					  "llvm.used");
-      LLVMUsed->setSection("llvm.metadata");
+      if (!MergedVars.empty()) {
+	Type *i8PTy = Type::getInt8PtrTy(M.getContext ());      
+	ArrayType *ATy = ArrayType::get(i8PTy, MergedVars.size());
+	LLVMUsed = new llvm::GlobalVariable(M, ATy, false, llvm::GlobalValue::AppendingLinkage,
+					    llvm::ConstantArray::get(ATy, MergedVars),
+					    "llvm.used");
+	LLVMUsed->setSection("llvm.metadata");
+      }
 
       return change;
       
