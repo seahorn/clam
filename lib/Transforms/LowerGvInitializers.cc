@@ -148,7 +148,6 @@ namespace crab_llvm {
 			      IRBuilder<> &Builder, Module &M,
 			      std::vector<Constant*> &LLVMUsed,
 			      S &stack) {
-      
       bool change = false;
       if (isa<IntegerType> (T)) {
 	#ifdef DEBUG_LOWER_GV
@@ -181,7 +180,7 @@ namespace crab_llvm {
 	  CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);	  
 	  change = true;
 	} else {
-	  llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *ATy << "\n";
+	  //llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *ATy << "\n";
 	}
       } else if (isa<PointerType> (T)) {
         #ifdef DEBUG_LOWER_GV
@@ -198,7 +197,7 @@ namespace crab_llvm {
 	CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);
 	change = true;
       } else {
-	llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *T << "\n";
+	//llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *T << "\n";
       }
 
       stack.pop_back();	      
@@ -359,9 +358,8 @@ namespace crab_llvm {
 					    "llvm.used");
 	LLVMUsed->setSection("llvm.metadata");
       }
-
-      return change;
       
+      return change;
     }
     
     void getAnalysisUsage (AnalysisUsage &AU) const {
