@@ -600,9 +600,7 @@ namespace crab_llvm {
     if (isInteger(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant integer
-	llvm::errs () << "\t\tTranslating " <<  *c << " into ";
 	ikos::z_number n = getIntConstant(c);
-	crab::outs () << n << "\n";
 	return crabIntLit(n);
       } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
 	// -- integer variable
@@ -1357,7 +1355,8 @@ namespace crab_llvm {
 	// both constant operands.  We can easily store the constant
 	// operands into variables but Llvm frontend should get rid of
 	// them.
-	CRABLLVM_ERROR("not supported binary operation with both constant operands");
+	CRABLLVM_ERROR("not supported binary operation with both constant operands",
+		       __FILE__,__LINE__);
       }
       
       switch(i.getOpcode()) {
@@ -1382,7 +1381,7 @@ namespace crab_llvm {
 	break;
       default:
 	// this should not happen
-	CRABLLVM_ERROR("unsupported translation of " << i << " at line " << __LINE__);
+	CRABLLVM_ERROR("unexpected instruction", __FILE__, __LINE__);
       }
     }
     
