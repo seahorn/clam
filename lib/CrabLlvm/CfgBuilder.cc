@@ -16,7 +16,6 @@
  * Known limitations of the translation:
  * 
  * - Ignore floating point instructions.
- * - Ignore ashr and shl with non-constant shifts.
  * - Ignore comparison between pointers.
  * - Ignore pointer cast instructions.
  */
@@ -601,7 +600,9 @@ namespace crab_llvm {
     if (isInteger(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant integer
+	llvm::errs () << "\t\tTranslating " <<  *c << " into ";
 	ikos::z_number n = getIntConstant(c);
+	crab::outs () << n << "\n";
 	return crabIntLit(n);
       } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
 	// -- integer variable
@@ -680,7 +681,7 @@ namespace crab_llvm {
      statement (ptr_load/ptr_store) but not any extra array statement
      (array_load/array_store). The reason is that, e.g., for the lhs
      of a load instruction, the same variable name would be used both
-     for ptr_load and array_load with contraditing types.
+     for ptr_load and array_load with contradicting types.
   */
 
   static inline mem_region_t
@@ -1306,6 +1307,24 @@ namespace crab_llvm {
 	  m_bb.bitwise_xor(lhs, (*op1.get_variable()), (*op2.get_variable()));
 	else if (op1.get_variable() && op2.is_constant())
 	  m_bb.bitwise_xor(lhs, (*op1.get_variable()), op2.constant());	    
+	return;
+      case BinaryOperator::Shl:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.shl(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.shl(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      case BinaryOperator::AShr:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.ashr(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.ashr(lhs, (*op1.get_variable()), op2.constant());	    
+	return;	  
+      case BinaryOperator::LShr:
+	if (op1.get_variable() && op2.get_variable())	  	  
+	  m_bb.lshr(lhs, (*op1.get_variable()), (*op2.get_variable()));
+	else if (op1.get_variable() && op2.is_constant())
+	  m_bb.lshr(lhs, (*op1.get_variable()), op2.constant());	    
 	return;	  
       default:;;
       }
@@ -1335,10 +1354,10 @@ namespace crab_llvm {
 
       if (op1.is_constant() && op2.is_constant ()) {
 	// Crab cfg api does not support arithmetic operations with
-	// both constant operands.  Llvm frontend should get rid of them.
-	CRABLLVM_WARNING("ignored arithmetic operation with both constant operands");
-	havoc(lhs, m_bb);
-	return;
+	// both constant operands.  We can easily store the constant
+	// operands into variables but Llvm frontend should get rid of
+	// them.
+	CRABLLVM_ERROR("not supported binary operation with both constant operands");
       }
       
       switch(i.getOpcode()) {
@@ -1348,50 +1367,22 @@ namespace crab_llvm {
       case BinaryOperator::SDiv:
       case BinaryOperator::UDiv:
       case BinaryOperator::SRem:
-      case BinaryOperator::URem:	
+      case BinaryOperator::URem:
+      case BinaryOperator::Shl:
+      case BinaryOperator::AShr:
+      case BinaryOperator::LShr:		
 	if (op1.is_constant()) { 
-	  // Crab cfg does not support add/sub/mul/div of a constant and variable.
+	  // Crab cfg does not support arithmetic operations between a
+	  // constant and variable.
 	  m_bb.assign(lhs, op1.constant ());
 	  doBinOp(i.getOpcode(), lhs, lhs, op2);
 	} else {
 	  doBinOp(i.getOpcode(), lhs, op1, op2);	  
 	}
 	break;
-      case BinaryOperator::Shl:
-	if (op2.is_constant()) {
-	  number_t shift = op2.constant ();
-	  if (shift < 0) {
-	    CRABLLVM_ERROR("shl shift operand cannot be negative", __FILE__, __LINE__);
-	  }
-	  number_t factor = 1;
-	  for (number_t i = 0; i < shift; i++) 
-	  { factor *= 2; }
-	  doBinOp(BinaryOperator::Mul, lhs, op1, factor);
-	} else {
-	  // TODO: shl with non-constant shift
-	  CRABLLVM_WARNING("translation skipped shl with non-constant shift");
-	  havoc(lhs,m_bb);
-	}
-	break;
-      case BinaryOperator::AShr:
-	if (op2.is_constant()) {
-	  number_t shift = op2.constant ();
-	  if (shift < 0) {
-	    CRABLLVM_ERROR("ashr shift operand cannot be negative", __FILE__, __LINE__);
-	  }
-	  number_t factor = 1;
-	  for (number_t i = 0; i < shift; i++) 
-	  { factor *= 2; }
-	  doBinOp(BinaryOperator::SDiv, lhs, op1, factor);	  
-	} else {
-	  // TODO: ashr with non-constant shift
-	  CRABLLVM_WARNING("translation skipped ashr with non-constant shift");
-	  havoc(lhs,m_bb);
-	}
-	break;
       default:
-	CRABLLVM_WARNING("translation skipped " << i << " at line " << __LINE__);
-	havoc(lhs, m_bb);
+	// this should not happen
+	CRABLLVM_ERROR("unsupported translation of " << i << " at line " << __LINE__);
       }
     }
     
@@ -1816,6 +1807,7 @@ namespace crab_llvm {
       case BinaryOperator::URem:
       case BinaryOperator::Shl:
       case BinaryOperator::AShr:
+      case BinaryOperator::LShr:	
 	doArithmetic(ref, I);
 	break;
       case BinaryOperator::And:
@@ -1826,8 +1818,6 @@ namespace crab_llvm {
 	else
 	  doIntLogicOp(ref, I);
 	break;
-      case BinaryOperator::LShr:
-	// FALL-THROUGH
       default:
 	havoc(ref->getVar(), m_bb);
       }
@@ -2748,7 +2738,7 @@ namespace crab_llvm {
 
     /// Add function declaration
     if (m_is_inter_proc && !m_func.isVarArg ()) {
-
+      
       /**
        * Translate LLVM function declaration 
        *   o_ty foo (i1,...,in)
