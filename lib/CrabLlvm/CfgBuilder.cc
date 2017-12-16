@@ -179,42 +179,37 @@ namespace crab_llvm {
   static mpz_class toMpz (const llvm::APInt &v) {
     // Based on:
     // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
-    // return v.getSExtValue ();
-    
     llvm::APInt abs;
     abs = v.isNegative () ? v.abs () : v;
-    
     const uint64_t *rawdata = abs.getRawData ();
     unsigned numWords = abs.getNumWords ();
-    
     mpz_class res;
-    mpz_import(res.get_mpz_t (), numWords, 1, 
-	       sizeof (uint64_t), 0, 0, rawdata);
-    
+    mpz_import(res.get_mpz_t (), numWords, 1,  sizeof (uint64_t), 0, 0, rawdata);
     return v.isNegative () ? mpz_class(-res) : res;
   }
 
-  static boost::optional<int64_t> getIntConstant(const ConstantInt* CI){
-    if (CI->getType ()->isIntegerTy(1)) {
-      return (int64_t) CI->getZExtValue();
-    }
-    else if (CI->getValue().getMinSignedBits() <= 64) {
-      return CI->getSExtValue();
-    }
-    else {
-      CRABLLVM_WARNING(toMpz(CI->getValue()).get_str() +  " does not fit in int64_t.");
-      return boost::optional<int64_t>();
-    }
-  }
-
-  // static std::string getIntConstant(const ConstantInt* CI){
+  // static boost::optional<int64_t> getIntConstant(const ConstantInt* CI){
   //   if (CI->getType ()->isIntegerTy(1)) {
-  //     return CI->getValue().toString(10 /*radix*/, false /*unsigned*/);
-  //   } else {
-  //     return CI->getValue().toString(10 /*radix*/, true /*signed*/);
+  //     return (int64_t) CI->getZExtValue();
+  //   }
+  //   else if (CI->getValue().getMinSignedBits() <= 64) {
+  //     return CI->getSExtValue();
+  //   }
+  //   else {
+  //     CRABLLVM_WARNING(toMpz(CI->getValue()).get_str() +  " does not fit in int64_t.");
+  //     return boost::optional<int64_t>();
   //   }
   // }
-  
+
+  // The return value should be ikos::z_number and not number_t
+  static ikos::z_number getIntConstant(const ConstantInt* CI){
+    if (CI->getType ()->isIntegerTy(1)) {
+      return ikos::z_number((int64_t) CI->getZExtValue());
+    } else {
+      return ikos::z_number(toMpz(CI->getValue()));
+    }
+  }
+    
   static bool isTracked (const llvm::Value &v,
 			 const crab::cfg::tracked_precision tracklev) {
     // -- ignore any shadow variable created by seahorn
@@ -347,10 +342,12 @@ namespace crab_llvm {
     
     number_t m_num; // only considered if m_var.is_null();
     var_ref_t m_var;
+
+    // If z_number != number_t we assume that number_t has a
+    // constructor for z_number.
+    explicit crabIntLit(ikos::z_number n): crabLit(CRAB_LITERAL_INT), m_num(n) {}
     
-    crabIntLit(number_t n): crabLit(CRAB_LITERAL_INT), m_num(n) {}
-    
-    crabIntLit(var_t v): crabLit(CRAB_LITERAL_INT), m_var(v) {}
+    explicit crabIntLit(var_t v): crabLit(CRAB_LITERAL_INT), m_var(v) {}
     
   public:
     
@@ -579,8 +576,8 @@ namespace crab_llvm {
     if (isBool(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant boolean
-	if (boost::optional<int64_t> n = getIntConstant(c))
-	  return crabBoolLit((*n) > 0 ? true : false);
+	ikos::z_number n = getIntConstant(c);
+	return crabBoolLit(n > 0 ? true : false);
       } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
 	// -- boolean variable 
 	return crabBoolLit(var_t(m_vfac[&v], BOOL_TYPE, 1));
@@ -604,9 +601,8 @@ namespace crab_llvm {
     if (isInteger(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant integer
-	if (boost::optional<int64_t> n = getIntConstant(c)) {
-	  return crabIntLit(*n);
-	}
+	ikos::z_number n = getIntConstant(c);
+	return crabIntLit(n);
       } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
 	// -- integer variable
 	unsigned bitwidth = v.getType()->getIntegerBitWidth();
@@ -1685,24 +1681,22 @@ namespace crab_llvm {
       
       if (ConstantInt *CI = dyn_cast<ConstantInt> (cond)) {
         // -- cond is a constant
-	if (auto n = getIntConstant(CI)) {
-	  int64_t cond_val = *n;
-	  if (cond_val > 0) {
-	    if (isAssertFn(callee) || isAssumeFn(callee)) {
-	      // do nothing
-	    } else {
-	      assert(isNotAssumeFn(callee));
-	      m_bb.assume(lin_cst_t::get_false()); 	      
-	    }
+	ikos::z_number cond_val = getIntConstant(CI);
+	if (cond_val > 0) {
+	  if (isAssertFn(callee) || isAssumeFn(callee)) {
+	    // do nothing
 	  } else {
-	    if (isNotAssumeFn(callee)) {
-	      // do nothing
-	    } else if (isAssumeFn(callee)) {
+	    assert(isNotAssumeFn(callee));
+	    m_bb.assume(lin_cst_t::get_false()); 	      
+	  }
+	} else {
+	  if (isNotAssumeFn(callee)) {
+	    // do nothing
+	  } else if (isAssumeFn(callee)) {
 	      m_bb.assume(lin_cst_t::get_false());
-	    } else {
-	      assert(isAssertFn(callee));
-	      m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
-	    }
+	  } else {
+	    assert(isAssertFn(callee));
+	    m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
 	  }
 	}
       } else {
