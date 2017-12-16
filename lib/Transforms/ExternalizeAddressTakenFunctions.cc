@@ -108,7 +108,7 @@ namespace crab_llvm {
       return Changed;
     }
     void getAnalysisUsage (AnalysisUsage &AU) const {
-      AU.setPreservesAll ();
+      //AU.setPreservesAll ();
     }
 
     const char* getPassName () const {
