@@ -118,8 +118,9 @@ namespace crab_llvm
       return "Lower select instructions";
     }
 
-    virtual void getAnalysisUsage (AnalysisUsage &AU) const
-    { AU.setPreservesAll (); }
+    virtual void getAnalysisUsage (AnalysisUsage &AU) const {
+      //AU.setPreservesAll ();
+    }
     
   };
 

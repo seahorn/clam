@@ -15,7 +15,7 @@ namespace crab_llvm
     {return removeUnreachableBlocks (F);}
     
     void getAnalysisUsage (AnalysisUsage &AU) const {
-      AU.setPreservesAll ();
+      //  AU.setPreservesAll ();
     }
     
     virtual const char * getPassName() const {

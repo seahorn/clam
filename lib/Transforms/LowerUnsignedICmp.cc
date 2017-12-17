@@ -259,7 +259,7 @@ namespace crab_llvm {
     }
     
     virtual void getAnalysisUsage (AnalysisUsage &AU) const {
-      AU.setPreservesAll ();
+      //AU.setPreservesAll ();
     }
     
   };

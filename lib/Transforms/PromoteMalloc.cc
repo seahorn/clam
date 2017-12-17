@@ -59,8 +59,9 @@ namespace crab_llvm {
       return changed;
     }
 
-    void getAnalysisUsage (AnalysisUsage &AU) const
-    {AU.setPreservesAll ();}
+    void getAnalysisUsage (AnalysisUsage &AU) const {
+      //AU.setPreservesAll ();
+    }
     
     virtual const char *getPassName () const {return "PromoteMalloc";}
     
