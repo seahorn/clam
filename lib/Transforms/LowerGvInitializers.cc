@@ -292,7 +292,7 @@ namespace crab_llvm {
       std::vector<GlobalVariable*> gvs;
       for (GlobalVariable &gv : boost::make_iterator_range(M.global_begin(),
 							   M.global_end())) {
-        if (gv.hasInitializer ())
+        if (gv.hasInitializer () && gv.getName() != "llvm.used")
 	  gvs.push_back(&gv);
       }
       
@@ -304,7 +304,7 @@ namespace crab_llvm {
       */
       GlobalVariable *LLVMUsed = M.getGlobalVariable("llvm.used");
       std::vector<Constant*> MergedVars;
-      if (LLVMUsed) {
+      if (LLVMUsed && LLVMUsed->hasInitializer()) {
       	ConstantArray *Inits = cast<ConstantArray>(LLVMUsed->getInitializer());
       	for (unsigned I = 0, E = Inits->getNumOperands(); I != E; ++I) {
 	  MergedVars.push_back(Inits->getOperand(I));
@@ -322,6 +322,7 @@ namespace crab_llvm {
 	// ConstantDataSequential constants. const char* are usually
 	// translated into that. We don't bother for now since
 	// crab-llvm does not focus on strings.
+	assert(gv->hasInitializer());
 	if (isa<ConstantInt>(gv->getInitializer())) {
 	  GlobalStatus GS;
 	  bool AddressTaken = GlobalStatus::analyzeGlobal(gv, GS);
