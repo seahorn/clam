@@ -34,7 +34,10 @@ Then, the basic compilation steps are:
      cmake --build . --target install 
 
 
-The next two packages are highly recommended:
+Crab-llvm provides several components that are installed via the
+`extra` target. These components can be used by other projects outside
+of Crab-llvm.
+
 
 * [llvm-dsa](https://github.com/seahorn/llvm-dsa): ``` git clone https://github.com/seahorn/llvm-dsa.git ```
 
@@ -92,7 +95,7 @@ $ pip install OutputCheck
 
 ![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
 
-# Demo 1 #
+# Example 1 #
 
 Consider the program `test.c`:
 
@@ -147,18 +150,18 @@ _1:
   zext _6:1 to _call1:32;
   x.0 = _2;
   y.0 = _2;
+  goto _x.0;
 /**
   INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _2-x.0<=0, y.0-x.0<=0, x.0-_2<=0, y.0-_2<=0, _2-y.0<=0, x.0-y.0<=0})
 **/
---> [_x.0;]
 _x.0:
 /**
   INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _2-x.0<=0, y.0-x.0<=0, _2-y.0<=0, x.0-y.0<=0})
 **/
---> [__@bb_1;__@bb_2;]
+  goto __@bb_1,__@bb_2;
 __@bb_1:
   assume (-_3+x.0 <= -1);
---> [_10;]
+  goto _10;
 _10:
 /**
   INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _2-x.0<=0, y.0-x.0<=0, _2-y.0<=0, x.0-y.0<=0, x.0-_3<=-1, _2-_3<=-1, y.0-_3<=-1})
@@ -167,15 +170,15 @@ _10:
   _br2 = y.0+1;
   x.0 = _11;
   y.0 = _br2;
+  goto _x.0;
 /**
   INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _br2-y.0<=0, _11-y.0<=0, _2-y.0<=-1, x.0-y.0<=0, x.0-_3<=0, _2-_3<=-1, y.0-_3<=0, _11-_3<=0, _br2-_3<=0, x.0-_11<=0, _2-_11<=-1, y.0-_11<=0, _br2-_11<=0, y.0-_br2<=0, _2-_br2<=-1, x.0-_br2<=0, _11-_br2<=0, _11-x.0<=0, _br2-x.0<=0, _2-x.0<=-1, y.0-x.0<=0})
 **/
---> [_x.0;]
 __@bb_2:
   assume (_3-x.0 <= 0);
   y.0.lcssa = y.0;
   x.0.lcssa = x.0;
---> [_y.0.lcssa;]
+  goto _y.0.lcssa;
 _y.0.lcssa:
 /**
   INVARIANTS: ({}, {_call -> [0, 1], _call1 -> [0, 1], _2-x.0<=0, y.0-x.0<=0, _3-x.0<=0, y.0.lcssa-x.0<=0, x.0.lcssa-x.0<=0, _2-y.0<=0, x.0-y.0<=0, _3-y.0<=0, y.0.lcssa-y.0<=0, x.0.lcssa-y.0<=0, y.0-y.0.lcssa<=0, _2-y.0.lcssa<=0, x.0-y.0.lcssa<=0, _3-y.0.lcssa<=0, x.0.lcssa-y.0.lcssa<=0, x.0-x.0.lcssa<=0, _2-x.0.lcssa<=0, y.0-x.0.lcssa<=0, _3-x.0.lcssa<=0, y.0.lcssa-x.0.lcssa<=0})
@@ -191,7 +194,6 @@ _y.0.lcssa:
 /**
   INVARIANTS: ({_14 -> true; _16 -> true}, {_call -> [0, 1], _call1 -> [0, 1], _call3 -> [1, 1], _call4 -> [1, 1], @V_17 -> [0, 0], _2-x.0<=0, y.0-x.0<=0, _3-x.0<=0, y.0.lcssa-x.0<=0, x.0.lcssa-x.0<=0, _2-y.0<=0, x.0-y.0<=0, _3-y.0<=0, y.0.lcssa-y.0<=0, x.0.lcssa-y.0<=0, y.0-y.0.lcssa<=0, _2-y.0.lcssa<=0, x.0-y.0.lcssa<=0, _3-y.0.lcssa<=0, x.0.lcssa-y.0.lcssa<=0, x.0-x.0.lcssa<=0, _2-x.0.lcssa<=0, y.0-x.0.lcssa<=0, _3-x.0.lcssa<=0, y.0.lcssa-x.0.lcssa<=0})
 **/
---> []
 ```
 
 It shows the Control-Flow Graph analyzed by Crab together with the invariants inferred for function `main` that hold at the entry and and the exit of each basic block. 
@@ -326,7 +328,7 @@ right after each LLVM load instruction. The option `all` injects
 invariants in all above locations. To see the final LLVM bitcode just
 add the option `-o out.bc`.
 
-# Demo 2 #
+# Example 2 #
 
 Consider the next program:
 
@@ -397,16 +399,15 @@ between 0 and 5.
 
 - Ignore floating point operations.
 
-- Interval arithmetic ignores wraparound which obviously affects the
-  soundness of the analyzer.
-
 # Analysis limitations #
 
 Well, there are many. Most of these limitations are coming from
 Crab. Here some of them:
 
 - Crab numerical domains mostly reason about linear arithmetic.
- 
+
+- Most Crab numerical domains reason about infinite integers.
+
 - There are several Crab numerical domains that compute disjunctive
   invariants but they are still limited in terms of expressiveness to
   keep them tractable.
