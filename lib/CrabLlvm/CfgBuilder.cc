@@ -16,8 +16,7 @@
  * Known limitations of the translation:
  * 
  * - Ignore floating point instructions.
- * - Ignore comparison between pointers.
- * - Ignore pointer cast instructions.
+ * - Ignore inttoptr/ptrtoint instructions.
  */
 
 #include "llvm/IR/InstVisitor.h"
@@ -974,6 +973,59 @@ namespace crab_llvm {
     }	
     default:  
       CRABLLVM_ERROR ("unexpected problem while translating CmpInst", __FILE__, __LINE__);
+    }
+  }
+
+  /* If possible, return a pointer constraint from CmpInst */  
+  static boost::optional<ptr_cst_t>
+  cmpInstToCrabPtr(CmpInst &I, crabLitFactory &lfac, const bool isNegated) {
+    normalizeCmpInst(I);
+    
+    const Value& v0 = *I.getOperand (0);
+    const Value& v1 = *I.getOperand (1);
+
+    crab_lit_ref_t ref0 = lfac.getLit(v0);
+    if (!ref0 || !(ref0->isPtr()))
+      return boost::optional<ptr_cst_t>();
+
+    crab_lit_ref_t ref1 = lfac.getLit(v1);
+    if (!ref1 || !(ref1->isPtr()))
+      return boost::optional<ptr_cst_t>();
+
+    if (I.getPredicate() != CmpInst::ICMP_EQ &&
+	I.getPredicate() != CmpInst::ICMP_NE) {
+      CRABLLVM_WARNING("unexpected pointer comparison " << I);
+      return boost::optional<ptr_cst_t> ();            
+    }
+    
+    bool is_eq;
+    if ((I.getPredicate() == CmpInst::ICMP_EQ && !isNegated) ||
+	(I.getPredicate() == CmpInst::ICMP_NE && isNegated)) {
+      is_eq = true;
+    } else {
+      is_eq = false;
+    }
+    
+    if (is_eq) {
+      if (ref0->isVar() && lfac.isPtrNull(ref1)) {
+	return ptr_cst_t::mk_eq_null(ref0->getVar());
+      } else if (lfac.isPtrNull(ref0) && ref1->isVar()) {
+	return ptr_cst_t::mk_eq_null(ref1->getVar());
+      } else if (ref0->isVar() && ref1->isVar()) {
+	return ptr_cst_t::mk_eq(ref0->getVar(), ref1->getVar());
+      } else {
+	return ptr_cst_t::mk_true();
+      }
+    } else {
+      if (ref0->isVar() && lfac.isPtrNull(ref1)) {
+	return ptr_cst_t::mk_diseq_null(ref0->getVar());
+      } else if (lfac.isPtrNull(ref0) && ref1->isVar()) {
+	return ptr_cst_t::mk_diseq_null(ref1->getVar());
+      } else if (ref0->isVar() && ref1->isVar()) {
+	return ptr_cst_t::mk_diseq(ref0->getVar(), ref1->getVar());
+      } else {
+	return ptr_cst_t::mk_false();
+      }      
     }
   }
 
@@ -2630,8 +2682,9 @@ namespace crab_llvm {
 	      }
 	    } else if (isPointer(*(CI->getOperand(0)), m_lfac.get_track()) &&
 		       isPointer(*(CI->getOperand(1)), m_lfac.get_track())) {
-	      // TODO: add ptr_assume statement	      
-	      CRABLLVM_WARNING("translation skipped comparison between pointers");
+	      if (auto cst_opt = cmpInstToCrabPtr(*CI, m_lfac, isNegated)) {
+		bb.ptr_assume (*cst_opt); 
+	      }
 	    }
 	    if (c.hasNUsesOrMore (2)) {
 	      // If I is used by another instruction apart from a
