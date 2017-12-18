@@ -22,6 +22,20 @@ namespace crab_llvm {
 		  BOOL_REGION = 1,
 		  INT_REGION = 2,
 		  PTR_REGION = 3} region_type_t;
+
+   struct region_info {
+     region_type_t m_region_type;
+     // if the region contains a basic type (bool or integer) then
+     // m_bitwidth is the bitwidth of the basic type. Otherwise, it is
+     // 0.
+     unsigned m_bitwidth;
+     
+    region_info(region_type_t t, unsigned b): m_region_type(t), m_bitwidth(b){}
+     
+    region_type_t get_type() const { return m_region_type;}
+     
+     unsigned get_bitwidth() const { return m_bitwidth;}
+   };
   
    template<typename Mem>
    class Region {
@@ -38,17 +52,17 @@ namespace crab_llvm {
 
      Mem *m_mem;
      int m_id;
-     region_type_t m_type;
+     region_info m_info;
      
-     Region(Mem *mem, int id, region_type_t type)
-       : m_mem(mem), m_id(id), m_type (type) { }
+     Region(Mem *mem, int id, region_info info)
+       : m_mem(mem), m_id(id), m_info (info) { }
      
     public:
 
-     Region(): m_mem(nullptr), m_id(-1), m_type(UNTYPED_REGION) { }
+     Region(): m_mem(nullptr), m_id(-1), m_info(region_info(UNTYPED_REGION,0)) { }
        
      bool isUnknown() const {
-       return(m_id < 0 || m_type == UNTYPED_REGION);
+       return(m_id < 0 || m_info.get_type() == UNTYPED_REGION);
      }
           
      const llvm::Value* getSingleton() const {
@@ -58,7 +72,9 @@ namespace crab_llvm {
          return m_mem->getSingleton(m_id);
      }
 
-     region_type_t get_type() const { return m_type;}
+     region_type_t get_type() const { return m_info.get_type();}
+
+     unsigned get_bitwidth() const { return m_info.get_bitwidth();}
      
      bool operator<(const Region<Mem> & o) const {
        return (m_id < o.m_id);

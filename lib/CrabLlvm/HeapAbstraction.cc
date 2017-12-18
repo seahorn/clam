@@ -51,10 +51,21 @@ namespace crab_llvm {
     boost::set_union(s1, s2, std::inserter(s3, s3.end()));
     std::swap(s3, s1);
   }
-
-  struct isInteger: std::unary_function<const llvm::Type*, bool>
-  { bool operator()(const llvm::Type* t) const {
-    return (t->isIntegerTy() && !t->isIntegerTy(1)); } };
+  
+  struct isInteger: std::unary_function<const llvm::Type*, bool> {
+    unsigned m_bitwidth;
+    isInteger(): m_bitwidth(0) {}
+    bool operator()(const llvm::Type* t) {
+      bool is_int = (t->isIntegerTy() && !t->isIntegerTy(1));
+      if (is_int) {
+	// XXX: We use bitwidth for overflow purposes so taking the
+	// minimum is the most conservative choice.
+	m_bitwidth = (m_bitwidth == 0 ? t->getIntegerBitWidth() :
+		      std::min(m_bitwidth, t->getIntegerBitWidth()));
+      }
+      return is_int;
+    }
+  };
 
   struct isBool: std::unary_function<const llvm::Type*, bool>
   { bool operator()(const llvm::Type* t) const {
@@ -67,7 +78,7 @@ namespace crab_llvm {
   // return a value if the node corresponds to a typed single-cell
   // global memory cell, or nullptr otherwise.
   template<typename Pred>
-  static const llvm::Value* getTypedSingleton(const llvm::DSNode *n, Pred is_typed) {
+  static const llvm::Value* getTypedSingleton(const llvm::DSNode *n, Pred& is_typed) {
     if (!n) return nullptr;
     if (const llvm::Value* v = n->getUniqueScalar()) {
       if (const llvm::GlobalVariable *gv =
@@ -82,13 +93,13 @@ namespace crab_llvm {
   // return true if the cell (n,o) contains a value of a specified
   // type by is_typed
   template<typename Pred>
-  static bool isTypedCell(const llvm::DSNode *n, unsigned  o, Pred is_typed) {
+  static bool isTypedCell(const llvm::DSNode *n, unsigned  o, Pred& is_typed) {
     if (!n) return false;
 
     // We need to traverse all types of the node
     for (auto &kv: boost::make_iterator_range(n->type_begin(), n->type_end())){
       if (kv.first == o) {
-	// Check that all types of field are integers
+	// Check that all types of field are satisfied by is_typed.
 	for (auto ty: *(kv.second))
 	  if (!is_typed(ty)) return false;
 	return true;
@@ -100,7 +111,7 @@ namespace crab_llvm {
   // return true if the cell (n,o) points to an array of elements of
   // some type specified by is_typed.
   template<typename Pred>
-  static bool isTypedArray(const llvm::DSNode *n, unsigned o, Pred is_typed) {
+  static bool isTypedArray(const llvm::DSNode *n, unsigned o, Pred& is_typed) {
     if (!n) return false;
 
     // llvm-dsa only allows arrays at offset 0, otherwise it collapses
@@ -121,10 +132,10 @@ namespace crab_llvm {
   }
 
   // canBeDisambiguated succeeds if returned valued != UNTYPED_REGION
-  static region_type_t canBeDisambiguated(const llvm::DSNode *n, unsigned offset,
-					  bool disambiguate_unknown,
-					  bool disambiguate_ptr_cast,
-					  bool disambiguate_external) {
+  static region_info canBeDisambiguated(const llvm::DSNode *n, unsigned offset,
+					bool disambiguate_unknown,
+					bool disambiguate_ptr_cast,
+					bool disambiguate_external) {
     CRAB_LOG("heap-abs", 
 	     llvm::errs () << "\t*** Checking whether node at offset " << offset
 	                   << " can be disambiguated ... \n";
@@ -133,14 +144,14 @@ namespace crab_llvm {
     if (n->isNodeCompletelyFolded() || n->isCollapsedNode()) {
       CRAB_LOG("heap-abs", 
 	       llvm::errs() << "\tCannot be disambiguated: node is already collapsed.\n";);
-      return UNTYPED_REGION;
+      return region_info(UNTYPED_REGION, 0);
     }
 
     if (n->isUnknownNode()) {
       if (!disambiguate_unknown) {
 	CRAB_LOG("heap-abs",
 		 llvm::errs() << "\tCannot be disambiguated: node is unknown.\n";);
-	return UNTYPED_REGION;
+	return region_info(UNTYPED_REGION, 0);
       }
     }
 
@@ -148,7 +159,7 @@ namespace crab_llvm {
       if (!disambiguate_external) {
 	CRAB_LOG("heap-abs", 
 		 llvm::errs() << "\tCannot be disambiguated: node is incomplete.\n";);
-	return UNTYPED_REGION;
+	return region_info(UNTYPED_REGION, 0);
       }
     }
     
@@ -157,7 +168,7 @@ namespace crab_llvm {
 	CRAB_LOG("heap-abs", 
 		 llvm::errs() << "\tCannot be disambiguated: node is casted "
 		              << "from/to an integer.\n";);
-	return UNTYPED_REGION;
+	return region_info(UNTYPED_REGION, 0);
       }
     }
     
@@ -165,20 +176,20 @@ namespace crab_llvm {
       if (!disambiguate_external) {
 	CRAB_LOG("heap-abs", 
 		 llvm::errs() << "\tCannot be disambiguated: node is external.\n";);
-	return UNTYPED_REGION;
+	return region_info(UNTYPED_REGION, 0);
       }
     }
     
     isInteger int_pred;
     if (isTypedCell(n, offset, int_pred) || isTypedArray(n, offset, int_pred)) {
       CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
-      return INT_REGION;
+      return region_info(INT_REGION, int_pred.m_bitwidth);
     } 
 
     isBool bool_pred;
     if (isTypedCell(n, offset, bool_pred) || isTypedArray(n, offset, bool_pred)) {
       CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
-      return BOOL_REGION;
+      return region_info(BOOL_REGION, 1);
     } 
 
     // TODO: modify here to consider cells containing pointers.
@@ -186,7 +197,7 @@ namespace crab_llvm {
     CRAB_LOG("heap-abs",
 	     llvm::errs() << "\tCannot be disambiguated: do not contain integer.\n";);
     
-    return UNTYPED_REGION;
+    return region_info(UNTYPED_REGION, 0);
   }
   
   template <typename Set>
@@ -295,23 +306,23 @@ namespace crab_llvm {
       // Iterate over each node field and extract regions from there
       for (auto &kv: boost::make_iterator_range(n->type_begin(), n->type_end())) {
 	unsigned o = kv.first;
-	region_type_t region_type = canBeDisambiguated(n, o,
-						       m_disambiguate_unknown,
-						       m_disambiguate_ptr_cast,
-						       m_disambiguate_external);
-	if (region_type == UNTYPED_REGION) {
+	region_info r_info = canBeDisambiguated(n, o,
+						m_disambiguate_unknown,
+						m_disambiguate_ptr_cast,
+						m_disambiguate_external);
+	if (r_info.get_type() == UNTYPED_REGION) {
 	  continue;
 	}
 
 	if ((n->isReadNode() || n->isModifiedNode()) && retReach.count(n) <= 0)
 	  reads.insert(region_t(static_cast<HeapAbstraction*>(this),
-				getId(n,o), region_type));
+				getId(n,o), r_info));
 	if (n->isModifiedNode() && retReach.count(n) <= 0)
 	  mods.insert(region_t(static_cast<HeapAbstraction*>(this),
-			       getId(n,o), region_type));
+			       getId(n,o), r_info));
 	if (n->isModifiedNode() && retReach.count(n)) 
 	  news.insert(region_t(static_cast<HeapAbstraction*>(this),
-			       getId(n,o), region_type));	
+			       getId(n,o), r_info));	
       }
     }
     m_func_accessed [&f] = reads;
@@ -369,22 +380,22 @@ namespace crab_llvm {
       // there.
       for (auto &kv: boost::make_iterator_range(n->type_begin(), n->type_end())) {
 	unsigned o = kv.first;
-	region_type_t region_type = canBeDisambiguated(n,o,
-						       m_disambiguate_unknown,
-						       m_disambiguate_ptr_cast,
-						       m_disambiguate_external);
-	if (region_type == UNTYPED_REGION)
+	region_info r_info = canBeDisambiguated(n,o,
+						m_disambiguate_unknown,
+						m_disambiguate_ptr_cast,
+						m_disambiguate_external);
+	if (r_info.get_type() == UNTYPED_REGION)
 	  continue;
 	
 	if ((n->isReadNode() || n->isModifiedNode()) && retReach.count(n) <= 0)
 	  reads.insert(region_t(static_cast<HeapAbstraction*>(this),
-				getId(n,o), region_type));
+				getId(n,o), r_info));
 	if (n->isModifiedNode() && retReach.count(n) <= 0)
 	  mods.insert(region_t(static_cast<HeapAbstraction*>(this),
-			       getId(n,o), region_type));
+			       getId(n,o), r_info));
 	if (n->isModifiedNode() && retReach.count(n))
 	  news.insert(region_t(static_cast<HeapAbstraction*>(this),
-			       getId(n,o), region_type));	
+			       getId(n,o), r_info));	
       }
     }
     
@@ -447,14 +458,14 @@ namespace crab_llvm {
     }
     if (!n) return region_t();
 
-    region_type_t region_type = canBeDisambiguated(n, cell.getOffset(),
-						   m_disambiguate_unknown,
-						   m_disambiguate_ptr_cast,
-						   m_disambiguate_external);
-    return (region_type == UNTYPED_REGION ?
+    region_info r_info = canBeDisambiguated(n, cell.getOffset(),
+					    m_disambiguate_unknown,
+					    m_disambiguate_ptr_cast,
+					    m_disambiguate_external);
+    return (r_info.get_type() == UNTYPED_REGION ?
 	    region_t() :
 	    region_t(static_cast<HeapAbstraction*>(this),
-		     getId(n,cell.getOffset()), region_type)); 
+		     getId(n,cell.getOffset()), r_info)); 
   }
   
   const llvm::Value* LlvmDsaHeapAbstraction::getSingleton(int region) const {

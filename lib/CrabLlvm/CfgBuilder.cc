@@ -485,13 +485,19 @@ namespace crab_llvm {
     crab::variable_type type = crab::UNK_TYPE;
     unsigned bitwidth = 0; /* unknown */
     switch  (mem_region.get_type ()) {
-    case INT_REGION : type = ARR_INT_TYPE; break;
-    case BOOL_REGION: type = ARR_BOOL_TYPE; bitwidth = 1; break;
-    case PTR_REGION : type = ARR_PTR_TYPE; break;
+    case INT_REGION :
+      type = ARR_INT_TYPE;
+      bitwidth = mem_region.get_bitwidth();
+      break;
+    case BOOL_REGION:
+      type = ARR_BOOL_TYPE;
+      bitwidth = 1;
+      break;
+    case PTR_REGION :
+      type = ARR_PTR_TYPE;
+      break;
     default: CRABLLVM_ERROR("unsupported region type", __FILE__, __LINE__);
     }
-    // TODO: bitwidth is missing if INT_REGION
-    // This information must be provided by HeapAbstraction.
     return var_t(m_vfac.get(mem_region.get_id()), type, bitwidth);
   }
 
