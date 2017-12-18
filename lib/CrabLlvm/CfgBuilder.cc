@@ -1409,14 +1409,33 @@ namespace crab_llvm {
       lin_exp_t op2 = m_lfac.getExp(ref2);
 
       if (op1.is_constant() && op2.is_constant ()) {
-	// Crab cfg api does not support arithmetic operations with
-	// both constant operands.  We can easily store the constant
-	// operands into variables but Llvm frontend should get rid of
-	// them.
-	CRABLLVM_ERROR("not supported binary operation with both constant operands",
-		       __FILE__,__LINE__);
+	number_t n1 = op1.constant();
+	number_t n2 = op2.constant();
+	switch(i.getOpcode()) {
+	case BinaryOperator::Add: //m_bb.assign(lhs, n1+n2); break;
+	case BinaryOperator::Sub: //m_bb.assign(lhs, n1-n2); break;	
+	case BinaryOperator::Mul: //m_bb.assign(lhs, n1*n2); break;
+	case BinaryOperator::SDiv:
+	case BinaryOperator::UDiv:
+	case BinaryOperator::SRem:
+	case BinaryOperator::URem:	  
+	case BinaryOperator::Shl:
+	case BinaryOperator::AShr:	  
+	case BinaryOperator::LShr: {		 
+	  var_t t1 = m_lfac.mkIntVar(i.getType()->getIntegerBitWidth());
+	  var_t t2 = m_lfac.mkIntVar(i.getType()->getIntegerBitWidth());	  
+	  m_bb.assign(t1, n1);
+	  m_bb.assign(t2, n2);
+	  doBinOp(i.getOpcode(), lhs, t1, t2);
+	}
+	  break;	  
+	default:
+	  // this should not happen
+	  CRABLLVM_ERROR("unexpected instruction", __FILE__, __LINE__);	  
+	}
+	return;
       }
-      
+	
       switch(i.getOpcode()) {
       case BinaryOperator::Add:
       case BinaryOperator::Sub:
@@ -1431,8 +1450,9 @@ namespace crab_llvm {
 	if (op1.is_constant()) { 
 	  // Crab cfg does not support arithmetic operations between a
 	  // constant and variable.
-	  m_bb.assign(lhs, op1.constant ());
-	  doBinOp(i.getOpcode(), lhs, lhs, op2);
+	  var_t t = m_lfac.mkIntVar(i.getType()->getIntegerBitWidth());	  
+	  m_bb.assign(t, op1.constant ());
+	  doBinOp(i.getOpcode(), lhs, t, op2);
 	} else {
 	  doBinOp(i.getOpcode(), lhs, op1, op2);	  
 	}
