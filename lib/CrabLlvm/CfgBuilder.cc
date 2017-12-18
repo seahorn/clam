@@ -2298,10 +2298,25 @@ namespace crab_llvm {
 	    // We havoc the array index if we are not tracking it.
 	    if (!isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
 	      m_bb.havoc(ptr->getVar());
-	    }	    
+	    }
+	    var_t t = lhs->getVar();
+	    // Due to heap abstraction imprecisions, it can happen
+	    // that the region's bitwidth is smaller than lhs'
+	    // bitwidth. 
+	    if (r.get_bitwidth() < lhs->getVar().get_bitwidth()) {
+	      t = m_lfac.mkIntVar(r.get_bitwidth());
+	    }
 	    var_t idx = ptr->getVar();
-	    m_bb.array_load(lhs->getVar(), m_lfac.mkArrayVar(r), idx,
+	    m_bb.array_load(t, m_lfac.mkArrayVar(r), idx,
 			    m_dl->getTypeAllocSize (I.getType()));
+	    if (r.get_bitwidth() < lhs->getVar().get_bitwidth()) {
+	      // XXX: not sure if signed extension is correct.
+	      // Regions are signed-agnostic so dont know what is the
+	      // best choice here. Maybe if the regions' bitwidth is
+	      // different form lhs' bitwidth we should ignore the
+	      // load instruction.
+	      m_bb.sext(t, lhs->getVar());
+	    }
 	  }
 	  return;
 	}
@@ -2368,7 +2383,17 @@ namespace crab_llvm {
 	    }	    
 
 	    if (val->isVar()) {
-	      m_bb.array_store (m_lfac.mkArrayVar(r), idx, val->getVar(), 
+	      var_t t = val->getVar();
+	      // Due to heap abstraction imprecisions, it can happen
+	      // that the region's bitwidth is smaller than value's
+	      // bitwidth.
+	      if (r.get_bitwidth() < val->getVar().get_bitwidth()) {
+		t = m_lfac.mkIntVar(r.get_bitwidth());
+		// XXX: this truncate operation can overflow but the
+		// store instruction does not overflow
+		m_bb.truncate(val->getVar(), t);
+	      } 
+	      m_bb.array_store (m_lfac.mkArrayVar(r), idx, t, 
 				m_dl->getTypeAllocSize(ty), r.getSingleton () != nullptr);
 	    } else {
 	      if (val->isInt()) {
