@@ -10,12 +10,13 @@
 #include "crab/domains/split_dbm.hpp"
 #include "crab/domains/boxes.hpp"
 #include "crab/domains/apron_domains.hpp"
-//#include "crab/domains/array_sparse_graph.hpp"
 #include "crab/domains/array_smashing.hpp"
 #include "crab/domains/term_equiv.hpp"
-//#include "crab/domains/nullity.hpp"
 #include "crab/domains/flat_boolean_domain.hpp"
 #include "crab/domains/combined_domains.hpp"
+#include "crab/domains/wrapped_interval_domain.hpp"
+//#include "crab/domains/array_sparse_graph.hpp"
+//#include "crab/domains/nullity.hpp"
 //#include "crab/domains/diff_domain.hpp" /* only debugging */
 
 /*
@@ -50,7 +51,9 @@ namespace crab_llvm {
   // -- enable apron version for more precise backward operations
   typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_INT>
   BASE(interval_domain_t);
-  #endif 
+  #endif
+  /// -- Wrapped interval domain (APLAS'12)
+  typedef wrapped_interval_domain<number_t, varname_t> BASE(wrapped_interval_domain_t);
   /// -- Zones using sparse DBMs (SAS'16)
   typedef SpDBM_impl::DefaultParams<number_t> SparseDBMGraph;
   typedef SparseDBM<number_t, varname_t, SparseDBMGraph> BASE(dbm_domain_t);
@@ -84,6 +87,9 @@ namespace crab_llvm {
 					    BASE(split_dbm_domain_t)> BASE(num_domain_t);
 
   ARRAY_BOOL_NUM(interval_domain_t);
+  // XXX: Need to ensure that the boolean and array domains are sound
+  //      wrt to machine integers.
+  ARRAY_BOOL_NUM(wrapped_interval_domain_t);  
   ARRAY_BOOL_NUM(dbm_domain_t);
   ARRAY_BOOL_NUM(split_dbm_domain_t);
   ARRAY_BOOL_NUM(dis_interval_domain_t);

@@ -104,6 +104,8 @@ CrabLlvmDomain("crab-dom",
       cl::values 
       (clEnumValN (INTERVALS, "int",
 		   "Classical interval domain (default)"),
+       clEnumValN (WRAPPED_INTERVALS, "w-int",
+		   "Wrapped interval domain"),       
        clEnumValN (TERMS_INTERVALS, "term-int",
 		   "Intervals with uninterpreted functions."),       
        clEnumValN (INTERVALS_CONGRUENCES, "ric",
@@ -658,6 +660,9 @@ namespace crab_llvm {
       
       switch (params.dom) {
       #ifndef FASTER_COMPILATION
+      case WRAPPED_INTERVALS:
+	analyzeCfg<wrapped_interval_domain_t>(params, assumptions, live, results);
+        break;
       case INTERVALS_CONGRUENCES:
 	analyzeCfg<ric_domain_t>(params, assumptions, live, results);
         break;
@@ -1026,6 +1031,10 @@ namespace crab_llvm {
       // -- run the interprocedural analysis            
       switch (absdom) {
         #ifndef FASTER_COMPILATION
+         case WRAPPED_INTERVALS:
+          INTER_ANALYZE(wrapped_interval_domain_t, *cg, M, live_map,
+			m_pre_map, m_post_map, m_vfac, m_checks_db); 
+          break;
         case INTERVALS_CONGRUENCES: 
           INTER_ANALYZE(ric_domain_t, *cg, M, live_map,
 			m_pre_map, m_post_map, m_vfac, m_checks_db); 

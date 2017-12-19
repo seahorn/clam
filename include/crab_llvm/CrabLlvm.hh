@@ -37,6 +37,7 @@ namespace crab_llvm {
    ////
   enum CrabDomain
      {   INTERVALS
+       , WRAPPED_INTERVALS
        , INTERVALS_CONGRUENCES
        , BOXES
        , DIS_INTERVALS
