@@ -1,0 +1,74 @@
+; RUN: %crabllvm -O0 --do-not-print-invariants --crab-add-invariants=all --crab-track=arr "%s".c -o %s.bc
+; RUN: %llvm_dis < %s.bc | OutputCheck %s --comment=";"
+
+target datalayout = "e-m:o-p:32:32-f64:32:64-f80:128-n8:16:32-S128"
+target triple = "i386-apple-macosx10.11.0"
+
+@a = internal unnamed_addr global [10 x i32] zeroinitializer, align 4
+@llvm.used = appending global [1 x i8*] [i8* bitcast (void ([10 x i32]*)* @verifier.zero_initializer.1 to i8*)], section "llvm.metadata"
+
+; Function Attrs: nounwind ssp
+define i32 @main() #0 {
+_call:
+  call void @verifier.zero_initializer.1([10 x i32]* nonnull @a) #2
+  br label %_i.0
+
+_i.0:                                             ; preds = %_4, %_call
+  %i.0 = phi i32 [ 0, %_call ], [ %_br1, %_4 ]
+  %crab_6 = icmp ult i32 %i.0, 11
+  call void @verifier.assume(i1 %crab_6) #2
+  %_br = icmp slt i32 %i.0, 10
+  br i1 %_br, label %_4, label %_i.0.lcssa
+
+_4:                                               ; preds = %_i.0
+  %crab_12 = icmp ult i32 %i.0, 10
+  call void @verifier.assume(i1 %crab_12) #2
+  %_5 = call i32 @__CRAB_nd() #2
+  %_6 = icmp eq i32 %_5, 0
+  %_. = getelementptr inbounds [10 x i32], [10 x i32]* @a, i32 0, i32 %i.0
+  %. = select i1 %_6, i32 5, i32 0
+  store i32 %., i32* %_., align 4
+  %_br1 = add nsw i32 %i.0, 1
+  br label %_i.0
+
+_i.0.lcssa:                                       ; preds = %_i.0
+  %_10 = add nsw i32 %i.0, -1
+  %_11 = getelementptr inbounds [10 x i32], [10 x i32]* @a, i32 0, i32 %_10
+  %_ret = load i32, i32* %_11, align 4
+  ; CHECK: icmp ult i32 %_ret, 6
+  %crab_18 = icmp ult i32 %_ret, 6
+  ; CHECK: assume
+  call void @verifier.assume(i1 %crab_18) #2
+  %crab_19 = zext i32 %i.0 to i64
+  %crab_21 = zext i32 %_ret to i64
+  %crab_22 = sub nsw i64 %crab_21, %crab_19
+  %crab_23 = icmp slt i64 %crab_22, 5
+  call void @verifier.assume(i1 %crab_23) #2
+  %crab_24 = zext i32 %i.0 to i64
+  %crab_26 = zext i32 %_ret to i64
+  %crab_27 = sub nsw i64 %crab_26, %crab_24
+  %crab_28 = icmp slt i64 %crab_27, 5
+  call void @verifier.assume(i1 %crab_28) #2
+  %crab_29 = zext i32 %_10 to i64
+  %crab_31 = zext i32 %_ret to i64
+  %crab_32 = sub nsw i64 %crab_31, %crab_29
+  %crab_33 = icmp slt i64 %crab_32, 6
+  call void @verifier.assume(i1 %crab_33) #2
+  ret i32 %_ret
+}
+
+declare i32 @__CRAB_nd() #1
+
+declare void @verifier.zero_initializer.1([10 x i32]*)
+
+declare void @verifier.assume(i1)
+
+attributes #0 = { nounwind ssp "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="yonah" "target-features"="+cx16,+fxsr,+mmx,+sse,+sse2,+sse3" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #1 = { "disable-tail-calls"="false" "less-precise-fpmad"="false" "no-frame-pointer-elim"="true" "no-frame-pointer-elim-non-leaf" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "stack-protector-buffer-size"="8" "target-cpu"="yonah" "target-features"="+cx16,+fxsr,+mmx,+sse,+sse2,+sse3" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #2 = { nounwind }
+
+!llvm.module.flags = !{!0}
+!llvm.ident = !{!1}
+
+!0 = !{i32 1, !"PIC Level", i32 2}
+!1 = !{!"clang version 3.8.0 (tags/RELEASE_380/final)"}
