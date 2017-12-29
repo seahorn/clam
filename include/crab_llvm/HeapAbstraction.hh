@@ -140,19 +140,19 @@ namespace crab_llvm {
      virtual ~HeapAbstraction() { }
      
     // f is used to know in which DSGraph we should search for V
-     virtual region_t getRegion(llvm::Function&, llvm::Value*) = 0;
+     virtual region_t getRegion(const llvm::Function&, llvm::Value*) = 0;
 
      // read and written regions by the function
-     virtual region_set_t getAccessedRegions(llvm::Function& ) = 0;
+     virtual region_set_t getAccessedRegions(const llvm::Function& ) = 0;
 
      // only read regions by the function
-     virtual region_set_t getOnlyReadRegions(llvm::Function& ) = 0;
+     virtual region_set_t getOnlyReadRegions(const llvm::Function& ) = 0;
 
      // written regions by the function     
-     virtual region_set_t getModifiedRegions(llvm::Function& ) = 0;
+     virtual region_set_t getModifiedRegions(const llvm::Function& ) = 0;
 
      // regions that are reachable only from the return of the function     
-     virtual region_set_t getNewRegions(llvm::Function& ) = 0;
+     virtual region_set_t getNewRegions(const llvm::Function& ) = 0;
 
     // read and written regions by the callee     
      virtual region_set_t getAccessedRegions(llvm::CallInst& ) = 0;
@@ -177,15 +177,15 @@ namespace crab_llvm {
      DummyHeapAbstraction(): HeapAbstraction() { }
      const llvm::Value* getSingleton(int) const
      { return nullptr;}
-     region_t getRegion(llvm::Function&, llvm::Value*)
+     region_t getRegion(const llvm::Function&, llvm::Value*)
      { return region_t(); }
-     region_set_t getAccessedRegions(llvm::Function& )
+     region_set_t getAccessedRegions(const llvm::Function& )
      { return region_set_t(); }
-     region_set_t getOnlyReadRegions(llvm::Function& )
+     region_set_t getOnlyReadRegions(const llvm::Function& )
      { return region_set_t(); }
-     region_set_t getModifiedRegions(llvm::Function& )
+     region_set_t getModifiedRegions(const llvm::Function& )
      { return region_set_t(); }
-     region_set_t getNewRegions(llvm::Function& )
+     region_set_t getNewRegions(const llvm::Function& )
      { return region_set_t(); }
      region_set_t getAccessedRegions(llvm::CallInst& )
      { return region_set_t(); }
@@ -260,12 +260,12 @@ namespace crab_llvm {
     int getId(const llvm::DSNode *n, unsigned offset);
             
     template <typename Set1, typename Set2>
-    void argReachableNodes(llvm::Function&f, Set1 &reach, Set2 &outReach);
+    void argReachableNodes(const llvm::Function&f, Set1 &reach, Set2 &outReach);
     
     // compute and cache the set of read, mod and new nodes of a whole
     // function such that mod nodes are a subset of the read nodes and
     // the new nodes are disjoint from mod nodes.
-    void cacheReadModNewNodes(llvm::Function &f);
+    void cacheReadModNewNodes(const llvm::Function &f);
 
     // Compute and cache the set of read, mod and new nodes of a
     // callsite such that mod nodes are a subset of the read nodes and
@@ -279,12 +279,12 @@ namespace crab_llvm {
 			   bool disambiguate_ptr_cast = false,
 			   bool disambiguate_external = false);
     
-    virtual region_t getRegion(llvm::Function &F, llvm::Value *V) override;
+    virtual region_t getRegion(const llvm::Function &F, llvm::Value *V) override;
     virtual const llvm::Value* getSingleton(int region) const override;
-    virtual region_set_t getAccessedRegions(llvm::Function &F) override;
-    virtual region_set_t getOnlyReadRegions(llvm::Function &F) override;
-    virtual region_set_t getModifiedRegions(llvm::Function &F) override;
-    virtual region_set_t getNewRegions(llvm::Function &F) override;
+    virtual region_set_t getAccessedRegions(const llvm::Function &F) override;
+    virtual region_set_t getOnlyReadRegions(const llvm::Function &F) override;
+    virtual region_set_t getModifiedRegions(const llvm::Function &F) override;
+    virtual region_set_t getNewRegions(const llvm::Function &F) override;
     virtual region_set_t getAccessedRegions(llvm::CallInst &I) override;
     virtual region_set_t getOnlyReadRegions(llvm::CallInst &I) override;
     virtual region_set_t getModifiedRegions(llvm::CallInst &I) override;

@@ -247,7 +247,7 @@ namespace crab_llvm {
   ///////
   
   template <typename Set1, typename Set2>
-  void LlvmDsaHeapAbstraction::argReachableNodes(llvm::Function&f,
+  void LlvmDsaHeapAbstraction::argReachableNodes(const llvm::Function&f,
 						 Set1 &reach, Set2 &outReach) {
     llvm::DSGraph *cdsg = m_dsa->getDSGraph(f);
     if (cdsg) {
@@ -284,7 +284,7 @@ namespace crab_llvm {
   // compute and cache the set of read, mod and new nodes of a whole
   // function such that mod nodes are a subset of the read nodes and
   // the new nodes are disjoint from mod nodes.
-  void  LlvmDsaHeapAbstraction::cacheReadModNewNodes(llvm::Function& f) {
+  void  LlvmDsaHeapAbstraction::cacheReadModNewNodes(const llvm::Function& f) {
     
     if (!m_dsa) return;
     
@@ -340,7 +340,7 @@ namespace crab_llvm {
     /// ignore inline assembly
     if (I.isInlineAsm()) return;
 
-    llvm::Function* Called = llvm::CallSite(&I).getCalledFunction();
+    const llvm::Function* Called = llvm::CallSite(&I).getCalledFunction();
 
     if (!Called) {
       //llvm::errs () << "CRABLLVM WARNING: DSA cannot resolve " << I << "\n";
@@ -439,7 +439,7 @@ namespace crab_llvm {
 
   // f is used to know in which DSGraph we should search for V
   LlvmDsaHeapAbstraction::region_t
-  LlvmDsaHeapAbstraction::getRegion(llvm::Function& F, llvm::Value* V)  {
+  LlvmDsaHeapAbstraction::getRegion(const llvm::Function& F, llvm::Value* V)  {
     // Note each function has its own graph and a copy of the global
     // graph. Nodes in both graphs are merged.  However, m_dsa has
     // its own global graph which seems not to be merged with
@@ -478,12 +478,12 @@ namespace crab_llvm {
   }
   
   LlvmDsaHeapAbstraction::region_set_t
-  LlvmDsaHeapAbstraction::getAccessedRegions(llvm::Function& F)  {
+  LlvmDsaHeapAbstraction::getAccessedRegions(const llvm::Function& F)  {
     return m_func_accessed [&F];
   }
 
   LlvmDsaHeapAbstraction::region_set_t
-  LlvmDsaHeapAbstraction::getOnlyReadRegions(llvm::Function& F)  {
+  LlvmDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function& F)  {
     region_set_t s1 = m_func_accessed [&F];
     region_set_t s2 = m_func_mods [&F];
     set_difference(s1,s2);
@@ -491,12 +491,12 @@ namespace crab_llvm {
   }
   
   LlvmDsaHeapAbstraction::region_set_t
-  LlvmDsaHeapAbstraction::getModifiedRegions(llvm::Function& F) {
+  LlvmDsaHeapAbstraction::getModifiedRegions(const llvm::Function& F) {
     return m_func_mods [&F];
   }
   
   LlvmDsaHeapAbstraction::region_set_t
-  LlvmDsaHeapAbstraction::getNewRegions(llvm::Function& F) {
+  LlvmDsaHeapAbstraction::getNewRegions(const llvm::Function& F) {
     return m_func_news [&F];
   }
   
