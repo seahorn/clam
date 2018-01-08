@@ -2704,7 +2704,7 @@ namespace crab_llvm {
   
   //! return the new block inserted between src and dest if any
   CfgBuilder::opt_basic_block_t
-  CfgBuilder::execBr (BasicBlock &src, const BasicBlock &dst) {
+  CfgBuilder::exec_br (BasicBlock &src, const BasicBlock &dst) {
     
     // -- the branch condition
     if (const BranchInst *br=dyn_cast<const BranchInst>(src.getTerminator())) {
@@ -2713,9 +2713,11 @@ namespace crab_llvm {
         opt_basic_block_t Dst = lookup(dst);
         assert (Src && Dst);
 
-  	basic_block_t &bb = m_cfg->insert(llvm_basic_block_wrapper(create_bb_name (m_id)));
+	llvm_basic_block_wrapper bb_wrapper(&src, &dst, create_bb_name (m_id));
+	m_edge_bb_map.insert(std::make_pair(std::make_pair(&src, &dst), bb_wrapper));
+  	basic_block_t &bb = m_cfg->insert(bb_wrapper);
         add_block_in_between (*Src, *Dst, bb);
-        
+
         const Value &c = *br->getCondition ();
         if (const ConstantInt *ci = dyn_cast<const ConstantInt> (&c)) {
           if ((ci->isOne()  && br->getSuccessor(0) != &dst) ||
@@ -2813,7 +2815,7 @@ namespace crab_llvm {
         for (const BasicBlock *dst : succs (B)) {
           // -- move branch condition in bb to a new block inserted
           //    between bb and dst
-          opt_basic_block_t mid_bb = execBr (B, *dst);
+          opt_basic_block_t mid_bb = exec_br (B, *dst);
 
           // -- phi nodes in dst are translated into assignments in
           //    the predecessor
