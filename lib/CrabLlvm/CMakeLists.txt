@@ -1,8 +1,9 @@
-add_library (CrabLlvmAnalysis ${CRABLLVM_LIBS_TYPE}  
+add_library (CrabLlvmAnalysis ${CRABLLVM_LIBS_TYPE}
   CfgBuilder.cc
   CrabLlvm.cc
   HeapAbstraction.cc
   NameValues.cc
+  crab/path_analyzer.cc    
   )
 
 target_link_libraries (CrabLlvmAnalysis ${CRAB_LIBS})
