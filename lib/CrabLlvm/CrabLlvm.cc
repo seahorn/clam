@@ -37,10 +37,13 @@
 #include "crab/cg/cg.hpp"
 #include "crab/cg/cg_bgl.hpp"
 
+#include "./crab/path_analyzer.hpp"
+
 #include <boost/shared_ptr.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/unordered_set.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/optional.hpp>
 
 #include <memory>
 
@@ -527,6 +530,7 @@ namespace crab_llvm {
     cfg_ptr_t m_cfg;
     Function &m_fun;
     llvm_variable_factory &m_vfac;
+    typename CfgBuilder::edge_to_bb_map_t m_edge_bb_map;
     
     template<typename Dom>
     void analyzeCfg(const AnalysisParams &params,
@@ -630,8 +634,7 @@ namespace crab_llvm {
 
 	pretty_printer_impl::print_annotations(*m_cfg, pool_annotations);
       }
-    
-      
+          
       if (params.check) {
 	// --- checking assertions and collecting data
 	CRAB_VERBOSE_IF(1, crab::outs() << "Checking assertions ... \n"); 
@@ -712,24 +715,25 @@ namespace crab_llvm {
       if (isTrackable(m_fun)) {
 	// -- build a crab cfg for func
 	CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
-	  CRAB_VERBOSE_IF(1, llvm::outs () << "Built Crab CFG for "
-			                   << fun.getName() << "\n");
-			  
 	  m_cfg = builder.getCfg();
+	  m_edge_bb_map = builder.getEdgeToBBMap();
+	  CRAB_VERBOSE_IF(1, llvm::outs() << "Built Crab CFG for "
+			                  << fun.getName() << "\n");
+	  
       } else {
-	CRAB_VERBOSE_IF(1, llvm::outs () << "Cannot build CFG for "
-			                 << fun.getName() << "\n");
+	CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
+			                << fun.getName() << "\n");
       }
     }
 
-    cfg_ptr_t Cfg () { return m_cfg; }
-
+    cfg_ptr_t Cfg() { return m_cfg; }
+    
     void Analyze(AnalysisParams &params, const assumption_map_t &assumptions,
 		 InvarianceAnalysisResults &results) {
 
       if (!m_cfg) {
-	CRAB_VERBOSE_IF(1, llvm::outs () << "Skipped analysis for "
-			                 << m_fun.getName() << "\n");
+	CRAB_VERBOSE_IF(1, llvm::outs() << "Skipped analysis for "
+			                << m_fun.getName() << "\n");
 	return;
       }
       
@@ -772,6 +776,84 @@ namespace crab_llvm {
       }
       wrapperAnalyze(params, assumptions, (params.run_liveness)? &live : nullptr, results);
     }
+
+    template<typename AbsDom>
+    bool wrapperPathAnalyze(std::vector<llvm_basic_block_wrapper> path,
+			    std::vector<crab::cfg::statement_wrapper>& core,
+			    bool populate_maps,
+			    invariant_map_t& post, invariant_map_t& pre) const {
+      
+      typedef path_analyzer<cfg_ref_t, AbsDom> path_analyzer_t;
+      path_analyzer_t path_analyzer(*m_cfg);      
+      bool res = path_analyzer.solve(path);
+      if (populate_maps) {
+	for(auto n: path) {
+	  if (const llvm::BasicBlock* bb = n.get_basic_block()) {
+	    AbsDom abs_val = path_analyzer.get_fwd_constraints(n);
+	    post.insert(std::make_pair(bb, mkGenericAbsDomWrapper(abs_val)));
+	    if (abs_val.is_bottom()) {
+	      // the rest of blocks must be also bottom so we don't
+	      // bother storing them.
+	      break;
+	    }
+	  }
+	}
+      }
+
+      if (!res) {
+	path_analyzer.get_unsat_core(core);
+
+	if (populate_maps) {
+	  for(auto n: path) {
+	    if (const llvm::BasicBlock* bb = n.get_basic_block()) {
+	      AbsDom abs_val = path_analyzer.get_bwd_constraints(n);
+	      pre.insert(std::make_pair(bb, mkGenericAbsDomWrapper(abs_val)));
+	      if (abs_val.is_bottom()) {
+		// the rest of blocks must be also bottom so we don't
+		// bother storing them.
+		break;
+	      }
+	    }
+	  }
+	}
+      }
+	
+      return res;
+    }
+    
+    bool pathAnalyze(const AnalysisParams& params,
+		     const std::vector<const llvm::BasicBlock*>& blocks,
+		     std::vector<crab::cfg::statement_wrapper>& core,
+		     bool populate_maps, 
+		     invariant_map_t& post, invariant_map_t& pre) const {
+      assert(m_cfg);
+
+      // build the full path (included internal basic blocks added
+      // during the translation to Crab)
+      std::vector<llvm_basic_block_wrapper> path;
+      path.reserve(blocks.size());
+      for(unsigned i=0; i < blocks.size(); ++i) {
+	path.push_back(blocks[i]);
+	if (i < blocks.size() - 1) {
+	  auto it = m_edge_bb_map.find(std::make_pair(blocks[i], blocks[i+1]));
+	  if (it != m_edge_bb_map.end()) {
+	    path.push_back(it->second);
+	  }
+	}
+      }
+      
+      switch (params.dom) {
+      case TERMS_ZONES:
+	return wrapperPathAnalyze<num_domain_t>(path, core, populate_maps, post, pre);
+      case WRAPPED_INTERVALS:
+	return wrapperPathAnalyze<wrapped_interval_domain_t>(path, core, populate_maps, post, pre);
+      case TERMS_INTERVALS:
+	return wrapperPathAnalyze<term_int_domain_t>(path, core, populate_maps, post, pre);
+      default: 
+	return wrapperPathAnalyze<interval_domain_t>(path, core, populate_maps, post, pre);
+      }
+    }
+    
   }; // end class
 
   /**
@@ -813,6 +895,24 @@ namespace crab_llvm {
 				       m_vfac.get_shadow_vars().end());    
     return lookup(m_post_map, *block, shadows);
   }
+
+  template<>
+  bool IntraCrabLlvm::path_analyze(const AnalysisParams& params,
+				   const std::vector<const llvm::BasicBlock*>& path,
+				   std::vector<crab::cfg::statement_wrapper>& core) const {
+    invariant_map_t pre_conditions, post_conditions;
+    return m_impl->pathAnalyze(params, path, core, false, post_conditions, pre_conditions);
+  }
+
+  template<>
+  bool IntraCrabLlvm::path_analyze(const AnalysisParams& params,
+				   const std::vector<const llvm::BasicBlock*>& path,
+				   std::vector<crab::cfg::statement_wrapper>& core,
+				   invariant_map_t& post_conditions,
+				   invariant_map_t& pre_conditions) const {
+    return m_impl->pathAnalyze(params, path, core, true, post_conditions, pre_conditions);
+  }
+  
   /**
    *   End IntraCrabLlvm methods
    **/

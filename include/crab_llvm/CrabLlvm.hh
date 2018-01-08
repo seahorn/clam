@@ -20,7 +20,7 @@ namespace llvm {
 
 namespace crab {
   namespace checker {
-     class checks_db;
+    class checks_db;
   }
 } 
 
@@ -141,10 +141,30 @@ namespace crab_llvm {
     wrapper_dom_ptr get_pre(const llvm::BasicBlock *b, bool keep_shadows=false) const;
 
     /**
-     * return invariants that hold at the exit of b
+     * Return invariants that hold at the exit of b
      **/
     wrapper_dom_ptr get_post(const llvm::BasicBlock *b, bool keep_shadows=false) const;
+
+
+    /**
+     * Compute strongest post-condition of an acyclic path.
+     * Return false iff the path implies false.
+     *
+     * post contains the post-conditions at each block.
+     * If it returns false then:
+     *   - pre contains that necessary preconditions that imply false
+     *   - core is a minimal subset of statements that implies false
+     **/
+    template<typename Statement>
+    bool path_analyze(const AnalysisParams& params,
+		      const std::vector<const llvm::BasicBlock*>& path,
+		      std::vector<Statement>& core,
+		      invariant_map_t& post, invariant_map_t& pre) const;
     
+    template<typename Statement>
+    bool path_analyze(const AnalysisParams& params,
+		      const std::vector<const llvm::BasicBlock*>& path,
+		      std::vector<Statement>& core) const;
   };
   
   /**
