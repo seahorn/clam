@@ -23,25 +23,35 @@ namespace crab_llvm {
   // not correspond to llvm blocks.
   class llvm_basic_block_wrapper {
     
-    const llvm::BasicBlock *m_bb;
-    std::string m_name;
-    
   public:
-    
-    llvm_basic_block_wrapper(const llvm::BasicBlock *b):
-	 m_bb(b), m_name(b->getName()) {
+
+    // the new block represents that the control is at b
+    llvm_basic_block_wrapper(const llvm::BasicBlock *b)
+      : m_bb(b), m_edge(nullptr, nullptr), m_name(b->getName()) {
       assert(b->hasName());
     }
 
-    explicit llvm_basic_block_wrapper(std::string name):
-      m_bb(nullptr), m_name(name){}
+    // the new block represents that the control goes from src to dst
+    llvm_basic_block_wrapper(const llvm::BasicBlock *src, const llvm::BasicBlock *dst, std::string name)
+      : m_bb(nullptr), m_edge(src, dst), m_name(name){}
 
-    llvm_basic_block_wrapper(): m_bb(nullptr), m_name("") {}
+    llvm_basic_block_wrapper()
+      : m_bb(nullptr), m_edge(nullptr, nullptr), m_name("") {}
 
     std::string get_name() const { return m_name; }
+
+    bool is_edge() const {
+      return !m_bb && (m_edge.first && m_edge.second);
+    }
     
-    const llvm::BasicBlock* get_basic_block() const { return m_bb; }
-        
+    const llvm::BasicBlock* get_basic_block() const {
+      return m_bb;
+    }
+    
+    const std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>& get_edge() const {
+      return m_edge;
+    }
+
     bool operator==(const llvm_basic_block_wrapper &other) const
     { return m_name == other.m_name; }
     
@@ -54,7 +64,13 @@ namespace crab_llvm {
     std::size_t index() const {
       boost::hash<std::string> hasher;
       return hasher(m_name);
-    }    
+    }
+
+  private:
+    
+    const llvm::BasicBlock *m_bb;
+    std::pair<const llvm::BasicBlock *, const llvm::BasicBlock *> m_edge;
+    std::string m_name;
   };
   
   inline llvm::raw_ostream& operator<<(llvm::raw_ostream &o,
@@ -125,6 +141,29 @@ namespace crab_llvm {
      typedef crab::pointer_constraint<var_t> ptr_cst_t;
 
 } // end namespace crab_llvm
+
+namespace crab {
+  namespace cfg {
+    // Convenient wrapper to relate crab statement with its parent
+    // FIXME: crab should provide this.
+    class statement_wrapper {
+    public:  
+      typedef typename crab_llvm::cfg_ref_t::statement_t statement_t;
+      typedef typename crab_llvm::cfg_ref_t::basic_block_label_t basic_block_label_t;  
+      
+      statement_wrapper(statement_t* s, basic_block_label_t bb)
+	: m_s(s), m_parent(bb) {}
+      
+      friend crab::crab_os& operator<<(crab::crab_os& o, statement_wrapper& s){
+      	o << *(s.m_s);
+      	return o;
+      }
+      
+      statement_t* m_s;
+      basic_block_label_t m_parent;
+    };
+  }
+}
 
 namespace {
   inline llvm::raw_ostream& operator<<(llvm::raw_ostream& o, 
