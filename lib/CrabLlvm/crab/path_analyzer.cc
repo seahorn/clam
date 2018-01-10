@@ -1,6 +1,10 @@
 #include "path_analyzer.hpp"
 #include "boost/unordered_set.hpp"
 
+// flat_killgen_domain
+#include <crab/iterators/killgen_fixpoint_iterator.hpp>
+
+
 namespace crab {
 namespace analyzer {
 
@@ -45,6 +49,9 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
     }
   }
 
+  // contain all statements along the path until the end of the path
+  // or bottom is found.
+  std::vector<typename crab::cfg::statement_wrapper> path_statements;
   bool bottom_found = false;
   unsigned bottom_pos = path.size();
   // Compute strongest post-condition over the path
@@ -70,6 +77,9 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
     m_fwd_abs_tr.set (pre);
     auto &b = m_cfg.get_node (node);      
     for (auto &s : b) {
+      if (!s.is_assert() && !s.is_ptr_assert() && !s.is_bool_assert()) {
+	path_statements.push_back(crab::cfg::statement_wrapper(&s, node));
+      }
       // XXX: we can store forward constraints that might help the
       // backward analysis. This step is optional. We don't use it
       // for now.
@@ -102,7 +112,7 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
     
     // -- Compute minimal subset of statements that still implies
     //    bottom.
-    minimize_path(path);
+    minimize_path(path_statements);
   }
   return !bottom_found;
 }
@@ -116,6 +126,72 @@ bool path_analyzer<CFG,AbsDom>::has_kid(basic_block_label_t b1, basic_block_labe
   }
   return false;
 }
+
+// Compute a minimal subset of statements based on syntactic
+// dependencies. 
+template<typename CFG, typename AbsDom>    
+void path_analyzer<CFG,AbsDom>::
+remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core) {
+  typedef typename CFG::basic_block_t::assume_t assume_t;
+  typedef typename CFG::basic_block_t::bool_assume_t bool_assume_t;
+  
+  unsigned size = core.size();
+  if (size <= 1) {
+    return;
+  }
+  
+  stmt_t& last = *(core[size-1].m_s);
+  
+  if (!(last.is_assume()) && !(last.is_bool_assume())) {
+    // we expect last statement to be an assume, otherwise we bail out.
+    return;
+  }
+
+  typedef domains::flat_killgen_domain<typename CFG::variable_t> var_dom_t;
+  var_dom_t d;
+  if (last.is_assume()) {
+    auto assume = static_cast<const assume_t*>(&last);
+    if (assume->constraint().is_contradiction()) {
+      return; // we do nothing
+    }
+    for (typename CFG::variable_t v: assume->constraint().variables()) {
+      d += v;
+    }
+  } else {
+    auto bool_assume = static_cast<const bool_assume_t*>(&last);
+    d += bool_assume->cond();
+  }
+
+  // Traverse the whole path backwards and remove irrelevant
+  // statements based on data dependencies.
+  std::vector<bool> enabled(size, false);      
+  enabled[size-1] = true;  // added the last assume
+  for(int i= size-2; i >= 0 ; --i) { // start from penultimate statement
+    stmt_t& s = *(core[i].m_s);
+    var_dom_t uses, defs;
+    const typename stmt_t::live_t& ls = s.get_live();
+    for (auto v: boost::make_iterator_range(ls.uses_begin(), ls.uses_end()))
+    { uses += v; }
+    for (auto v: boost::make_iterator_range(ls.defs_begin(), ls.defs_end()))
+    { defs += v; }
+    if (defs.is_bottom() && !uses.is_bottom() && !(uses & d).is_bottom ()) {
+      d += uses;
+      enabled[i] = true;
+    } else if (!(d & defs).is_bottom()) {
+      d -= defs;
+      d += uses;
+      enabled[i] = true;      
+    } else {
+      // irrelevant statement
+    }
+  }
+  std::vector<crab::cfg::statement_wrapper> res;
+  res.reserve(size);
+  for(unsigned i=0; i < size; ++i) {
+    if (enabled[i]) res.push_back(core[i]);
+  }
+  core.assign(res.begin(), res.end());
+}
   
   
 /** 
@@ -126,20 +202,14 @@ bool path_analyzer<CFG,AbsDom>::has_kid(basic_block_label_t b1, basic_block_labe
  ** Pre: path is well-formed.
  **/
 template<typename CFG, typename AbsDom>    
-void path_analyzer<CFG,AbsDom>::minimize_path(const std::vector<basic_block_label_t>& path) {
+void path_analyzer<CFG,AbsDom>::minimize_path(const std::vector<crab::cfg::statement_wrapper>& path) {
 
-  std::vector<crab::cfg::statement_wrapper> core;  
-  for (unsigned i = 0; i < path.size (); ++i) {
-    basic_block_label_t node = path[i];
-    auto &b = m_cfg.get_node (node);      
-    for (auto &s : b){
-      if (s.is_assert() || s.is_ptr_assert() || s.is_bool_assert()) {
-	continue;
-      }
-      core.push_back(crab::cfg::statement_wrapper(&s, node));
-    }
-  }
-
+  std::vector<crab::cfg::statement_wrapper> core(path.begin(), path.end());
+  // Remove first syntactically irrelevant statements wrt to the last
+  // statement which should be an assume statement where bottom was
+  // first inferred.
+  remove_irrelevant_statements(core);
+  
   // We use the enabled vector because we need to preserve the order
   // since abstract interpretation cares about that.
   std::vector<bool> enabled(core.size(), true);

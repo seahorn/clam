@@ -71,7 +71,8 @@ namespace analyzer {
   private:
     
     bool has_kid(basic_block_label_t b1, basic_block_label_t b2);
-    void minimize_path(const std::vector<basic_block_label_t>& path);
+    void minimize_path(const std::vector<crab::cfg::statement_wrapper>& path);
+    void remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& path);
     
     CFG m_cfg;
     fwd_abs_tr_t m_fwd_abs_tr;
