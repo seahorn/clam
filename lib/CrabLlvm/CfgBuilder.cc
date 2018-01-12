@@ -2516,10 +2516,13 @@ namespace crab_llvm {
       }
       
 
-      /**
-       * Intra-procedural translation
-       **/      
       if (callee->isDeclaration() || callee->isVarArg() || !m_is_inter_proc) {
+	/**
+	 * If external or we don't perform inter-procedural reasoning
+	 * then we make sure all modified arrays and return value of
+	 * the callsite are havoc'ed.
+	 **/      
+	
         // -- havoc return value
         if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
 	  crab_lit_ref_t lhs = m_lfac.getLit(I);
@@ -2536,12 +2539,18 @@ namespace crab_llvm {
 	      m_bb.havoc(m_lfac.mkArrayVar(a));
           }
         }
+	
+	// XXX: if we return here we skip the callsite. This is fine
+	//      unless there exists an analysis which cares about
+	//      external calls.
+	//	
+	//      Note: if we want to add the callsite make sure we add
+	//      the prototype for the external function below.
+	// 
         return;
       }
 
       /**
-       * Inter-procedural translation
-       * 
        * Translate a LLVM callsite 
        *     o := foo(i1,...,i_n) 
        * 
