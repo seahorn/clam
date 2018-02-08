@@ -124,12 +124,6 @@ CrabUnsoundArrayInit("crab-arr-unsound-init",
 		     cl::Hidden);
 
 cl::opt<bool>
-CrabUnsoundUnsignedAsSigned("crab-unsigned-to-signed",
-	  cl::desc ("Convert (unsoundly) unsigned integer comparisons to signed."), 
-	  cl::init (false),
-	  cl::Hidden);
-
-cl::opt<bool>
 CrabDisableWarnings("crab-disable-warnings",
 	      cl::desc ("Disable warning messages"), 
 	      cl::init (false),
@@ -948,14 +942,11 @@ namespace crab_llvm {
       break;
     }
     case CmpInst::ICMP_ULT: 
-      if (!CrabUnsoundUnsignedAsSigned) {
-	// loss of precision
-	CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
-			 "Enable --lower-unsigned-icmp");	
-	break;		
-      }
     case CmpInst::ICMP_SLT: {
       lin_cst_t cst(op0 <= op1 - number_t(1));
+      if (I.getPredicate() == CmpInst::ICMP_ULT) {
+	cst.set_unsigned();
+      }
       if (isBool(I))
 	bb.bool_assign(lhs, cst);
       else 
@@ -963,14 +954,11 @@ namespace crab_llvm {
       break;
     }
     case CmpInst::ICMP_ULE:
-      if (!CrabUnsoundUnsignedAsSigned) {
-	// loss of precision
-	CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
-			 "Enable --lower-unsigned-icmp");	
-	break;		
-      }      
     case CmpInst::ICMP_SLE: {
       lin_cst_t cst(op0 <= op1);
+      if (I.getPredicate() == CmpInst::ICMP_ULE) {
+	cst.set_unsigned();
+      }
       if (isBool(I))
 	bb.bool_assign(lhs, cst);
       else	    
@@ -1068,31 +1056,31 @@ namespace crab_llvm {
 	return lin_cst_t(op0 == op1);
 	break;
     case CmpInst::ICMP_ULT: 
-      if (!CrabUnsoundUnsignedAsSigned) {
-	// loss of precision
-	CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
-			 "Enable --lower-unsigned-icmp");	
-	break;		
-      }
-    case CmpInst::ICMP_SLT:
+    case CmpInst::ICMP_SLT: {
+      lin_cst_t cst;
       if (!isNegated)
-	return lin_cst_t(op0 <= op1 - number_t(1));
+	cst = lin_cst_t(op0 <= op1 - number_t(1));
       else
-	return lin_cst_t(op0 >= op1);
+	cst = lin_cst_t(op0 >= op1);
+      if (I.getPredicate() == CmpInst::ICMP_ULT) {
+	cst.set_unsigned();
+      }
+      return cst;
       break;
+    }
     case CmpInst::ICMP_ULE:
-      if (!CrabUnsoundUnsignedAsSigned) {
-	// loss of precision      
-	CRABLLVM_WARNING("translation skipped " << I << ".\n" <<
-			 "Enable --lower-unsigned-icmp");	
-	break;
-      }
-    case CmpInst::ICMP_SLE:
+    case CmpInst::ICMP_SLE: {
+      lin_cst_t cst;
       if (!isNegated)
-	return lin_cst_t(op0 <= op1);
+	cst = lin_cst_t(op0 <= op1);
       else
-	return lin_cst_t(op0 >= op1 + number_t(1));
+	cst = lin_cst_t(op0 >= op1 + number_t(1));
+      if (I.getPredicate() == CmpInst::ICMP_ULE) {
+	cst.set_unsigned();
+      }
+      return cst;
       break;
+    }
     default: ;;  
     }
     return boost::optional<lin_cst_t> ();
