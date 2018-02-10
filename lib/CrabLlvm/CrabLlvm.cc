@@ -227,6 +227,19 @@ CrabKeepShadows ("crab-keep-shadows",
 
 namespace crab_llvm {
 
+  static crab::crab_os& get_crab_os(bool show_time = true) {
+    crab::crab_os* result = &crab::outs();
+    if (show_time) {
+      time_t now = time(0);
+      struct tm tstruct;
+      char buf[80];
+      tstruct = *localtime(&now);
+      strftime(buf, sizeof(buf), "[%Y-%m-%d.%X] ", &tstruct);
+      *result << buf;
+    }
+    return *result;
+  }
+  
   // TODO: refactoring inter-procedural analysis. Decouple the
   // inter-procedural analysis from the llvm pass.
   
@@ -547,10 +560,10 @@ namespace crab_llvm {
       CRAB_VERBOSE_IF(1,
 		      auto fdecl = m_cfg->get_func_decl ();            
 		      assert (fdecl);
-		      crab::outs() << "Running intra-procedural analysis with " 
-		                   << "\"" << Dom::getDomainName ()  << "\""
-		                   << " for "  << (*fdecl).get_func_name ()
-		                   << "  ... \n";);
+		      get_crab_os() << "Running intra-procedural analysis with " 
+		                    << "\"" << Dom::getDomainName ()  << "\""
+		                    << " for "  << (*fdecl).get_func_name ()
+		                    << "  ... \n";);
       
       // -- run intra-procedural analysis
       intra_analyzer_t analyzer (*m_cfg);
@@ -572,7 +585,7 @@ namespace crab_llvm {
       }
       analyzer.run(Dom::top(), post_cond, !params.run_backward, crab_assumptions, live,
 		   params.widening_delay, params.narrowing_iters, params.widening_jumpset);
-      CRAB_VERBOSE_IF(1, crab::outs() << "Finished intra-procedural analysis.\n"); 
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Finished intra-procedural analysis.\n"); 
 
       // -- store invariants 
       for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
@@ -637,7 +650,7 @@ namespace crab_llvm {
           
       if (params.check) {
 	// --- checking assertions and collecting data
-	CRAB_VERBOSE_IF(1, crab::outs() << "Checking assertions ... \n"); 
+	CRAB_VERBOSE_IF(1, get_crab_os() << "Checking assertions ... \n"); 
 	typename intra_checker_t::prop_checker_ptr
 	  prop (new assert_prop_t (params.check_verbose));
 	if (params.check == NULLITY)
@@ -650,7 +663,7 @@ namespace crab_llvm {
 	if (!results.checksdb)
 	  results.checksdb = boost::make_shared<checks_db_t>();
 	(*results.checksdb) += checker.get_all_checks();
-	CRAB_VERBOSE_IF(1, crab::outs() << "Finished assert checking.\n");      
+	CRAB_VERBOSE_IF(1, get_crab_os() << "Finished assert checking.\n");      
       }
 
       
@@ -663,9 +676,6 @@ namespace crab_llvm {
       
       switch (params.dom) {
       #ifndef FASTER_COMPILATION
-      case WRAPPED_INTERVALS:
-	analyzeCfg<wrapped_interval_domain_t>(params, assumptions, live, results);
-        break;
       case INTERVALS_CONGRUENCES:
 	analyzeCfg<ric_domain_t>(params, assumptions, live, results);
         break;
@@ -675,7 +685,10 @@ namespace crab_llvm {
       case TERMS_INTERVALS:
 	analyzeCfg<term_int_domain_t>(params, assumptions, live, results);
         break;
-      #endif 
+      #endif
+      case WRAPPED_INTERVALS:
+	analyzeCfg<wrapped_interval_domain_t>(params, assumptions, live, results);
+        break;	
       case TERMS_DIS_INTERVALS:
 	analyzeCfg<term_dis_int_domain_t>(params, assumptions, live, results);
         break;
@@ -743,28 +756,28 @@ namespace crab_llvm {
 	CRAB_VERBOSE_IF(1,
 			auto fdecl = m_cfg->get_func_decl ();            
 			assert (fdecl);
-			crab::outs() << "Running liveness analysis for " 
-			             << (*fdecl).get_func_name ()
-		                     << "  ...\n";);
+			get_crab_os() << "Running liveness analysis for " 
+			              << (*fdecl).get_func_name ()
+		                      << "  ...\n";);
 	live.exec ();
-	CRAB_VERBOSE_IF(1, crab::outs() << "Finished liveness analysis.\n");
+	CRAB_VERBOSE_IF(1, get_crab_os() << "Finished liveness analysis.\n");
 	// some stats
 	unsigned total_live, avg_live_per_blk, max_live_per_blk;
 	live.get_stats (total_live, max_live_per_blk, avg_live_per_blk);
 	CRAB_VERBOSE_IF(1, 
-		 crab::outs() << "-- Max number of out live vars per block=" 
-                              << max_live_per_blk << "\n"
-                              << "-- Avg number of out live vars per block=" 
-                              << avg_live_per_blk << "\n";);
+		  crab::outs() << "-- Max number of out live vars per block=" 
+                               << max_live_per_blk << "\n"
+                               << "-- Avg number of out live vars per block=" 
+                               << avg_live_per_blk << "\n";);
 	crab::CrabStats::count_max ("Liveness.count.maxOutVars",
 				    max_live_per_blk);
 
 	if (isRelationalDomain(params.dom)) {
 	  CRAB_VERBOSE_IF(1, 
-		   crab::outs() << "Max live per block: "
-		                << max_live_per_blk << "\n"
-		                << "Threshold: "
-		                << params.relational_threshold << "\n");
+		    crab::outs() << "Max live per block: "
+		                 << max_live_per_blk << "\n"
+		                 << "Threshold: "
+		                 << params.relational_threshold << "\n");
 	  if (max_live_per_blk > params.relational_threshold) {
           #ifdef FASTER_COMPILATION
 	  params.dom = INTERVALS;
@@ -931,12 +944,12 @@ namespace crab_llvm {
     typedef null_property_checker<inter_analyzer_t> null_prop_t;
     
     CRAB_VERBOSE_IF(1, 
-	     crab::outs() << "Running inter-procedural analysis with " 
-	                  << "forward domain:" 
-	                  << "\"" << TDDom::getDomainName () << "\""
-	                  << " and bottom-up domain:" 
-                          << "\"" << BUDom::getDomainName () << "\"" 
-                          << "  ...\n";);
+	     get_crab_os() << "Running inter-procedural analysis with " 
+	                   << "forward domain:" 
+	                   << "\"" << TDDom::getDomainName () << "\""
+	                   << " and bottom-up domain:" 
+                           << "\"" << BUDom::getDomainName () << "\"" 
+                           << "  ...\n";);
     
     inter_analyzer_t analyzer(cg, (CrabLive ? &live : nullptr),
 			      CrabWideningDelay, 
@@ -944,7 +957,7 @@ namespace crab_llvm {
 			      CrabWideningJumpSet);
     analyzer.Run (TDDom::top ());
     
-    CRAB_VERBOSE_IF(1, crab::outs() << "Finished inter-procedural analysis.\n");
+    CRAB_VERBOSE_IF(1, get_crab_os() << "Finished inter-procedural analysis.\n");
     
     // -- store invariants     
     for (auto &n: boost::make_iterator_range (vertices (cg))) {
@@ -988,7 +1001,7 @@ namespace crab_llvm {
     
     // --- checking assertions and collecting data
     if (CrabCheck) {
-      CRAB_VERBOSE_IF(1, crab::outs() << "Checking assertions ... \n"); 
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Checking assertions ... \n"); 
       typename inter_checker_t::prop_checker_ptr
 	prop(new assert_prop_t(CrabCheckVerbose));
       if (CrabCheck == NULLITY)
@@ -998,7 +1011,7 @@ namespace crab_llvm {
       //CRAB_VERBOSE_IF(1, checker.show (crab::outs()));
       checkdb = boost::make_shared<checks_db_t>();
       (*checkdb) += checker.get_all_checks();
-      CRAB_VERBOSE_IF(1, crab::outs() << "Finished assert checking.\n"); 
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Finished assert checking.\n"); 
     }
     return;
   }
@@ -1047,13 +1060,14 @@ namespace crab_llvm {
     #endif     
 
     CRAB_VERBOSE_IF(1,
+	     get_crab_os() << "Started crab-llvm\n"; 
              unsigned num_analyzed_funcs = 0;
              for (auto &F : M) {
 	       if (!isTrackable(F)) continue;
                num_analyzed_funcs++;
              }
-             crab::outs() << "Total number of analyzed functions:" 
-                          << num_analyzed_funcs << "\n";);
+             get_crab_os() << "Total number of analyzed functions:" 
+                           << num_analyzed_funcs << "\n";);
 
     if (CrabInter){
 
@@ -1079,21 +1093,21 @@ namespace crab_llvm {
           CRAB_VERBOSE_IF(1,
                    auto fdecl = cfg_ptr->get_func_decl ();            
                    assert (fdecl);
-                   crab::outs() << "Running liveness analysis for " 
-                                << (*fdecl).get_func_name () << "  ...\n";);
+                   get_crab_os() << "Running liveness analysis for " 
+                                 << (*fdecl).get_func_name () << "  ...\n";);
 
 	  liveness_t* live = new liveness_t (*cfg_ptr);
           live->exec ();
-          CRAB_VERBOSE_IF(1, crab::outs() << "Finished liveness analysis.\n";);
+          CRAB_VERBOSE_IF(1, get_crab_os() << "Finished liveness analysis.\n";);
           // some stats
           unsigned total_live, max_live_per_blk_, avg_live_per_blk;
           live->get_stats (total_live, max_live_per_blk_, avg_live_per_blk);
           max_live_per_blk = std::max (max_live_per_blk, max_live_per_blk_);
           CRAB_VERBOSE_IF(1,
-                   crab::outs() << "-- Max number of out live vars per block=" 
-                                << max_live_per_blk_ << "\n";
-                   crab::outs() << "-- Avg number of out live vars per block=" 
-                                << avg_live_per_blk << "\n";);
+		    crab::outs() << "-- Max number of out live vars per block=" 
+                                 << max_live_per_blk_ << "\n";
+		    crab::outs() << "-- Avg number of out live vars per block=" 
+                                 << avg_live_per_blk << "\n";);
           crab::CrabStats::count_max ("Liveness.count.maxOutVars",
 				      max_live_per_blk);
 
@@ -1105,10 +1119,10 @@ namespace crab_llvm {
 	    //        used for all functions. We should be able to change
 	    //        from one function to another.
 	    CRAB_VERBOSE_IF(1,
-		     crab::outs() << "Max live per block: "
-		                  << max_live_per_blk << "\n"
-		                  << "Threshold: "
-		                  << CrabRelationalThreshold << "\n");
+		      crab::outs() << "Max live per block: "
+		                   << max_live_per_blk << "\n"
+		                   << "Threshold: "
+		                   << CrabRelationalThreshold << "\n");
 	    if (max_live_per_blk > CrabRelationalThreshold) {
               #ifdef FASTER_COMPILATION
 	      absdom = INTERVALS;
