@@ -8,6 +8,13 @@ add_lit_testsuite(test-simple "Run simple tests"
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/simple
   DEPENDS crabllvm)
 
+add_lit_testsuite(test-readme "Run README.md tests"
+  -v
+  ${CMAKE_CURRENT_SOURCE_DIR}/demo  ## where .cfg file is located
+  PARAMS
+  test_dir=${CMAKE_CURRENT_BINARY_DIR}/demo
+  DEPENDS crabllvm)
+
 if (USE_LDD)
   add_lit_testsuite(test-ssh "Run SVCOMP ssh benchmarks"
     -v 
