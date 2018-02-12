@@ -256,8 +256,7 @@ include_directories (${CMAKE_BINARY_DIR}/include)
 add_subdirectory(lib)
 
 configure_file(include/crab_llvm/config.h.cmake
-               ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h )
- 
+               ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h) 
 
 if (TopLevel)
   add_subdirectory(tools)
@@ -317,14 +316,9 @@ endif ()
 
 ## Install files
 
-install(DIRECTORY ${CrabLlvm_SOURCE_DIR}/include/crab_llvm DESTINATION include
-     FILES_MATCHING
-     PATTERN "*.hpp"
-     PATTERN "*.hh"
-     PATTERN "*.h"
-     PATTERN "CMakeFiles" EXCLUDE
-     PATTERN ".svn" EXCLUDE
-)
+install(DIRECTORY include/ DESTINATION include
+        PATTERN "config.h.cmake" EXCLUDE)
+install(FILES ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h DESTINATION include/crab_llvm)
 
 if (TopLevel)
 
