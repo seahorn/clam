@@ -52,11 +52,6 @@
 #include "dsa/Steensgaard.hh"
 #endif 
 
-// Compile time can be slow due to template instantiation. We enable
-// by default this option to mitigate this problem by disabling some
-// abstract domains. Comment it out for compiling all domains.
-//#define FASTER_COMPILATION
-
 using namespace llvm;
 using namespace crab_llvm;
 using namespace crab::cfg;
@@ -675,7 +670,7 @@ namespace crab_llvm {
 			InvarianceAnalysisResults &results) {
       
       switch (params.dom) {
-      #ifndef FASTER_COMPILATION
+      #ifdef HAVE_ALL_DOMAINS
       case INTERVALS_CONGRUENCES:
 	analyzeCfg<ric_domain_t>(params, assumptions, live, results);
         break;
@@ -710,8 +705,6 @@ namespace crab_llvm {
       default: 
         if (params.dom != INTERVALS) {
           crab::outs() << "Warning: abstract domain not found.\n"
-		       << "If FASTER_COMPILATION is enabled then "
-		       << "some domains are not available.\n"
                        << "Running intervals ...\n"; 
         }
 	analyzeCfg<interval_domain_t>(params, assumptions, live, results);
@@ -779,11 +772,8 @@ namespace crab_llvm {
 		                 << "Threshold: "
 		                 << params.relational_threshold << "\n");
 	  if (max_live_per_blk > params.relational_threshold) {
-          #ifdef FASTER_COMPILATION
-	  params.dom = INTERVALS;
-	  #else
-	  params.dom = DIS_INTERVALS;
-          #endif 
+	    // default domain
+	    params.dom = INTERVALS;
 	  }
 	}
       }
@@ -860,8 +850,10 @@ namespace crab_llvm {
 	return wrapperPathAnalyze<num_domain_t>(path, core, populate_maps, post, pre);
       case WRAPPED_INTERVALS:
 	return wrapperPathAnalyze<wrapped_interval_domain_t>(path, core, populate_maps, post, pre);
+      #ifdef HAVE_ALL_DOMAINS	
       case TERMS_INTERVALS:
 	return wrapperPathAnalyze<term_int_domain_t>(path, core, populate_maps, post, pre);
+      #endif 	
       default: 
 	return wrapperPathAnalyze<interval_domain_t>(path, core, populate_maps, post, pre);
       }
@@ -1016,7 +1008,7 @@ namespace crab_llvm {
     return;
   }
   
-  #ifdef FASTER_COMPILATION
+  #ifndef HAVE_ALL_DOMAINS
   #define INTER_ANALYZE(DOM,CG,M,LIVE,PRE,POST,VFAC,CHECKS)		       \
    switch (CrabSummDomain){                                                    \
      default:                                                                  \
@@ -1124,11 +1116,8 @@ namespace crab_llvm {
 		                   << "Threshold: "
 		                   << CrabRelationalThreshold << "\n");
 	    if (max_live_per_blk > CrabRelationalThreshold) {
-              #ifdef FASTER_COMPILATION
+	      // default domain
 	      absdom = INTERVALS;
-	      #else
-	      absdom = DIS_INTERVALS;
-	      #endif 
 	    }
 	  }
 	  
@@ -1144,11 +1133,7 @@ namespace crab_llvm {
       boost::scoped_ptr<call_graph_t> cg(new call_graph_t(cfgs));
       // -- run the interprocedural analysis            
       switch (absdom) {
-        #ifndef FASTER_COMPILATION
-         case WRAPPED_INTERVALS:
-          INTER_ANALYZE(wrapped_interval_domain_t, *cg, M, live_map,
-			m_pre_map, m_post_map, m_vfac, m_checks_db); 
-          break;
+        #ifdef HAVE_ALL_DOMAINS
         case INTERVALS_CONGRUENCES: 
           INTER_ANALYZE(ric_domain_t, *cg, M, live_map,
 			m_pre_map, m_post_map, m_vfac, m_checks_db); 
@@ -1161,7 +1146,11 @@ namespace crab_llvm {
           INTER_ANALYZE(dis_interval_domain_t, *cg, M, live_map,
 			m_pre_map, m_post_map, m_vfac, m_checks_db); 
           break;
-        #endif 
+        #endif
+         case WRAPPED_INTERVALS:
+          INTER_ANALYZE(wrapped_interval_domain_t, *cg, M, live_map,
+			m_pre_map, m_post_map, m_vfac, m_checks_db); 
+          break;	  
         case TERMS_DIS_INTERVALS:
           INTER_ANALYZE(term_dis_int_domain_t, *cg, M, live_map,
 			m_pre_map, m_post_map, m_vfac, m_checks_db); 
@@ -1186,8 +1175,6 @@ namespace crab_llvm {
           if (absdom != INTERVALS)
             crab::outs() << "Warning: either abstract domain not found or "
                          << "inter-procedural version not implemented.\n"
-                         << "If FASTER_COMPILATION is enabled then "
-	                 << "some domains are not available.\n"
                          << "Running intervals ...\n"; 
           INTER_ANALYZE (interval_domain_t, *cg, M, live_map,
 			 m_pre_map, m_post_map, m_vfac, m_checks_db);

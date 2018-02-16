@@ -42,6 +42,14 @@ endif ()
 #### crab-llvm options ######
 option (USE_COTIRE "Use cotire to speed up compilation time" OFF)
 option (BUILD_CRABLLVM_LIBS_SHARED "Build all CrabLlvm libraries shared." OFF)
+
+option (COMPILE_ALL_DOMAINS "Compile all abstract domains." ON)
+if (COMPILE_ALL_DOMAINS)
+  set (HAVE_ALL_DOMAINS TRUE)
+else ()
+  message(STATUS "Some abstract domains are disabled to speed up compilation time.")
+  set (HAVE_ALL_DOMAINS FALSE)
+endif ()
 #### end crab-llvm options ######
 
 # Add path for custom modules

@@ -7,4 +7,7 @@
 /** Define whether llvm-seahorn is available */
 #cmakedefine HAVE_LLVM_SEAHORN ${HAVE_LLVM_SEAHORN}
 
+/** Include all abstract domains */
+#cmakedefine HAVE_ALL_DOMAINS ${HAVE_ALL_DOMAINS}
+
 #endif

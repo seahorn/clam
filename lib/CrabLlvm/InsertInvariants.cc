@@ -326,23 +326,25 @@ namespace crab_llvm {
 
           // --- Figure out the type of the wrappee
           switch (pre->getId ()) {
-            case GenericAbsDomWrapper::intv:{
-              INSTR_LOAD(interval_domain_t, pre,
-			 cfg_ptr->get_node(&B), F.getContext(), cg,change);
-              break;
-            }
+	    #ifdef HAVE_ALL_DOMAINS  
             case GenericAbsDomWrapper::ric: {
               INSTR_LOAD(ric_domain_t, pre,
 			 cfg_ptr->get_node(&B), F.getContext(), cg, change);
               break;
             }
-            case GenericAbsDomWrapper::split_dbm: {
-              INSTR_LOAD(split_dbm_domain_t, pre,
-			 cfg_ptr->get_node(&B), F.getContext(), cg, change);
-              break;
-            }
             case GenericAbsDomWrapper::term_intv: {
               INSTR_LOAD(term_int_domain_t, pre,
+			 cfg_ptr->get_node(&B), F.getContext(), cg, change);
+              break;
+            }	      
+            #endif 	    
+            case GenericAbsDomWrapper::intv:{
+              INSTR_LOAD(interval_domain_t, pre,
+			 cfg_ptr->get_node(&B), F.getContext(), cg,change);
+              break;
+            }
+            case GenericAbsDomWrapper::split_dbm: {
+              INSTR_LOAD(split_dbm_domain_t, pre,
 			 cfg_ptr->get_node(&B), F.getContext(), cg, change);
               break;
             }

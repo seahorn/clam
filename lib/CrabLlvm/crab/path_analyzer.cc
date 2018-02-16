@@ -1,3 +1,4 @@
+#include "crab_llvm/config.h"
 #include "path_analyzer.hpp"
 #include "boost/unordered_set.hpp"
 
@@ -248,7 +249,9 @@ namespace crab {
 namespace analyzer {
 // explicit instantiations
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::num_domain_t>;
+#ifdef HAVE_ALL_DOMAINS  
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::term_int_domain_t>;
+#endif   
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::interval_domain_t>;
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::wrapped_interval_domain_t>;      
 } 
