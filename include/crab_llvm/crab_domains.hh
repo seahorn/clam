@@ -6,7 +6,7 @@
 #include "crab/domains/linear_constraints.hpp"                     
 #include "crab/domains/intervals.hpp"                      
 #include "crab/domains/dis_intervals.hpp"                      
-#include "crab/domains/sparse_dbm.hpp"
+//#include "crab/domains/sparse_dbm.hpp"
 #include "crab/domains/split_dbm.hpp"
 #include "crab/domains/boxes.hpp"
 #include "crab/domains/apron_domains.hpp"
@@ -55,8 +55,8 @@ namespace crab_llvm {
   /// -- Wrapped interval domain (APLAS'12)
   typedef wrapped_interval_domain<number_t, varname_t> BASE(wrapped_interval_domain_t);
   /// -- Zones using sparse DBMs (SAS'16)
-  typedef SpDBM_impl::DefaultParams<number_t> SparseDBMGraph;
-  typedef SparseDBM<number_t, varname_t, SparseDBMGraph> BASE(dbm_domain_t);
+  // typedef SpDBM_impl::DefaultParams<number_t> SparseDBMGraph;
+  // typedef SparseDBM<number_t, varname_t, SparseDBMGraph> BASE(dbm_domain_t);
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
   typedef SDBM_impl::DefaultParams<number_t> SplitDBMGraph;
   typedef SplitDBM<number_t, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
@@ -87,10 +87,7 @@ namespace crab_llvm {
 					    BASE(split_dbm_domain_t)> BASE(num_domain_t);
 
   ARRAY_BOOL_NUM(interval_domain_t);
-  // XXX: Need to ensure that the boolean and array domains are sound
-  //      wrt to machine integers.
-  ARRAY_BOOL_NUM(wrapped_interval_domain_t);  
-  ARRAY_BOOL_NUM(dbm_domain_t);
+  //ARRAY_BOOL_NUM(dbm_domain_t);
   ARRAY_BOOL_NUM(split_dbm_domain_t);
   ARRAY_BOOL_NUM(dis_interval_domain_t);
   ARRAY_BOOL_NUM(opt_oct_apron_domain_t);
@@ -102,6 +99,10 @@ namespace crab_llvm {
   // Boxes can reason natively about booleans so that's why we don't
   // combine it with a boolean domain.
   ARRAY_NUM(boxes_domain_t);
+
+  /* domains that preserve machine arithmetic semantics */
+  ARRAY_BOOL_NUM(wrapped_interval_domain_t);  
+  
   
 } // end namespace crab-llvm
 
