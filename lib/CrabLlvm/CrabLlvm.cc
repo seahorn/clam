@@ -102,8 +102,6 @@ CrabLlvmDomain("crab-dom",
       cl::values 
       (clEnumValN (INTERVALS, "int",
 		   "Classical interval domain (default)"),
-       clEnumValN (WRAPPED_INTERVALS, "w-int",
-		   "Wrapped interval domain"),       
        clEnumValN (TERMS_INTERVALS, "term-int",
 		   "Intervals with uninterpreted functions."),       
        clEnumValN (INTERVALS_CONGRUENCES, "ric",
@@ -122,6 +120,10 @@ CrabLlvmDomain("crab-dom",
 		   "Polyhedra domain using Apron library"),
        clEnumValN (TERMS_ZONES, "rtz",
 		   "Reduced product of term-dis-int and zones."),
+       clEnumValN (WRAPPED_INTERVALS, "w-int",
+		   "Wrapped interval domain"),       
+       clEnumValN (WRAPPED_ZONES_SPLIT_DBM, "w-zones",
+		   "Wrapped zones domain"),       
        clEnumValEnd),
        cl::init (INTERVALS));
 
@@ -683,7 +685,10 @@ namespace crab_llvm {
       #endif
       case WRAPPED_INTERVALS:
 	analyzeCfg<wrapped_interval_domain_t>(params, assumptions, live, results);
-        break;	
+        break;
+      case WRAPPED_ZONES_SPLIT_DBM:
+	analyzeCfg<wrapped_split_dbm_domain_t>(params, assumptions, live, results);
+        break;
       case TERMS_DIS_INTERVALS:
 	analyzeCfg<term_dis_int_domain_t>(params, assumptions, live, results);
         break;

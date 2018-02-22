@@ -232,7 +232,6 @@ def parseArgs (argv):
     p.add_argument ('--crab-dom',
                     help="Choose abstract domain:\n"
                           "- int: intervals\n"
-                          "- w-int: wrapped intervals\n"
                           "- ric: reduced product of intervals and congruences\n"
                           "- term-int: int with uninterpreted functions\n"
                           "- dis-int: disjunctive intervals based on Clousot's DisInt domain\n"
@@ -241,10 +240,13 @@ def parseArgs (argv):
                           "- zones: zones domain using sparse DBM in Split Normal Form\n"
                           "- oct: Elina's optimized octagon domain\n"
                           "- pk: Apron's polka domain\n"
-                          "- rtz: reduced product of term-dis-int with zones\n",
-                    choices=['int','w-int', 'ric', 'term-int',
+                          "- rtz: reduced product of term-dis-int with zones\n"
+                          "- w-int: wrapped intervals\n"
+                          "- w-zones: wrapped zones\n",
+                    choices=['int', 'ric', 'term-int',
                              'dis-int', 'term-dis-int', 'boxes',  
-                             'zones', 'oct', 'pk', 'rtz', ],
+                             'zones', 'oct', 'pk', 'rtz',
+                             'w-int', 'w-zones',],
                     dest='crab_dom', default='zones')
     p.add_argument ('--crab-widening-delay', 
                     type=int, dest='widening_delay', 

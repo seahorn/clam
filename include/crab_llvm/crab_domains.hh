@@ -34,7 +34,7 @@ namespace crab_llvm {
   // Array functor domain where the base domain is a reduced product
   // of a boolean domain with the numerical domain DOM.
   #define ARRAY_BOOL_NUM(DOM) \
-    typedef array_smashing<flat_boolean_numerical_domain<BASE(DOM)> > DOM
+    typedef array_smashing<flat_boolean_numerical_domain<BASE(DOM)>> DOM
   // Array functor domain where the base domain is DOM
   #define ARRAY_NUM(DOM) \
     typedef array_smashing<BASE(DOM)> DOM;
@@ -60,6 +60,8 @@ namespace crab_llvm {
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
   typedef SDBM_impl::DefaultParams<number_t> SplitDBMGraph;
   typedef SplitDBM<number_t, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
+  /// -- Experimental wrapped zones using DBMs in SNF
+  typedef wrapped_numerical_domain<BASE(split_dbm_domain_t)> BASE(wrapped_split_dbm_domain_t);
   /// -- Boxes
   typedef boxes_domain<number_t, varname_t> BASE(boxes_domain_t);
   // typedef diff_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>,
@@ -99,9 +101,9 @@ namespace crab_llvm {
   // Boxes can reason natively about booleans so that's why we don't
   // combine it with a boolean domain.
   ARRAY_NUM(boxes_domain_t);
-
   /* domains that preserve machine arithmetic semantics */
-  ARRAY_BOOL_NUM(wrapped_interval_domain_t);  
+  ARRAY_BOOL_NUM(wrapped_interval_domain_t);
+  ARRAY_BOOL_NUM(wrapped_split_dbm_domain_t);  
   
   
 } // end namespace crab-llvm

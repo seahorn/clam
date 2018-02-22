@@ -37,7 +37,6 @@ namespace crab_llvm {
    ////
   enum CrabDomain
      {   INTERVALS
-       , WRAPPED_INTERVALS
        , INTERVALS_CONGRUENCES
        , BOXES
        , DIS_INTERVALS
@@ -51,6 +50,8 @@ namespace crab_llvm {
        , ADAPT_TERMS_ZONES 
        , OPT_OCT_APRON
        , PK_APRON
+       , WRAPPED_INTERVALS
+       , WRAPPED_ZONES_SPLIT_DBM
      };
 
   ////

@@ -29,7 +29,8 @@ namespace llvm {
   DUMP_TO_LLVM_STREAM(crab_llvm::lin_cst_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::lin_cst_sys_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::interval_domain_t)
-  DUMP_TO_LLVM_STREAM(crab_llvm::wrapped_interval_domain_t)  
+  DUMP_TO_LLVM_STREAM(crab_llvm::wrapped_interval_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::wrapped_split_dbm_domain_t)  
   DUMP_TO_LLVM_STREAM(crab_llvm::ric_domain_t)
   //DUMP_TO_LLVM_STREAM(crab_llvm::dbm_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::split_dbm_domain_t)
@@ -135,12 +136,14 @@ namespace crab_llvm {
 
     typedef boost::shared_ptr<GenericAbsDomWrapper> GenericAbsDomWrapperPtr;
     
-    typedef enum { intv, w_intv, /*dbm,*/ split_dbm, 
+    typedef enum { intv, /*dbm,*/ split_dbm, 
 		   term_intv, term_dis_intv, 
 		   ric, 
 		   boxes, dis_intv,
 		   opt_oct_apron, pk_apron,
-		   num } id_t;
+		   num,
+		   w_intv, w_split_dbm} id_t;
+    
     
     GenericAbsDomWrapper() { }
     
@@ -182,7 +185,8 @@ namespace crab_llvm {
    inline void getAbsDomWrappee (GenericAbsDomWrapperPtr wrapper, T& wrappee);
 
    DEFINE_WRAPPER(IntervalDomainWrapper,interval_domain_t,intv)
-   DEFINE_WRAPPER(WrappedIntervalDomainWrapper,wrapped_interval_domain_t,w_intv)   
+   DEFINE_WRAPPER(WrappedIntervalDomainWrapper,wrapped_interval_domain_t,w_intv)
+   DEFINE_WRAPPER(WrappedSDbmDomainWrapper,wrapped_split_dbm_domain_t,w_split_dbm)
    DEFINE_WRAPPER(RicDomainWrapper,ric_domain_t,ric)
    //DEFINE_WRAPPER(DbmDomainWrapper,dbm_domain_t,dbm)
    DEFINE_WRAPPER(SDbmDomainWrapper,split_dbm_domain_t,split_dbm)
