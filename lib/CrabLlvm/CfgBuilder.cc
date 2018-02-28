@@ -2342,6 +2342,10 @@ namespace crab_llvm {
 		 (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))){
 	// -- value is an integer/bool -> add array statement
 	if (!val) {
+	  // XXX: this can happen if we store a ptrtoint instruction
+	  // For simplicity, we don't deal with this case here and we
+	  // assume that the client must make sure that all constant
+	  // expressions are lowered. 
 	  CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
 	}
 	mem_region_t r = GET_REGION(I, I.getPointerOperand()); 
