@@ -42,9 +42,10 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
       }
       if (i < path.size() - 1)  {
 	if (!has_kid(path[i], path[i+1])) {
-	  CRAB_ERROR("There is no an edge from ",
-		     cfg_impl::get_label_str(path[i]), " to ",
-		     cfg_impl::get_label_str(path[i+1]));
+	  CRAB_WARN("There is no an edge from ",
+		    cfg_impl::get_label_str(path[i]), " to ",
+		    cfg_impl::get_label_str(path[i+1]));
+	  return true;
 	}
       }
     }
