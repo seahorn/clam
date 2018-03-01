@@ -24,7 +24,7 @@ namespace analyzer {
     
   public:
     // precondition: cfg is well typed.      
-    path_analyzer (CFG cfg, AbsDom init = AbsDom::top(), bool ignore_assertions = true);
+    path_analyzer (CFG cfg, AbsDom& init, bool ignore_assertions = true);
     
     /* Return true iff the forward analysis of path is not bottom. 
      * 

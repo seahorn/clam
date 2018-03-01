@@ -10,7 +10,7 @@ namespace crab {
 namespace analyzer {
 
 template<typename CFG, typename AbsDom>
-path_analyzer<CFG,AbsDom>::path_analyzer(CFG cfg, AbsDom init, bool ignore_assertions)
+path_analyzer<CFG,AbsDom>::path_analyzer(CFG cfg, AbsDom& init, bool ignore_assertions)
   : m_cfg(cfg), m_fwd_abs_tr(&init, ignore_assertions) { }
 
 template<typename CFG, typename AbsDom>  

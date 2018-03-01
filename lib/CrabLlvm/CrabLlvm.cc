@@ -792,7 +792,8 @@ namespace crab_llvm {
 			    invariant_map_t& post, invariant_map_t& pre) const {
       
       typedef path_analyzer<cfg_ref_t, AbsDom> path_analyzer_t;
-      path_analyzer_t path_analyzer(*m_cfg);
+      AbsDom init;
+      path_analyzer_t path_analyzer(*m_cfg, init);
       bool res = path_analyzer.solve(path, /*compute_preconditions=*/ populate_maps);
       if (populate_maps) {
 	for(auto n: path) {
