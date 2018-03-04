@@ -314,6 +314,9 @@ namespace crab_llvm {
       if (InsertInvs == BLOCK_ENTRY || InsertInvs == ALL) {
         // --- Instrument basic block entry
         auto pre = crab->get_pre(&B, false /*remove shadows*/);
+	if (!pre) {
+	  continue;
+	}
         auto csts = pre->to_linear_constraints ();
         change |= instrument_entries (csts, &B, F.getContext(), cg);
       }
@@ -323,7 +326,9 @@ namespace crab_llvm {
         if (reads_memory (B)) {
 
           auto pre = crab->get_pre(&B, true /*keep shadows*/);
-
+	  if (!pre) {
+	    continue;
+	  }
           // --- Figure out the type of the wrappee
           switch (pre->getId ()) {
 	    #ifdef HAVE_ALL_DOMAINS  

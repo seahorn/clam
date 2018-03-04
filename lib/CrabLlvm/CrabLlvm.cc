@@ -291,7 +291,10 @@ namespace crab_llvm {
 				const llvm::BasicBlock &block,
 				const std::vector<varname_t> &shadow_varnames) {
     auto it = table.find (&block);
-    assert (it != table.end ());
+    if (it == table.end()) {
+      return nullptr;
+    }
+    
     if (shadow_varnames.empty()) {
       return it->second;
     } else {
@@ -367,14 +370,24 @@ namespace crab_llvm {
       void print_begin(basic_block_label_t bbl, crab::crab_os &o) const {
 	if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
 	  wrapper_dom_ptr pre = lookup(m_premap, *bb, m_shadow_vars);
-	  o << "  " << name() << ": " << pre << "\n";
+	  o << "  " << name() << ": ";
+	  if (pre){
+	    o << pre << "\n";
+	  } else {
+	    o << "null\n";
+	  }
 	}
       }
       
       void print_end(basic_block_label_t bbl, crab::crab_os &o) const {
 	if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
 	  wrapper_dom_ptr post = lookup(m_postmap, *bb, m_shadow_vars);
-	  o << "  " << name() << ": " << post << "\n";
+	  o << "  " << name() << ": ";
+	  if (post) {
+	    o << post << "\n";
+	  } else {
+	    o << "null\n";
+	  }
 	}
       }
     };
