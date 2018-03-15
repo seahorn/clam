@@ -41,7 +41,6 @@
 #include <boost/unordered_map.hpp>
 #include <boost/unordered_set.hpp>
 #include <boost/range/iterator_range.hpp>
-
 #include <memory>
 
 #ifdef HAVE_DSA
@@ -430,12 +429,12 @@ namespace crab_llvm {
     class print_block {
       cfg_ref_t m_cfg;
       crab::crab_os &m_o;
-      const std::vector<block_annotation*> &m_annotations;
+      const std::vector<std::unique_ptr<block_annotation>> &m_annotations;
 
     public:
       
       print_block (cfg_ref_t cfg, crab::crab_os &o,
-		   const std::vector<block_annotation*> &annotations)
+		   const std::vector<std::unique_ptr<block_annotation>> &annotations)
 	: m_cfg(cfg), m_o(o), m_annotations(annotations) {} 
 
       void operator()(basic_block_label_t bbl) const {
@@ -445,7 +444,7 @@ namespace crab_llvm {
 	m_o << bbl.get_name() << ":\n";
 
 	crab::crab_string_os o;
-	for (auto p: m_annotations) {
+	for (auto& p: m_annotations) {
 	  p->print_begin(bbl,o);
 	}
 	if (o.str() != "") {
@@ -455,17 +454,17 @@ namespace crab_llvm {
 	const basic_block_t &bb = m_cfg.get_node(bbl);
 	bool empty_block = (std::distance(bb.begin(), bb.end()) == 0);
 	for (auto const &s: bb) {
-	  for (auto p: m_annotations) {
+	  for (auto& p: m_annotations) {
 	    p->print_begin(s, m_o);
 	  }	  
 	  m_o << "  " << s << ";\n";
-	  for (auto p: m_annotations) {
+	  for (auto& p: m_annotations) {
 	    p->print_end(s, m_o);
 	  }	  
 	}
 	if (!empty_block) {
 	  crab::crab_string_os o;
-	  for (auto p: m_annotations) {
+	  for (auto& p: m_annotations) {
 	    p->print_end(bbl, o);
 	  }
 	  if (o.str() != "") {
@@ -511,7 +510,7 @@ namespace crab_llvm {
       dfs_rec (cfg, cfg.entry(), visited, f);
     }
 
-    void print_annotations(cfg_ref_t cfg, const std::vector<block_annotation*> &annotations) {
+    void print_annotations(cfg_ref_t cfg, const std::vector<std::unique_ptr<block_annotation>> &annotations) {
       print_block f(cfg, crab::outs(), annotations);
       dfs(cfg, f);
     }
@@ -595,21 +594,23 @@ namespace crab_llvm {
       if (params.print_invars ||
 	  (params.print_preconds && params.run_backward) ||
 	  params.print_assumptions) {
+
+	typedef pretty_printer_impl::block_annotation block_annotation_t;
+	typedef pretty_printer_impl::invariant_annotation inv_annotation_t;
+	typedef pretty_printer_impl::nec_precondition_annotation<intra_analyzer_t> pre_annotation_t;
+	typedef pretty_printer_impl::assumption_annotation assume_annotation_t;
+	std::vector<std::unique_ptr<block_annotation_t>> pool_annotations;
 	
 	llvm::outs() << "\n" << "function " << m_fun.getName() << "\n";
-	std::vector<pretty_printer_impl::block_annotation*> pool_annotations;
-
 	if (params.print_invars) {
-	  pretty_printer_impl::invariant_annotation inv(m_vfac, results.premap, results.postmap,
-							params.keep_shadow_vars);
-	  pool_annotations.push_back(&inv);
+	  pool_annotations.emplace_back(
+	       make_unique<inv_annotation_t>(m_vfac, results.premap, results.postmap, 
+					     params.keep_shadow_vars));
 	}
 
 	if (params.print_preconds && params.run_backward) {
-	  pretty_printer_impl::nec_precondition_annotation<intra_analyzer_t> pre(analyzer);
-	  pool_annotations.push_back(&pre);
+	  pool_annotations.emplace_back(make_unique<pre_annotation_t>(analyzer));
 	}
-
 
 	// XXX: it must be alive when print_annotations is called.
 	#if 0
@@ -619,11 +620,10 @@ namespace crab_llvm {
 	#endif 
 	
 	if (params.print_assumptions) {
-	  // -- runf first the analysis
+	  // -- run first the analysis
 	  assumption_analyzer.exec();
-	  
-	  pretty_printer_impl::assumption_annotation assume(*m_cfg, &assumption_analyzer);
-	  pool_annotations.push_back(&assume);
+	  pool_annotations.emplace_back(
+	       make_unique<assume_annotation_t>(*m_cfg, &assumption_analyzer));
 	}
 
 	pretty_printer_impl::print_annotations(*m_cfg, pool_annotations);
@@ -867,9 +867,9 @@ namespace crab_llvm {
 	// --- print invariants and summaries
 	if (CrabPrintAns && isTrackable(*F)) {
 	  llvm::outs() << "\n" << "function " << F->getName () << "\n";
-	  pretty_printer_impl::invariant_annotation inv_annot (vfac, premap, postmap,
-							       CrabKeepShadows);
-	  std::vector<pretty_printer_impl::block_annotation*> annotations = {&inv_annot};
+	  std::vector<std::unique_ptr<pretty_printer_impl::block_annotation>> annotations;
+	  annotations.emplace_back(make_unique<pretty_printer_impl::invariant_annotation>
+				   (vfac, premap, postmap, CrabKeepShadows));
 	  pretty_printer_impl::print_annotations(cfg, annotations);	    
 	}
 	
