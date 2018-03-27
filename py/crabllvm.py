@@ -18,15 +18,19 @@ verbose = False
 running_process = None
 
 ####### SPECIAL ERROR CODES USEFUL FOR DEBUGGING ############
+# Exit codes are between 0 and 255.
+# Do not use 1, 2, 126, 127, 128 and negative integers.
 ## special error codes for the frontend (clang + opt + pp)
-ERR_FRONTEND_TIMEOUT=20    
-ERR_FRONTEND_MEMORY_OUT=21  
+FRONTEND_TIMEOUT=20    
+FRONTEND_MEMORY_OUT=21  
 #### specific errors for each frontend component
-ERR_CLANG = 22
-ERR_OPT = 23
-ERR_PP = 24
-## special error code for crab-llvm/crab
-ERR_CRAB = 25
+CLANG_ERROR = 22
+OPT_ERROR = 23
+PP_ERROR = 24
+### special error codes for crab
+CRAB_ERROR = 25
+CRAB_TIMEOUT = 26
+CRAB_MEMORY_OUT = 27
 #############################################################
 
 llvm_version = "3.8.0"
@@ -52,7 +56,15 @@ def which(program):
                     return exe_file
     return None
 
+# Return a tuple (returnvalue:int, timeout:bool, out_of_memory:bool, unknown:bool)
+#   - Only one boolean flag can be enabled at any time.
+#   - If all flags are false then returnvalue cannot be None.
 def run_command_with_limits(cmd, cpu, mem, out = None):
+    timeout = False
+    out_of_memory = False
+    unknown_error = False
+    returnvalue = 0
+    
     def set_limits ():
         if mem > 0:
             mem_bytes = mem * 1024 * 1024
@@ -69,68 +81,45 @@ def run_command_with_limits(cmd, cpu, mem, out = None):
     if out is not None:
         p = sub.Popen (cmd, stdout = out, preexec_fn=set_limits)
     else:
-        p = sub.Popen (cmd, preexec_fn=set_limits)    
+        p = sub.Popen (cmd, preexec_fn=set_limits)
+        
     global running_process
     running_process = p
     timer = threading.Timer (cpu, kill, [p])
-    if cpu > 0: timer.start ()
+    if cpu > 0:
+        timer.start ()
+        
     try:
-        (pid, returnvalue, ru_child) = os.wait4 (p.pid, 0)
-        # returnvalue is a 16-bit number, whose low byte is the signal number 
-        # that killed the process, and whose high byte is the exit status 
-        # (if the signal number is zero)
-        killed_by_signal = returnvalue & 127
-        if not killed_by_signal:
-            returnvalue = returnvalue >> 8
+        (pid, status, ru_child) = os.wait4 (p.pid, 0)
+        signal = status & 0xff
+        returnvalue = status >> 8        
+        if signal > 0:
+            returnvalue = None
+            print "** Killed by signal " + str(signal)
+            # 9: 'SIGKILL', 14: 'SIGALRM', 15: 'SIGTERM'
+            if signal == 9 or signal == 14 or signal == 15:
+                ## kill sends SIGTERM by default.
+                ## The timer set above uses kill to stop the process.
+                timeout = True
+            else:
+                unknown_error = True
         running_process = None
-    except OSError:
-        ## p has been killed probably because it consumed too much memory
-        ## It could be for other reasons but we assume OOM
-        returnvalue = 134 
+    except OSError as e:
+        returnvalue = None
+        print "** OS Error: " + str(e)
+        if os.errno.errorcode[e.errno] == 'ECHILD':
+            ## The children has been killed. We assume it has been killed by the timer.
+            ## But I think it can be killed by others
+            timeout = True
+        elif os.errno.errorcode[e.errno] == 'ENOMEM':
+            out_of_memory = True
+        else:
+            unknown_error = True
     finally:
         ## kill the timer if the process has terminated already
-        if timer.isAlive (): timer.cancel ()            
-    #print "RETURNVALUE =" + str(returnvalue)    
-    return returnvalue
-
-# # Based on http://www.ostricher.com/2015/01/python-subprocess-with-timeout/    
-# class SubprocessTimeout(RuntimeError):
-#   """Error class for subprocess timeout."""
-#   pass
-    
-# def run_command_with_limits(cmd, cpu, mem, out = None):
-#     """Execute `cmd` in a subprocess and enforce timeout `cpu` seconds.
-#     Return subprocess exit code on natural completion of the subprocess.
-#     Raise an exception if timeout expires before subprocess completes."""
-
-#     def set_limits ():
-#         if mem > 0:
-#             mem_bytes = mem * 1024 * 1024
-#             resource.setrlimit (resource.RLIMIT_AS, [mem_bytes, mem_bytes])
-
-#     if not out is None:
-#         proc = sub.Popen (cmd, stdout = out, preexec_fn=set_limits)
-#     else:
-#         proc = sub.Popen (cmd, preexec_fn=set_limits)
-            
-#     proc_thread = threading.Thread(target=proc.communicate)
-#     proc_thread.start()
-#     if cpu > 0:
-#         proc_thread.join(cpu)
-#     else:
-#         proc_thread.join()
+        if timer.isAlive (): timer.cancel ()
         
-#     if proc_thread.is_alive():
-#         # Process still running - kill it and raise timeout error
-#         try:
-#             proc.kill()
-#         except OSError, e:
-#             # The process finished between the `is_alive()` and `kill()`
-#             #return proc.returncode
-#             sys.exit(proc.returncode)
-#         # OK, the process was definitely killed
-#         # raise SubprocessTimeout('Process #%d killed after %f seconds' % (proc.pid, cpu))
-#         sys.exit(proc.returncode)
+    return (returnvalue, timeout, out_of_memory, unknown_error)        
 
 def loadEnv (filename):
     if not os.path.isfile (filename): return
@@ -473,16 +462,13 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     clang_args.append ('-m{0}'.format (arch))
 
     if verbose: print ' '.join (clang_args)
-    returnvalue = run_command_with_limits(clang_args, -1, -1)
-    if returnvalue != 0:        
-        if returnvalue == 9:
-            returnvalue = ERR_FRONTEND_TIMEOUT
-        elif returnvalue == 134:
-            returnvalue = ERR_FRONTEND_MEMORY_OUT
-        else:
-            returnvalue = ERR_CLANG
-        sys.exit(returnvalue)    
-    
+    returnvalue, timeout, out_of_mem, unknown = run_command_with_limits(clang_args, -1, -1)
+    if timeout:
+        sys.exit(FRONTEND_TIMEOUT)
+    elif out_of_mem:
+        sys.exit(FRONTEND_MEMORY_OUT)
+    elif unknown or returnvalue <> 0:
+        sys.exit(CLANG_ERROR)    
 
 # Run llvm optimizer
 def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
@@ -511,16 +497,13 @@ def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     opt_args.append (in_name)
 
     if verbose: print ' '.join (opt_args)
-    returnvalue = run_command_with_limits(opt_args, cpu, mem)
-    if returnvalue != 0:
-        if returnvalue == 9:
-            returnvalue = ERR_FRONTEND_TIMEOUT
-        elif returnvalue == 134:
-            returnvalue = ERR_FRONTEND_MEMORY_OUT
-        else:
-            returnvalue = ERR_OPT
-        sys.exit(returnvalue)    
-    
+    returnvalue, timeout, out_of_mem, unknown = run_command_with_limits(opt_args, cpu, mem)
+    if timeout:
+        sys.exit(FRONTEND_TIMEOUT)
+    elif out_of_mem:
+        sys.exit(FRONTEND_MEMORY_OUT)
+    elif unknown or returnvalue <> 0:
+        sys.exit(OPT_ERROR)
 
 # Generate dot files for each LLVM function.
 def dot (in_name, view_dot = False, cpu = -1, mem = -1):
@@ -528,8 +511,8 @@ def dot (in_name, view_dot = False, cpu = -1, mem = -1):
     args = [getOptLlvm(), in_name, '-dot-cfg']
     if view_dot: args.append ('-view-cfg')
     if verbose: print ' '.join (args)
-    returnvalue = run_command_with_limits(args, cpu, mem, fnull)
-    if returnvalue != 0: sys.exit (returnvalue)    
+    ## We don't bother here analyzing the exit code
+    run_command_with_limits(args, cpu, mem, fnull)
     
 # Run crabpp
 def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
@@ -554,15 +537,13 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         
     crabpp_args.extend (extra_args)
     if verbose: print ' '.join (crabpp_args)
-    returnvalue = run_command_with_limits(crabpp_args, cpu, mem)
-    if returnvalue != 0:
-        if returnvalue == 9:
-            returnvalue = ERR_FRONTEND_TIMEOUT
-        elif returnvalue == 134:
-            returnvalue = ERR_FRONTEND_MEMORY_OUT
-        else:
-            returnvalue = ERR_PP
-        sys.exit(returnvalue)    
+    returnvalue, timeout, out_of_mem, unknown = run_command_with_limits(crabpp_args, cpu, mem)
+    if timeout:
+        sys.exit(FRONTEND_TIMEOUT)
+    elif out_of_mem:
+        sys.exit(FRONTEND_MEMORY_OUT)
+    elif unknown or returnvalue <> 0:
+        sys.exit(PP_ERROR)
     
 # Run crabllvm
 def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
@@ -617,12 +598,14 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.out_name is not None:
         crabllvm_cmd.append ('-o={0}'.format (args.out_name))
 
-    returnvalue = run_command_with_limits(crabllvm_cmd, cpu, mem)
-    if returnvalue != 0:
+    returnvalue, timeout, out_of_mem, unknown = run_command_with_limits(crabllvm_cmd, cpu, mem)
+    if timeout:
+        sys.exit(CRAB_TIMEOUT)
+    elif out_of_mem:
+        sys.exit(CRAB_MEMORY_OUT)
+    elif unknown or returnvalue <> 0:
         # crab returns EXIT_FAILURE which in most platforms is 1 but not in all.
-        if returnvalue == 1:
-            returnvalue = ERR_CRAB
-        sys.exit (returnvalue)    
+        sys.exit(CRAB_ERROR)
     
 def main (argv):
     def stat (key, val): stats.put (key, val)
