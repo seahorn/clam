@@ -52,6 +52,8 @@ namespace crab_llvm {
        , PK_APRON
        , WRAPPED_INTERVALS
        , WRAPPED_ZONES_SPLIT_DBM
+       , WRAPPED_OPT_OCT_APRON
+       , WRAPPED_PK_APRON
      };
 
   ////

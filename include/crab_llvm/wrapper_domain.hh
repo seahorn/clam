@@ -31,6 +31,8 @@ namespace llvm {
   DUMP_TO_LLVM_STREAM(crab_llvm::interval_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::wrapped_interval_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::wrapped_split_dbm_domain_t)  
+  DUMP_TO_LLVM_STREAM(crab_llvm::wrapped_opt_oct_apron_domain_t)  
+  DUMP_TO_LLVM_STREAM(crab_llvm::wrapped_pk_apron_domain_t)  
   DUMP_TO_LLVM_STREAM(crab_llvm::ric_domain_t)
   //DUMP_TO_LLVM_STREAM(crab_llvm::dbm_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::split_dbm_domain_t)
@@ -142,7 +144,7 @@ namespace crab_llvm {
 		   boxes, dis_intv,
 		   opt_oct_apron, pk_apron,
 		   num,
-		   w_intv, w_split_dbm} id_t;
+		   w_intv, w_split_dbm, w_opt_oct_apron, w_pk_apron} id_t;
     
     
     GenericAbsDomWrapper() { }
@@ -187,6 +189,8 @@ namespace crab_llvm {
    DEFINE_WRAPPER(IntervalDomainWrapper,interval_domain_t,intv)
    DEFINE_WRAPPER(WrappedIntervalDomainWrapper,wrapped_interval_domain_t,w_intv)
    DEFINE_WRAPPER(WrappedSDbmDomainWrapper,wrapped_split_dbm_domain_t,w_split_dbm)
+   DEFINE_WRAPPER(WrappedOptOctApronDomainWrapper,wrapped_opt_oct_apron_domain_t,w_opt_oct_apron)
+   DEFINE_WRAPPER(WrappedPkApronDomainWrapper,wrapped_pk_apron_domain_t,w_pk_apron)
    DEFINE_WRAPPER(RicDomainWrapper,ric_domain_t,ric)
    //DEFINE_WRAPPER(DbmDomainWrapper,dbm_domain_t,dbm)
    DEFINE_WRAPPER(SDbmDomainWrapper,split_dbm_domain_t,split_dbm)

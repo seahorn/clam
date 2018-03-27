@@ -60,8 +60,6 @@ namespace crab_llvm {
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
   typedef SDBM_impl::DefaultParams<number_t> SplitDBMGraph;
   typedef SplitDBM<number_t, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
-  /// -- Experimental wrapped zones using DBMs in SNF
-  typedef wrapped_numerical_domain<BASE(split_dbm_domain_t)> BASE(wrapped_split_dbm_domain_t);
   /// -- Boxes
   typedef boxes_domain<number_t, varname_t> BASE(boxes_domain_t);
   // typedef diff_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>,
@@ -88,6 +86,12 @@ namespace crab_llvm {
   typedef reduced_numerical_domain_product2<BASE(term_dis_int_domain_t),
 					    BASE(split_dbm_domain_t)> BASE(num_domain_t);
 
+  /// -- Experimental wrapped numerical domains
+  typedef wrapped_numerical_domain<BASE(split_dbm_domain_t)> BASE(wrapped_split_dbm_domain_t);
+  typedef wrapped_numerical_domain<BASE(opt_oct_apron_domain_t)> BASE(wrapped_opt_oct_apron_domain_t);
+  typedef wrapped_numerical_domain<BASE(pk_apron_domain_t)> BASE(wrapped_pk_apron_domain_t);
+
+
   ARRAY_BOOL_NUM(interval_domain_t);
   //ARRAY_BOOL_NUM(dbm_domain_t);
   ARRAY_BOOL_NUM(split_dbm_domain_t);
@@ -104,6 +108,8 @@ namespace crab_llvm {
   /* domains that preserve machine arithmetic semantics */
   ARRAY_BOOL_NUM(wrapped_interval_domain_t);
   ARRAY_BOOL_NUM(wrapped_split_dbm_domain_t);  
+  ARRAY_BOOL_NUM(wrapped_opt_oct_apron_domain_t);  
+  ARRAY_BOOL_NUM(wrapped_pk_apron_domain_t);  
   
   
 } // end namespace crab-llvm
