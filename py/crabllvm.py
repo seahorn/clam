@@ -28,9 +28,10 @@ CLANG_ERROR = 22
 OPT_ERROR = 23
 PP_ERROR = 24
 ### special error codes for crab
-CRAB_ERROR = 25
+CRAB_ERROR = 25    ## errors caught by crab
 CRAB_TIMEOUT = 26
 CRAB_MEMORY_OUT = 27
+CRAB_SEGFAULT = 28 ## unexpected segfaults
 #############################################################
 
 llvm_version = "3.8.0"
@@ -56,12 +57,13 @@ def which(program):
                     return exe_file
     return None
 
-# Return a tuple (returnvalue:int, timeout:bool, out_of_memory:bool, unknown:bool)
+# Return a tuple (returnvalue:int, timeout:bool, out_of_memory:bool, segfault:bool, unknown:bool)
 #   - Only one boolean flag can be enabled at any time.
 #   - If all flags are false then returnvalue cannot be None.
 def run_command_with_limits(cmd, cpu, mem, out = None):
     timeout = False
     out_of_memory = False
+    segfault = False
     unknown_error = False
     returnvalue = 0
     
@@ -93,16 +95,19 @@ def run_command_with_limits(cmd, cpu, mem, out = None):
         (pid, status, ru_child) = os.wait4 (p.pid, 0)
         signal = status & 0xff
         returnvalue = status >> 8        
-        if signal > 0:
+        if signal <> 0:
             returnvalue = None
-            print "** Killed by signal " + str(signal)
-            # 9: 'SIGKILL', 14: 'SIGALRM', 15: 'SIGTERM'
-            if signal == 9 or signal == 14 or signal == 15:
-                ## kill sends SIGTERM by default.
-                ## The timer set above uses kill to stop the process.
-                timeout = True
+            if signal > 127:
+                segfault = True
             else:
-                unknown_error = True
+                print "** Killed by signal " + str(signal)
+                # 9: 'SIGKILL', 14: 'SIGALRM', 15: 'SIGTERM'
+                if signal == 9 or signal == 14 or signal == 15:
+                    ## kill sends SIGTERM by default.
+                    ## The timer set above uses kill to stop the process.
+                    timeout = True
+                else:
+                    unknown_error = True
         running_process = None
     except OSError as e:
         returnvalue = None
@@ -119,7 +124,7 @@ def run_command_with_limits(cmd, cpu, mem, out = None):
         ## kill the timer if the process has terminated already
         if timer.isAlive (): timer.cancel ()
         
-    return (returnvalue, timeout, out_of_memory, unknown_error)        
+    return (returnvalue, timeout, out_of_memory, segfault, unknown_error)        
 
 def loadEnv (filename):
     if not os.path.isfile (filename): return
@@ -464,12 +469,12 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
     clang_args.append ('-m{0}'.format (arch))
 
     if verbose: print ' '.join (clang_args)
-    returnvalue, timeout, out_of_mem, unknown = run_command_with_limits(clang_args, -1, -1)
+    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(clang_args, -1, -1)
     if timeout:
         sys.exit(FRONTEND_TIMEOUT)
     elif out_of_mem:
         sys.exit(FRONTEND_MEMORY_OUT)
-    elif unknown or returnvalue <> 0:
+    elif segfault or unknown or returnvalue <> 0:
         sys.exit(CLANG_ERROR)    
 
 # Run llvm optimizer
@@ -499,7 +504,7 @@ def optLlvm (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     opt_args.append (in_name)
 
     if verbose: print ' '.join (opt_args)
-    returnvalue, timeout, out_of_mem, unknown = run_command_with_limits(opt_args, cpu, mem)
+    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(opt_args, cpu, mem)
     if timeout:
         sys.exit(FRONTEND_TIMEOUT)
     elif out_of_mem:
@@ -539,12 +544,12 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         
     crabpp_args.extend (extra_args)
     if verbose: print ' '.join (crabpp_args)
-    returnvalue, timeout, out_of_mem, unknown = run_command_with_limits(crabpp_args, cpu, mem)
+    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabpp_args, cpu, mem)
     if timeout:
         sys.exit(FRONTEND_TIMEOUT)
     elif out_of_mem:
         sys.exit(FRONTEND_MEMORY_OUT)
-    elif unknown or returnvalue <> 0:
+    elif segfault or unknown or returnvalue <> 0:
         sys.exit(PP_ERROR)
     
 # Run crabllvm
@@ -600,11 +605,13 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.out_name is not None:
         crabllvm_cmd.append ('-o={0}'.format (args.out_name))
 
-    returnvalue, timeout, out_of_mem, unknown = run_command_with_limits(crabllvm_cmd, cpu, mem)
+    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabllvm_cmd, cpu, mem)
     if timeout:
         sys.exit(CRAB_TIMEOUT)
     elif out_of_mem:
         sys.exit(CRAB_MEMORY_OUT)
+    elif segfault:
+        sys.exit(CRAB_SEGFAULT)
     elif unknown or returnvalue <> 0:
         # crab returns EXIT_FAILURE which in most platforms is 1 but not in all.
         sys.exit(CRAB_ERROR)
