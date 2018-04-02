@@ -285,6 +285,9 @@ def parseArgs (argv):
                     help='Instrument code with invariants',
                     choices=['none', 'block-entry', 'after-load', 'all'],
                     dest='insert_invs', default='none')
+    p.add_argument ('--crab-promote-assume',
+                    help='Promote verifier.assume calls to llvm.assume intrinsics',
+                    dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument ('--crab-check',
                     help='Check assertions: user assertions, null dereference, etc',
                     choices=['none', 'assert', 'null'],
@@ -575,6 +578,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_backward: crabllvm_cmd.append ('--crab-backward')
     if args.crab_live: crabllvm_cmd.append ('--crab-live')
     crabllvm_cmd.append ('--crab-add-invariants={0}'.format (args.insert_invs))
+    if args.crab_promote_assume: crabllvm_cmd.append('--crab-promote-assume')
     if args.assert_check: crabllvm_cmd.append ('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:
         crabllvm_cmd.append ('--crab-check-verbose={0}'.format(args.check_verbose))
@@ -582,7 +586,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.print_preconds: crabllvm_cmd.append ('--crab-print-preconditions')    
     if args.print_cfg: crabllvm_cmd.append ('--crab-print-cfg')
     if args.print_stats: crabllvm_cmd.append ('--crab-stats')
-    if args.print_assumptions: crabllvm_cmd.append ('--crab-print-unjustified-assumptions')    
+    if args.print_assumptions: crabllvm_cmd.append ('--crab-print-unjustified-assumptions')
     if args.crab_disable_warnings: crabllvm_cmd.append('--crab-disable-warnings')
 
     # hidden options

@@ -68,6 +68,11 @@ LowerSelect ("crab-lower-select",
              llvm::cl::desc ("Lower all select instructions"),
              llvm::cl::init (false));
 
+static llvm::cl::opt<bool>
+PromoteAssume ("crab-promote-assume", 
+	       llvm::cl::desc ("Promote verifier.assume to llvm.assume intrinsics"),
+	       llvm::cl::init (false));
+
 
 /* logging and verbosity */
 
@@ -247,6 +252,10 @@ int main(int argc, char **argv) {
     pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
     #endif 
     pass_manager.add (crab_llvm::createSimplifyAssumePass ());
+    if (PromoteAssume) {
+      // -- promote verifier.assume to llvm.assume intrinsics
+      pass_manager.add (crab_llvm::createPromoteAssumePass());
+    }    
   }
       
   if (!OutputFilename.empty ()) {
