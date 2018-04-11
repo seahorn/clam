@@ -17,6 +17,8 @@ namespace crab_llvm {
   llvm::Pass* createDevirtualizeFunctionsPass ();
   llvm::Pass* createExternalizeAddressTakenFunctionsPass ();
   llvm::Pass* createPromoteMallocPass ();
+
+  llvm::Pass* createPromoteAssumePass ();
 }
 
 #endif /* CRABLLVM_PASSES__HH_ */

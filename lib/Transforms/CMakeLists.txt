@@ -8,9 +8,9 @@ add_library(LlvmPasses ${CRABLLVM_LIBS_TYPE}
   SimplifyAssume.cc
   DevirtFunctions.cc
   ExternalizeAddressTakenFunctions.cc
+  PromoteAssume.cc  
   PromoteMalloc.cc
-  )
-
+)
 install(TARGETS LlvmPasses 
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
