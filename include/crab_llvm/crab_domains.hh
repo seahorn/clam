@@ -64,7 +64,7 @@ namespace crab_llvm {
   /// -- DisIntervals
   typedef dis_interval_domain <number_t, varname_t> BASE(dis_interval_domain_t);
   /// -- Elina/Apron domains
-  typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_OPT_OCT>
+  typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_OCT>
   BASE(opt_oct_apron_domain_t);
   typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_PK>
   BASE(pk_apron_domain_t);
