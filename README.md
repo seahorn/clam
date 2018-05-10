@@ -231,7 +231,7 @@ that implies the desired invariant `x.0.lcssa` = `y.0.lcssa`.
 
 Crab-llvm analyzes programs with the `zones` domain as the default
 abstract domain. Users can choose the abstract domain by typing the
-option `--crab-domain=VAL`. The possible values of `VAL` are:
+option `--crab-dom=VAL`. The possible values of `VAL` are:
 
 - `int`: intervals
 - `ric`: reduced product of `int` and congruences
