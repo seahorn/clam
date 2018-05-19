@@ -808,11 +808,15 @@ namespace crab_llvm {
   }
 
   static bool isAssumeFn(const Function* F) {
-    return (F->getName().equals("verifier.assume"));
+    return (F->getName().equals("verifier.assume") ||
+	    F->getName().equals("__VERIFIER_assume") ||
+	    F->getName().equals("__CRAB_assume"));
   }
 
   static bool isNotAssumeFn(const Function* F) {
-    return (F->getName().equals("verifier.assume.not"));
+    return (F->getName().equals("verifier.assume.not") ||
+	    F->getName().equals("__VERIFIER_assume_not") ||
+	    F->getName().equals("__CRAB_assume_not"));
   }
 
   static bool isVerifierCall (const Function *F) {
