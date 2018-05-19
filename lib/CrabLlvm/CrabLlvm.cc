@@ -120,13 +120,6 @@ CrabLlvmDomain("crab-dom",
 		   "Reduced product of term-dis-int and zones."),
        clEnumValN (WRAPPED_INTERVALS, "w-int",
 		   "Wrapped interval domain"),       
-       clEnumValN (WRAPPED_ZONES_SPLIT_DBM, "w-zones",
-		   "Wrapped zones domain"),       
-       clEnumValN (WRAPPED_OPT_OCT_APRON, "w-oct",
-		   "Wrapped elina octagons"),       
-       clEnumValN (WRAPPED_PK_APRON, "w-pk",
-		   "Wrapped apron polyhedra"),       
-
        clEnumValEnd),
        cl::init (INTERVALS));
 
@@ -702,15 +695,6 @@ namespace crab_llvm {
       #endif
       case WRAPPED_INTERVALS:
 	analyzeCfg<wrapped_interval_domain_t>(params, assumptions, live, results);
-        break;
-      case WRAPPED_ZONES_SPLIT_DBM:
-	analyzeCfg<wrapped_split_dbm_domain_t>(params, assumptions, live, results);
-        break;
-      case WRAPPED_OPT_OCT_APRON:
-	analyzeCfg<wrapped_opt_oct_apron_domain_t>(params, assumptions, live, results);
-        break;
-      case WRAPPED_PK_APRON:
-	analyzeCfg<wrapped_pk_apron_domain_t>(params, assumptions, live, results);
         break;
       case TERMS_DIS_INTERVALS:
 	analyzeCfg<term_dis_int_domain_t>(params, assumptions, live, results);

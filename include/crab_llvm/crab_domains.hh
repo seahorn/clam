@@ -86,12 +86,6 @@ namespace crab_llvm {
   typedef reduced_numerical_domain_product2<BASE(term_dis_int_domain_t),
 					    BASE(split_dbm_domain_t)> BASE(num_domain_t);
 
-  /// -- Experimental wrapped numerical domains
-  typedef wrapped_numerical_domain<BASE(split_dbm_domain_t)> BASE(wrapped_split_dbm_domain_t);
-  typedef wrapped_numerical_domain<BASE(opt_oct_apron_domain_t)> BASE(wrapped_opt_oct_apron_domain_t);
-  typedef wrapped_numerical_domain<BASE(pk_apron_domain_t)> BASE(wrapped_pk_apron_domain_t);
-
-
   ARRAY_BOOL_NUM(interval_domain_t);
   //ARRAY_BOOL_NUM(dbm_domain_t);
   ARRAY_BOOL_NUM(split_dbm_domain_t);
@@ -107,10 +101,6 @@ namespace crab_llvm {
   ARRAY_NUM(boxes_domain_t);
   /* domains that preserve machine arithmetic semantics */
   ARRAY_BOOL_NUM(wrapped_interval_domain_t);
-  ARRAY_BOOL_NUM(wrapped_split_dbm_domain_t);  
-  ARRAY_BOOL_NUM(wrapped_opt_oct_apron_domain_t);  
-  ARRAY_BOOL_NUM(wrapped_pk_apron_domain_t);  
-  
   
 } // end namespace crab-llvm
 
