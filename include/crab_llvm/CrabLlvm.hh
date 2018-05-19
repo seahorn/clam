@@ -90,7 +90,8 @@ namespace crab_llvm {
 	run_backward(false), run_liveness(false), run_inter(false),
 	relational_threshold(10000),
 	widening_delay(1), narrowing_iters(10), widening_jumpset(0),
-	stats(false), print_invars(false), print_preconds(false),
+	stats(false),
+	print_invars(false), print_preconds(false), print_assumptions(false),
 	keep_shadow_vars(false),
 	check(NOCHECKS), check_verbose(0) {}
   };
