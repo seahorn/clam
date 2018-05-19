@@ -217,6 +217,13 @@ def parseArgs (argv):
                     help='Externalize uses of address-taken functions',
                     dest='enable_ext_funcs', default=False,
                     action='store_true')
+    p.add_argument ('--svcomp-nondet-ranges',
+                    help=a.SUPPRESS,
+                    dest='svcomp_nondet_ranges', default=False,
+                    action='store_true')
+    p.add_argument ('--svcomp-reduce-bitwidth', type=int,
+                    help=a.SUPPRESS, 
+                    dest='svcomp_reduce_bitwidth', default=0)
     p.add_argument ('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument ('--crab-verbose', type=int,
@@ -603,6 +610,8 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_keep_shadows: crabllvm_cmd.append ('--crab-keep-shadows')
     if not args.do_not_print_invariants: crabllvm_cmd.append ('--crab-print-invariants')
     if args.unsigned_to_signed: crabllvm_cmd.append ('--crab-unsigned-to-signed')
+    if args.svcomp_nondet_ranges: crabllvm_cmd.append ('--crab-svcomp-nondet-ranges')
+    crabllvm_cmd.append('--crab-svcomp-reduce-bitwidth={0}'.format(args.svcomp_reduce_bitwidth))
     
     if verbose: print ' '.join (crabllvm_cmd)
 

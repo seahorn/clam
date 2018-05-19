@@ -2,6 +2,8 @@
 // CHECK: ^0  Number of total safe checks$
 // CHECK: ^1  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
+// Loss of precision due to use of BigNumDefaultParams in zones
+// XFAIL: *
 
 extern void __CRAB_assert(int);
 

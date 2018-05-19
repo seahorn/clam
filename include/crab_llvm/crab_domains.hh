@@ -58,7 +58,7 @@ namespace crab_llvm {
   // typedef SpDBM_impl::DefaultParams<number_t> SparseDBMGraph;
   // typedef SparseDBM<number_t, varname_t, SparseDBMGraph> BASE(dbm_domain_t);
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
-  typedef SDBM_impl::DefaultParams<number_t> SplitDBMGraph;
+  typedef SDBM_impl::BigNumDefaultParams<number_t> SplitDBMGraph;
   typedef SplitDBM<number_t, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
   /// -- Boxes
   typedef boxes_domain<number_t, varname_t> BASE(boxes_domain_t);

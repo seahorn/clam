@@ -129,6 +129,19 @@ CrabDisableWarnings("crab-disable-warnings",
 	      cl::init (false),
 	      cl::Hidden);
 
+cl::opt<bool>
+CrabSvCompNondet("crab-svcomp-nondet-ranges",
+      cl::desc ("Add ranges for returned value of SVCOMP __VERIFIER_nondet_XXX functions"), 
+      cl::init (false),
+      cl::Hidden);
+
+// Only for experimentation (TO BE REMOVED)
+// Reduce the expected bitwidth by a number
+cl::opt<unsigned>
+CrabSvCompReduceBitwidth("crab-svcomp-reduce-bitwidth",
+      cl::init (0),
+      cl::Hidden);
+
 namespace crab_llvm {
 
   static void CRABLLVM_ERROR(std::string msg, const char *file, unsigned line) {
@@ -215,7 +228,7 @@ namespace crab_llvm {
     // -- always track integer and boolean registers
     return v.getType ()->isIntegerTy ();
   }
-  
+
   // Convenient wrapper for a LLVM variable or constant
   class crabLit {
   public:
@@ -2524,6 +2537,91 @@ namespace crab_llvm {
 	  crab_lit_ref_t lhs = m_lfac.getLit(I);
 	  assert(lhs && lhs->isVar());
 	  havoc(lhs->getVar(), m_bb);
+	  if (CrabSvCompNondet) {
+	    // Add extra assumptions for SVCOMP functions:
+	    if (callee->getName().equals("__VERIFIER_nondet_bool")) {
+	      // If we add "assume" statements the it will produce non
+	      // well-typed crab code since lhs is a boolean variable
+	      // and assume is only for integers.
+	    } else if (callee->getName().equals("__VERIFIER_nondet_uchar")) {
+	      assert(I.getType()->isIntegerTy());
+	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 8);
+	      lin_cst_t c1(lhs->getVar() >= number_t(0));
+	      // HACK: slack of minus one to avoid top
+	      APInt max = APInt::getMaxValue(8 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 	      
+	      lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
+	      c1.set_unsigned();	      
+	      c2.set_unsigned();
+	      m_bb.assume(c1);
+	      m_bb.assume(c2);	    
+	    } else if (callee->getName().equals("__VERIFIER_nondet_char")) {
+	      assert(I.getType()->isIntegerTy());
+	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 8);
+	      APInt min = APInt::getSignedMinValue(8 - CrabSvCompReduceBitwidth);
+	      // HACK: slack of minus one to avoid top
+	      APInt max = APInt::getSignedMaxValue(8 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 
+	      m_bb.assume(lhs->getVar() >= number_t(toMpz(min)));
+	      m_bb.assume(lhs->getVar() <= number_t(toMpz(max)));
+	    } else if (callee->getName().equals("__VERIFIER_nondet_ushort")) {
+	      assert(I.getType()->isIntegerTy());
+	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 16);
+	      lin_cst_t c1(lhs->getVar() >= number_t(0));
+	      // HACK: slack of minus one to avoid top
+	      APInt max = APInt::getMaxValue(16 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 	      
+	      lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
+	      c1.set_unsigned();	      
+	      c2.set_unsigned();
+	      m_bb.assume(c1);
+	      m_bb.assume(c2);	    
+	    } else if (callee->getName().equals("__VERIFIER_nondet_short")) {	    
+	      assert(I.getType()->isIntegerTy());
+	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 16);
+	      APInt min = APInt::getSignedMinValue(16 - CrabSvCompReduceBitwidth);
+	      // HACK: slack of minus one to avoid top
+	      APInt max = APInt::getSignedMaxValue(16 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 
+	      m_bb.assume(lhs->getVar() >= number_t(toMpz(min)));
+	      m_bb.assume(lhs->getVar() <= number_t(toMpz(max)));
+	    } else if (callee->getName().equals("__VERIFIER_nondet_uint")) {
+	      assert(I.getType()->isIntegerTy());
+	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 32);
+	      lin_cst_t c1(lhs->getVar() >= number_t(0));
+	      // HACK: slack of minus one to avoid top
+	      APInt max = APInt::getMaxValue(32 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 	      
+	      lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
+	      c1.set_unsigned();	      
+	      c2.set_unsigned();
+	      m_bb.assume(c1);
+	      m_bb.assume(c2);	    
+	    } else if (callee->getName().equals("__VERIFIER_nondet_int")) {
+	      assert(I.getType()->isIntegerTy());
+	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 32);
+	      APInt min = APInt::getSignedMinValue(32 - CrabSvCompReduceBitwidth);
+	      // HACK: slack of minus one to avoid top
+	      APInt max = APInt::getSignedMaxValue(32 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 
+	      m_bb.assume(lhs->getVar() >= number_t(toMpz(min)));
+	      m_bb.assume(lhs->getVar() <= number_t(toMpz(max)));
+	      
+	    } else if (callee->getName().equals("__VERIFIER_nondet_ulong")) {
+	      assert(I.getType()->isIntegerTy());
+	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 64);
+	      lin_cst_t c1(lhs->getVar() >= number_t(0));
+	      // HACK: slack of minus one to avoid top
+	      APInt max = APInt::getMaxValue(64 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 	      
+	      lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
+	      c1.set_unsigned();	      
+	      c2.set_unsigned();
+	      m_bb.assume(c1);
+	      m_bb.assume(c2);	    
+	    } else if (callee->getName().equals("__VERIFIER_nondet_long")) {
+	      assert(I.getType()->isIntegerTy());
+	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 64);
+	      APInt min = APInt::getSignedMinValue(64 - CrabSvCompReduceBitwidth);
+	      // HACK: slack of minus one to avoid top
+	      APInt max = APInt::getSignedMaxValue(64 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 
+	      m_bb.assume(lhs->getVar() >= number_t(toMpz(min)));
+	      m_bb.assume(lhs->getVar() <= number_t(toMpz(max)));
+	    } 
+	  }
 	}
         // -- havoc all modified regions by the callee
         if (m_lfac.get_track() == ARR) {
@@ -2535,7 +2633,7 @@ namespace crab_llvm {
 	      m_bb.havoc(m_lfac.mkArrayVar(a));
           }
         }
-	
+
 	// XXX: if we return here we skip the callsite. This is fine
 	//      unless there exists an analysis which cares about
 	//      external calls.
@@ -2796,8 +2894,10 @@ namespace crab_llvm {
       
       // -- process the exit block of the function and its returned value.
       if (ReturnInst *RI = dyn_cast<ReturnInst> (B.getTerminator ())) {
-	if (ret_block)
-	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first",__FILE__, __LINE__);
+	if (ret_block) {
+	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first",
+			 __FILE__, __LINE__);
+	}
 	
         basic_block_t &bb = *BB;
         ret_block = &bb;

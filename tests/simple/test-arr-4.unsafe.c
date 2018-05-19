@@ -1,6 +1,8 @@
 // RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-inter --crab-dom=int --crab-track=arr --crab-check=assert "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
+// Loss of precision due to use of BigNumDefaultParams in zones
+// XFAIL: *
 extern int nd ();
 extern void __CRAB_assert(int);
 
