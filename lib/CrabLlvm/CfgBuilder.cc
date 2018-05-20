@@ -2652,15 +2652,14 @@ namespace crab_llvm {
     : m_is_cfg_built(false),                          
       m_func(func),
       m_lfac(vfac, tracklev), m_mem(mem), m_id(0),      
-      m_cfg(boost::make_shared<cfg_t>
-	    (llvm_basic_block_wrapper(&m_func.getEntryBlock()), tracklev)),
+      m_cfg(new cfg_t(llvm_basic_block_wrapper(&m_func.getEntryBlock()), tracklev)),
       m_is_inter_proc(isInterProc),
       m_dl(&(func.getParent()->getDataLayout())),
       m_tli(tli) { }
 
   CfgBuilder::~CfgBuilder () {}
 
-  cfg_ptr_t CfgBuilder::getCfg () { 
+  cfg_t *CfgBuilder::get_cfg () { 
     if (!m_is_cfg_built) {
       build_cfg ();
       m_is_cfg_built = true;

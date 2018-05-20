@@ -102,7 +102,8 @@ namespace crab_llvm {
     
     ~CfgBuilder();
 
-    cfg_ptr_t getCfg();
+    // The caller owns the pointer and it will be in charge of freeing it.
+    cfg_t* get_cfg();
 
     // expose internal details
     typedef boost::unordered_map<std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>,
@@ -120,7 +121,7 @@ namespace crab_llvm {
     crabLitFactory m_lfac; 
     HeapAbstraction &m_mem;
     unsigned m_id;
-    cfg_ptr_t m_cfg;
+    cfg_t *m_cfg;
     // map llvm basic blocks to crab basic blocks
     llvm_bb_map_t m_bb_map;
     // map edge to crab basic block

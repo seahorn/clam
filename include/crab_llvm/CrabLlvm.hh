@@ -7,10 +7,8 @@
 
 #include "llvm/Pass.h"
 #include "llvm/ADT/DenseMap.h"
-
-#include <boost/shared_ptr.hpp>
-
 #include "crab_llvm/crab_cfg.hh"
+#include <boost/shared_ptr.hpp>
 
 // forward declarations
 
@@ -28,6 +26,7 @@ namespace crab_llvm {
   class HeapAbstraction;
   struct GenericAbsDomWrapper;
   class IntraCrabLlvm_Impl;
+  class InterCrabLlvm_Impl;
 }
 
 
@@ -82,6 +81,7 @@ namespace crab_llvm {
     bool print_invars;
     bool print_preconds;
     bool print_assumptions;
+    bool print_summaries;
     bool keep_shadow_vars;
     assert_check_kind_t check;
     unsigned check_verbose;
@@ -92,13 +92,40 @@ namespace crab_llvm {
 	relational_threshold(10000),
 	widening_delay(1), narrowing_iters(10), widening_jumpset(0),
 	stats(false),
-	print_invars(false), print_preconds(false), print_assumptions(false),
+	print_invars(false), print_preconds(false),
+	print_assumptions(false), print_summaries(false),
 	keep_shadow_vars(false),
 	check(NOCHECKS), check_verbose(0) {}
   };
 
   /**
+   * A manager that keeps all the crab CFGs 
+   **/
+  class CfgManager {
+    // The manager owns the pointers to cfg's
+    llvm::DenseMap<const llvm::Function*, cfg_t*> m_cfg_map;
+  public:
+    CfgManager();
+    ~CfgManager();
+    bool has_cfg(const llvm::Function &f) const;
+    cfg_ref_t operator[](const llvm::Function &f) const;
+    void add(const llvm::Function &f, cfg_t *cfg);
+  };
+  
+  /**
    * Intra-procedural analysis of a function
+   * 
+   * Basic usage:
+   *    CfgManager cfg_man;
+   *    auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+   *    IntraCrabLlvm ic(fun, tli, cfg_man);
+   *    AnalysisParams params;
+   *    ic.analyze(params, assumption_map_t());
+   *    for (auto &b: fun) {
+   *      if (auto dom_ptr = ic.get_pre(&b)) {
+   *         crab::outs << *dom_ptr << "\n";
+   *      }
+   *    }
    **/ 
   class IntraCrabLlvm {
     
@@ -125,6 +152,7 @@ namespace crab_llvm {
      **/
     IntraCrabLlvm(llvm::Function &fun,
 		  const llvm::TargetLibraryInfo &tli,
+		  CfgManager &man,
 		  const crab::cfg::tracked_precision cfg_precision = crab::cfg::NUM,
 		  heap_abs_ptr heap_abs = nullptr);
 
@@ -166,6 +194,56 @@ namespace crab_llvm {
 		      const std::vector<const llvm::BasicBlock*>& path,
 		      std::vector<Statement>& core) const;
   };
+
+  /**
+   * Inter-procedural analysis of a module
+   **/ 
+  class InterCrabLlvm {
+    
+  public:
+    
+    typedef boost::shared_ptr<GenericAbsDomWrapper> wrapper_dom_ptr;
+    typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
+    typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
+    typedef crab::checker::checks_db checks_db_t;
+    typedef boost::shared_ptr<checks_db_t> checks_db_ptr;
+    typedef boost::shared_ptr<HeapAbstraction> heap_abs_ptr;
+    
+  private:
+
+    std::unique_ptr<InterCrabLlvm_Impl> m_impl;
+    variable_factory_t m_vfac;    
+    invariant_map_t m_pre_map;
+    invariant_map_t m_post_map;
+
+  public:
+
+    /**
+     * Constructor that builds a crab call graph.
+     **/
+    InterCrabLlvm(llvm::Module &module,
+		  const llvm::TargetLibraryInfo &tli,
+		  CfgManager &man,
+		  const crab::cfg::tracked_precision cfg_precision = crab::cfg::NUM,
+		  heap_abs_ptr heap_abs = nullptr);
+
+    ~InterCrabLlvm();    
+
+    /**
+     * Call crab analysis on the call graph under assumptions.
+     **/    
+    void analyze(AnalysisParams &params, const assumption_map_t &assumptions);
+
+    /**
+     * Return invariants that hold at the entry of b
+     **/
+    wrapper_dom_ptr get_pre(const llvm::BasicBlock *b, bool keep_shadows=false) const;
+
+    /**
+     * Return invariants that hold at the exit of b
+     **/
+    wrapper_dom_ptr get_post(const llvm::BasicBlock *b, bool keep_shadows=false) const;
+  };
   
   /**
    * LLVM Module pass that computes invariants using Crab.
@@ -176,15 +254,16 @@ namespace crab_llvm {
     typedef typename IntraCrabLlvm::invariant_map_t invariant_map_t;
     typedef typename IntraCrabLlvm::checks_db_ptr checks_db_ptr;
     typedef typename IntraCrabLlvm::heap_abs_ptr heap_abs_ptr;
-    typedef llvm::DenseMap<llvm::Function*, cfg_ptr_t> cfg_map_t;
     
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
     heap_abs_ptr m_mem;    
     variable_factory_t m_vfac;
-    cfg_map_t m_cfg_map;
+    CfgManager m_cfg_man;
     checks_db_ptr m_checks_db; 
-
+    AnalysisParams m_params;
+    const llvm::TargetLibraryInfo *m_tli;
+    
    public:
 
     static char ID;        
@@ -207,7 +286,9 @@ namespace crab_llvm {
 
     heap_abs_ptr get_heap_abstraction() { return m_mem; }
 
-    cfg_ptr_t get_cfg(llvm::Function* F);
+    bool has_cfg(llvm::Function &F);
+    
+    cfg_ref_t get_cfg(llvm::Function &F);
     
     /**
      * return invariants that hold at the entry of BB
