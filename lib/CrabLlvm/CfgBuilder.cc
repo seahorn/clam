@@ -2771,9 +2771,29 @@ namespace crab_llvm {
     return opt_basic_block_t();    
   }
 
+  static bool checkAllDefinitionsHaveNames(const Function& F) {
+    for (const BasicBlock &BB: F) {
+      if (!BB.hasName ()) {
+	return false;
+      }
+      for (const Instruction &I: BB) {
+        if (!I.hasName () && !(I.getType ()->isVoidTy ()))  {
+	  return false;
+	}
+      }
+    }
+    return true;
+  }
+
   void CfgBuilder::build_cfg() {
 
     crab::ScopedCrabStats __st__("CFG Construction");
+
+    // Sanity check: pass NameValues must have been executed before
+    bool res = checkAllDefinitionsHaveNames(m_func);
+    if (!res) {
+      CRABLLVM_ERROR("All blocks and definitions must have a name",__FILE__,__LINE__);
+    }
 
     for (auto &B : m_func) { 
       add_block (B); 
