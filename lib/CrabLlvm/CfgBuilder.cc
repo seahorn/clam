@@ -2570,7 +2570,10 @@ namespace crab_llvm {
                  if (!is_signed && num_bits <= 64) {
                    num_bits = num_bits - CrabSvCompReduceBitwidth;
 	           lin_cst_t c1(lhs->getVar() >= number_t(0));
-	           APInt max = APInt::getMaxValue(num_bits); 
+                   /// getMaxValue is an alias of allOnes
+                   /// we make sure that the MSB is 0
+	           APInt max = APInt::getMaxValue(num_bits+1); 
+                   max.clearBit(num_bits);
 	           lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
 	           c1.set_unsigned();	      
 	           c2.set_unsigned();
