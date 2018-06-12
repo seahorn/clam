@@ -136,7 +136,7 @@ CrabSvCompNondet("crab-svcomp-nondet-ranges",
       cl::Hidden);
 
 // Only for experimentation (TO BE REMOVED)
-// Reduce the expected bitwidth by a number
+// Reduce the expected bitwidth by a number. This is unsound in general.
 cl::opt<unsigned>
 CrabSvCompReduceBitwidth("crab-svcomp-reduce-bitwidth",
       cl::init (0),
@@ -2537,90 +2537,53 @@ namespace crab_llvm {
 	  crab_lit_ref_t lhs = m_lfac.getLit(I);
 	  assert(lhs && lhs->isVar());
 	  havoc(lhs->getVar(), m_bb);
-	  if (CrabSvCompNondet) {
+	  if (CrabSvCompNondet) {        
 	    // Add extra assumptions for SVCOMP functions:
 	    if (callee->getName().equals("__VERIFIER_nondet_bool")) {
 	      // If we add "assume" statements the it will produce non
 	      // well-typed crab code since lhs is a boolean variable
 	      // and assume is only for integers.
-	    } else if (callee->getName().equals("__VERIFIER_nondet_uchar")) {
-	      assert(I.getType()->isIntegerTy());
-	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 8);
-	      lin_cst_t c1(lhs->getVar() >= number_t(0));
-	      // HACK: slack of minus one to avoid top
-	      APInt max = APInt::getMaxValue(8 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 	      
-	      lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
-	      c1.set_unsigned();	      
-	      c2.set_unsigned();
-	      m_bb.assume(c1);
-	      m_bb.assume(c2);	    
-	    } else if (callee->getName().equals("__VERIFIER_nondet_char")) {
-	      assert(I.getType()->isIntegerTy());
-	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 8);
-	      APInt min = APInt::getSignedMinValue(8 - CrabSvCompReduceBitwidth);
-	      // HACK: slack of minus one to avoid top
-	      APInt max = APInt::getSignedMaxValue(8 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 
-	      m_bb.assume(lhs->getVar() >= number_t(toMpz(min)));
-	      m_bb.assume(lhs->getVar() <= number_t(toMpz(max)));
-	    } else if (callee->getName().equals("__VERIFIER_nondet_ushort")) {
-	      assert(I.getType()->isIntegerTy());
-	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 16);
-	      lin_cst_t c1(lhs->getVar() >= number_t(0));
-	      // HACK: slack of minus one to avoid top
-	      APInt max = APInt::getMaxValue(16 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 	      
-	      lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
-	      c1.set_unsigned();	      
-	      c2.set_unsigned();
-	      m_bb.assume(c1);
-	      m_bb.assume(c2);	    
-	    } else if (callee->getName().equals("__VERIFIER_nondet_short")) {	    
-	      assert(I.getType()->isIntegerTy());
-	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 16);
-	      APInt min = APInt::getSignedMinValue(16 - CrabSvCompReduceBitwidth);
-	      // HACK: slack of minus one to avoid top
-	      APInt max = APInt::getSignedMaxValue(16 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 
-	      m_bb.assume(lhs->getVar() >= number_t(toMpz(min)));
-	      m_bb.assume(lhs->getVar() <= number_t(toMpz(max)));
-	    } else if (callee->getName().equals("__VERIFIER_nondet_uint")) {
-	      assert(I.getType()->isIntegerTy());
-	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 32);
-	      lin_cst_t c1(lhs->getVar() >= number_t(0));
-	      // HACK: slack of minus one to avoid top
-	      APInt max = APInt::getMaxValue(32 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 	      
-	      lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
-	      c1.set_unsigned();	      
-	      c2.set_unsigned();
-	      m_bb.assume(c1);
-	      m_bb.assume(c2);	    
-	    } else if (callee->getName().equals("__VERIFIER_nondet_int")) {
-	      assert(I.getType()->isIntegerTy());
-	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 32);
-	      APInt min = APInt::getSignedMinValue(32 - CrabSvCompReduceBitwidth);
-	      // HACK: slack of minus one to avoid top
-	      APInt max = APInt::getSignedMaxValue(32 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 
-	      m_bb.assume(lhs->getVar() >= number_t(toMpz(min)));
-	      m_bb.assume(lhs->getVar() <= number_t(toMpz(max)));
-	      
-	    } else if (callee->getName().equals("__VERIFIER_nondet_ulong")) {
-	      assert(I.getType()->isIntegerTy());
-	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 64);
-	      lin_cst_t c1(lhs->getVar() >= number_t(0));
-	      // HACK: slack of minus one to avoid top
-	      APInt max = APInt::getMaxValue(64 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 	      
-	      lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
-	      c1.set_unsigned();	      
-	      c2.set_unsigned();
-	      m_bb.assume(c1);
-	      m_bb.assume(c2);	    
-	    } else if (callee->getName().equals("__VERIFIER_nondet_long")) {
-	      assert(I.getType()->isIntegerTy());
-	      assert(cast<IntegerType>(I.getType())->getBitWidth() == 64);
-	      APInt min = APInt::getSignedMinValue(64 - CrabSvCompReduceBitwidth);
-	      // HACK: slack of minus one to avoid top
-	      APInt max = APInt::getSignedMaxValue(64 - CrabSvCompReduceBitwidth) - APInt(32,"1",10); 
-	      m_bb.assume(lhs->getVar() >= number_t(toMpz(min)));
-	      m_bb.assume(lhs->getVar() <= number_t(toMpz(max)));
-	    } 
+            } else if (callee->getName().equals("__VERIFIER_nondet_uchar") ||
+		       callee->getName().equals("__VERIFIER_nondet_ushort") ||
+	               callee->getName().equals("__VERIFIER_nondet_uint") ||
+		       callee->getName().equals("__VERIFIER_nondet_ulong") ||
+	               callee->getName().equals("__VERIFIER_nondet_char") ||
+		       callee->getName().equals("__VERIFIER_nondet_short") ||
+		       callee->getName().equals("__VERIFIER_nondet_int") ||
+	               callee->getName().equals("__VERIFIER_nondet_long")) {
+                 // We search for __VERIFIER_nondet_XXX functions. We care
+                 // about the bitwidth and whether it's signed or not. The
+                 // signedness is inferred from the function name. However,
+                 // the bitwidth is inferred from LLVM instruction. It's
+                 // done in this way to avoid mismatches when the user
+                 // writes a function name that does not fully match the
+                 // actual return type. (e.g., int __VERIFIER_nondet_long())
+                 bool is_signed = false;
+                 if (callee->getName().equals("__VERIFIER_nondet_char") ||
+		     callee->getName().equals("__VERIFIER_nondet_short") ||
+		     callee->getName().equals("__VERIFIER_nondet_int") ||
+		     callee->getName().equals("__VERIFIER_nondet_long")) {
+                     is_signed = true;
+                 }
+                 assert(I.getType()->isIntegerTy());
+                 unsigned num_bits = cast<IntegerType>(I.getType())->getBitWidth();
+                 if (!is_signed && num_bits <= 64) {
+                   num_bits = num_bits - CrabSvCompReduceBitwidth;
+	           lin_cst_t c1(lhs->getVar() >= number_t(0));
+	           APInt max = APInt::getMaxValue(num_bits); 
+	           lin_cst_t c2(lhs->getVar() <= number_t(toMpz(max)));
+	           c1.set_unsigned();	      
+	           c2.set_unsigned();
+	           m_bb.assume(c1);
+	           m_bb.assume(c2);	    
+                 } else if (num_bits <= 64){
+                   num_bits = num_bits - CrabSvCompReduceBitwidth;
+	           APInt min = APInt::getSignedMinValue(num_bits);
+	           APInt max = APInt::getSignedMaxValue(num_bits);
+	           m_bb.assume(lhs->getVar() >= number_t(toMpz(min)));
+	           m_bb.assume(lhs->getVar() <= number_t(toMpz(max)));
+                 }
+              }
 	  }
 	}
         // -- havoc all modified regions by the callee
@@ -2750,8 +2713,7 @@ namespace crab_llvm {
     : m_is_cfg_built(false),                          
       m_func(func),
       m_lfac(vfac, tracklev), m_mem(mem), m_id(0),      
-      m_cfg(boost::make_shared<cfg_t>
-	    (llvm_basic_block_wrapper(&m_func.getEntryBlock()), tracklev)),
+      m_cfg(new cfg_t(llvm_basic_block_wrapper(&m_func.getEntryBlock()), tracklev)),
       m_is_inter_proc(isInterProc),
       m_dl(&(func.getParent()->getDataLayout())),
       m_tli(tli) { }
@@ -2870,9 +2832,29 @@ namespace crab_llvm {
     return opt_basic_block_t();    
   }
 
+  static bool checkAllDefinitionsHaveNames(const Function& F) {
+    for (const BasicBlock &BB: F) {
+      if (!BB.hasName ()) {
+	return false;
+      }
+      for (const Instruction &I: BB) {
+        if (!I.hasName () && !(I.getType ()->isVoidTy ()))  {
+	  return false;
+	}
+      }
+    }
+    return true;
+  }
+
   void CfgBuilder::build_cfg() {
 
     crab::ScopedCrabStats __st__("CFG Construction");
+
+    // Sanity check: pass NameValues must have been executed before
+    bool res = checkAllDefinitionsHaveNames(m_func);
+    if (!res) {
+      CRABLLVM_ERROR("All blocks and definitions must have a name",__FILE__,__LINE__);
+    }
 
     for (auto &B : m_func) { 
       add_block (B); 
