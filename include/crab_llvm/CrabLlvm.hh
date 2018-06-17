@@ -141,6 +141,7 @@ namespace crab_llvm {
   private:
 
     std::unique_ptr<IntraCrabLlvm_Impl> m_impl;
+    llvm::Function *m_fun;
     variable_factory_t m_vfac;    
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
@@ -164,16 +165,11 @@ namespace crab_llvm {
     void analyze(AnalysisParams &params, const assumption_map_t &assumptions);
 
     /**
-     * Return invariants that hold at the entry of b
-     **/
-    wrapper_dom_ptr get_pre(const llvm::BasicBlock *b, bool keep_shadows=false) const;
-
-    /**
-     * Return invariants that hold at the exit of b
-     **/
-    wrapper_dom_ptr get_post(const llvm::BasicBlock *b, bool keep_shadows=false) const;
-
-
+     * Call crab analysis on the CFG under assumptions starting from entry
+     **/    
+    void analyze(AnalysisParams &params, const llvm::BasicBlock *entry,
+		 const assumption_map_t &assumptions);
+    
     /**
      * Compute strongest post-condition of an acyclic path.
      * Return false iff the path implies false.
@@ -193,6 +189,17 @@ namespace crab_llvm {
     bool path_analyze(const AnalysisParams& params,
 		      const std::vector<const llvm::BasicBlock*>& path,
 		      std::vector<Statement>& core) const;
+
+    /**
+     * Return invariants that hold at the entry of b
+     **/
+    wrapper_dom_ptr get_pre(const llvm::BasicBlock *b, bool keep_shadows=false) const;
+
+    /**
+     * Return invariants that hold at the exit of b
+     **/
+    wrapper_dom_ptr get_post(const llvm::BasicBlock *b, bool keep_shadows=false) const;
+    
   };
 
   /**

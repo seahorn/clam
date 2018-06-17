@@ -2652,7 +2652,8 @@ namespace crab_llvm {
     : m_is_cfg_built(false),                          
       m_func(func),
       m_lfac(vfac, tracklev), m_mem(mem), m_id(0),      
-      m_cfg(new cfg_t(llvm_basic_block_wrapper(&m_func.getEntryBlock()), tracklev)),
+      m_cfg(new cfg_t(llvm_basic_block_wrapper(&m_func.getEntryBlock()),
+		      tracklev)),
       m_is_inter_proc(isInterProc),
       m_dl(&(func.getParent()->getDataLayout())),
       m_tli(tli) { }
@@ -2666,7 +2667,7 @@ namespace crab_llvm {
     }
     return m_cfg;
   }
-  
+
   CfgBuilder::opt_basic_block_t CfgBuilder::lookup (const BasicBlock &B) {  
     BasicBlock* BB = const_cast<BasicBlock*> (&B);
     llvm_bb_map_t::iterator it = m_bb_map.find (BB);
@@ -2676,8 +2677,7 @@ namespace crab_llvm {
       return CfgBuilder::opt_basic_block_t (it->second);
   }
 
-  void CfgBuilder::add_block (BasicBlock &B)
-  {
+  void CfgBuilder::add_block (BasicBlock &B) {
     assert (!lookup(B));
     BasicBlock *BB = &B;
     basic_block_t &bb = m_cfg->insert (llvm_basic_block_wrapper(BB));

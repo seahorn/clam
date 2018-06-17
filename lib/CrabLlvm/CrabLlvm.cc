@@ -575,6 +575,7 @@ namespace crab_llvm {
     
     template<typename Dom>
     void analyzeCfg(const AnalysisParams &params,
+		    const BasicBlock *entry,
 		    const assumption_map_t &assumptions, liveness_t *live,
 		    InvarianceAnalysisResults &results) {
       
@@ -611,7 +612,9 @@ namespace crab_llvm {
 	// the program is safe.
 	post_cond = Dom::bottom();
       }
-      analyzer.run(Dom::top(), post_cond, !params.run_backward, crab_assumptions, live,
+
+      analyzer.run(basic_block_label_t(entry), Dom::top(), post_cond,
+		   !params.run_backward, crab_assumptions, live,
 		   params.widening_delay, params.narrowing_iters, params.widening_jumpset);
       CRAB_VERBOSE_IF(1, get_crab_os() << "Finished intra-procedural analysis.\n"); 
 
@@ -700,48 +703,49 @@ namespace crab_llvm {
     }
 
     void wrapperAnalyze(const AnalysisParams &params,
+			const BasicBlock *entry,
 			const assumption_map_t &assumptions, liveness_t *live,
 			InvarianceAnalysisResults &results) {
       
       switch (params.dom) {
       #ifdef HAVE_ALL_DOMAINS
       case INTERVALS_CONGRUENCES:
-	analyzeCfg<ric_domain_t>(params, assumptions, live, results);
+	analyzeCfg<ric_domain_t>(params, entry, assumptions, live, results);
         break;
       case DIS_INTERVALS:
-	analyzeCfg<dis_interval_domain_t>(params, assumptions, live, results);
+	analyzeCfg<dis_interval_domain_t>(params, entry, assumptions, live, results);
         break;
       case TERMS_INTERVALS:
-	analyzeCfg<term_int_domain_t>(params, assumptions, live, results);
+	analyzeCfg<term_int_domain_t>(params, entry, assumptions, live, results);
         break;
       #endif
       case WRAPPED_INTERVALS:
-	analyzeCfg<wrapped_interval_domain_t>(params, assumptions, live, results);
+	analyzeCfg<wrapped_interval_domain_t>(params, entry, assumptions, live, results);
         break;
       case TERMS_DIS_INTERVALS:
-	analyzeCfg<term_dis_int_domain_t>(params, assumptions, live, results);
+	analyzeCfg<term_dis_int_domain_t>(params, entry, assumptions, live, results);
         break;
       case ZONES_SPLIT_DBM:
-	analyzeCfg<split_dbm_domain_t>(params, assumptions, live, results);
+	analyzeCfg<split_dbm_domain_t>(params, entry, assumptions, live, results);
         break;
       case BOXES:
-	analyzeCfg<boxes_domain_t>(params, assumptions, live, results);
+	analyzeCfg<boxes_domain_t>(params, entry, assumptions, live, results);
         break;
       case OPT_OCT_APRON:
-	analyzeCfg<opt_oct_apron_domain_t>(params, assumptions, live, results);
+	analyzeCfg<opt_oct_apron_domain_t>(params, entry, assumptions, live, results);
         break;
       case PK_APRON:
-	analyzeCfg<pk_apron_domain_t>(params, assumptions, live, results);
+	analyzeCfg<pk_apron_domain_t>(params, entry, assumptions, live, results);
         break;
       case TERMS_ZONES:
-	analyzeCfg<num_domain_t>(params, assumptions, live, results);
+	analyzeCfg<num_domain_t>(params, entry, assumptions, live, results);
         break;
       default: 
         if (params.dom != INTERVALS) {
           crab::outs() << "Warning: abstract domain not found.\n"
                        << "Running intervals ...\n"; 
         }
-	analyzeCfg<interval_domain_t>(params, assumptions, live, results);
+	analyzeCfg<interval_domain_t>(params, entry, assumptions, live, results);
       }
     }
 
@@ -768,7 +772,9 @@ namespace crab_llvm {
       }
     }
 
-    void Analyze(AnalysisParams &params, const assumption_map_t &assumptions,
+    void Analyze(AnalysisParams &params,
+		 const llvm::BasicBlock *entry,
+		 const assumption_map_t &assumptions,
 		 InvarianceAnalysisResults &results) {
 
       if (!m_cfg) {
@@ -811,7 +817,8 @@ namespace crab_llvm {
 	  }
 	}
       }
-      wrapperAnalyze(params, assumptions, (params.run_liveness)? &live : nullptr, results);
+      wrapperAnalyze(params, entry, assumptions,
+		     (params.run_liveness)? &live : nullptr, results);
     }
 
     template<typename AbsDom>
@@ -903,7 +910,7 @@ namespace crab_llvm {
 			       CfgManager &cfg_man,
 			       crab::cfg::tracked_precision cfg_precision,
 			       heap_abs_ptr heap_abs)
-    : m_impl(nullptr) {
+    : m_impl(nullptr), m_fun(&fun) {
     if (!heap_abs)
       heap_abs = boost::make_shared<DummyHeapAbstraction>();
     
@@ -917,7 +924,33 @@ namespace crab_llvm {
 			      const assumption_map_t &assumptions) {
     checks_db_ptr checksdb = nullptr;
     InvarianceAnalysisResults results = { m_pre_map, m_post_map, checksdb};
-    m_impl->Analyze(params, assumptions, results);
+    
+    m_impl->Analyze(params, &(m_fun->getEntryBlock()), assumptions, results);
+  }
+
+  void IntraCrabLlvm::analyze(AnalysisParams &params,
+			      const llvm::BasicBlock *entry,
+			      const assumption_map_t &assumptions) {
+    checks_db_ptr checksdb = nullptr;
+    InvarianceAnalysisResults results = { m_pre_map, m_post_map, checksdb};
+    m_impl->Analyze(params, entry, assumptions, results);
+  }
+  
+  template<>
+  bool IntraCrabLlvm::path_analyze(const AnalysisParams& params,
+				   const std::vector<const llvm::BasicBlock*>& path,
+				   std::vector<crab::cfg::statement_wrapper>& core) const {
+    invariant_map_t pre_conditions, post_conditions;
+    return m_impl->pathAnalyze(params, path, core, false, post_conditions, pre_conditions);
+  }
+
+  template<>
+  bool IntraCrabLlvm::path_analyze(const AnalysisParams& params,
+				   const std::vector<const llvm::BasicBlock*>& path,
+				   std::vector<crab::cfg::statement_wrapper>& core,
+				   invariant_map_t& post_conditions,
+				   invariant_map_t& pre_conditions) const {
+    return m_impl->pathAnalyze(params, path, core, true, post_conditions, pre_conditions);
   }
 
   wrapper_dom_ptr IntraCrabLlvm::get_pre(const llvm::BasicBlock *block,
@@ -936,23 +969,6 @@ namespace crab_llvm {
       shadows = std::vector<varname_t>(m_vfac.get_shadow_vars().begin(),
 				       m_vfac.get_shadow_vars().end());    
     return lookup(m_post_map, *block, shadows);
-  }
-
-  template<>
-  bool IntraCrabLlvm::path_analyze(const AnalysisParams& params,
-				   const std::vector<const llvm::BasicBlock*>& path,
-				   std::vector<crab::cfg::statement_wrapper>& core) const {
-    invariant_map_t pre_conditions, post_conditions;
-    return m_impl->pathAnalyze(params, path, core, false, post_conditions, pre_conditions);
-  }
-
-  template<>
-  bool IntraCrabLlvm::path_analyze(const AnalysisParams& params,
-				   const std::vector<const llvm::BasicBlock*>& path,
-				   std::vector<crab::cfg::statement_wrapper>& core,
-				   invariant_map_t& post_conditions,
-				   invariant_map_t& pre_conditions) const {
-    return m_impl->pathAnalyze(params, path, core, true, post_conditions, pre_conditions);
   }
   
   /**
@@ -1268,7 +1284,7 @@ namespace crab_llvm {
     if (!CrabInter && isTrackable(F)) {
       IntraCrabLlvm_Impl crab(F, CrabTrackLev, m_mem, m_vfac, m_cfg_man, *m_tli);
       InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
-      crab.Analyze(m_params, assumption_map_t(), results);
+      crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
     }
     return false;
   }

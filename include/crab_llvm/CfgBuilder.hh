@@ -106,8 +106,14 @@ namespace crab_llvm {
     cfg_t* get_cfg();
 
     // expose internal details
-    typedef boost::unordered_map<std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>,
-				 basic_block_label_t, pair_hash> edge_to_bb_map_t;
+    typedef boost::unordered_map<std::pair<const llvm::BasicBlock*,
+					   const llvm::BasicBlock*>,
+			       basic_block_label_t, pair_hash> edge_to_bb_map_t;
+
+    // expose internal details.
+    // return by value because it is intended to survive CfgBuilder.
+    edge_to_bb_map_t getEdgeToBBMap() const
+    { return m_edge_bb_map; }
     
    private:
 
@@ -132,23 +138,18 @@ namespace crab_llvm {
     
     void build_cfg();
 
-    opt_basic_block_t lookup(const llvm::BasicBlock &);
-    
     void add_block(llvm::BasicBlock &BB);
 
+    opt_basic_block_t lookup(const llvm::BasicBlock &);
+    
     void add_edge(llvm::BasicBlock &Src, const llvm::BasicBlock &Target);
 
-    opt_basic_block_t exec_br(llvm::BasicBlock &Src, const llvm::BasicBlock &Target); 
+    opt_basic_block_t exec_br(llvm::BasicBlock &Src,
+			      const llvm::BasicBlock &Target); 
 
-    void add_block_in_between (basic_block_t &src, basic_block_t &dst, basic_block_t &between);
+    void add_block_in_between(basic_block_t &src, basic_block_t &dst,
+			      basic_block_t &between);
 
-  public:
-    
-    // expose internal details.
-    // return by value because it is intended to survive CfgBuilder.
-    edge_to_bb_map_t getEdgeToBBMap() const {
-      return m_edge_bb_map;
-    }
   }; // end class CfgBuilder
 
 } // end namespace crab_llvm
