@@ -30,10 +30,14 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
   // Sanity checks
   basic_block_label_t first = path.front();
   basic_block_label_t last = path.back();
+  
+  #if 0
   if (m_cfg.entry() != first)
     CRAB_ERROR("First block of the path must be the entry block of the cfg");
   if (m_cfg.has_exit() && (m_cfg.exit() != last))
-      CRAB_ERROR("Last block of the path must be the exit block of the cfg");
+    CRAB_ERROR("Last block of the path must be the exit block of the cfg");
+  #endif
+  
   if (path.size() > 1) {
     boost::unordered_set<basic_block_label_t> visited;
     for (unsigned i=0;i < path.size(); ++i) {
