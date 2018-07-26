@@ -8,6 +8,7 @@
 #include "llvm/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "crab_llvm/crab_cfg.hh"
+#include "crab/checkers/base_property.hpp"
 #include <boost/shared_ptr.hpp>
 
 // forward declarations
@@ -15,12 +16,6 @@
 namespace llvm {
   class TargetLibraryInfo;
 }
-
-namespace crab {
-  namespace checker {
-    class checks_db;
-  }
-} 
 
 namespace crab_llvm {
   class HeapAbstraction;
@@ -135,7 +130,6 @@ namespace crab_llvm {
     typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
     typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
     typedef crab::checker::checks_db checks_db_t;
-    typedef boost::shared_ptr<checks_db_t> checks_db_ptr;
     typedef boost::shared_ptr<HeapAbstraction> heap_abs_ptr;
     
   private:
@@ -145,7 +139,8 @@ namespace crab_llvm {
     variable_factory_t m_vfac;    
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
-
+    checks_db_t m_checks_db;
+    
   public:
 
     /**
@@ -199,7 +194,11 @@ namespace crab_llvm {
      * Return invariants that hold at the exit of b
      **/
     wrapper_dom_ptr get_post(const llvm::BasicBlock *b, bool keep_shadows=false) const;
-    
+
+    /**
+     * Return a database with all checks.
+     **/
+    const checks_db_t& get_checks_db() const;
   };
 
   /**
@@ -213,7 +212,6 @@ namespace crab_llvm {
     typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
     typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
     typedef crab::checker::checks_db checks_db_t;
-    typedef boost::shared_ptr<checks_db_t> checks_db_ptr;
     typedef boost::shared_ptr<HeapAbstraction> heap_abs_ptr;
     
   private:
@@ -222,7 +220,8 @@ namespace crab_llvm {
     variable_factory_t m_vfac;    
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
-
+    checks_db_t m_checks_db;
+    
   public:
 
     /**
@@ -250,6 +249,11 @@ namespace crab_llvm {
      * Return invariants that hold at the exit of b
      **/
     wrapper_dom_ptr get_post(const llvm::BasicBlock *b, bool keep_shadows=false) const;
+
+    /**
+     * Return a database with all checks.
+     **/
+    const checks_db_t& get_checks_db() const;
   };
   
   /**
@@ -259,7 +263,7 @@ namespace crab_llvm {
 
     typedef typename IntraCrabLlvm::wrapper_dom_ptr wrapper_dom_ptr;
     typedef typename IntraCrabLlvm::invariant_map_t invariant_map_t;
-    typedef typename IntraCrabLlvm::checks_db_ptr checks_db_ptr;
+    typedef typename IntraCrabLlvm::checks_db_t checks_db_t;
     typedef typename IntraCrabLlvm::heap_abs_ptr heap_abs_ptr;
     
     invariant_map_t m_pre_map;
@@ -267,7 +271,7 @@ namespace crab_llvm {
     heap_abs_ptr m_mem;    
     variable_factory_t m_vfac;
     CfgManager m_cfg_man;
-    checks_db_ptr m_checks_db; 
+    checks_db_t m_checks_db; 
     AnalysisParams m_params;
     const llvm::TargetLibraryInfo *m_tli;
     

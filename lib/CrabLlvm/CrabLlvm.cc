@@ -44,6 +44,8 @@
 #include <boost/unordered_set.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <memory>
+#include <functional>
+#include <map>
 
 #ifdef HAVE_DSA
 #include "dsa/DSNode.h"
@@ -217,6 +219,13 @@ CrabKeepShadows ("crab-keep-shadows",
     cl::init (false),
     cl::Hidden);
 
+// In C++11 we need to pass to std::bind "this" (if class member
+// functions are called) as well as all placeholders for each
+// argument. This is wrapper to avoid that and improve readability.
+template <class C, typename Ret, typename ... Ts>
+static std::function<Ret(Ts...)> bind_this(C* c, Ret (C::*m)(Ts...)) {
+  return [=](Ts&&... args) { return (c->*m)(std::forward<decltype(args)>(args)...); };
+}
 
 namespace crab_llvm {
 
@@ -245,7 +254,6 @@ namespace crab_llvm {
   typedef DenseMap<const BasicBlock*, lin_cst_sys_t> assumption_map_t;
   typedef typename IntraCrabLlvm::wrapper_dom_ptr wrapper_dom_ptr;    
   typedef typename IntraCrabLlvm::checks_db_t checks_db_t;
-  typedef typename IntraCrabLlvm::checks_db_ptr checks_db_ptr;
   typedef typename IntraCrabLlvm::invariant_map_t invariant_map_t;
   typedef typename IntraCrabLlvm::heap_abs_ptr heap_abs_ptr;
   /** End typedefs **/
@@ -271,10 +279,10 @@ namespace crab_llvm {
     // invariants that hold at the exit of a block
     invariant_map_t &postmap;
     // database with all the checks
-    checks_db_ptr &checksdb;
+    checks_db_t &checksdb;
 
     InvarianceAnalysisResults(invariant_map_t &pre, invariant_map_t &post,
-			      checks_db_ptr &db)
+			      checks_db_t &db)
       : premap(pre), postmap(post), checksdb(db) {}
   };
 
@@ -692,9 +700,7 @@ namespace crab_llvm {
 	CRAB_VERBOSE_IF(1,
 			llvm::outs() << "Function " << m_fun.getName() << "\n";
 			checker.show (crab::outs()));
-	if (!results.checksdb)
-	  results.checksdb = boost::make_shared<checks_db_t>();
-	(*results.checksdb) += checker.get_all_checks();
+	results.checksdb += checker.get_all_checks();
 	CRAB_VERBOSE_IF(1, get_crab_os() << "Finished assert checking.\n");      
       }
 
@@ -702,52 +708,98 @@ namespace crab_llvm {
       return;
     }
 
-    void wrapperAnalyze(const AnalysisParams &params,
-			const BasicBlock *entry,
-			const assumption_map_t &assumptions, liveness_t *live,
-			InvarianceAnalysisResults &results) {
+    template<typename AbsDom>
+    void wrapperPathAnalyze(const std::vector<llvm_basic_block_wrapper>& path,
+			    std::vector<crab::cfg::statement_wrapper>& core,
+			    bool populate_maps,
+			    invariant_map_t& post, invariant_map_t& pre, bool &res) {
       
-      switch (params.dom) {
-      #ifdef HAVE_ALL_DOMAINS
-      case INTERVALS_CONGRUENCES:
-	analyzeCfg<ric_domain_t>(params, entry, assumptions, live, results);
-        break;
-      case DIS_INTERVALS:
-	analyzeCfg<dis_interval_domain_t>(params, entry, assumptions, live, results);
-        break;
-      case TERMS_INTERVALS:
-	analyzeCfg<term_int_domain_t>(params, entry, assumptions, live, results);
-        break;
-      #endif
-      case WRAPPED_INTERVALS:
-	analyzeCfg<wrapped_interval_domain_t>(params, entry, assumptions, live, results);
-        break;
-      case TERMS_DIS_INTERVALS:
-	analyzeCfg<term_dis_int_domain_t>(params, entry, assumptions, live, results);
-        break;
-      case ZONES_SPLIT_DBM:
-	analyzeCfg<split_dbm_domain_t>(params, entry, assumptions, live, results);
-        break;
-      case BOXES:
-	analyzeCfg<boxes_domain_t>(params, entry, assumptions, live, results);
-        break;
-      case OPT_OCT_APRON:
-	analyzeCfg<opt_oct_apron_domain_t>(params, entry, assumptions, live, results);
-        break;
-      case PK_APRON:
-	analyzeCfg<pk_apron_domain_t>(params, entry, assumptions, live, results);
-        break;
-      case TERMS_ZONES:
-	analyzeCfg<num_domain_t>(params, entry, assumptions, live, results);
-        break;
-      default: 
-        if (params.dom != INTERVALS) {
-          crab::outs() << "Warning: abstract domain not found.\n"
-                       << "Running intervals ...\n"; 
-        }
-	analyzeCfg<interval_domain_t>(params, entry, assumptions, live, results);
+      typedef path_analyzer<cfg_ref_t, AbsDom> path_analyzer_t;
+      AbsDom init;
+      path_analyzer_t path_analyzer(*m_cfg, init);
+      res = path_analyzer.solve(path, /*compute_preconditions=*/ populate_maps);
+      if (populate_maps) {
+	for(auto n: path) {
+	  if (const llvm::BasicBlock* bb = n.get_basic_block()) {
+	    AbsDom abs_val = path_analyzer.get_fwd_constraints(n);
+	    post.insert(std::make_pair(bb, mkGenericAbsDomWrapper(abs_val)));
+	    if (abs_val.is_bottom()) {
+	      // the rest of blocks must be also bottom so we don't
+	      // bother storing them.
+	      break;
+	    }
+	  }
+	}
+      }
+
+      if (!res) {
+	path_analyzer.get_unsat_core(core);
+
+	if (populate_maps) {
+	  for(auto n: path) {
+	    if (const llvm::BasicBlock* bb = n.get_basic_block()) {
+	      AbsDom abs_val = path_analyzer.get_bwd_constraints(n);
+	      pre.insert(std::make_pair(bb, mkGenericAbsDomWrapper(abs_val)));
+	      if (abs_val.is_bottom()) {
+		// the rest of blocks must be also bottom so we don't
+		// bother storing them.
+		break;
+	      }
+	    }
+	  }
+	}
       }
     }
+        
+    
+    struct intra_analysis {
+      std::function<void(const AnalysisParams&,
+			 const BasicBlock*,
+			 const assumption_map_t&,
+			 liveness_t*,
+			 InvarianceAnalysisResults&)> analyze;
+      std::string name;
+    };
+
+    struct path_analysis {
+      std::function<void(const std::vector<llvm_basic_block_wrapper>&,
+			 std::vector<crab::cfg::statement_wrapper>&,
+			 bool, invariant_map_t&, invariant_map_t&,bool&)> analyze;
+      std::string name;
+    };
+    
+    // Domains used for intra-procedural analysis
+    const std::map<CrabDomain, intra_analysis> intra_analyses {
+      { INTERVALS               , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<interval_domain_t>), "classical intervals" } } 
+      #ifdef HAVE_ALL_DOMAINS	
+      , { INTERVALS_CONGRUENCES , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<ric_domain_t>), "reduced product of intervals and congruences" }}
+      , { DIS_INTERVALS         , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<dis_interval_domain_t>), "disjunctive intervals" }}
+      , { TERMS_INTERVALS       , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<term_int_domain_t>), "terms with intervals" }}
+      #endif 	
+      , { WRAPPED_INTERVALS     , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<wrapped_interval_domain_t>), "wrapped intervals" }}
+      , { ZONES_SPLIT_DBM       , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<split_dbm_domain_t>), "zones" }}
+      , { BOXES                 , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<boxes_domain_t>), "boxes" }}
+      , { OPT_OCT_APRON         , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<opt_oct_apron_domain_t>), "elina octagons" }}
+      , { PK_APRON              , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<pk_apron_domain_t>), "apron pk" }}
+      , { TERMS_ZONES           , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<num_domain_t>), "terms with zones" }}
+      , { TERMS_DIS_INTERVALS   , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<term_dis_int_domain_t>), "terms with disjunctive intervals" }}
+    };
+
+
+    // Domains used for path-based analysis
+    const std::map<CrabDomain, path_analysis> path_analyses {
+      { INTERVALS               , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<interval_domain_t>), "classical intervals" } } 
+      #ifdef HAVE_ALL_DOMAINS	
+      , { TERMS_INTERVALS       , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<term_int_domain_t>), "terms with intervals" }}
+      #endif 	
+      , { WRAPPED_INTERVALS     , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<wrapped_interval_domain_t>), "wrapped intervals" }}
+      , { TERMS_ZONES           , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<num_domain_t>), "terms with zones" }}
+      /* 
+	 To add new domains here make sure you add an explicit
+	 instantiation in crab/path_analyzer.cc 
+      */
+      //, { TERMS_DIS_INTERVALS , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<term_dis_int_domain_t>), "terms with disjunctive intervals" }}
+    };
 
   public:
     
@@ -817,53 +869,18 @@ namespace crab_llvm {
 	  }
 	}
       }
-      wrapperAnalyze(params, entry, assumptions,
-		     (params.run_liveness)? &live : nullptr, results);
-    }
 
-    template<typename AbsDom>
-    bool wrapperPathAnalyze(std::vector<llvm_basic_block_wrapper> path,
-			    std::vector<crab::cfg::statement_wrapper>& core,
-			    bool populate_maps,
-			    invariant_map_t& post, invariant_map_t& pre) const {
-      
-      typedef path_analyzer<cfg_ref_t, AbsDom> path_analyzer_t;
-      AbsDom init;
-      path_analyzer_t path_analyzer(*m_cfg, init);
-      bool res = path_analyzer.solve(path, /*compute_preconditions=*/ populate_maps);
-      if (populate_maps) {
-	for(auto n: path) {
-	  if (const llvm::BasicBlock* bb = n.get_basic_block()) {
-	    AbsDom abs_val = path_analyzer.get_fwd_constraints(n);
-	    post.insert(std::make_pair(bb, mkGenericAbsDomWrapper(abs_val)));
-	    if (abs_val.is_bottom()) {
-	      // the rest of blocks must be also bottom so we don't
-	      // bother storing them.
-	      break;
-	    }
-	  }
-	}
+      if (intra_analyses.count(params.dom)) {
+      	intra_analyses.at(params.dom).analyze(params, entry, assumptions,
+					     (params.run_liveness)? &live : nullptr,
+					     results);
+      } else {
+      	crab::outs() << "Warning: abstract domain not found or enabled.\n"
+      		     << "Running " << intra_analyses.at(INTERVALS).name << " ...\n"; 
+      	intra_analyses.at(INTERVALS).analyze(params, entry, assumptions,
+					    (params.run_liveness)? &live : nullptr,
+					    results);
       }
-
-      if (!res) {
-	path_analyzer.get_unsat_core(core);
-
-	if (populate_maps) {
-	  for(auto n: path) {
-	    if (const llvm::BasicBlock* bb = n.get_basic_block()) {
-	      AbsDom abs_val = path_analyzer.get_bwd_constraints(n);
-	      pre.insert(std::make_pair(bb, mkGenericAbsDomWrapper(abs_val)));
-	      if (abs_val.is_bottom()) {
-		// the rest of blocks must be also bottom so we don't
-		// bother storing them.
-		break;
-	      }
-	    }
-	  }
-	}
-      }
-	
-      return res;
     }
     
     bool pathAnalyze(const AnalysisParams& params,
@@ -886,19 +903,17 @@ namespace crab_llvm {
 	  }
 	}
       }
-      
-      switch (params.dom) {
-      case TERMS_ZONES:
-	return wrapperPathAnalyze<num_domain_t>(path, core, populate_maps, post, pre);
-      case WRAPPED_INTERVALS:
-	return wrapperPathAnalyze<wrapped_interval_domain_t>(path, core, populate_maps, post, pre);
-      #ifdef HAVE_ALL_DOMAINS	
-      case TERMS_INTERVALS:
-	return wrapperPathAnalyze<term_int_domain_t>(path, core, populate_maps, post, pre);
-      #endif 	
-      default: 
-	return wrapperPathAnalyze<interval_domain_t>(path, core, populate_maps, post, pre);
+
+      bool res;
+      if (path_analyses.count(params.dom)) {
+      	path_analyses.at(params.dom).analyze(path, core, populate_maps, post, pre, res);
+      } else {
+      	crab::outs() << "Warning: abstract domain not found or enabled.\n"
+      		     << "Running " << path_analyses.at(INTERVALS).name << " ...\n";
+      	path_analyses.at(INTERVALS).analyze(path, core, populate_maps, post, pre, res);
+	
       }
+      return res;
     }
     
   }; // end class
@@ -922,8 +937,7 @@ namespace crab_llvm {
     
   void IntraCrabLlvm::analyze(AnalysisParams &params,
 			      const assumption_map_t &assumptions) {
-    checks_db_ptr checksdb = nullptr;
-    InvarianceAnalysisResults results = { m_pre_map, m_post_map, checksdb};
+    InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
     
     m_impl->Analyze(params, &(m_fun->getEntryBlock()), assumptions, results);
   }
@@ -931,8 +945,7 @@ namespace crab_llvm {
   void IntraCrabLlvm::analyze(AnalysisParams &params,
 			      const llvm::BasicBlock *entry,
 			      const assumption_map_t &assumptions) {
-    checks_db_ptr checksdb = nullptr;
-    InvarianceAnalysisResults results = { m_pre_map, m_post_map, checksdb};
+    InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
     m_impl->Analyze(params, entry, assumptions, results);
   }
   
@@ -970,6 +983,8 @@ namespace crab_llvm {
 				       m_vfac.get_shadow_vars().end());    
     return lookup(m_post_map, *block, shadows);
   }
+
+  const checks_db_t& IntraCrabLlvm::get_checks_db() const { return m_checks_db;}
   
   /**
    *   End IntraCrabLlvm methods
@@ -1061,12 +1076,53 @@ namespace crab_llvm {
 	inter_checker_t checker (analyzer, {prop});
 	checker.run ();
 	//CRAB_VERBOSE_IF(1, checker.show (crab::outs()));
-	results.checksdb = boost::make_shared<checks_db_t>();
-	(*results.checksdb) += checker.get_all_checks();
+	results.checksdb += checker.get_all_checks();
 	CRAB_VERBOSE_IF(1, get_crab_os() << "Finished assert checking.\n"); 
       }
       return;
     }
+    // Domains used for inter-procedural analysis
+    struct inter_analysis {
+      std::function<void(const AnalysisParams&, InvarianceAnalysisResults&)> analyze;
+      std::string name;
+    };
+
+    // Domains used for intra-procedural analysis
+    const std::map<std::pair<CrabDomain,CrabDomain>, inter_analysis> inter_analyses {
+        {{ZONES_SPLIT_DBM, INTERVALS},
+	 { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, interval_domain_t>), "bottom-up:zones, top-down:intervals" }}
+      , {{ZONES_SPLIT_DBM, WRAPPED_INTERVALS},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, wrapped_interval_domain_t>), "bottom-up:zones, top-down:wrapped intervals" }}
+      , {{ZONES_SPLIT_DBM, ZONES_SPLIT_DBM},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, split_dbm_domain_t>), "bottom-up:zones, top-down:zones" }}
+      , {{ZONES_SPLIT_DBM, BOXES},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, boxes_domain_t>), "bottom-up:zones, top-down:boxes" }}
+      , {{ZONES_SPLIT_DBM, OPT_OCT_APRON},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, opt_oct_apron_domain_t>), "bottom-up:zones, top-down:elina oct" }}
+      , {{ZONES_SPLIT_DBM, PK_APRON},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, pk_apron_domain_t>), "bottom-up:zones, top-down:apron pk" }}
+      , {{ZONES_SPLIT_DBM, TERMS_ZONES},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, num_domain_t>), "bottom-up:zones, top-down:terms+zones" }}
+      , {{ZONES_SPLIT_DBM, TERMS_DIS_INTERVALS},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, term_dis_int_domain_t>), "bottom-up:zones, top-down:terms+dis_intervals" }}
+      //////////////////////////////////////////////////////
+      , {{OPT_OCT_APRON, INTERVALS},
+	 { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, interval_domain_t>), "bottom-up:elina oct, top-down:intervals" }}
+      , {{OPT_OCT_APRON, WRAPPED_INTERVALS},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, wrapped_interval_domain_t>), "bottom-up:elina oct, top-down:wrapped intervals" }}
+      , {{OPT_OCT_APRON, ZONES_SPLIT_DBM},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, split_dbm_domain_t>), "bottom-up:elina oct, top-down:zones" }}
+      , {{OPT_OCT_APRON, BOXES},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, boxes_domain_t>), "bottom-up:elina oct, top-down:boxes" }}
+      , {{OPT_OCT_APRON, OPT_OCT_APRON},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, opt_oct_apron_domain_t>), "bottom-up:elina oct, top-down:elina oct" }}
+      , {{OPT_OCT_APRON, PK_APRON},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, pk_apron_domain_t>), "bottom-up:elina oct, top-down:apron pk" }}
+      , {{OPT_OCT_APRON, TERMS_ZONES},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, num_domain_t>), "bottom-up:elina oct, top-down:terms+zones" }}
+      , {{OPT_OCT_APRON, TERMS_DIS_INTERVALS},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, term_dis_int_domain_t>), "bottom-up:elina oct, top-down:terms+dis_intervals" }}
+    };
     
   public:
     
@@ -1090,29 +1146,6 @@ namespace crab_llvm {
       // build call graph
       m_cg = make_unique<call_graph_t>(cfg_ref_vector.begin(), cfg_ref_vector.end());
     }
-    
-    #ifndef HAVE_ALL_DOMAINS
-    #define INTER_ANALYZE(DOM,PARAMS,RESULTS)			     \
-      switch (params.sum_dom){					     \
-      case OPT_OCT_APRON:					     \
-	analyzeCg<opt_oct_apron_domain_t,DOM>(PARAMS, RESULTS);	     \
-	break;							     \
-      default:							     \
-	if (params.sum_dom != ZONES_SPLIT_DBM)			     \
-	  crab::outs() << "Warning: choosing zones for summaries\n"; \
-	analyzeCg<split_dbm_domain_t,DOM> (PARAMS, RESULTS);}     
-    #else
-    #define INTER_ANALYZE(DOM,PARAMS,RESULTS)			     \
-      switch (params.sum_dom){					     \
-      case OPT_OCT_APRON:					     \
-	analyzeCg<opt_oct_apron_domain_t,DOM>(PARAMS, RESULTS);	     \
-	break;							     \
-      case TERMS_ZONES:						     \
-	analyzeCg<num_domain_t,DOM>(PARAMS, RESULTS);		     \
-	break;							     \
-      default:							     \
-	analyzeCg<split_dbm_domain_t,DOM>(PARAMS, RESULTS);}
-    #endif 
     
     void Analyze(AnalysisParams &params,
 		 const assumption_map_t &/*assumptions*/ /*unused*/,
@@ -1173,44 +1206,15 @@ namespace crab_llvm {
 	} // end for
       }
       
-      // -- run the interprocedural analysis            
-      switch (absdom) {
-        #ifdef HAVE_ALL_DOMAINS
-        case INTERVALS_CONGRUENCES: 
-          INTER_ANALYZE(ric_domain_t, params, results);
-	  break;
-        case TERMS_INTERVALS:
-          INTER_ANALYZE(term_int_domain_t, params, results); 
-          break;
-        case DIS_INTERVALS:
-          INTER_ANALYZE(dis_interval_domain_t, params, results); 
-          break;
-        #endif
-         case WRAPPED_INTERVALS:
-	   INTER_ANALYZE(wrapped_interval_domain_t, params, results); 
-          break;	  
-        case TERMS_DIS_INTERVALS:
-          INTER_ANALYZE(term_dis_int_domain_t, params, results); 
-          break;
-        case ZONES_SPLIT_DBM: 
-          INTER_ANALYZE(split_dbm_domain_t, params, results); 
-          break;
-        case OPT_OCT_APRON:
-          INTER_ANALYZE(opt_oct_apron_domain_t, params, results); 
-          break;
-        case PK_APRON:
-          INTER_ANALYZE(pk_apron_domain_t, params, results); 
-          break;
-        case TERMS_ZONES: 
-          INTER_ANALYZE(num_domain_t, params, results); 
-          break;
-        default: 
-          if (absdom != INTERVALS)
-            crab::outs() << "Warning: either abstract domain not found or "
-                         << "inter-procedural version not implemented.\n"
-                         << "Running intervals ...\n"; 
-          INTER_ANALYZE (interval_domain_t, params, results);
+      // -- run the interprocedural analysis
+      if (inter_analyses.count({params.sum_dom, params.dom})) {
+      	inter_analyses.at({params.sum_dom, params.dom}).analyze(params, results);
+      } else {
+      	crab::outs() << "Warning: abstract domains not found or enabled.\n"
+      		     << "Running " << inter_analyses.at({ZONES_SPLIT_DBM, INTERVALS}).name << "\n";
+      	inter_analyses.at({ZONES_SPLIT_DBM, INTERVALS}).analyze(params, results);	
       }
+      
       // free liveness map
       if (params.run_liveness) {
         for (auto &p : m_live_map) {
@@ -1240,8 +1244,7 @@ namespace crab_llvm {
     
   void InterCrabLlvm::analyze(AnalysisParams &params,
 			      const assumption_map_t &assumptions) {
-    checks_db_ptr checksdb = nullptr;
-    InvarianceAnalysisResults results = { m_pre_map, m_post_map, checksdb};
+    InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
     m_impl->Analyze(params, assumptions, results);
   }
 
@@ -1262,6 +1265,9 @@ namespace crab_llvm {
 				       m_vfac.get_shadow_vars().end());    
     return lookup(m_post_map, *block, shadows);
   }
+
+  const checks_db_t& InterCrabLlvm::get_checks_db() const { return m_checks_db;}
+  
   /**
    * End InterCrabLlvm methods
    **/
@@ -1272,7 +1278,6 @@ namespace crab_llvm {
   CrabLlvmPass::CrabLlvmPass ()
     : llvm::ModulePass (ID), 
       m_mem(boost::make_shared<DummyHeapAbstraction>()),
-      m_checks_db(nullptr),
       m_tli(nullptr) { }
 
   void CrabLlvmPass::releaseMemory () {
@@ -1421,15 +1426,15 @@ namespace crab_llvm {
   }
 
   unsigned CrabLlvmPass::get_total_safe_checks () const {
-    return (m_checks_db ? m_checks_db->get_total_safe() : 0);
+    return m_checks_db.get_total_safe();
   }
 
   unsigned CrabLlvmPass::get_total_error_checks () const {
-    return (m_checks_db ? m_checks_db->get_total_error() : 0);
+    return m_checks_db.get_total_error();
   }
 
   unsigned CrabLlvmPass::get_total_warning_checks () const {
-    return (m_checks_db ? m_checks_db->get_total_warning() : 0);
+    return m_checks_db.get_total_warning();
   }
 
   void CrabLlvmPass::print_checks (raw_ostream &o) const {
