@@ -131,7 +131,8 @@ namespace crab_llvm {
      typedef ikos::variable<number_t, varname_t> var_t;
      typedef ikos::variable_ref<number_t, varname_t> var_ref_t;  
      typedef llvm_basic_block_wrapper basic_block_label_t;
-     typedef crab::cfg::Cfg<basic_block_label_t,varname_t,number_t> cfg_t;
+     typedef crab::cfg::cfg<basic_block_label_t,varname_t,number_t> cfg_t;
+     typedef boost::shared_ptr<cfg_t> cfg_ptr_t;
      typedef crab::cfg::cfg_ref<cfg_t> cfg_ref_t;
      typedef cfg_t::basic_block_t basic_block_t;
      typedef typename cfg_t::basic_block_t::lin_exp_t lin_exp_t;
