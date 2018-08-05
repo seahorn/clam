@@ -872,6 +872,24 @@ namespace crab_llvm {
     return true;
   }
 
+  // Return true if all uses are verifier calls (assume/assert)
+  static bool AllUsesAreVerifierCalls (Value* V)  {
+    for (auto &U: V->uses ()) {
+      if (CallInst *CI = dyn_cast<CallInst> (U.getUser ())) {
+	CallSite CS (CI);
+	const Value *calleeV = CS.getCalledValue ();
+	const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
+	if (callee && 
+	    (isAssertFn(callee) || isAssumeFn(callee) || isNotAssumeFn(callee))) {
+	  continue;
+	}
+      }
+      return false;
+    }
+    return true;
+  }
+  
+  
   // Return true if all uses are GEPs
   static bool AllUsesAreGEP(Value *V) {
     for (auto &U: V->uses ())
@@ -1774,13 +1792,36 @@ namespace crab_llvm {
 	    m_bb.bool_assert(v, getDebugLoc(&I));
 	  }
 	} else if (cond_ref->isInt()){
-	  if (isNotAssumeFn(callee))
-	    m_bb.assume(v <= number_t(0));
-	  else if (isAssumeFn(callee))
-	    m_bb.assume(v >= number_t(1));
-	  else  {
-	    assert(isAssertFn(callee));
-	    m_bb.assertion(v >= number_t(1), getDebugLoc(&I));
+
+	  ZExtInst *ZEI = dyn_cast<ZExtInst>(cond);
+	  if (ZEI && ZEI->getSrcTy()->isIntegerTy(1)) {
+	    /* Special case to replace this pattern:
+	         y:i32 = zext x:i1 to i32 
+	         assume (y>=1);
+               with 
+	         bool_assume(x);
+                 This can help boolean/numerical propagation in the crab domains.
+	    */
+	    cond_ref = m_lfac.getLit(*(ZEI->getOperand(0)));
+	    assert(cond_ref->isVar()); // boolean variable
+	    v = cond_ref->getVar();
+	    if (isNotAssumeFn(callee)) {	   
+	      m_bb.bool_not_assume(v);	   
+	    } else if (isAssumeFn(callee)) {
+	      m_bb.bool_assume(v);
+	    } else  {
+	      assert(isAssertFn(callee));
+	      m_bb.bool_assert(v, getDebugLoc(&I));
+	    }
+	  } else {
+	    if (isNotAssumeFn(callee)) {	   
+	      m_bb.assume(v <= number_t(0));	   
+	    } else if (isAssumeFn(callee)) {
+	      m_bb.assume(v >= number_t(1));
+	    } else  {
+	      assert(isAssertFn(callee));
+	      m_bb.assertion(v >= number_t(1), getDebugLoc(&I));
+	    }
 	  }
 	}
       }
@@ -1909,6 +1950,14 @@ namespace crab_llvm {
       // }
       
       if (AllUsesAreNonTrackMem (&I) || AllUsesAreIndirectCalls (&I)) {
+	return;
+      }
+
+      if (isa<ZExtInst>(I) && I.getSrcTy()->isIntegerTy(1) && AllUsesAreVerifierCalls(&I)) {
+	/* 
+	   y:i32 = zext x:i1 to i32 
+	   assume (y>=1);
+	*/
 	return;
       }
 
