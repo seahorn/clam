@@ -77,6 +77,7 @@ namespace crab_llvm {
     bool print_preconds;
     bool print_assumptions;
     bool print_summaries;
+    bool store_invariants;
     bool keep_shadow_vars;
     assert_check_kind_t check;
     unsigned check_verbose;
@@ -89,8 +90,8 @@ namespace crab_llvm {
 	stats(false),
 	print_invars(false), print_preconds(false),
 	print_assumptions(false), print_summaries(false),
-	keep_shadow_vars(false),
-	check(NOCHECKS), check_verbose(0) {}
+	store_invariants(true), keep_shadow_vars(false),
+	check(NOCHECKS), check_verbose(0) { }
   };
 
   /**

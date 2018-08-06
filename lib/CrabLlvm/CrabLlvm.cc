@@ -72,6 +72,11 @@ CrabPrintPreCond ("crab-print-preconditions",
                cl::init (false));
 
 cl::opt<bool>
+CrabStoreInvariants ("crab-store-invariants", 
+               cl::desc ("Store invariants"),
+               cl::init (true));
+
+cl::opt<bool>
 CrabStats ("crab-stats", 
            cl::desc ("Show Crab statistics and analysis results"),
            cl::init (false));
@@ -626,29 +631,33 @@ namespace crab_llvm {
 		   params.widening_delay, params.narrowing_iters, params.widening_jumpset);
       CRAB_VERBOSE_IF(1, get_crab_os() << "Finished intra-procedural analysis.\n"); 
 
-      // -- store invariants 
-      for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
-							      m_cfg->label_end())) {
-	const BasicBlock *B = bl.get_basic_block();
-	if (!B) continue; // we only store those which correspond to llvm basic blocks
-
-	// --- invariants that hold at the entry of the blocks
-	auto pre = analyzer.get_pre (bl);
-	update(results.premap, *B,  mkGenericAbsDomWrapper(pre));
-	// --- invariants that hold at the exit of the blocks
-	auto post = analyzer.get_post (bl);
-	update(results.postmap, *B,  mkGenericAbsDomWrapper(post));	
-	if (params.stats) {
-	  unsigned num_block_invars = 0;
-	  // TODO CRAB: for boxes we would like to use
-	  // to_disjunctive_linear_constraint_system() but it needs to
-	  // be exposed to all domains
-	  num_block_invars += pre.to_linear_constraint_system().size();
-	  num_invars += num_block_invars;
-	  if (num_block_invars > 0) num_nontrivial_blocks++;
+      // -- store invariants
+      if (params.store_invariants || params.print_invars) {
+	CRAB_VERBOSE_IF(1, get_crab_os() << "Storing invariants.\n");       
+	for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
+								m_cfg->label_end())) {
+	  const BasicBlock *B = bl.get_basic_block();
+	  if (!B) continue; // we only store those which correspond to llvm basic blocks
+	  
+	  // --- invariants that hold at the entry of the blocks
+	  auto pre = analyzer.get_pre (bl);
+	  update(results.premap, *B,  mkGenericAbsDomWrapper(pre));
+	  // --- invariants that hold at the exit of the blocks
+	  auto post = analyzer.get_post (bl);
+	  update(results.postmap, *B,  mkGenericAbsDomWrapper(post));	
+	  if (params.stats) {
+	    unsigned num_block_invars = 0;
+	    // TODO CRAB: for boxes we would like to use
+	    // to_disjunctive_linear_constraint_system() but it needs to
+	    // be exposed to all domains
+	    num_block_invars += pre.to_linear_constraint_system().size();
+	    num_invars += num_block_invars;
+	    if (num_block_invars > 0) num_nontrivial_blocks++;
+	  }
 	}
+	CRAB_VERBOSE_IF(1, get_crab_os() << "All invariants stored.\n");
       }
-
+      
       // -- print all cfg annotations (if any)
       if (params.print_invars ||
 	  (params.print_preconds && params.run_backward) ||
@@ -1025,37 +1034,45 @@ namespace crab_llvm {
     
       CRAB_VERBOSE_IF(1, get_crab_os() << "Finished inter-procedural analysis.\n");
       
-      // -- store invariants     
+      // -- store invariants
+      if (params.store_invariants || params.print_invars) {
+	CRAB_VERBOSE_IF(1, get_crab_os() << "Storing invariants.\n");
+      }
+      
       for (auto &n: boost::make_iterator_range(vertices(*m_cg))) {
 	cfg_ref_t cfg = n.get_cfg ();
 	if (const Function *F = m_M.getFunction(n.name())) {
-	  for (auto &B : *F) {
-	    // --- invariants that hold at the entry of the blocks
-	    auto pre = analyzer.get_pre (cfg, &B);
-	    update(results.premap, B, mkGenericAbsDomWrapper(pre));
-	    // --- invariants that hold at the exit of the blocks
-	    auto post = analyzer.get_post (cfg, &B);
-	    update(results.postmap, B, mkGenericAbsDomWrapper(post));
-	    
-	    if (params.stats) {
-	      unsigned num_block_invars = 0;
-	      // TODO CRAB: for boxes we would like to use
-	      // to_disjunctive_linear_constraint_system() but it needs to
-	      // be exposed to all domains
-	      num_block_invars += pre.to_linear_constraint_system().size();
-	      num_invars += num_block_invars;
-	      if (num_block_invars > 0) num_nontrivial_blocks++;
-	    }
-	  }
 	  
-	  // --- print invariants and summaries
-	  if (params.print_invars && isTrackable(*F)) {
-	    llvm::outs() << "\n" << "function " << F->getName () << "\n";
-	    std::vector<std::unique_ptr<pretty_printer_impl::block_annotation>> annotations;
-	    annotations.emplace_back(make_unique<pretty_printer_impl::invariant_annotation>
-				     (m_vfac, results.premap, results.postmap,
-				      params.keep_shadow_vars));
-	    pretty_printer_impl::print_annotations(cfg, annotations);	    
+
+	  if (params.store_invariants || params.print_invars) {
+	    for (auto &B : *F) {
+	      // --- invariants that hold at the entry of the blocks
+	      auto pre = analyzer.get_pre (cfg, &B);
+	      update(results.premap, B, mkGenericAbsDomWrapper(pre));
+	      // --- invariants that hold at the exit of the blocks
+	      auto post = analyzer.get_post (cfg, &B);
+	      update(results.postmap, B, mkGenericAbsDomWrapper(post));
+	      
+	      if (params.stats) {
+		unsigned num_block_invars = 0;
+		// TODO CRAB: for boxes we would like to use
+		// to_disjunctive_linear_constraint_system() but it needs to
+		// be exposed to all domains
+		num_block_invars += pre.to_linear_constraint_system().size();
+		num_invars += num_block_invars;
+	      if (num_block_invars > 0) num_nontrivial_blocks++;
+	      }
+	    }
+	    
+	    // --- print invariants and summaries
+	    if (params.print_invars && isTrackable(*F)) {
+	      llvm::outs() << "\n" << "function " << F->getName () << "\n";
+	      std::vector<std::unique_ptr<pretty_printer_impl::block_annotation>> annotations;
+	      annotations.emplace_back(make_unique<pretty_printer_impl::invariant_annotation>
+				       (m_vfac, results.premap, results.postmap,
+					params.keep_shadow_vars));
+	      pretty_printer_impl::print_annotations(cfg, annotations);	    
+	    }
 	  }
 	  
 	  // Summaries are not currently stored but it would be easy to do so.	    
@@ -1064,6 +1081,10 @@ namespace crab_llvm {
 	    crab::outs() << "SUMMARY " << *summ << "\n";
 	  }
 	}
+      }
+      
+      if (params.store_invariants || params.print_invars) {	
+	CRAB_VERBOSE_IF(1, get_crab_os() << "All invariants stored.\n");
       }
       
       // --- checking assertions and collecting data
@@ -1318,6 +1339,7 @@ namespace crab_llvm {
     m_params.print_preconds = CrabPrintPreCond;
     m_params.print_assumptions = CrabPrintAssumptions;
     m_params.print_summaries = CrabPrintSumm;
+    m_params.store_invariants = CrabStoreInvariants;
     m_params.keep_shadow_vars = CrabKeepShadows;
     m_params.check = CrabCheck;
     m_params.check_verbose = CrabCheckVerbose;
