@@ -155,6 +155,11 @@ namespace crab_llvm {
 
     ~IntraCrabLlvm();    
 
+    /** 
+     * Clear all the internal state
+     **/
+    void clear();
+    
     /**
      * Call crab analysis on the CFG under assumptions.
      **/    
@@ -236,6 +241,11 @@ namespace crab_llvm {
 
     ~InterCrabLlvm();    
 
+    /** 
+     * Clear all the internal state
+     **/
+    void clear();
+    
     /**
      * Call crab analysis on the call graph under assumptions.
      **/    

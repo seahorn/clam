@@ -943,7 +943,13 @@ namespace crab_llvm {
   }
 
   IntraCrabLlvm::~IntraCrabLlvm() {}
-    
+
+  void IntraCrabLlvm::clear() {
+    m_pre_map.clear();
+    m_post_map.clear();
+    m_checks_db.clear();
+  }
+  
   void IntraCrabLlvm::analyze(AnalysisParams &params,
 			      const assumption_map_t &assumptions) {
     InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
@@ -1262,7 +1268,13 @@ namespace crab_llvm {
   }
 
   InterCrabLlvm::~InterCrabLlvm() {}
-    
+
+  void InterCrabLlvm::clear() {
+    m_pre_map.clear();
+    m_post_map.clear();
+    m_checks_db.clear();
+  }
+  
   void InterCrabLlvm::analyze(AnalysisParams &params,
 			      const assumption_map_t &assumptions) {
     InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
@@ -1303,7 +1315,8 @@ namespace crab_llvm {
 
   void CrabLlvmPass::releaseMemory () {
     m_pre_map.clear(); 
-    m_post_map.clear(); 
+    m_post_map.clear();
+    m_checks_db.clear();
   }
 
   bool CrabLlvmPass::runOnFunction (Function &F) {
