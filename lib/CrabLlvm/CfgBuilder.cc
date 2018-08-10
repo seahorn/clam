@@ -1591,7 +1591,7 @@ namespace crab_llvm {
         mem_region_t r = GET_REGION(I,&I);
         bool isMainCaller = I.getParent()->getParent()->getName().equals("main");
         if (isMainCaller && !r.isUnknown()) {
-	  // TODO: add an array_assume statement.
+	  // TODO: add an array_init statement.
 	  // We need to figure out:
 	  // - the number of elements and the size of each element
 	  // - Otherwise, we create a fresh (unbounded) variable and use it
@@ -1630,16 +1630,16 @@ namespace crab_llvm {
 	    uint64_t elem_size = MSI->getAlignment(); /*double check this*/
 	    if (val_ref->isInt()) {
 	      if (val_ref->isVar()) {
-		m_bb.array_assume (arr_var, elem_size, lb_idx, ub_idx, val_ref->getVar());
+		m_bb.array_init (arr_var, elem_size, lb_idx, ub_idx, val_ref->getVar());
 	      } else {
-		m_bb.array_assume (arr_var, elem_size, lb_idx, ub_idx, m_lfac.getIntCst(val_ref));
+		m_bb.array_init (arr_var, elem_size, lb_idx, ub_idx, m_lfac.getIntCst(val_ref));
 	      }
 	    } else if (val_ref->isBool()) {
 	      if (val_ref->isVar()) {
-		m_bb.array_assume (arr_var, elem_size,lb_idx, ub_idx, val_ref->getVar());
+		m_bb.array_init (arr_var, elem_size,lb_idx, ub_idx, val_ref->getVar());
 	      } else {
-		m_bb.array_assume (arr_var, elem_size, lb_idx, ub_idx,
-				   m_lfac.isBoolTrue(val_ref) ? number_t(1): number_t(0));
+		m_bb.array_init (arr_var, elem_size, lb_idx, ub_idx,
+				 m_lfac.isBoolTrue(val_ref) ? number_t(1): number_t(0));
 	      }
 	    } else if (val_ref->isPtr()) {
 	      /** This should not happen since we ignore array of pointers **/
@@ -1700,7 +1700,7 @@ namespace crab_llvm {
 
 	  /* verifier.zero_initializer(v) */
 	  if (isInteger(ty) || isBool(ty)) {
-	    m_bb.array_assume (a, elem_size, lb_idx, ub_idx, init_val);
+	    m_bb.array_init (a, elem_size, lb_idx, ub_idx, init_val);
 	  } else if (isIntArray(*ty) || isBoolArray(*ty)) {
 	    if (cast<ArrayType>(ty)->getNumElements() == 0) {
 	      // TODO: zero-length array are possible inside structs We
@@ -1711,7 +1711,7 @@ namespace crab_llvm {
 	    } else {
 	      elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
 	      ub_idx = lin_exp_t((cast<ArrayType>(ty)->getNumElements() - 1)* elem_size);
-	      m_bb.array_assume (a, elem_size, lb_idx, ub_idx, init_val);
+	      m_bb.array_init (a, elem_size, lb_idx, ub_idx, init_val);
 	    }
 	  } else { /** unreachable **/ }
 	}
@@ -2448,8 +2448,7 @@ namespace crab_llvm {
 	      number_t init_val(0); 
 	      number_t lb_idx(0); 
 	      number_t ub_idx((numElems - 1) * elemSize);
-	      m_bb.array_assume (m_lfac.mkArrayVar(r),
-				 elemSize, lb_idx, ub_idx, init_val);
+	      m_bb.array_init (m_lfac.mkArrayVar(r), elemSize, lb_idx, ub_idx, init_val);
 	    }
 	  }
 	}
