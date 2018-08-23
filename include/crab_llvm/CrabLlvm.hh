@@ -92,6 +92,10 @@ namespace crab_llvm {
 	print_assumptions(false), print_summaries(false),
 	store_invariants(true), keep_shadow_vars(false),
 	check(NOCHECKS), check_verbose(0) { }
+
+    std::string abs_dom_to_str() const;
+    
+    std::string sum_abs_dom_to_str() const;
   };
 
   /**
@@ -308,6 +312,8 @@ namespace crab_llvm {
 
     heap_abs_ptr get_heap_abstraction() { return m_mem; }
 
+    const AnalysisParams& get_analysis_params() { return m_params;}
+    
     bool has_cfg(llvm::Function &F);
     
     cfg_ref_t get_cfg(llvm::Function &F);

@@ -550,6 +550,30 @@ namespace crab_llvm {
     }
   } //end namespace
 
+  static std::string dom_to_str(CrabDomain dom) {
+    switch (dom) {
+    case INTERVALS:             return interval_domain_t::getDomainName();
+    case INTERVALS_CONGRUENCES: return ric_domain_t::getDomainName();
+    case BOXES:                 return boxes_domain_t::getDomainName();
+    case DIS_INTERVALS:         return dis_interval_domain_t::getDomainName();
+    case ZONES_SPLIT_DBM:       return split_dbm_domain_t::getDomainName();
+    case TERMS_DIS_INTERVALS:   return term_dis_int_domain_t::getDomainName();
+    case TERMS_ZONES:           return num_domain_t::getDomainName();
+    case OPT_OCT_APRON:         return opt_oct_apron_domain_t::getDomainName();
+    case PK_APRON:              return pk_apron_domain_t::getDomainName();
+    case WRAPPED_INTERVALS:     return wrapped_interval_domain_t::getDomainName();
+    default:                    return "none";
+    }
+  }
+  
+  std::string AnalysisParams::abs_dom_to_str() const {
+    return dom_to_str(dom);
+  }
+
+  std::string AnalysisParams::sum_abs_dom_to_str() const {
+    return dom_to_str(sum_dom);
+  }
+  
   /* CFG Manager class */
   CfgManager::CfgManager(){}
   CfgManager::~CfgManager(){
