@@ -1,5 +1,5 @@
 // RUN: %crabllvm -O0 --crab-dom=zones --crab-check=assert "%s" 2>&1 | OutputCheck %s
-// CHECK: ^2  Number of total safe checks$
+// CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
 
@@ -16,8 +16,6 @@ int main (){
     y++;
   }
 
-  __CRAB_assert(x>=y);
-  __CRAB_assert(y>=x);
-
+  __CRAB_assert(x==y);
   return x+y;
 }
