@@ -1,10 +1,10 @@
 #include "crab_llvm/config.h"
 #include "path_analyzer.hpp"
-#include "boost/unordered_set.hpp"
-
 // flat_killgen_domain
 #include <crab/iterators/killgen_fixpoint_iterator.hpp>
 
+#include <boost/unordered_set.hpp>
+#include <boost/range/iterator_range.hpp>
 
 namespace crab {
 namespace analyzer {
@@ -61,7 +61,7 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
   bool bottom_found = false;
   unsigned bottom_pos = path.size();
   // Compute strongest post-condition over the path
-  abs_dom_t pre = m_fwd_abs_tr.inv();
+  AbsDom pre = m_fwd_abs_tr.inv();
   stmt_to_dom_map_t stmt_dom_map;
   for(unsigned i=0; i < path.size(); ++i) {
     if (pre.is_bottom()) {
@@ -73,7 +73,7 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
     }
 
     // store constraints that hold at the entry of the block
-    basic_block_label_t node = path[i];
+    basic_block_label_t node = path[i];    
     auto it = m_fwd_dom_map.find (node);
     if (it == m_fwd_dom_map.end()) {
       m_fwd_dom_map.insert(std::make_pair (node, pre));
@@ -81,7 +81,7 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
 
     // compute strongest post-condition for one block
     m_fwd_abs_tr.set (pre);
-    auto &b = m_cfg.get_node (node);      
+    auto &b = m_cfg.get_node (node);
     for (auto &s : b) {
       if (!s.is_assert() && !s.is_ptr_assert() && !s.is_bool_assert()) {
 	path_statements.push_back(crab::cfg::statement_wrapper(&s, node));
@@ -99,7 +99,7 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
       // -- Compute pre-conditions starting from the block for which we
       //    inferred bottom.
       assert (bottom_pos < path.size());
-      abs_dom_t abs_val = abs_dom_t::top(); 
+      AbsDom abs_val = AbsDom::top(); 
       bwd_abs_tr_t bwd_abs_tr(&abs_val, stmt_dom_map, true);
       for(int i=bottom_pos; i >= 0; --i) {
 	basic_block_label_t node = path[i];
@@ -134,45 +134,80 @@ bool path_analyzer<CFG,AbsDom>::has_kid(basic_block_label_t b1, basic_block_labe
 }
 
 // Compute a minimal subset of statements based on syntactic
-// dependencies. 
+// dependencies.
+// Return true if the core is just the statement "assume(false)"
 template<typename CFG, typename AbsDom>    
-void path_analyzer<CFG,AbsDom>::
+bool path_analyzer<CFG,AbsDom>::
 remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core) {
   typedef typename CFG::basic_block_t::assume_t assume_t;
   typedef typename CFG::basic_block_t::bool_assume_t bool_assume_t;
   
   unsigned size = core.size();
+  basic_block_label_t parent_label = core[size-1].m_parent;
+  auto& parent_bb = m_cfg.get_node(parent_label);
+  
+  // if the core contains at most one constraint then we are done
   if (size <= 1) {
-    return;
+    if (size == 1) {
+      if (auto assume = static_cast<const assume_t*>(core[0].m_s)) {
+	if (assume->constraint().is_contradiction()) {
+	  return true;
+	}
+      }
+    }
+    return false;
   }
-  
-  stmt_t& last = *(core[size-1].m_s);
-  
-  if (!(last.is_assume()) && !(last.is_bool_assume())) {
+
+  // if there is an "assume(false)" then we are done
+  for(auto& s: boost::make_iterator_range(parent_bb.rbegin(), parent_bb.rend())) {
+    if (s.is_assume()) {
+      auto assume = static_cast<assume_t*>(&s);
+      if (assume->constraint().is_contradiction()) {
+	core.clear();
+	core.push_back(typename crab::cfg::statement_wrapper(&s, parent_label));
+	return true; 
+      }
+    }
+  }
+
+  // starting from the last statement we search for the first assume
+  // statement going backwards. We only search in the last basic
+  // block.
+  stmt_t* last_assume = nullptr;
+  int index = size - 1;
+  for(auto& s: boost::make_iterator_range(parent_bb.rbegin(), parent_bb.rend())) {
+    if (s.is_assume() || s.is_bool_assume()) {
+      last_assume = &s;
+      break;
+    }
+    --index;
+  }
+    
+  if (!last_assume) {
     // we expect last statement to be an assume, otherwise we bail out.
-    return;
+    crab::outs () << "WARNING path analyzer: "
+		  << "we couldn't find an assume in the last basic block.\n";
+    return false;
   }
 
   typedef domains::flat_killgen_domain<typename CFG::variable_t> var_dom_t;
   var_dom_t d;
-  if (last.is_assume()) {
-    auto assume = static_cast<const assume_t*>(&last);
-    if (assume->constraint().is_contradiction()) {
-      return; // we do nothing
-    }
+  if (last_assume->is_assume()) {
+    auto assume = static_cast<const assume_t*>(last_assume);
+    assert(!assume->constraint().is_contradiction());
     for (typename CFG::variable_t v: assume->constraint().variables()) {
       d += v;
     }
   } else {
-    auto bool_assume = static_cast<const bool_assume_t*>(&last);
+    auto bool_assume = static_cast<const bool_assume_t*>(last_assume);
     d += bool_assume->cond();
   }
 
   // Traverse the whole path backwards and remove irrelevant
   // statements based on data dependencies.
   std::vector<bool> enabled(size, false);      
-  enabled[size-1] = true;  // added the last assume
-  for(int i= size-2; i >= 0 ; --i) { // start from penultimate statement
+  enabled[index] = true;  // added the last assume
+  for(int i= index-1; i >= 0 ; --i) { 
     stmt_t& s = *(core[i].m_s);
     var_dom_t uses, defs;
     const typename stmt_t::live_t& ls = s.get_live();
@@ -194,9 +229,13 @@ remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core) {
   std::vector<crab::cfg::statement_wrapper> res;
   res.reserve(size);
   for(unsigned i=0; i < size; ++i) {
-    if (enabled[i]) res.push_back(core[i]);
+    if (enabled[i]) {
+      //crab::outs () << "\t" << *(core[i].m_s) << "\n";
+      res.push_back(core[i]);
+    }
   }
   core.assign(res.begin(), res.end());
+  return false;
 }
   
   
@@ -208,31 +247,35 @@ remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core) {
  ** Pre: path is well-formed.
  **/
 template<typename CFG, typename AbsDom>    
-void path_analyzer<CFG,AbsDom>::minimize_path(const std::vector<crab::cfg::statement_wrapper>& path) {
+void path_analyzer<CFG,AbsDom>::
+minimize_path(const std::vector<crab::cfg::statement_wrapper>& path) {
 
   std::vector<crab::cfg::statement_wrapper> core(path.begin(), path.end());
   // Remove first syntactically irrelevant statements wrt to the last
   // statement which should be an assume statement where bottom was
   // first inferred.
-  remove_irrelevant_statements(core);
   
-  // We use the enabled vector because we need to preserve the order
-  // since abstract interpretation cares about that.
+  if (remove_irrelevant_statements(core)) {
+    // the path contains "assume(false)"
+    m_core.clear();
+    m_core.insert(m_core.end(), core.begin(), core.end());
+    return;
+  }
+
   std::vector<bool> enabled(core.size(), true);
-  for (unsigned i = 0; i < core.size (); ++i) {
-    enabled[i] = false;
-    abs_dom_t pre = AbsDom::top(); // m_fwd_abs_tr.inv();
-    bool res = true;
+  for (unsigned i=0; i < core.size (); ++i) {
+    AbsDom inv;
+    m_fwd_abs_tr.set (inv);
     for(unsigned j=0; j < core.size(); ++j) {
-      if (enabled[j]) {
-	m_fwd_abs_tr.set (pre);
+      if (i != j && enabled[j]) {
 	core[j].m_s->accept (&m_fwd_abs_tr);
-	res = !pre.is_bottom();
-	if (!res) break;
+	if (inv.is_bottom()) {
+	  break;
+	}
       }
     }
-    if (res) {
-      enabled[i] = true;
+    if (inv.is_bottom()) {
+      enabled[i] = false;
     }
   }
 
@@ -242,7 +285,24 @@ void path_analyzer<CFG,AbsDom>::minimize_path(const std::vector<crab::cfg::state
       m_core.push_back(core[i]);
     }
   }
+
+  // sanity checks  
   assert(!m_core.empty());
+  if (false) { // disable by default
+    AbsDom inv;
+    m_fwd_abs_tr.set (inv);    
+    bool is_bottom = false;
+    for (unsigned i=0, e=m_core.size(); i<e; ++i) {
+      m_core[i].m_s->accept (&m_fwd_abs_tr);
+      if (inv.is_bottom()) {
+	is_bottom=true;
+	break;
+      }
+    }
+    if (!is_bottom) {
+      CRAB_ERROR("Abstract core is not unsat!\n");
+    }
+  }
 }
 }
 }
@@ -254,6 +314,7 @@ namespace crab {
 namespace analyzer {
 // explicit instantiations
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::num_domain_t>;
+template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::split_dbm_domain_t>;
 #ifdef HAVE_ALL_DOMAINS  
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::term_int_domain_t>;
 #endif   
