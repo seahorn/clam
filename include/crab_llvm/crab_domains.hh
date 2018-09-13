@@ -84,7 +84,8 @@ namespace crab_llvm {
   typedef term_domain<dis_idom_info> BASE(term_dis_int_domain_t);
   /// -- Reduced product of Term(DisIntervals) with split zones
   typedef reduced_numerical_domain_product2<BASE(term_dis_int_domain_t),
-					    BASE(split_dbm_domain_t)> BASE(num_domain_t);
+					    BASE(split_dbm_domain_t),
+					    reduced_product_impl::term_dbm_params> BASE(num_domain_t);
 
   ARRAY_BOOL_NUM(interval_domain_t);
   //ARRAY_BOOL_NUM(dbm_domain_t);
