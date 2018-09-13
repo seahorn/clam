@@ -826,6 +826,7 @@ namespace crab_llvm {
       , { TERMS_INTERVALS       , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<term_int_domain_t>), "terms with intervals" }}
       #endif 	
       , { WRAPPED_INTERVALS     , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<wrapped_interval_domain_t>), "wrapped intervals" }}
+      , { ZONES_SPLIT_DBM       , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<split_dbm_domain_t>), "zones" }}      
       , { TERMS_ZONES           , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<num_domain_t>), "terms with zones" }}
       /* 
 	 To add new domains here make sure you add an explicit
