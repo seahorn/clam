@@ -114,7 +114,7 @@ namespace crab_llvm
       return modified;
     }
         
-    virtual const char * getPassName() const {
+    virtual StringRef getPassName() const {
       return "Lower select instructions";
     }
 

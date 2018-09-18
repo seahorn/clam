@@ -98,7 +98,7 @@ namespace crab_llvm {
       //AU.setPreservesAll();
     }
     
-    virtual const char *getPassName() const {
+    virtual StringRef getPassName() const {
       return "PromoteAssume";
     }
     

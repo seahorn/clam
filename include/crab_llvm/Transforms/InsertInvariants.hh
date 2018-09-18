@@ -42,7 +42,7 @@ namespace crab_llvm {
 
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const ;
 
-    virtual const char* getPassName () const {return "InsertInvariants";}
+    virtual llvm::StringRef getPassName () const {return "InsertInvariants";}
 
   };
 

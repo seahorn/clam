@@ -305,7 +305,7 @@ namespace crab_llvm {
 
     virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const ;
 
-    virtual const char* getPassName() const {return "CrabLlvm";}
+    virtual llvm::StringRef getPassName() const {return "CrabLlvm";}
     /* end ModulePass API */
 
     variable_factory_t& get_var_factory() { return m_vfac; }

@@ -126,8 +126,7 @@ CrabLlvmDomain("crab-dom",
        clEnumValN (TERMS_ZONES, "rtz",
 		   "Reduced product of term-dis-int and zones."),
        clEnumValN (WRAPPED_INTERVALS, "w-int",
-		   "Wrapped interval domain"),       
-       clEnumValEnd),
+		   "Wrapped interval domain")),
        cl::init (INTERVALS));
 
 cl::opt<bool>
@@ -165,8 +164,7 @@ CrabSummDomain("crab-inter-sum-dom",
      clEnumValN (OPT_OCT_APRON, "oct",
 		 "Optimized octagons using Elina"),
      clEnumValN (TERMS_ZONES, "rtz",
-		 "Reduced product of term-dis-int and zones."),
-     clEnumValEnd),
+		 "Reduced product of term-dis-int and zones.")),
     cl::init (ZONES_SPLIT_DBM));
 
 cl::opt<enum tracked_precision>
@@ -175,8 +173,7 @@ CrabTrackLev("crab-track",
    cl::values
     (clEnumValN (NUM, "num", "Integer and Boolean registers only"),
      clEnumValN (PTR, "ptr", "num + pointer offsets"),
-     clEnumValN (ARR, "arr", "ptr + memory contents via array abstraction"),
-     clEnumValEnd),
+     clEnumValN (ARR, "arr", "ptr + memory contents via array abstraction")),
    cl::init (tracked_precision::NUM));
 
 
@@ -206,8 +203,7 @@ CrabCheck ("crab-check",
 	   cl::values(
 	       clEnumValN (NOCHECKS  , "none"  , "None"),
 	       clEnumValN (ASSERTION , "assert", "User assertions"),
-	       clEnumValN (NULLITY   , "null"  , "Null dereference"),
-	       clEnumValEnd),
+	       clEnumValN (NULLITY   , "null"  , "Null dereference")),
 	   cl::init (assert_check_kind_t::NOCHECKS));
 
 cl::opt<unsigned int>

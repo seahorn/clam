@@ -34,7 +34,7 @@ CRAB_MEMORY_OUT = 27
 CRAB_SEGFAULT = 28 ## unexpected segfaults
 #############################################################
 
-llvm_version = "3.8.0"
+llvm_version = "5.0"
 
 def isexec (fpath):
     if fpath == None: return False
@@ -411,15 +411,15 @@ def getClangVersion(clang):
 def getClang (is_plus_plus):
     cmd_name = None
     if is_plus_plus:
-        cmd_name = which (['clang++-mp-3.8', 'clang++-3.8', 'clang++'])
+        cmd_name = which (['clang++-mp-5.0', 'clang++-5.0', 'clang++'])
     else:
-        cmd_name = which (['clang-mp-3.8', 'clang-3.8', 'clang'])
+        cmd_name = which (['clang-mp-5.0', 'clang-5.0', 'clang'])
     if cmd_name is None:
         raise IOError ('clang was not found')
     return cmd_name
 
 def getOptLlvm ():
-    cmd_name = which (['seaopt', 'opt-mp-3.8', 'opt-3.8', 'opt'])
+    cmd_name = which (['seaopt', 'opt-mp-5.0', 'opt-5.0', 'opt'])
     if cmd_name is None: raise IOError ('neither seaopt nor opt where found')
     return cmd_name
 

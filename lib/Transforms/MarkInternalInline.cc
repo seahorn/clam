@@ -22,7 +22,7 @@ namespace crab_llvm {
       return true;
     }
 
-    virtual const char * getPassName() const {
+    virtual StringRef getPassName() const {
       return "Mark internal functions with AlwaysInline attribute";
     }
     

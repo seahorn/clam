@@ -2252,7 +2252,7 @@ namespace crab_llvm {
         // else 
         //   ps.push_back (I.getOperand (i));
 	ps.push_back (I.getOperand (i));
-        ts.push_back (*typeIt);
+        ts.push_back (typeIt.getIndexedType());
       }
 
       bool already_assigned = false;

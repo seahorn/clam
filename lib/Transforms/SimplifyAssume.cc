@@ -28,15 +28,14 @@ namespace crab_llvm
     {
       LLVMContext& ctx = M.getContext ();
       AttrBuilder B;
-      AttributeSet as = AttributeSet::get (ctx, 
-                                           AttributeSet::FunctionIndex,
-                                           B);
+      AttributeList as = AttributeList::get (ctx, 
+					     AttributeList::FunctionIndex,
+					     B);
       m_assumeFn = dyn_cast<Function>
           (M.getOrInsertFunction ("verifier.assume", 
                                   as,
                                   Type::getVoidTy (ctx),
-                                  Type::getInt1Ty (ctx),
-                                  NULL));
+                                  Type::getInt1Ty (ctx)));
       
       bool change=false;
       for (auto &f : M) 
@@ -82,7 +81,7 @@ namespace crab_llvm
       //AU.setPreservesAll ();
     }
 
-    virtual const char * getPassName() const {
+    virtual StringRef getPassName() const {
       return "Simplify assume instructions";
     }
     

@@ -44,8 +44,7 @@ InsertInvs("crab-add-invariants",
          clEnumValN (AFTER_LOAD, "after-load",
                      "Add invariants that hold after each load instruction"),
          clEnumValN (ALL, "all",
-                    "Add invariants at all above locations"),
-         clEnumValEnd),
+                    "Add invariants at all above locations")),
      cl::init (NONE));
             
 #define DEBUG_TYPE "crab-insert-invars"
@@ -268,15 +267,14 @@ namespace crab_llvm {
 
     LLVMContext& ctx = M.getContext ();
     AttrBuilder B;
-    AttributeSet as = AttributeSet::get (ctx, 
-                                         AttributeSet::FunctionIndex,
-                                         B);
+    AttributeList as = AttributeList::get (ctx, 
+					   AttributeList::FunctionIndex,
+					   B);
     m_assumeFn = dyn_cast<Function>
                        (M.getOrInsertFunction ("verifier.assume", 
                                                as,
                                                Type::getVoidTy (ctx),
-                                               Type::getInt1Ty (ctx),
-                                               NULL));
+                                               Type::getInt1Ty (ctx)));
     
     CallGraphWrapperPass *cgwp =getAnalysisIfAvailable<CallGraphWrapperPass>();
     if (CallGraph *cg = cgwp ? &cgwp->getCallGraph () : nullptr)

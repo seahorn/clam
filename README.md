@@ -7,7 +7,7 @@
 Crab-llvm is a static analyzer that computes inductive invariants for
 LLVM-based languages based on
 the [Crab](https://github.com/seahorn/crab) library. It currently
-supports LLVM 3.8.
+supports LLVM 5.0.
 
 # Installation #
 
@@ -130,7 +130,7 @@ command:
 
 **Important:** the first thing that `crabllvm.py` does is to compile
   the C program into LLVM bitcode by using Clang. Since Crab-llvm is
-  based on LLVM 3.8, the version of clang must be 3.8 as well. 
+  based on LLVM 5.0, the version of clang must be 5.0 as well. 
 
 
 If the above command succeeds, then the output should be something
