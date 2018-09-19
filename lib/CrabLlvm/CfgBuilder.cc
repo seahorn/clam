@@ -2236,29 +2236,11 @@ namespace crab_llvm {
       }
 
       // -- translation if symbolic GEP offset
-      // If here, we know that there is at least one non-zero,
-      // symbolic index.
-      SmallVector<const Value*, 4> ps;
-      SmallVector<const Type*, 4> ts;
-      gep_type_iterator typeIt = gep_type_begin (I);
-      for (unsigned i = 1; i < I.getNumOperands (); ++i, ++typeIt) {
-	// XXX we cannot strip zext/sext since we model now integer
-	// bitwidths.
-        // // strip zext/sext if there is one
-        // if (const ZExtInst *ze = dyn_cast<const ZExtInst> (I.getOperand (i)))
-        //   ps.push_back (ze->getOperand (0));
-        // else if(const SExtInst *se = dyn_cast<const SExtInst>(I.getOperand(i)))
-        //   ps.push_back (se->getOperand (0));
-        // else 
-        //   ps.push_back (I.getOperand (i));
-	ps.push_back (I.getOperand (i));
-        ts.push_back (typeIt.getIndexedType());
-      }
-
+      // If here, we know that there is at least one non-zero, symbolic index.
       bool already_assigned = false;
-      for (unsigned i = 0; i < ps.size (); ++i) {
-        if (const StructType *st = dyn_cast<const StructType> (ts [i])) {
-          if (const ConstantInt *ci = dyn_cast<const ConstantInt> (ps [i])) {
+      for(auto GTI = gep_type_begin(&I), GTE = gep_type_end(&I); GTI != GTE; ++GTI) {
+	if (const StructType *st = GTI.getStructTypeOrNull()) {
+	  if (const ConstantInt *ci = dyn_cast<const ConstantInt>(GTI.getOperand())) {
             number_t offset (fieldOffset (st, ci->getZExtValue ()));
 	    m_bb.ptr_assign (lhs->getVar(), (!already_assigned) ?
 			     ptr->getVar() : lhs->getVar(), offset);
@@ -2269,21 +2251,22 @@ namespace crab_llvm {
 		       crab::outs() << *lhs << ":=" << *lhs << "+" << offset << "\n";
 		     }); 
 	    already_assigned = true;
-          } else {
-            CRABLLVM_ERROR("GEP index expected only to be an integer",__FILE__, __LINE__);
+	  } else {
+            CRABLLVM_ERROR("GEP index expected only to be an integer",__FILE__, __LINE__); 
 	  }
-        }
-        else if (const SequentialType *seqt = dyn_cast<const SequentialType>(ts[i])) {
-          if (const ConstantInt *ci = dyn_cast<const ConstantInt> (ps [i])) {
+	} else {
+	  // otherwise we have a sequential type like an array or vector.
+	  // Multiply the index by the size of the indexed type.
+          if (const ConstantInt *ci = dyn_cast<const ConstantInt> (GTI.getOperand())) {
             if (ci->isZero ())
               continue;
           }
-	  crab_lit_ref_t idx = m_lfac.getLit(*ps[i]); 
+	  crab_lit_ref_t idx = m_lfac.getLit(*GTI.getOperand()); 
 	  if (!idx || !idx->isInt()){
 	    CRABLLVM_ERROR("unexpected GEP index",__FILE__, __LINE__);
 	  }
 	  lin_exp_t offset(m_lfac.getExp(idx) *
-			     number_t(storageSize(seqt->getElementType())));
+			   number_t(storageSize(GTI.getIndexedType())));
 	  m_bb.ptr_assign(lhs->getVar(), (!already_assigned) ?
 			  ptr->getVar() : lhs->getVar(), offset);
 	  CRAB_LOG("cfg-gep",
@@ -2293,7 +2276,7 @@ namespace crab_llvm {
 		     crab::outs() << *lhs << ":=" << *lhs << "+" << offset << "\n";
 		   }); 
 	  already_assigned = true;
-        }
+	}
       }
     }
 
