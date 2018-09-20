@@ -1,9 +1,9 @@
 // RUN: %crabllvm -O0 --inline --lower-unsigned-icmp --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck -l debug %s
-// CHECK: ^1  Number of total safe checks$
+// CHECK: ^0  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
 
-extern void __VERIFIER_error() __attribute__ ((__noreturn__));
+extern void __VERIFIER_error(void); __attribute__ ((__noreturn__));
 void __VERIFIER_assert(int cond) {
   if (!(cond)) {
     ERROR: __VERIFIER_error();
@@ -15,6 +15,9 @@ void __VERIFIER_assert(int cond) {
    The fact x is unsigned makes this program hard to verify because it
    requires non-trivial boolean reasoning due to the lowering of
    unsigned < operator and >= to signed operators.
+
+   LLVM 5.0: llvm_seahorn::createInstructionCombiningPass or GVN
+   passes can remove the assertion.
 **/
 
 int main(void) {
@@ -23,4 +26,5 @@ int main(void) {
     x++;
   }
   __VERIFIER_assert(x >= 0x0fffffff);
+  return 0;
 }
