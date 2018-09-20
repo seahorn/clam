@@ -98,20 +98,20 @@ std::string getFileName(const std::string &str) {
   return filename;
 }
 
-void break_allocas(llvm::legacy::PassManager &pass_manager) {
-    #ifdef HAVE_LLVM_SEAHORN
-    // -- can remove bitcast from bitcast(alloca(...))
-    pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
-    #endif     
-    pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
-    // -- break alloca's into scalars
-    pass_manager.add(llvm::createSROAPass());    
-    #ifdef HAVE_LLVM_SEAHORN
-    if (TurnUndefNondet) {
-      // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
-      pass_manager.add (llvm_seahorn::createNondetInitPass ());
-    }
-    #endif
+void breakAllocas(llvm::legacy::PassManager &pass_manager) {
+  #ifdef HAVE_LLVM_SEAHORN
+  // -- can remove bitcast from bitcast(alloca(...))
+  pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
+  #endif     
+  pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
+  // -- break alloca's into scalars
+  pass_manager.add(llvm::createSROAPass());    
+  #ifdef HAVE_LLVM_SEAHORN
+  if (TurnUndefNondet) {
+    // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
+    pass_manager.add (llvm_seahorn::createNondetInitPass ());
+  }
+  #endif
 }
 
 int main(int argc, char **argv) {
@@ -241,16 +241,7 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
   #endif 
   pass_manager.add (llvm::createCFGSimplificationPass ());
-  break_allocas(pass_manager);
-  // // -- break aggregates
-  // pass_manager.add(llvm::createSROAPass());
-  
-  // #ifdef HAVE_LLVM_SEAHORN
-  // if (TurnUndefNondet) {
-  //    // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
-  //    pass_manager.add (llvm_seahorn::createNondetInitPass ());
-  // }
-  // #endif
+  breakAllocas(pass_manager);
 
   // -- global value numbering and redundant load elimination
   pass_manager.add (llvm::createGVNPass());
@@ -286,8 +277,8 @@ int main(int argc, char **argv) {
     pass_manager.add (llvm::createGlobalDCEPass ()); // kill unused internal global
     // XXX: for svcomp ssh programs we need to run twice to break all
     // relevant allocas
-    break_allocas(pass_manager);
-    break_allocas(pass_manager);
+    breakAllocas(pass_manager);
+    breakAllocas(pass_manager);
   }
   
   pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
@@ -303,18 +294,17 @@ int main(int argc, char **argv) {
     #ifdef HAVE_LLVM_SEAHORN
     // induction variable
     pass_manager.add (llvm_seahorn::createIndVarSimplifyPass ());
-    #endif 
+    #endif
+    // trivial invariants outside loops 
+    pass_manager.add (llvm::createBasicAAWrapperPass());
+    pass_manager.add (llvm::createLICMPass()); //LICM needs alias analysis
+    pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
+    // dead loop elimination
+    pass_manager.add (llvm::createLoopDeletionPass());
+    // cleanup unnecessary blocks   
+    pass_manager.add (llvm::createCFGSimplificationPass ()); 
   }
-
-  // trivial invariants outside loops 
-  pass_manager.add (llvm::createBasicAAWrapperPass());
-  pass_manager.add (llvm::createLICMPass()); //LICM needs alias analysis
-  pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
-  // dead loop elimination
-  pass_manager.add (llvm::createLoopDeletionPass());
-  // cleanup unnecessary blocks   
-  pass_manager.add (llvm::createCFGSimplificationPass ()); 
-  
+    
   // -- ensure one single exit point per function
   pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
   pass_manager.add (llvm::createGlobalDCEPass ()); 
