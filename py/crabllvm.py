@@ -145,7 +145,7 @@ def parseArgs (argv):
 
     p = a.ArgumentParser(description='Abstract Interpretation-based Analyzer for LLVM bitecode',
                          formatter_class=RawTextHelpFormatter)
-    p.add_argument ('-oll', dest='asm_out_name', metavar='FILE',
+    p.add_argument ('-oll', '--oll', dest='asm_out_name', metavar='FILE',
                     help='Output analyzed bitecode')
     p.add_argument ('--log', dest='log', default=None,
                     metavar='STR', help='Log level')
