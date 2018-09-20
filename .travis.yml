@@ -1,5 +1,8 @@
 language: cpp
 cache: apt
+branches:
+  except:
+  - dev-llvm-5.0
 env:
   matrix:
      - os: linux

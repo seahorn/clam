@@ -471,6 +471,12 @@ def clang (in_name, out_name, arch=32, extra_args=[]):
                 " different from " + llvm_version
     
     clang_args = [clang_cmd, '-emit-llvm', '-o', out_name, '-c', in_name ]
+    
+    # New for clang 5.0: to avoid add optnone if -O0
+    # Otherwise, seaopt cannot optimize.
+    clang_args.append('-Xclang')
+    clang_args.append('-disable-O0-optnone')
+            
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
 

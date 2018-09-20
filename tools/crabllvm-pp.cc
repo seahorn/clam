@@ -18,7 +18,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 
 #include "crab_llvm/config.h"
@@ -89,23 +89,6 @@ TurnUndefNondet ("crab-turn-undef-nondet",
                  llvm::cl::desc ("Turn undefined behaviour into non-determinism"),
                  llvm::cl::init (false));
 
-static llvm::cl::opt<int>
-SROA_Threshold ("sroa-threshold",
-                llvm::cl::desc ("Threshold for ScalarReplAggregates pass"),
-                llvm::cl::init(INT_MAX));
-static llvm::cl::opt<int>
-SROA_StructMemThreshold ("sroa-struct",
-                llvm::cl::desc ("Structure threshold for ScalarReplAggregates"),
-                llvm::cl::init (INT_MAX));
-static llvm::cl::opt<int>
-SROA_ArrayElementThreshold ("sroa-array",
-                llvm::cl::desc ("Array threshold for ScalarReplAggregates"),
-                llvm::cl::init (INT_MAX));
-static llvm::cl::opt<int>
-SROA_ScalarLoadThreshold ("sroa-scalar-load",
-                llvm::cl::desc ("Scalar load threshold for ScalarReplAggregates"),
-                llvm::cl::init (-1));
-
 // removes extension from filename if there is one
 std::string getFileName(const std::string &str) {
   std::string filename = str;
@@ -122,12 +105,7 @@ void break_allocas(llvm::legacy::PassManager &pass_manager) {
     #endif     
     pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
     // -- break alloca's into scalars
-    pass_manager.add (llvm::createScalarReplAggregatesPass
-    		      (SROA_Threshold,
-    		       true,
-    		       SROA_StructMemThreshold,
-    		       SROA_ArrayElementThreshold,
-    		       SROA_ScalarLoadThreshold));
+    pass_manager.add(llvm::createSROAPass());    
     #ifdef HAVE_LLVM_SEAHORN
     if (TurnUndefNondet) {
       // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
@@ -141,13 +119,13 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv,
   "crabllvm-pp-- LLVM bitcode Pre-Processor for static analysis\n");
 
-  llvm::sys::PrintStackTraceOnErrorSignal();
+  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::PrettyStackTraceProgram PSTP(argc, argv);
   llvm::EnableDebugBuffering = true;
 
   std::error_code error_code;
   llvm::SMDiagnostic err;
-  llvm::LLVMContext &context = llvm::getGlobalContext();
+  static llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module;
   std::unique_ptr<llvm::tool_output_file> output;
   std::unique_ptr<llvm::tool_output_file> asmOutput;
@@ -198,16 +176,17 @@ int main(int argc, char **argv) {
   llvm::legacy::PassManager pass_manager;
   llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
   llvm::initializeAnalysis(Registry);
-  
+
   /// call graph and other IPA passes
-  //llvm::initializeIPA (Registry);
-  // XXX: porting to 3.8 
+  // llvm::initializeIPA (Registry);
+  // XXX: porting to 3.8
   llvm::initializeCallGraphWrapperPassPass(Registry);
-  llvm::initializeCallGraphPrinterPass(Registry);
+  // XXX: commented while porting to 5.0    
+  //llvm::initializeCallGraphPrinterPass(Registry);
   llvm::initializeCallGraphViewerPass(Registry);
   // XXX: not sure if needed anymore
-  llvm::initializeGlobalsAAWrapperPassPass(Registry);  
-    
+  llvm::initializeGlobalsAAWrapperPassPass(Registry);
+      
   // add an appropriate DataLayout instance for the module
   const llvm::DataLayout *dl = &module->getDataLayout ();
   if (!dl && !DefaultDataLayout.empty ())
@@ -223,8 +202,10 @@ int main(int argc, char **argv) {
 
   // -- turn all functions internal so that we can apply some global
   // -- optimizations inline them if requested
-  pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
-
+  auto PreserveMain = [=](const llvm::GlobalValue &GV) {
+    return GV.getName() == "main";
+  };    
+  pass_manager.add(llvm::createInternalizePass(PreserveMain));
   if (Devirtualize) {
     // -- resolve indirect calls
     pass_manager.add (crab_llvm::createDevirtualizeFunctionsPass ());
@@ -262,12 +243,7 @@ int main(int argc, char **argv) {
   pass_manager.add (llvm::createCFGSimplificationPass ());
   break_allocas(pass_manager);
   // // -- break aggregates
-  // pass_manager.add (llvm::createScalarReplAggregatesPass
-  // 		    (SROA_Threshold,
-  // 		     true,
-  // 		     SROA_StructMemThreshold,
-  // 		     SROA_ArrayElementThreshold,
-  // 		     SROA_ScalarLoadThreshold));
+  // pass_manager.add(llvm::createSROAPass());
   
   // #ifdef HAVE_LLVM_SEAHORN
   // if (TurnUndefNondet) {
@@ -299,7 +275,7 @@ int main(int argc, char **argv) {
   
   if (InlineAll) {
     pass_manager.add (crab_llvm::createMarkInternalInlinePass ());   
-    pass_manager.add (llvm::createAlwaysInlinerPass ());
+    pass_manager.add (llvm::createAlwaysInlinerLegacyPass ());
     // // after inlining we promote malloc to alloca instructions
     // pass_manager.add (crab_llvm::createPromoteMallocPass ());    
     // // kill unused internal global    
