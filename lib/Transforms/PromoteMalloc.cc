@@ -32,22 +32,19 @@ namespace crab_llvm {
       {
         if (!isa<CallInst> (&I)) continue;
 
-        Value *v = I.stripPointerCasts ();
-        CallSite CS (v);
-        
+        CallSite CS (&I);
         const Function *fn = CS.getCalledFunction ();
         if (!fn && CS.getCalledValue ())
           fn = dyn_cast<const Function> (CS.getCalledValue ()->stripPointerCasts ());
         
-        if (fn && fn->getName ().equals ("malloc"))
-        {
-
-	  unsigned addrSpace = 0;
-          Value *nv = new AllocaInst (v->getType ()->getPointerElementType (),
-                                      addrSpace, CS.getArgument (0), "malloc", &I);
-          v->replaceAllUsesWith (nv);
-          
-          changed = true;
+        if (fn && fn->getName ().equals ("malloc")) {
+	  if (PointerType *pty = dyn_cast<PointerType>(I.getType())) {
+	    unsigned addrSpace = 0;
+	    Value *nv = new AllocaInst(pty->getPointerElementType(),
+				       addrSpace, CS.getArgument(0), "malloc", &I);
+	    I.replaceAllUsesWith(nv);
+	    changed = true;
+	  }
         }
         else if (fn && fn->getName ().equals ("free"))
           kill.push_back (&I);

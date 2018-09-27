@@ -46,8 +46,7 @@ namespace crab_llvm {
       for (auto &I : boost::make_iterator_range(inst_begin (F), inst_end (F))) {
         if (!isa<CallInst> (&I)) continue;
 	
-        Value *v = I.stripPointerCasts ();
-        CallSite CS (v);
+        CallSite CS (&I);
         const Function *fn = CS.getCalledFunction ();
         if (!fn && CS.getCalledValue ()) {
           fn = dyn_cast<const Function> (CS.getCalledValue ()->stripPointerCasts ());
@@ -91,6 +90,7 @@ namespace crab_llvm {
 	I->eraseFromParent();
       }
 
+      errs () << F << "\n";
       return Changed;
     }
 
