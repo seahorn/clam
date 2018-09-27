@@ -313,6 +313,16 @@ namespace crab_llvm {
     bool change = false;
     for (auto &B : F) {
 
+      // -- if the block has an unreachable instruction we skip it.
+      bool skip_block = false;
+      for (auto &I: B) {
+	if (isa<UnreachableInst>(I)) {
+	  skip_block=true;
+	  break;
+	}
+      }
+      if (skip_block) continue;
+      
       if (InsertInvs == BLOCK_ENTRY || InsertInvs == ALL) {
         // --- Instrument basic block entry
         auto pre = crab->get_pre(&B, false /*remove shadows*/);
