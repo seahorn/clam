@@ -744,13 +744,14 @@ namespace crab_llvm {
     template<typename AbsDom>
     void wrapperPathAnalyze(const std::vector<llvm_basic_block_wrapper>& path,
 			    std::vector<crab::cfg::statement_wrapper>& core,
-			    bool populate_maps,
+			    bool layered_solving, bool populate_maps,
 			    invariant_map_t& post, invariant_map_t& pre, bool &res) {
       
       typedef path_analyzer<cfg_ref_t, AbsDom> path_analyzer_t;
       AbsDom init;
       path_analyzer_t path_analyzer(*m_cfg, init);
-      res = path_analyzer.solve(path, /*compute_preconditions=*/ populate_maps);
+      bool compute_preconditions = populate_maps;
+      res = path_analyzer.solve(path, layered_solving, compute_preconditions);
       if (populate_maps) {
 	for(auto n: path) {
 	  if (const llvm::BasicBlock* bb = n.get_basic_block()) {
@@ -797,7 +798,7 @@ namespace crab_llvm {
     struct path_analysis {
       std::function<void(const std::vector<llvm_basic_block_wrapper>&,
 			 std::vector<crab::cfg::statement_wrapper>&,
-			 bool, invariant_map_t&, invariant_map_t&,bool&)> analyze;
+			 bool, bool, invariant_map_t&, invariant_map_t&,bool&)> analyze;
       std::string name;
     };
     
@@ -920,6 +921,7 @@ namespace crab_llvm {
     
     bool pathAnalyze(const AnalysisParams& params,
 		     const std::vector<const llvm::BasicBlock*>& blocks,
+		     bool layered_solving, 
 		     std::vector<crab::cfg::statement_wrapper>& core,
 		     bool populate_maps, 
 		     invariant_map_t& post, invariant_map_t& pre) const {
@@ -941,11 +943,13 @@ namespace crab_llvm {
 
       bool res;
       if (path_analyses.count(params.dom)) {
-      	path_analyses.at(params.dom).analyze(path, core, populate_maps, post, pre, res);
+      	path_analyses.at(params.dom).analyze(path, core, layered_solving , populate_maps,
+					     post, pre, res);
       } else {
       	crab::outs() << "Warning: abstract domain not found or enabled.\n"
       		     << "Running " << path_analyses.at(INTERVALS).name << " ...\n";
-      	path_analyses.at(INTERVALS).analyze(path, core, populate_maps, post, pre, res);
+      	path_analyses.at(INTERVALS).analyze(path, core, layered_solving, populate_maps,
+					    post, pre, res);
 	
       }
       return res;
@@ -993,18 +997,22 @@ namespace crab_llvm {
   template<>
   bool IntraCrabLlvm::path_analyze(const AnalysisParams& params,
 				   const std::vector<const llvm::BasicBlock*>& path,
+				   bool layered_solving, 
 				   std::vector<crab::cfg::statement_wrapper>& core) const {
     invariant_map_t pre_conditions, post_conditions;
-    return m_impl->pathAnalyze(params, path, core, false, post_conditions, pre_conditions);
+    return m_impl->pathAnalyze(params, path, layered_solving, core, false,
+			       post_conditions, pre_conditions);
   }
 
   template<>
   bool IntraCrabLlvm::path_analyze(const AnalysisParams& params,
 				   const std::vector<const llvm::BasicBlock*>& path,
+				   bool layered_solving, 
 				   std::vector<crab::cfg::statement_wrapper>& core,
 				   invariant_map_t& post_conditions,
 				   invariant_map_t& pre_conditions) const {
-    return m_impl->pathAnalyze(params, path, core, true, post_conditions, pre_conditions);
+    return m_impl->pathAnalyze(params, path, layered_solving, core, true,
+			       post_conditions, pre_conditions);
   }
 
   wrapper_dom_ptr IntraCrabLlvm::get_pre(const llvm::BasicBlock *block,
