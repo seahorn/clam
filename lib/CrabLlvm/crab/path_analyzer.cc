@@ -10,8 +10,8 @@ namespace crab {
 namespace analyzer {
 
 template<typename CFG, typename AbsDom>
-path_analyzer<CFG,AbsDom>::path_analyzer(CFG cfg, AbsDom& init, bool ignore_assertions)
-  : m_cfg(cfg), m_fwd_abs_tr(&init, ignore_assertions) { }
+path_analyzer<CFG,AbsDom>::path_analyzer(CFG cfg, AbsDom init, bool ignore_assertions)
+  : m_cfg(cfg), m_init(init), m_ignore_assertions(ignore_assertions) { }
 
 template<typename CFG, typename AbsDom>  
 bool path_analyzer<CFG,AbsDom>::
@@ -21,10 +21,11 @@ solve_path(const std::vector<basic_block_label_t>& path,
 	   unsigned& bottom_pos) {
   
   bool bottom_found = false;
-  bottom_pos = path.size();  
-  AbsDom pre = m_fwd_abs_tr.inv();
+  bottom_pos = path.size();
   
-  for(unsigned i=0; i < path.size(); ++i) {
+  AbsDom pre(m_init);
+  fwd_abs_tr_t abs_tr(&pre);
+  for(unsigned i=0, e=path.size(); i < e; ++i) {
     if (pre.is_bottom()) {
       if (!bottom_found) {
 	bottom_pos = i; // update only the first time bottom is found
@@ -41,7 +42,6 @@ solve_path(const std::vector<basic_block_label_t>& path,
     }
 
     // compute strongest post-condition for one block
-    m_fwd_abs_tr.set (pre);
     auto &b = m_cfg.get_node (node);
     for (auto &s : b) {
       if (only_bool_reasoning) {
@@ -57,7 +57,7 @@ solve_path(const std::vector<basic_block_label_t>& path,
       // backward analysis. This step is optional. We don't use it
       // for now.
       // stmt_dom_map.insert(std::make_pair(&s, m_fwd_abs_tr.inv()));
-      s.accept (&m_fwd_abs_tr);
+      s.accept (&abs_tr);
     }
   }
   return bottom_found;
@@ -65,8 +65,8 @@ solve_path(const std::vector<basic_block_label_t>& path,
   
 template<typename CFG, typename AbsDom>  
 bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& path,
-				      bool compute_preconditions) {
-
+				      bool layered_solving, bool compute_preconditions) {
+  
   // Reset state
   m_fwd_dom_map.clear();
   m_bwd_dom_map.clear();
@@ -110,42 +110,42 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
   // Compute strongest post-condition over the path
   unsigned bottom_pos;
   stmt_to_dom_map_t stmt_dom_map;
-
-  #if 0
-  bool bottom_found = solve_path(path, false /*only_bool_reasoning*/,
-				 path_statements, bottom_pos);
-  #else
-  // -- Layered reasoning: we try first to solve the path by using
-  //    only boolean reasoning.  If it fails then we use the
-  //    corresponding abstract domain.
-  bool bottom_found = solve_path(path, true /*only_bool_reasoning*/,
-				 path_statements, bottom_pos);
-  
-  if (!bottom_found) {
-    // clear up m_fwd_dom_map before we solve again the path.
-    for(unsigned i=0, e=path.size(); i<e; ++i) {
-      basic_block_label_t node = path[i];
-      m_fwd_dom_map.erase(node);
-    }
+  bool bottom_found;
+  if (!layered_solving) {
     bottom_found = solve_path(path, false /*only_bool_reasoning*/,
 			      path_statements, bottom_pos);
-  } // else {
-  //   crab::outs() << "Crab proved infeasibility of the path using only boolean reasoning\n";
-  // }
-  #endif
+  } else {
+    // -- Layered reasoning: we try first to solve the path by using
+    //    only boolean reasoning.  If it fails then we use the
+    //    corresponding abstract domain.
+    bottom_found = solve_path(path, true /*only_bool_reasoning*/,
+			      path_statements, bottom_pos);
+  
+    if (!bottom_found) {
+      // clear up m_fwd_dom_map before we solve again the path.
+      for(unsigned i=0, e=path.size(); i<e; ++i) {
+	basic_block_label_t node = path[i];
+	m_fwd_dom_map.erase(node);
+      }
+      bottom_found = solve_path(path, false /*only_bool_reasoning*/,
+				path_statements, bottom_pos);
+    } // else {
+    //   crab::outs() << "Crab proved infeasibility of the path using only boolean reasoning\n";
+    // }
+  }
   
   if (bottom_found) {
     if (compute_preconditions) {
       // -- Compute pre-conditions starting from the block for which we
       //    inferred bottom.
       assert (bottom_pos < path.size());
-      AbsDom abs_val = AbsDom::top(); 
-      bwd_abs_tr_t bwd_abs_tr(&abs_val, stmt_dom_map, true);
+      AbsDom abs_val; 
+      bwd_abs_tr_t abs_tr(&abs_val, stmt_dom_map, true);
       for(int i=bottom_pos; i >= 0; --i) {
 	basic_block_label_t node = path[i];
 	auto &b = m_cfg.get_node (node);
 	for(auto &s: boost::make_iterator_range(b.rbegin(),b.rend())) {
-	  s.accept (&bwd_abs_tr);
+	  s.accept (&abs_tr);
 	}
 	auto it = m_bwd_dom_map.find (node);
 	if (it == m_bwd_dom_map.end()) {
@@ -302,13 +302,14 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path) {
     return;
   }
 
+  
   std::vector<bool> enabled(core.size(), true);
   for (unsigned i=0; i < core.size (); ++i) {
     AbsDom inv;
-    m_fwd_abs_tr.set (inv);
+    fwd_abs_tr_t abs_tr(&inv);    
     for(unsigned j=0; j < core.size(); ++j) {
       if (i != j && enabled[j]) {
-	core[j].m_s->accept (&m_fwd_abs_tr);
+	core[j].m_s->accept (&abs_tr);
 	if (inv.is_bottom()) {
 	  break;
 	}
@@ -330,10 +331,10 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path) {
   assert(!m_core.empty());
   if (false) { // disable by default
     AbsDom inv;
-    m_fwd_abs_tr.set (inv);    
+    fwd_abs_tr_t abs_tr(&inv);        
     bool is_bottom = false;
     for (unsigned i=0, e=m_core.size(); i<e; ++i) {
-      m_core[i].m_s->accept (&m_fwd_abs_tr);
+      m_core[i].m_s->accept (&abs_tr);
       if (inv.is_bottom()) {
 	is_bottom=true;
 	break;
