@@ -14,6 +14,56 @@ path_analyzer<CFG,AbsDom>::path_analyzer(CFG cfg, AbsDom& init, bool ignore_asse
   : m_cfg(cfg), m_fwd_abs_tr(&init, ignore_assertions) { }
 
 template<typename CFG, typename AbsDom>  
+bool path_analyzer<CFG,AbsDom>::
+solve_path(const std::vector<basic_block_label_t>& path,
+	   const bool only_bool_reasoning,
+	   std::vector<typename crab::cfg::statement_wrapper>& path_statements,
+	   unsigned& bottom_pos) {
+  
+  bool bottom_found = false;
+  bottom_pos = path.size();  
+  AbsDom pre = m_fwd_abs_tr.inv();
+  
+  for(unsigned i=0; i < path.size(); ++i) {
+    if (pre.is_bottom()) {
+      if (!bottom_found) {
+	bottom_pos = i; // update only the first time bottom is found
+      }
+      bottom_found = true;
+      break;
+    }
+
+    // store constraints that hold at the entry of the block
+    basic_block_label_t node = path[i];    
+    auto it = m_fwd_dom_map.find (node);
+    if (it == m_fwd_dom_map.end()) {
+      m_fwd_dom_map.insert(std::make_pair (node, pre));
+    }
+
+    // compute strongest post-condition for one block
+    m_fwd_abs_tr.set (pre);
+    auto &b = m_cfg.get_node (node);
+    for (auto &s : b) {
+      if (only_bool_reasoning) {
+	if (!(s.is_bool_bin_op() || s.is_bool_assign_cst() || s.is_bool_assign_var() ||
+	      s.is_bool_assume() || s.is_bool_assert()     || s.is_bool_select())) {
+	  continue;
+	}
+      }
+      if (!s.is_assert() && !s.is_ptr_assert() && !s.is_bool_assert()) {
+	path_statements.push_back(crab::cfg::statement_wrapper(&s, node));
+      }
+      // XXX: we can store forward constraints that might help the
+      // backward analysis. This step is optional. We don't use it
+      // for now.
+      // stmt_dom_map.insert(std::make_pair(&s, m_fwd_abs_tr.inv()));
+      s.accept (&m_fwd_abs_tr);
+    }
+  }
+  return bottom_found;
+}
+  
+template<typename CFG, typename AbsDom>  
 bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& path,
 				      bool compute_preconditions) {
 
@@ -26,12 +76,11 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
     CRAB_WARN("Empty path: do nothing\n");
     return true;
   }
-  
+    
+  #if 0
   // Sanity checks
   basic_block_label_t first = path.front();
-  basic_block_label_t last = path.back();
-  
-  #if 0
+  basic_block_label_t last = path.back();  
   if (m_cfg.entry() != first)
     CRAB_ERROR("First block of the path must be the entry block of the cfg");
   if (m_cfg.has_exit() && (m_cfg.exit() != last))
@@ -58,42 +107,33 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
   // contain all statements along the path until the end of the path
   // or bottom is found.
   std::vector<typename crab::cfg::statement_wrapper> path_statements;
-  bool bottom_found = false;
-  unsigned bottom_pos = path.size();
   // Compute strongest post-condition over the path
-  AbsDom pre = m_fwd_abs_tr.inv();
+  unsigned bottom_pos;
   stmt_to_dom_map_t stmt_dom_map;
-  for(unsigned i=0; i < path.size(); ++i) {
-    if (pre.is_bottom()) {
-      if (!bottom_found) {
-	bottom_pos = i; // update only the first time bottom is found
-      }
-      bottom_found = true;
-      break;
-    }
 
-    // store constraints that hold at the entry of the block
-    basic_block_label_t node = path[i];    
-    auto it = m_fwd_dom_map.find (node);
-    if (it == m_fwd_dom_map.end()) {
-      m_fwd_dom_map.insert(std::make_pair (node, pre));
+  #if 0
+  bool bottom_found = solve_path(path, false /*only_bool_reasoning*/,
+				 path_statements, bottom_pos);
+  #else
+  // -- Layered reasoning: we try first to solve the path by using
+  //    only boolean reasoning.  If it fails then we use the
+  //    corresponding abstract domain.
+  bool bottom_found = solve_path(path, true /*only_bool_reasoning*/,
+				 path_statements, bottom_pos);
+  
+  if (!bottom_found) {
+    // clear up m_fwd_dom_map before we solve again the path.
+    for(unsigned i=0, e=path.size(); i<e; ++i) {
+      basic_block_label_t node = path[i];
+      m_fwd_dom_map.erase(node);
     }
-
-    // compute strongest post-condition for one block
-    m_fwd_abs_tr.set (pre);
-    auto &b = m_cfg.get_node (node);
-    for (auto &s : b) {
-      if (!s.is_assert() && !s.is_ptr_assert() && !s.is_bool_assert()) {
-	path_statements.push_back(crab::cfg::statement_wrapper(&s, node));
-      }
-      // XXX: we can store forward constraints that might help the
-      // backward analysis. This step is optional. We don't use it
-      // for now.
-      // stmt_dom_map.insert(std::make_pair(&s, m_fwd_abs_tr.inv()));
-      s.accept (&m_fwd_abs_tr);
-    }
-  }
-
+    bottom_found = solve_path(path, false /*only_bool_reasoning*/,
+			      path_statements, bottom_pos);
+  } // else {
+  //   crab::outs() << "Crab proved infeasibility of the path using only boolean reasoning\n";
+  // }
+  #endif
+  
   if (bottom_found) {
     if (compute_preconditions) {
       // -- Compute pre-conditions starting from the block for which we
@@ -315,6 +355,7 @@ namespace analyzer {
 // explicit instantiations
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::num_domain_t>;
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::split_dbm_domain_t>;
+template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::boxes_domain_t>;
 #ifdef HAVE_ALL_DOMAINS  
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::term_int_domain_t>;
 #endif   
