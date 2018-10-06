@@ -138,6 +138,7 @@ namespace crab_llvm {
      typedef typename cfg_t::basic_block_t::lin_exp_t lin_exp_t;
      typedef typename cfg_t::basic_block_t::lin_cst_t lin_cst_t;
      typedef ikos::linear_constraint_system<number_t, varname_t> lin_cst_sys_t;
+     typedef ikos::disjunctive_linear_constraint_system<number_t, varname_t> disj_lin_cst_sys_t;
      typedef crab::pointer_constraint<var_t> ptr_cst_t;
 
 } // end namespace crab_llvm
