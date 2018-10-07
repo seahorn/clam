@@ -650,7 +650,14 @@ namespace crab_llvm {
 	post_cond = Dom::bottom();
       }
 
-      analyzer.run(basic_block_label_t(entry), Dom::top(), post_cond,
+      // We use as initial state an assumption if exists
+      Dom entry_dom = Dom::top();
+      auto it = crab_assumptions.find(entry);
+      if (it != crab_assumptions.end()) {
+	entry_dom = it->second;
+      }
+      
+      analyzer.run(basic_block_label_t(entry), entry_dom, post_cond,
 		   !params.run_backward, crab_assumptions, live,
 		   params.widening_delay, params.narrowing_iters, params.widening_jumpset);
       CRAB_VERBOSE_IF(1, get_crab_os() << "Finished intra-procedural analysis.\n"); 
