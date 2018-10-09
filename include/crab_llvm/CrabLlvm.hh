@@ -187,12 +187,16 @@ namespace crab_llvm {
     template<typename Statement>
     bool path_analyze(const AnalysisParams& params,
 		      const std::vector<const llvm::BasicBlock*>& path,
+		      /* use gradually more expensive domains until unsat is proven*/
+		      bool layered_solving,
 		      std::vector<Statement>& core,
 		      invariant_map_t& post, invariant_map_t& pre) const;
     
     template<typename Statement>
     bool path_analyze(const AnalysisParams& params,
 		      const std::vector<const llvm::BasicBlock*>& path,
+		      /* use gradually more expensive domains until unsat is proven*/
+		      bool layered_solving,
 		      std::vector<Statement>& core) const;
 
     /**

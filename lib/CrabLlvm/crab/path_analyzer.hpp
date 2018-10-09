@@ -24,7 +24,7 @@ namespace analyzer {
     
   public:
     // precondition: cfg is well typed.      
-    path_analyzer (CFG cfg, AbsDom& init, bool ignore_assertions = true);
+    path_analyzer (CFG cfg, AbsDom init, bool ignore_assertions = true);
     
     /* Return true iff the forward analysis of path is not bottom. 
      * 
@@ -39,7 +39,10 @@ namespace analyzer {
      *   still implies false.
      */
     bool solve(const std::vector<basic_block_label_t>& path,
-	       bool compute_preconditions = true);
+	       // it first try boolean reasoning before resorting to
+	       // abstract domain AbsDom.
+	       bool layered_solving,
+	       bool compute_preconditions);
     
     abs_dom_t get_fwd_constraints(basic_block_label_t b) const {
       auto it = m_fwd_dom_map.find(b);
@@ -73,12 +76,24 @@ namespace analyzer {
     bool has_kid(basic_block_label_t b1, basic_block_label_t b2);
     void minimize_path(const std::vector<crab::cfg::statement_wrapper>& path);
     bool remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& path);
-    
+    bool solve_path(const std::vector<basic_block_label_t>& path,
+		    const bool only_bool_reasoning,
+		    std::vector<typename crab::cfg::statement_wrapper>& stmts,
+		    unsigned& bottom_pos);
+
+    // the cfg from which all paths are originated
     CFG m_cfg;
-    fwd_abs_tr_t m_fwd_abs_tr;
+    // tell the forward abstract transformer to start with init
+    abs_dom_t m_init;
+    // tell the forward abstract transformer to ignore assertions
+    bool m_ignore_assertions;
+    // map from basic blocks to postconditions
     bb_to_dom_map_t m_fwd_dom_map;
-    // populated only if solver return false
+    // map from basic blocks to preconditions.
+    // (Populated only if solver return false (i.e., bottom))
     bb_to_dom_map_t m_bwd_dom_map;
+    // minimal subset of statements that explains path unsatisfiability
+    // (only if solver return false (i.e., bottom)
     std::vector<crab::cfg::statement_wrapper> m_core;
   }; 
   
