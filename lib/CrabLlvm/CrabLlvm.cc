@@ -117,6 +117,8 @@ CrabLlvmDomain("crab-dom",
 		   "Disjunctive Intervals with uninterpreted functions."),
        clEnumValN (BOXES, "boxes",
 		   "Disjunctive intervals based on ldds"),
+       clEnumValN (MDD_BOXES, "mdd-boxes",
+		   "Disjunctive intervals based on mdds"),
        clEnumValN (ZONES_SPLIT_DBM, "zones",
 		   "Zones domain with Sparse DBMs in Split Normal Form"),
        clEnumValN (OPT_OCT_APRON, "oct",
@@ -555,6 +557,7 @@ namespace crab_llvm {
     case INTERVALS:             return interval_domain_t::getDomainName();
     case INTERVALS_CONGRUENCES: return ric_domain_t::getDomainName();
     case BOXES:                 return boxes_domain_t::getDomainName();
+    case MDD_BOXES:             return mdd_boxes_domain_t::getDomainName();      
     case DIS_INTERVALS:         return dis_interval_domain_t::getDomainName();
     case ZONES_SPLIT_DBM:       return split_dbm_domain_t::getDomainName();
     case TERMS_DIS_INTERVALS:   return term_dis_int_domain_t::getDomainName();
@@ -678,10 +681,15 @@ namespace crab_llvm {
 	  update(results.postmap, *B,  mkGenericAbsDomWrapper(post));	
 	  if (params.stats) {
 	    unsigned num_block_invars = 0;
-	    // TODO CRAB: for boxes we would like to use
-	    // to_disjunctive_linear_constraint_system() but it needs to
-	    // be exposed to all domains
+	    #if 0
+	    // expensive operation with boxes
+	    auto const& disj_csts = pre.to_disjunctive_linear_constraint_system();
+	    for (auto const& csts: disj_csts) {
+	      num_block_invars += csts.size();
+	    }
+	    #else
 	    num_block_invars += pre.to_linear_constraint_system().size();
+	    #endif 
 	    num_invars += num_block_invars;
 	    if (num_block_invars > 0) num_nontrivial_blocks++;
 	  }
@@ -820,6 +828,7 @@ namespace crab_llvm {
       , { WRAPPED_INTERVALS     , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<wrapped_interval_domain_t>), "wrapped intervals" }}
       , { ZONES_SPLIT_DBM       , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<split_dbm_domain_t>), "zones" }}
       , { BOXES                 , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<boxes_domain_t>), "boxes" }}
+      , { MDD_BOXES             , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<mdd_boxes_domain_t>), "mdd-boxes" }}      
       , { OPT_OCT_APRON         , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<opt_oct_apron_domain_t>), "elina octagons" }}
       , { PK_APRON              , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<pk_apron_domain_t>), "apron pk" }}
       , { TERMS_ZONES           , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<num_domain_t>), "terms with zones" }}

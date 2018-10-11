@@ -9,6 +9,7 @@
 //#include "crab/domains/sparse_dbm.hpp"
 #include "crab/domains/split_dbm.hpp"
 #include "crab/domains/boxes.hpp"
+#include "crab/domains/mdd_boxes.hpp"
 #include "crab/domains/apron_domains.hpp"
 #include "crab/domains/array_smashing.hpp"
 #include "crab/domains/term_equiv.hpp"
@@ -60,10 +61,12 @@ namespace crab_llvm {
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
   typedef SDBM_impl::DefaultParams<number_t> SplitDBMGraph;
   typedef SplitDBM<number_t, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
-  /// -- Boxes
+  /// -- Boxes using ldds
   typedef boxes_domain<number_t, varname_t> BASE(boxes_domain_t);
   // typedef diff_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>,
   // 		         boxes_domain<number_t, varname_t> > BASE(boxes_domain_t);
+  /// -- Boxes using mdds
+  typedef mdd_boxes_domain<number_t, varname_t> BASE(mdd_boxes_domain_t);  
   /// -- DisIntervals
   typedef dis_interval_domain <number_t, varname_t> BASE(dis_interval_domain_t);
   /// -- Elina/Apron domains
@@ -100,6 +103,7 @@ namespace crab_llvm {
   // Boxes can reason natively about booleans so that's why we don't
   // combine it with a boolean domain.
   ARRAY_NUM(boxes_domain_t);
+  ARRAY_NUM(mdd_boxes_domain_t);  
   /* domains that preserve machine arithmetic semantics */
   ARRAY_BOOL_NUM(wrapped_interval_domain_t);
   

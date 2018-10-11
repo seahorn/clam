@@ -231,6 +231,7 @@ def parseArgs (argv):
                           "- dis-int: disjunctive intervals based on Clousot's DisInt domain\n"
                           "- term-dis-int: dis-int with uninterpreted functions\n"
                           "- boxes: disjunctive intervals based on LDDs\n"
+                          "- mdd-boxes: disjunctive intervals based on MDDs\n" 
                           "- zones: zones domain using sparse DBM in Split Normal Form\n"
                           "- oct: Elina's optimized octagon domain\n"
                           "- pk: Apron's polka domain\n"
@@ -240,7 +241,7 @@ def parseArgs (argv):
                           "- w-oct: wrapped octagons\n"
                           "- w-pk: wrapped octagons\n",
                     choices=['int', 'ric', 'term-int',
-                             'dis-int', 'term-dis-int', 'boxes',  
+                             'dis-int', 'term-dis-int', 'boxes', 'mdd-boxes', 
                              'zones', 'oct', 'pk', 'rtz',
                              'w-int', 'w-zones', 'w-oct', 'w-pk'],
                     dest='crab_dom', default='zones')

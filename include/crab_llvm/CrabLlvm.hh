@@ -33,6 +33,7 @@ namespace crab_llvm {
      {   INTERVALS
        , INTERVALS_CONGRUENCES
        , BOXES
+       , MDD_BOXES
        , DIS_INTERVALS
        /*, ZONES_SPARSE_DBM*/
        , ZONES_SPLIT_DBM

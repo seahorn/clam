@@ -34,6 +34,7 @@ namespace llvm {
   //DUMP_TO_LLVM_STREAM(crab_llvm::dbm_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::split_dbm_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::boxes_domain_t)
+  DUMP_TO_LLVM_STREAM(crab_llvm::mdd_boxes_domain_t)  
   DUMP_TO_LLVM_STREAM(crab_llvm::dis_interval_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::num_domain_t)
 
@@ -138,7 +139,7 @@ namespace crab_llvm {
     typedef enum { intv, /*dbm,*/ split_dbm, 
 		   term_intv, term_dis_intv, 
 		   ric, 
-		   boxes, dis_intv,
+		   boxes, mdd_boxes, dis_intv,
 		   opt_oct_apron, pk_apron,
 		   num,
 		   w_intv, w_split_dbm, w_opt_oct_apron, w_pk_apron} id_t;
@@ -191,6 +192,7 @@ namespace crab_llvm {
    DEFINE_WRAPPER(TermIntDomainWrapper,term_int_domain_t,term_intv)
    DEFINE_WRAPPER(TermDisIntDomainWrapper,term_dis_int_domain_t,term_dis_intv)
    DEFINE_WRAPPER(BoxesDomainWrapper,boxes_domain_t,boxes)
+   DEFINE_WRAPPER(MddBoxesDomainWrapper,mdd_boxes_domain_t,mdd_boxes)   
    DEFINE_WRAPPER(DisIntervalDomainWrapper,dis_interval_domain_t,dis_intv)
    DEFINE_WRAPPER(OptOctApronDomainWrapper,opt_oct_apron_domain_t,opt_oct_apron)
    DEFINE_WRAPPER(PkApronDomainWrapper,pk_apron_domain_t,pk_apron)
