@@ -68,7 +68,7 @@ CrabPrintSumm ("crab-print-summaries",
 
 cl::opt<bool>
 CrabPrintPreCond ("crab-print-preconditions", 
-               cl::desc ("Print Crab necessary preconditions"),
+               cl::desc ("Print Crab necessary preconditions (experimental)"),
                cl::init (false));
 
 cl::opt<bool>
@@ -82,9 +82,9 @@ CrabStats ("crab-stats",
            cl::init (false));
 
 cl::opt<bool>
-CrabPrintAssumptions ("crab-print-unjustified-assumptions", 
-       cl::desc ("Print unjustified assumptions done by Crab (for now only integer overflow)"),
-       cl::init (false));
+CrabPrintUnjustifiedAssumptions ("crab-print-unjustified-assumptions", 
+cl::desc ("Print unjustified assumptions done by Crab (experimental: only integer overflow)"),
+cl::init (false));
 
 cl::opt<unsigned int>
 CrabWideningDelay("crab-widening-delay", 
@@ -416,17 +416,21 @@ namespace crab_llvm {
     };
 
     /** Annotation for unjustified assumptions done by the analysis **/
-    class assumption_annotation: public block_annotation {
+    class unjust_assumption_annotation: public block_annotation {
     private:
       typedef typename assumption_analysis<cfg_ref_t>::assumption_ptr assumption_ptr;
-      typedef assumption_analysis<cfg_ref_t> assumption_analysis_t;
+      
+    public:
+      typedef assumption_analysis<cfg_ref_t> unjust_assumption_analysis_t;
+      
+    private:
       typedef typename cfg_ref_t::statement_t statement_t;
       
       cfg_ref_t m_cfg;
-      assumption_analysis_t *m_analyzer;
+      unjust_assumption_analysis_t *m_analyzer;
       
     public:
-      assumption_annotation (cfg_ref_t cfg, assumption_analysis_t *analyzer)
+      unjust_assumption_annotation (cfg_ref_t cfg, unjust_assumption_analysis_t *analyzer)
 	: block_annotation(), m_cfg(cfg), m_analyzer(analyzer) { }
       
       std::string name() const { return "UNJUSTIFIED ASSUMPTIONS";}
@@ -692,12 +696,12 @@ namespace crab_llvm {
       // -- print all cfg annotations (if any)
       if (params.print_invars ||
 	  (params.print_preconds && params.run_backward) ||
-	  params.print_assumptions) {
+	  params.print_unjustified_assumptions) {
 
 	typedef pretty_printer_impl::block_annotation block_annotation_t;
 	typedef pretty_printer_impl::invariant_annotation inv_annotation_t;
 	typedef pretty_printer_impl::nec_precondition_annotation<intra_analyzer_t> pre_annotation_t;
-	typedef pretty_printer_impl::assumption_annotation assume_annotation_t;
+	typedef pretty_printer_impl::unjust_assumption_annotation unjust_assume_annotation_t;
 	std::vector<std::unique_ptr<block_annotation_t>> pool_annotations;
 	
 	llvm::outs() << "\n" << "function " << m_fun.getName() << "\n";
@@ -713,16 +717,16 @@ namespace crab_llvm {
 
 	// XXX: it must be alive when print_annotations is called.
 	#if 0
-	assumption_naive_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
+	assumption_naive_analysis<cfg_ref_t> unjust_assumption_analyzer(*m_cfg);
 	#else
-	assumption_dataflow_analysis<cfg_ref_t> assumption_analyzer(*m_cfg);
+	assumption_dataflow_analysis<cfg_ref_t> unjust_assumption_analyzer(*m_cfg);
 	#endif 
 	
-	if (params.print_assumptions) {
+	if (params.print_unjustified_assumptions) {
 	  // -- run first the analysis
-	  assumption_analyzer.exec();
+	  unjust_assumption_analyzer.exec();
 	  pool_annotations.emplace_back(
-	       make_unique<assume_annotation_t>(*m_cfg, &assumption_analyzer));
+	       make_unique<unjust_assume_annotation_t>(*m_cfg, &unjust_assumption_analyzer));
 	}
 
 	pretty_printer_impl::print_annotations(*m_cfg, pool_annotations);
@@ -1391,7 +1395,7 @@ namespace crab_llvm {
     m_params.stats = CrabStats;
     m_params.print_invars = CrabPrintAns;
     m_params.print_preconds = CrabPrintPreCond;
-    m_params.print_assumptions = CrabPrintAssumptions;
+    m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
     m_params.print_summaries = CrabPrintSumm;
     m_params.store_invariants = CrabStoreInvariants;
     m_params.keep_shadow_vars = CrabKeepShadows;
