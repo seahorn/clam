@@ -80,34 +80,41 @@ namespace crab_llvm {
      id_t m_id;                                                      \
      ABS_DOM m_abs;                                                  \
     public:                                                          \
-     id_t getId () const { return m_id;}                             \
-       								     \
-     WRAPPER (ABS_DOM abs, id_t id):                                 \
-       GenericAbsDomWrapper(), m_id(id), m_abs(abs) { }		     \
-  								     \
-     WRAPPER (ABS_DOM abs):                                          \
-       GenericAbsDomWrapper(), m_id (ID), m_abs (abs) { }	     \
-                                                                     \
-     GenericAbsDomWrapperPtr clone() const {                         \
-       auto res = boost::make_shared<WRAPPER>(m_abs, m_id); 	     \
-       return res;                                                   \
-     }                                                               \
-                                                                     \
-     ABS_DOM& get() { return m_abs; }                                \
-                                                                     \
-     lin_cst_sys_t to_linear_constraints() {			     \
-       return m_abs.to_linear_constraint_system();                   \
-     }                                                               \
-                                                                     \
-     void write (crab::crab_os& o) {                                 \
-       m_abs.write (o);                                              \
-     }                                                               \
-                                                                     \
-     void forget (const std::vector<var_t>& vars) {		     \
-       crab::domains::domain_traits<ABS_DOM>::forget (m_abs,         \
-                                                      vars.begin (), \
-                                                      vars.end ());  \
-     }                                                               \
+    id_t getId() const { return m_id;}				     \
+    								     \
+    WRAPPER(ABS_DOM abs, id_t id):				     \
+      GenericAbsDomWrapper(), m_id(id), m_abs(abs) { }		     \
+    								     \
+    WRAPPER(ABS_DOM abs):					     \
+      GenericAbsDomWrapper(), m_id (ID), m_abs (abs) { }	     \
+    								     \
+    GenericAbsDomWrapperPtr clone() const {			     \
+      auto res = boost::make_shared<WRAPPER>(m_abs, m_id); 	     \
+      return res;						     \
+    }								     \
+    								     \
+    ABS_DOM& get() { return m_abs; }				     \
+    								     \
+    lin_cst_sys_t to_linear_constraints() {			     \
+      return m_abs.to_linear_constraint_system();		     \
+    }								     \
+    								     \
+    void write(crab::crab_os& o) {				     \
+      m_abs.write (o);						     \
+    }								     \
+    								     \
+    void forget(const std::vector<var_t>& vars) {		     \
+      crab::domains::domain_traits<ABS_DOM>::forget(m_abs,	     \
+						    vars.begin(),    \
+						    vars.end());     \
+    }								     \
+    								     \
+    void project(const std::vector<var_t>& vars) {		     \
+       crab::domains::domain_traits<ABS_DOM>::project(m_abs,         \
+                                                      vars.begin(),  \
+                                                      vars.end());   \
+    }								     \
+    								     \
    };                                                                \
                                                                      \
    template <> inline GenericAbsDomWrapperPtr                        \
@@ -157,6 +164,8 @@ namespace crab_llvm {
     virtual lin_cst_sys_t to_linear_constraints() = 0;
     
     virtual void forget(const std::vector<var_t>& vars) = 0;
+    
+    virtual void project(const std::vector<var_t>& vars) = 0;    
    };
   
    typedef GenericAbsDomWrapper::GenericAbsDomWrapperPtr GenericAbsDomWrapperPtr;
