@@ -260,9 +260,9 @@ def parseArgs (argv):
     p.add_argument ('--crab-track',
                     help='Track integers, pointer offsets, and memory contents',
                     choices=['num', 'ptr', 'arr'], dest='track', default='num')
-    p.add_argument ('--crab-bool-as-int',
-                    help='Boolean variables are treated as integers',
-                    dest='crab_disable_bool', default=False, action='store_true')        
+    # p.add_argument ('--crab-bool-as-int',
+    #                 help='Boolean variables are treated as integers',
+    #                 dest='crab_disable_bool', default=False, action='store_true')        
     p.add_argument ('--crab-disable-ptr',
                     help='Track memory contents but ignoring pointer offsets',
                     dest='crab_disable_ptr', default=False, action='store_true')    
@@ -579,7 +579,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     crabllvm_cmd.append ('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
     crabllvm_cmd.append ('--crab-relational-threshold={0}'.format(args.num_threshold))
     crabllvm_cmd.append ('--crab-track={0}'.format(args.track))
-    if args.crab_disable_bool: crabllvm_cmd.append ('--crab-bool-as-int')    
+    #if args.crab_disable_bool: crabllvm_cmd.append ('--crab-bool-as-int')    
     if args.crab_disable_ptr: crabllvm_cmd.append ('--crab-disable-ptr')
     if args.crab_singleton_aliases: crabllvm_cmd.append ('--crab-singleton-aliases')
     if args.crab_inter: crabllvm_cmd.append ('--crab-inter')
@@ -595,8 +595,12 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.print_cfg: crabllvm_cmd.append ('--crab-print-cfg')
     if args.print_stats: crabllvm_cmd.append ('--crab-stats')
     if args.print_assumptions: crabllvm_cmd.append ('--crab-print-unjustified-assumptions')
-    if args.crab_disable_warnings: crabllvm_cmd.append('--crab-disable-warnings')
-
+    if args.crab_disable_warnings:
+        ## crab-llvm warning messages
+        crabllvm_cmd.append('--crab-disable-warnings')
+        ## crab warning messages
+        crabllvm_cmd.append('--crab-enable-warnings={0}'.format('false'))
+                            
     # hidden options
     if args.crab_dsa_unknown: crabllvm_cmd.append ('--crab-dsa-disambiguate-unknown')
     if args.crab_dsa_ptr_cast: crabllvm_cmd.append ('--crab-dsa-disambiguate-ptr-cast')
