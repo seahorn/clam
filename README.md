@@ -237,7 +237,7 @@ option `--crab-dom=VAL`. The possible values of `VAL` are:
 - `ric`: reduced product of `int` and congruences
 - `term-int`: `int` with uninterpreted functions
 - `zones`: zones domain using sparse DBM in split normal form
-- `oct`: Elina's optimized octagon domains (only if `-DUSE_APRON=ON`)
+- `oct`: Apron's octagon domains (only if `-DUSE_APRON=ON`)
 - `pk`: Apron's polka domain (only if `-DUSE_APRON=ON`)
 - `boxes`: disjunctive intervals based on LDDs (only if `-DUSE_LDD=ON`)
 - `dis-int`: disjunctive intervals based on Clousot's DisInt domain

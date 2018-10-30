@@ -119,14 +119,11 @@ CrabLlvmDomain("crab-dom",
 		   "Disjunctive intervals based on ldds"),
        clEnumValN (ZONES_SPLIT_DBM, "zones",
 		   "Zones domain with Sparse DBMs in Split Normal Form"),
-       clEnumValN (OPT_OCT_APRON, "oct",
-		   "Optimized octagons domain using Elina"),
-       clEnumValN (PK_APRON, "pk",
-		   "Polyhedra domain using Apron library"),
+       clEnumValN (OCT, "oct", "Octagons domain"),
+       clEnumValN (PK, "pk", "Polyhedra domain"),
        clEnumValN (TERMS_ZONES, "rtz",
 		   "Reduced product of term-dis-int and zones."),
-       clEnumValN (WRAPPED_INTERVALS, "w-int",
-		   "Wrapped interval domain"),       
+       clEnumValN (WRAPPED_INTERVALS, "w-int", "Wrapped interval domain"),       
        clEnumValEnd),
        cl::init (INTERVALS));
 
@@ -162,8 +159,7 @@ CrabSummDomain("crab-inter-sum-dom",
     cl::values 
     (clEnumValN (ZONES_SPLIT_DBM, "zones",
 		 "Zones domain with sparse DBMs in Split Normal Form"),
-     clEnumValN (OPT_OCT_APRON, "oct",
-		 "Optimized octagons using Elina"),
+     clEnumValN (OCT, "oct", "Octagons domain"),
      clEnumValN (TERMS_ZONES, "rtz",
 		 "Reduced product of term-dis-int and zones."),
      clEnumValEnd),
@@ -269,8 +265,8 @@ namespace crab_llvm {
   /** End global counters **/
   
   static bool isRelationalDomain(CrabDomain dom) {
-    return (dom == ZONES_SPLIT_DBM || dom == OPT_OCT_APRON ||
-	    dom == PK_APRON        || dom == TERMS_ZONES);
+    return (dom == ZONES_SPLIT_DBM || dom == OCT ||
+	    dom == PK || dom == TERMS_ZONES);
   }
 
   static bool isTrackable(const Function &fun) {
@@ -563,8 +559,8 @@ namespace crab_llvm {
     case ZONES_SPLIT_DBM:       return split_dbm_domain_t::getDomainName();
     case TERMS_DIS_INTERVALS:   return term_dis_int_domain_t::getDomainName();
     case TERMS_ZONES:           return num_domain_t::getDomainName();
-    case OPT_OCT_APRON:         return opt_oct_apron_domain_t::getDomainName();
-    case PK_APRON:              return pk_apron_domain_t::getDomainName();
+    case OCT:                   return oct_domain_t::getDomainName();
+    case PK:                    return pk_domain_t::getDomainName();
     case WRAPPED_INTERVALS:     return wrapped_interval_domain_t::getDomainName();
     default:                    return "none";
     }
@@ -824,8 +820,8 @@ namespace crab_llvm {
       , { WRAPPED_INTERVALS     , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<wrapped_interval_domain_t>), "wrapped intervals" }}
       , { ZONES_SPLIT_DBM       , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<split_dbm_domain_t>), "zones" }}
       , { BOXES                 , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<boxes_domain_t>), "boxes" }}
-      , { OPT_OCT_APRON         , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<opt_oct_apron_domain_t>), "elina octagons" }}
-      , { PK_APRON              , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<pk_apron_domain_t>), "apron pk" }}
+      , { OCT                   , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<oct_domain_t>), "octagons" }}
+      , { PK                    , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<pk_domain_t>), "polyhedra" }}
       , { TERMS_ZONES           , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<num_domain_t>), "terms with zones" }}
       , { TERMS_DIS_INTERVALS   , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<term_dis_int_domain_t>), "terms with disjunctive intervals" }}
     };
@@ -1169,31 +1165,31 @@ namespace crab_llvm {
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, split_dbm_domain_t>), "bottom-up:zones, top-down:zones" }}
       , {{ZONES_SPLIT_DBM, BOXES},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, boxes_domain_t>), "bottom-up:zones, top-down:boxes" }}
-      , {{ZONES_SPLIT_DBM, OPT_OCT_APRON},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, opt_oct_apron_domain_t>), "bottom-up:zones, top-down:elina oct" }}
-      , {{ZONES_SPLIT_DBM, PK_APRON},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, pk_apron_domain_t>), "bottom-up:zones, top-down:apron pk" }}
+      , {{ZONES_SPLIT_DBM, OCT},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, oct_domain_t>), "bottom-up:zones, top-down:oct" }}
+      , {{ZONES_SPLIT_DBM, PK},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, pk_domain_t>), "bottom-up:zones, top-down:pk" }}
       , {{ZONES_SPLIT_DBM, TERMS_ZONES},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, num_domain_t>), "bottom-up:zones, top-down:terms+zones" }}
       , {{ZONES_SPLIT_DBM, TERMS_DIS_INTERVALS},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, term_dis_int_domain_t>), "bottom-up:zones, top-down:terms+dis_intervals" }}
       //////////////////////////////////////////////////////
-      , {{OPT_OCT_APRON, INTERVALS},
-	 { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, interval_domain_t>), "bottom-up:elina oct, top-down:intervals" }}
-      , {{OPT_OCT_APRON, WRAPPED_INTERVALS},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, wrapped_interval_domain_t>), "bottom-up:elina oct, top-down:wrapped intervals" }}
-      , {{OPT_OCT_APRON, ZONES_SPLIT_DBM},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, split_dbm_domain_t>), "bottom-up:elina oct, top-down:zones" }}
-      , {{OPT_OCT_APRON, BOXES},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, boxes_domain_t>), "bottom-up:elina oct, top-down:boxes" }}
-      , {{OPT_OCT_APRON, OPT_OCT_APRON},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, opt_oct_apron_domain_t>), "bottom-up:elina oct, top-down:elina oct" }}
-      , {{OPT_OCT_APRON, PK_APRON},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, pk_apron_domain_t>), "bottom-up:elina oct, top-down:apron pk" }}
-      , {{OPT_OCT_APRON, TERMS_ZONES},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, num_domain_t>), "bottom-up:elina oct, top-down:terms+zones" }}
-      , {{OPT_OCT_APRON, TERMS_DIS_INTERVALS},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<opt_oct_apron_domain_t, term_dis_int_domain_t>), "bottom-up:elina oct, top-down:terms+dis_intervals" }}
+      , {{OCT, INTERVALS},
+	 { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, interval_domain_t>), "bottom-up:oct, top-down:intervals" }}
+      , {{OCT, WRAPPED_INTERVALS},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, wrapped_interval_domain_t>), "bottom-up:oct, top-down:wrapped intervals" }}
+      , {{OCT, ZONES_SPLIT_DBM},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, split_dbm_domain_t>), "bottom-up:oct, top-down:zones" }}
+      , {{OCT, BOXES},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, boxes_domain_t>), "bottom-up:oct, top-down:boxes" }}
+      , {{OCT, OCT},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, oct_domain_t>), "bottom-up:oct, top-down:oct" }}
+      , {{OCT, PK},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, pk_domain_t>), "bottom-up:oct, top-down:pk" }}
+      , {{OCT, TERMS_ZONES},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, num_domain_t>), "bottom-up:oct, top-down:terms+zones" }}
+      , {{OCT, TERMS_DIS_INTERVALS},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, term_dis_int_domain_t>), "bottom-up:oct, top-down:terms+dis_intervals" }}
     };
     
   public:

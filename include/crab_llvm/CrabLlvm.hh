@@ -42,8 +42,8 @@ namespace crab_llvm {
        , TERMS_ZONES 
          //(#live vars<threshold ? TERMS_INTERVALSxZONES_SPLIT_DBM, INTERVALS)
        , ADAPT_TERMS_ZONES 
-       , OPT_OCT_APRON
-       , PK_APRON
+       , OCT
+       , PK
        , WRAPPED_INTERVALS
      };
 

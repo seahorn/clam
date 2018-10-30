@@ -66,11 +66,11 @@ namespace crab_llvm {
   // 		         boxes_domain<number_t, varname_t> > BASE(boxes_domain_t);
   /// -- DisIntervals
   typedef dis_interval_domain <number_t, varname_t> BASE(dis_interval_domain_t);
-  /// -- Elina/Apron domains
+  /// -- Apron domains
   typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_OCT>
-  BASE(opt_oct_apron_domain_t);
+  BASE(oct_domain_t);
   typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_PK>
-  BASE(pk_apron_domain_t);
+  BASE(pk_domain_t);
   /// -- Reduced product of intervals with congruences
   typedef numerical_congruence_domain<BASE(interval_domain_t)> BASE(ric_domain_t);
   /// -- Term functor domain with Intervals (VMCAI'16)
@@ -91,8 +91,8 @@ namespace crab_llvm {
   //ARRAY_BOOL_NUM(dbm_domain_t);
   ARRAY_BOOL_NUM(split_dbm_domain_t);
   ARRAY_BOOL_NUM(dis_interval_domain_t);
-  ARRAY_BOOL_NUM(opt_oct_apron_domain_t);
-  ARRAY_BOOL_NUM(pk_apron_domain_t);
+  ARRAY_BOOL_NUM(oct_domain_t);
+  ARRAY_BOOL_NUM(pk_domain_t);
   ARRAY_BOOL_NUM(ric_domain_t);
   ARRAY_BOOL_NUM(term_int_domain_t);  
   ARRAY_BOOL_NUM(term_dis_int_domain_t);  
