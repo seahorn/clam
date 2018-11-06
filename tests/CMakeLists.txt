@@ -38,3 +38,22 @@ if (USE_LDD)
     DEPENDS crabllvm)
   
 endif()
+
+if (USE_MDD)
+  add_lit_testsuite(test-ssh-simplified-mdd-boxes
+    "Run SVCOMP ssh-simplified benchmarks using mdd-boxes"
+    -v 
+    ${CMAKE_CURRENT_SOURCE_DIR}/ssh-simplified-mdd-boxes  ## where .cfg file is located
+    PARAMS
+    test_dir=${CMAKE_CURRENT_BINARY_DIR}/ssh-simplified-mdd-boxes
+    DEPENDS crabllvm)
+  
+  add_lit_testsuite(test-ntdrivers-simplified-mdd-boxes
+    "Run SVCOMP ntdrivers-simplified benchmarks using mdd-boxes"
+    -v 
+    ${CMAKE_CURRENT_SOURCE_DIR}/ntdrivers-simplified-mdd-boxes  ## where .cfg file is located
+    PARAMS
+    test_dir=${CMAKE_CURRENT_BINARY_DIR}/ntdrivers-simplified-mdd-boxes
+    DEPENDS crabllvm)
+  
+endif()
