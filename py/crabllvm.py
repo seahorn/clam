@@ -316,7 +316,7 @@ def parseArgs (argv):
                     help='Print unjustified assumptions done by the analyzer',
                     dest='print_assumptions', default=False, action='store_true')
     p.add_argument ('--crab-disable-warnings',
-                    help='Disable some crab-llvm warnings',
+                    help='Disable crab-llvm and crab warnings',
                     dest='crab_disable_warnings', default=False, action='store_true')
     ######################################################################
     p.add_argument ('--crab-dsa-disambiguate-unknown',
@@ -338,12 +338,15 @@ def parseArgs (argv):
     p.add_argument ('--do-not-print-invariants',
                     help=a.SUPPRESS,
                     dest='print_invariants', default=True, action='store_false')
+    p.add_argument ('--crab-unsigned-to-signed',
+                    help=a.SUPPRESS,
+                    dest='unsigned_to_signed', default=False, action='store_true')    
     p.add_argument ('--crab-do-not-store-invariants',
                     help='Do not store invariants',
                     dest='store_invariants', default=True, action='store_false')    
-    p.add_argument ('--crab-unsigned-to-signed',
-                    help=a.SUPPRESS,
-                    dest='unsigned_to_signed', default=False, action='store_true')
+    p.add_argument ('--crab-do-not-print-invariants',
+                    help='Do not print invariants',
+                    dest='crab_print_invariants', default=True, action='store_false')
     
     #### END CRAB
     
@@ -605,7 +608,8 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     
     if args.crab_cfg_simplify: crabllvm_cmd.append ('--crab-cfg-simplify')
     if args.crab_keep_shadows: crabllvm_cmd.append ('--crab-keep-shadows')
-    if args.print_invariants: crabllvm_cmd.append ('--crab-print-invariants')
+    if args.crab_print_invariants or args.print_invariants:
+        crabllvm_cmd.append ('--crab-print-invariants')
     if args.store_invariants:
         crabllvm_cmd.append ('--crab-store-invariants=true')
     else:
