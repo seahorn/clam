@@ -17,7 +17,7 @@ main requirements are:
 - C++ compiler supporting c++11
 - Boost
 - GMP 
-- MPFR (if `-DUSE_APRON=ON`)
+- MPFR (if `-DUSE_APRON=ON` or `-DUSE_ELINA=ON`)
 
 In linux, you can install requirements typing the commands:
 
@@ -67,7 +67,18 @@ If you want to use the boxes domain then add `-DUSE_LDD=ON`.
 
 If you want to use the apron domains then add `-DUSE_APRON=ON`.
 
-To install `crab-llvm` with Boxes and Apron:
+If you want to use the Elina domains then add `-DUSE_ELINA=ON`.
+
+**Important:** Apron and Elina are currently not compatible so you
+cannot enable `-DUSE_APRON=ON` and `-DUSE_ELINA=ON` at the same time. 
+
+To use Elina on Linux, you will need to add `_INSTALL_DIR_/lib` in the
+environment variable `LD_LIBRARY_PATH` if Elina is installed in a
+non-standard directory:
+
+    export LD_LIBRARY_PATH=_INSTALL_DIR_/lib
+
+For instance, to install `crab-llvm` with Boxes and Apron:
 
      mkdir build && cd build
      cmake -DCMAKE_INSTALL_PREFIX=_DIR_ -DUSE_LDD=ON -DUSE_APRON=ON ../
@@ -236,14 +247,15 @@ option `--crab-dom=VAL`. The possible values of `VAL` are:
 - `int`: intervals
 - `ric`: reduced product of `int` and congruences
 - `term-int`: `int` with uninterpreted functions
-- `zones`: zones domain using sparse DBM in split normal form
-- `oct`: Apron's octagon domains (only if `-DUSE_APRON=ON`)
-- `pk`: Apron's polka domain (only if `-DUSE_APRON=ON`)
-- `boxes`: disjunctive intervals based on LDDs (only if `-DUSE_LDD=ON`)
 - `dis-int`: disjunctive intervals based on Clousot's DisInt domain
 - `term-dis-int`: `dis-int` with uninterpreted functions
-- `rtz`: reduced product of `term-dis-int` with `zones-split`.
-
+- `boxes`: disjunctive intervals based on LDDs (only if `-DUSE_LDD=ON`)
+- `zones`: zones domain using sparse DBM in split normal form
+- `oct`: Octagon domains (Apron if `-DUSE_APRON=ON` or Elina if `-DUSE_ELINA=ON`)
+- `pk`:  Polyhedra adomain (Apron if `-DUSE_APRON=ON` or Elina if `-DUSE_ELINA=ON`) 
+- `rtz`: reduced product of `term-dis-int` with `zones`
+- `w-int`: wrapped interval domain
+- 
 For domains without narrowing operator (for instance `boxes`,
 `dis-int`, and `pk-apron`), you need to set the option:
 	
@@ -404,27 +416,29 @@ between 0 and 5.
 Well, there are many. Most of these limitations are coming from
 Crab. Here some of them:
 
-- Crab numerical domains mostly reason about linear arithmetic.
+- Most Crab numerical domains reason about linear arithmetic. The
+  `term-int` domain is an exception.
 
-- Most Crab numerical domains reason about infinite integers.
+- Most Crab numerical domains reason about infinite integers. The
+  `w-int` is an exception.
 
 - There are several Crab numerical domains that compute disjunctive
-  invariants but they are still limited in terms of expressiveness to
-  keep them tractable.
+  invariants (e.g., `boxes` or `dis-int`) but they are still limited
+  in terms of expressiveness to keep them tractable.
 
 - The interprocedural analysis is summary-based but it's
-  context-insensitive.
+  context-insensitive. 
   
-- Crab does not provide any pointer or shape analysis but it provides
-  a simple nullity analysis that can tell whether pointer may be null
-  or not.
-
-- Crab-llvm can reason about pointer's contents only if `llvm-dsa` can
+- Crab does not provide any pointer or shape analysis. Points-to
+  information is provided to Crab-llvm by DSA as pre-analysis step.
+  Crab-llvm can reason about pointer's contents only if `llvm-dsa` can
   infer statically that a pointer points to a memory region that
   behaves as a C arrays (i.e., consecutive sequence of bytes where
   elements must have compatible types and offset must be multiple of
   the element type size). Once a logical array has been identified,
   Crab-llvm uses one of the Crab array domains to reason about their
-  contents. Currently, it only supports array smashing.
+  contents. Currently, Crab-llvm only supports array smashing but
+  there are more precise array domains implemented in Crab that just
+  need to be integrated.
 	  
   
