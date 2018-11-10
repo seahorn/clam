@@ -42,8 +42,8 @@ namespace crab_llvm {
        , TERMS_ZONES 
          //(#live vars<threshold ? TERMS_INTERVALSxZONES_SPLIT_DBM, INTERVALS)
        , ADAPT_TERMS_ZONES 
-       , OPT_OCT_APRON
-       , PK_APRON
+       , OCT
+       , PK
        , WRAPPED_INTERVALS
      };
 
@@ -75,7 +75,7 @@ namespace crab_llvm {
     bool stats;
     bool print_invars;
     bool print_preconds;
-    bool print_assumptions;
+    bool print_unjustified_assumptions;
     bool print_summaries;
     bool store_invariants;
     bool keep_shadow_vars;
@@ -89,7 +89,7 @@ namespace crab_llvm {
 	widening_delay(1), narrowing_iters(10), widening_jumpset(0),
 	stats(false),
 	print_invars(false), print_preconds(false),
-	print_assumptions(false), print_summaries(false),
+	print_unjustified_assumptions(false), print_summaries(false),
 	store_invariants(true), keep_shadow_vars(false),
 	check(NOCHECKS), check_verbose(0) { }
 
