@@ -251,13 +251,13 @@ option `--crab-dom=VAL`. The possible values of `VAL` are:
 - `term-dis-int`: `dis-int` with uninterpreted functions
 - `boxes`: disjunctive intervals based on LDDs (only if `-DUSE_LDD=ON`)
 - `zones`: zones domain using sparse DBM in split normal form
-- `oct`: Octagon domains (Apron if `-DUSE_APRON=ON` or Elina if `-DUSE_ELINA=ON`)
-- `pk`:  Polyhedra adomain (Apron if `-DUSE_APRON=ON` or Elina if `-DUSE_ELINA=ON`) 
+- `oct`: Octagon domain (Apron if `-DUSE_APRON=ON` or Elina if `-DUSE_ELINA=ON`)
+- `pk`:  Polyhedra domain (Apron if `-DUSE_APRON=ON` or Elina if `-DUSE_ELINA=ON`) 
 - `rtz`: reduced product of `term-dis-int` with `zones`
 - `w-int`: wrapped interval domain
-- 
+
 For domains without narrowing operator (for instance `boxes`,
-`dis-int`, and `pk-apron`), you need to set the option:
+`dis-int`, and `pk`), you need to set the option:
 	
     --crab-narrowing-iterations=N
 
@@ -420,7 +420,7 @@ Crab. Here some of them:
   `term-int` domain is an exception.
 
 - Most Crab numerical domains reason about infinite integers. The
-  `w-int` is an exception.
+  `w-int` domain is an exception.
 
 - There are several Crab numerical domains that compute disjunctive
   invariants (e.g., `boxes` or `dis-int`) but they are still limited
