@@ -335,9 +335,6 @@ def parseArgs (argv):
     p.add_argument ('--crab-keep-shadows',
                     help=a.SUPPRESS,
                     dest='crab_keep_shadows', default=False, action='store_true')
-    p.add_argument ('--do-not-print-invariants',
-                    help=a.SUPPRESS,
-                    dest='print_invariants', default=True, action='store_false')
     p.add_argument ('--crab-unsigned-to-signed',
                     help=a.SUPPRESS,
                     dest='unsigned_to_signed', default=False, action='store_true')    
@@ -608,7 +605,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     
     if args.crab_cfg_simplify: crabllvm_cmd.append ('--crab-cfg-simplify')
     if args.crab_keep_shadows: crabllvm_cmd.append ('--crab-keep-shadows')
-    if args.crab_print_invariants or args.print_invariants:
+    if args.crab_print_invariants:
         crabllvm_cmd.append ('--crab-print-invariants')
     if args.store_invariants:
         crabllvm_cmd.append ('--crab-store-invariants=true')
