@@ -7,7 +7,7 @@
 Crab-llvm is a static analyzer that computes inductive invariants for
 LLVM-based languages based on
 the [Crab](https://github.com/seahorn/crab) library. It currently
-supports LLVM 3.8.
+supports LLVM 3.8 but there is an experimental branch `dev-llvm-5.0` that works for LLVM 5.0.
 
 # Installation #
 
