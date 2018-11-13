@@ -2,6 +2,7 @@
 #define __WRAPPER_DOMAIN_HH__
 
 #include "crab_llvm/config.h"
+#include "crab/config.h"
 #include "crab_llvm/crab_domains.hh"
 
 /**
@@ -31,7 +32,6 @@ namespace llvm {
   DUMP_TO_LLVM_STREAM(crab_llvm::interval_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::wrapped_interval_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::ric_domain_t)
-  //DUMP_TO_LLVM_STREAM(crab_llvm::dbm_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::split_dbm_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::boxes_domain_t)
   DUMP_TO_LLVM_STREAM(crab_llvm::mdd_boxes_domain_t)  
@@ -47,17 +47,28 @@ namespace llvm {
     return o;
   }
 
-
+  #ifdef HAVE_APRON  
   template <typename N, typename V, crab::domains::apron_domain_id_t D>
   inline llvm::raw_ostream& operator<<(llvm::raw_ostream& o, 
-				       crab::domains::apron_domain 
+  				       crab::domains::apron_domain 
+  				       <N,V,D> & inv) {
+    crab::crab_string_os s;
+    s << inv;
+    o << s.str ();
+    return o;
+  }
+  #else 
+  template <typename N, typename V, crab::domains::elina_domain_id_t D>
+  inline llvm::raw_ostream& operator<<(llvm::raw_ostream& o, 
+				       crab::domains::elina_domain 
 				       <N,V,D> & inv) {
     crab::crab_string_os s;
     s << inv;
     o << s.str ();
     return o;
   }
-
+  #endif
+  
   template <typename Base>
   inline llvm::raw_ostream& operator<<(llvm::raw_ostream& o, 
 				       crab::domains::array_smashing <Base> & inv) {
@@ -81,34 +92,41 @@ namespace crab_llvm {
      id_t m_id;                                                      \
      ABS_DOM m_abs;                                                  \
     public:                                                          \
-     id_t getId () const { return m_id;}                             \
-       								     \
-     WRAPPER (ABS_DOM abs, id_t id):                                 \
-       GenericAbsDomWrapper(), m_id(id), m_abs(abs) { }		     \
-  								     \
-     WRAPPER (ABS_DOM abs):                                          \
-       GenericAbsDomWrapper(), m_id (ID), m_abs (abs) { }	     \
-                                                                     \
-     GenericAbsDomWrapperPtr clone() const {                         \
-       auto res = boost::make_shared<WRAPPER>(m_abs, m_id); 	     \
-       return res;                                                   \
-     }                                                               \
-                                                                     \
-     ABS_DOM& get() { return m_abs; }                                \
-                                                                     \
-     lin_cst_sys_t to_linear_constraints() {			     \
-       return m_abs.to_linear_constraint_system();                   \
-     }                                                               \
-                                                                     \
-     void write (crab::crab_os& o) {                                 \
-       m_abs.write (o);                                              \
-     }                                                               \
-                                                                     \
-     void forget (const std::vector<var_t>& vars) {		     \
-       crab::domains::domain_traits<ABS_DOM>::forget (m_abs,         \
-                                                      vars.begin (), \
-                                                      vars.end ());  \
-     }                                                               \
+    id_t getId() const { return m_id;}				     \
+    								     \
+    WRAPPER(ABS_DOM abs, id_t id):				     \
+      GenericAbsDomWrapper(), m_id(id), m_abs(abs) { }		     \
+    								     \
+    WRAPPER(ABS_DOM abs):					     \
+      GenericAbsDomWrapper(), m_id (ID), m_abs (abs) { }	     \
+    								     \
+    GenericAbsDomWrapperPtr clone() const {			     \
+      auto res = boost::make_shared<WRAPPER>(m_abs, m_id); 	     \
+      return res;						     \
+    }								     \
+    								     \
+    ABS_DOM& get() { return m_abs; }				     \
+    								     \
+    lin_cst_sys_t to_linear_constraints() {			     \
+      return m_abs.to_linear_constraint_system();		     \
+    }								     \
+    								     \
+    void write(crab::crab_os& o) {				     \
+      m_abs.write (o);						     \
+    }								     \
+    								     \
+    void forget(const std::vector<var_t>& vars) {		     \
+      crab::domains::domain_traits<ABS_DOM>::forget(m_abs,	     \
+						    vars.begin(),    \
+						    vars.end());     \
+    }								     \
+    								     \
+    void project(const std::vector<var_t>& vars) {		     \
+       crab::domains::domain_traits<ABS_DOM>::project(m_abs,         \
+                                                      vars.begin(),  \
+                                                      vars.end());   \
+    }								     \
+    								     \
    };                                                                \
                                                                      \
    template <> inline GenericAbsDomWrapperPtr                        \
@@ -136,14 +154,13 @@ namespace crab_llvm {
 
     typedef boost::shared_ptr<GenericAbsDomWrapper> GenericAbsDomWrapperPtr;
     
-    typedef enum { intv, /*dbm,*/ split_dbm, 
+    typedef enum { intv, split_dbm, 
 		   term_intv, term_dis_intv, 
 		   ric, 
 		   boxes, mdd_boxes, dis_intv,
-		   opt_oct_apron, pk_apron,
+		   oct, pk,
 		   num,
-		   w_intv, w_split_dbm, w_opt_oct_apron, w_pk_apron} id_t;
-    
+		   w_intv} id_t;
     
     GenericAbsDomWrapper() { }
     
@@ -158,6 +175,8 @@ namespace crab_llvm {
     virtual lin_cst_sys_t to_linear_constraints() = 0;
     
     virtual void forget(const std::vector<var_t>& vars) = 0;
+    
+    virtual void project(const std::vector<var_t>& vars) = 0;    
    };
   
    typedef GenericAbsDomWrapper::GenericAbsDomWrapperPtr GenericAbsDomWrapperPtr;
@@ -187,15 +206,14 @@ namespace crab_llvm {
    DEFINE_WRAPPER(IntervalDomainWrapper,interval_domain_t,intv)
    DEFINE_WRAPPER(WrappedIntervalDomainWrapper,wrapped_interval_domain_t,w_intv)
    DEFINE_WRAPPER(RicDomainWrapper,ric_domain_t,ric)
-   //DEFINE_WRAPPER(DbmDomainWrapper,dbm_domain_t,dbm)
    DEFINE_WRAPPER(SDbmDomainWrapper,split_dbm_domain_t,split_dbm)
    DEFINE_WRAPPER(TermIntDomainWrapper,term_int_domain_t,term_intv)
    DEFINE_WRAPPER(TermDisIntDomainWrapper,term_dis_int_domain_t,term_dis_intv)
    DEFINE_WRAPPER(BoxesDomainWrapper,boxes_domain_t,boxes)
    DEFINE_WRAPPER(MddBoxesDomainWrapper,mdd_boxes_domain_t,mdd_boxes)   
    DEFINE_WRAPPER(DisIntervalDomainWrapper,dis_interval_domain_t,dis_intv)
-   DEFINE_WRAPPER(OptOctApronDomainWrapper,opt_oct_apron_domain_t,opt_oct_apron)
-   DEFINE_WRAPPER(PkApronDomainWrapper,pk_apron_domain_t,pk_apron)
+   DEFINE_WRAPPER(OctApronDomainWrapper,oct_domain_t,oct)
+   DEFINE_WRAPPER(PkApronDomainWrapper,pk_domain_t,pk)
    DEFINE_WRAPPER(NumDomainWrapper,num_domain_t,num)
 
 } // end namespace crab_llvm
