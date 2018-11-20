@@ -60,6 +60,13 @@ Devirtualize ("crab-devirt",
               llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
+AllowIndirectCalls("crab-devirt-allow-indirect-calls",
+		   llvm::cl::desc ("Allow creation of indirect calls "
+				   "during devirtualization "
+				   "(required for soundness)"),
+		   llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
 LowerSelect ("crab-lower-select",
 	     llvm::cl::desc ("Lower all select instructions"),
              llvm::cl::init (false));
@@ -227,7 +234,7 @@ int main(int argc, char **argv) {
 
   if (Devirtualize) {
     // -- resolve indirect calls
-    pass_manager.add (crab_llvm::createDevirtualizeFunctionsPass ());
+    pass_manager.add (crab_llvm::createDevirtualizeFunctionsPass(AllowIndirectCalls));
   }
   
   if (ExternalizeAddrTakenFuncs) {
