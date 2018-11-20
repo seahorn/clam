@@ -28,6 +28,13 @@
 
 using namespace llvm;
 
+static llvm::cl::opt<bool>
+AllowIndirectCalls ("allow-indirect-calls",
+                    llvm::cl::desc ("Allow creation of indirect calls "
+                                    "during devirtualization "
+                                    "(required for soundness)"),
+                    llvm::cl::init (false));
+
 namespace crab_llvm {
 
   static bool isIndirectCall (CallSite &CS)
@@ -226,18 +233,26 @@ namespace crab_llvm {
       else
         ReturnInst::Create (M->getContext(), directCall, BL);
     }
-    
-    // Create a default basic block having the original indirect call
-    BasicBlock * defaultBB = BasicBlock::Create (M->getContext(),
-                                                 "default",
-                                                 F);
 
-    Value* defaultRet = CallInst::Create (&*(F->arg_begin()), fargs, "", defaultBB);
-    if (CS.getType()->isVoidTy())
-      ReturnInst::Create (M->getContext(), defaultBB);
-    else
-      ReturnInst::Create (M->getContext(), defaultRet, defaultBB);
-                          
+
+
+    BasicBlock * defaultBB = nullptr;
+    if (AllowIndirectCalls) {
+      // Create a default basic block having the original indirect call
+      defaultBB = BasicBlock::Create (M->getContext(), "default", F);
+      if (CS.getType()->isVoidTy()) {
+	ReturnInst::Create (M->getContext(), defaultBB);
+      } else {
+	CallInst *defaultRet = CallInst::Create(&*(F->arg_begin()), fargs, "", defaultBB);
+	ReturnInst::Create (M->getContext(), defaultRet, defaultBB);
+      }
+    } else {
+      // Create a failure basic block.  This basic block should simply be an
+      // unreachable instruction.
+      defaultBB = BasicBlock::Create (M->getContext(), "fail", F);
+      new UnreachableInst (M->getContext(), defaultBB);
+    }
+                             
     // Setup the entry basic block.  For now, just have it call the default
     // basic block.  We'll change the basic block to which it branches later.
     BranchInst * InsertPt = BranchInst::Create (defaultBB, entryBB);
