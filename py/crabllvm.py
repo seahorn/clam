@@ -211,8 +211,13 @@ def parseArgs (argv):
                     help='Lower ULT and ULE instructions',
                     dest='lower_unsigned_icmp', default=False, action='store_true')
     p.add_argument ('--devirt-functions',
-                    help='Resolve indirect calls',
-                    dest='devirt', default=False, action='store_true')
+                    help="Resolve indirect calls:\n"
+                    "- none : do not resolve indirect calls (default)\n"
+                    "- types: select all functions with same type signature\n"
+                    "- dsa  : use Dsa analysis to select the callees\n",
+                    dest='devirt',
+                    choices=['none','types','dsa'],
+                    default='none')
     p.add_argument ('--externalize-addr-taken-functions',
                     help='Externalize uses of address-taken functions',
                     dest='enable_ext_funcs', default=False,
@@ -335,9 +340,6 @@ def parseArgs (argv):
     p.add_argument ('--crab-keep-shadows',
                     help=a.SUPPRESS,
                     dest='crab_keep_shadows', default=False, action='store_true')
-    p.add_argument ('--do-not-print-invariants',
-                    help=a.SUPPRESS,
-                    dest='print_invariants', default=True, action='store_false')
     p.add_argument ('--crab-unsigned-to-signed',
                     help=a.SUPPRESS,
                     dest='unsigned_to_signed', default=False, action='store_true')    
@@ -549,8 +551,11 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append( '--crab-lower-gv=false')
     if args.lower_unsigned_icmp:
         crabpp_args.append( '--crab-lower-unsigned-icmp')
-    if args.devirt:
-        crabpp_args.append ('--crab-devirt')
+    if args.devirt is not 'none':
+        if args.devirt == 'types':
+            crabpp_args.append ('--crab-devirt')
+        elif args.devirt == 'dsa':
+            crabpp_args.append ('--crab-devirt-dsa')            
     if args.enable_ext_funcs:
         crabpp_args.append ('--crab-externalize-addr-taken-funcs')
         
@@ -614,7 +619,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     
     if args.crab_cfg_simplify: crabllvm_cmd.append ('--crab-cfg-simplify')
     if args.crab_keep_shadows: crabllvm_cmd.append ('--crab-keep-shadows')
-    if args.crab_print_invariants or args.print_invariants:
+    if args.crab_print_invariants:
         crabllvm_cmd.append ('--crab-print-invariants')
     if args.store_invariants:
         crabllvm_cmd.append ('--crab-store-invariants=true')

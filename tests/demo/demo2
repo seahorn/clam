@@ -1,4 +1,4 @@
-; RUN: %crabllvm -O0 --do-not-print-invariants --crab-add-invariants=all --crab-track=arr "%s".c -o %s.bc
+; RUN: %crabllvm -O0 --crab-do-not-print-invariants --crab-add-invariants=all --crab-track=arr "%s".c -o %s.bc
 ; RUN: %llvm_dis < %s.bc | OutputCheck %s --comment=";"
 
 target datalayout = "e-m:o-p:32:32-f64:32:64-f80:128-n8:16:32-S128"

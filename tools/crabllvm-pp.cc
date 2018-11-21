@@ -56,8 +56,20 @@ InlineAll ("crab-inline-all",
 
 static llvm::cl::opt<bool>
 Devirtualize ("crab-devirt", 
-              llvm::cl::desc ("Resolve indirect calls"),
+              llvm::cl::desc ("Resolve indirect calls using only types"),
               llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+DevirtualizeDsa ("crab-devirt-dsa", 
+              llvm::cl::desc ("Resolve indirect calls using LLVM-Dsa"),
+              llvm::cl::init (false));
+
+static llvm::cl::opt<bool>
+AllowIndirectCalls("crab-devirt-allow-indirect-calls",
+		   llvm::cl::desc ("Allow creation of indirect calls "
+				   "during devirtualization "
+				   "(required for soundness)"),
+		   llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
 LowerSelect ("crab-lower-select",
@@ -206,12 +218,18 @@ int main(int argc, char **argv) {
     return GV.getName() == "main";
   };    
   pass_manager.add(llvm::createInternalizePass(PreserveMain));
-  if (Devirtualize) {
-    // -- resolve indirect calls
-    pass_manager.add (crab_llvm::createDevirtualizeFunctionsPass ());
+  
+  if (DevirtualizeDsa) {
+    // -- resolve indirect calls using DSA analysis
+    pass_manager.add(crab_llvm::createDevirtualizeFunctionsDsaPass(AllowIndirectCalls));
   }
   
-  if (ExternalizeAddrTakenFuncs) {
+  if (Devirtualize) {
+    // -- resolve indirect calls using types 
+    pass_manager.add(crab_llvm::createDevirtualizeFunctionsPass(AllowIndirectCalls));
+  }
+  
+ if (ExternalizeAddrTakenFuncs) {
     // -- externalize uses of address-taken functions
     pass_manager.add (crab_llvm::createExternalizeAddressTakenFunctionsPass ());
   }

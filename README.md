@@ -280,8 +280,8 @@ where `N` is the maximum number of thresholds.
 We also provide the option `--crab-track=VAL` to indicate the level of
 abstraction. The possible values of `VAL` are:
 
-- `int`: reasons about integer and boolean scalars (LLVM registers).
-- `ptr`: reasons about `int` and pointer offsets.	
+- `num`: reasons about integer and boolean scalars (LLVM registers).
+- `ptr`: reasons about `num` and pointer offsets.	
 - `arr`: reasons about `ptr` and contents of pointers and arrays.
 
    If the level is `arr` then Crab-llvm uses the heap abstraction

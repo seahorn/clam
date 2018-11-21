@@ -696,8 +696,12 @@ namespace crab_llvm {
 	typedef pretty_printer_impl::nec_precondition_annotation<intra_analyzer_t> pre_annotation_t;
 	typedef pretty_printer_impl::unjust_assumption_annotation unjust_assume_annotation_t;
 	std::vector<std::unique_ptr<block_annotation_t>> pool_annotations;
-	
-	llvm::outs() << "\n" << "function " << m_fun.getName() << "\n";
+
+	if (auto f_decl = m_cfg->get_func_decl()) {
+	  crab::outs() << "\n" << *f_decl << "\n";
+	} else {
+	  llvm::outs() << "\n" << "function " << m_fun.getName() << "\n";
+	}
 	if (params.print_invars) {
 	  pool_annotations.emplace_back(
 	       make_unique<inv_annotation_t>(m_vfac, results.premap, results.postmap, 
@@ -1110,7 +1114,11 @@ namespace crab_llvm {
 	    
 	    // --- print invariants and summaries
 	    if (params.print_invars && isTrackable(*F)) {
-	      llvm::outs() << "\n" << "function " << F->getName () << "\n";
+	      if (auto f_decl = cfg.get_func_decl()) {
+		crab::outs() << "\n" << *f_decl << "\n";
+	      } else {
+		llvm::outs() << "\n" << "function " << F->getName () << "\n";
+	      }
 	      std::vector<std::unique_ptr<pretty_printer_impl::block_annotation>> annotations;
 	      annotations.emplace_back(make_unique<pretty_printer_impl::invariant_annotation>
 				       (m_vfac, results.premap, results.postmap,
@@ -1199,14 +1207,20 @@ namespace crab_llvm {
 
       std::vector<cfg_ref_t> cfg_ref_vector;
       for (auto &F : m_M) {
-        if (!isTrackable(F)) continue;
-        // -- build cfg's 
-        CfgBuilder B(F, m_vfac, *mem, cfg_precision,
-		     /*include function decls and callsites*/
-		     true,  &tli);
-        cfg_t *cfg = B.get_cfg();
-	cfg_man.add(F, cfg);
-        cfg_ref_vector.push_back (*cfg);
+        if (isTrackable(F)) {
+	  // -- build cfg's 
+	  CfgBuilder B(F, m_vfac, *mem, cfg_precision,
+		       /*include function decls and callsites*/
+		       true,  &tli);
+	  cfg_t *cfg = B.get_cfg();
+	  cfg_man.add(F, cfg);
+	  cfg_ref_vector.push_back (*cfg);
+	  CRAB_VERBOSE_IF(1, llvm::outs() << "Built Crab CFG for "
+			  << F.getName() << "\n");
+	} else {
+	  CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
+			                  << F.getName() << "\n");
+	}
       }
       // build call graph
       m_cg = make_unique<call_graph_t>(cfg_ref_vector.begin(), cfg_ref_vector.end());
