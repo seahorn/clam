@@ -15,6 +15,7 @@ namespace crab_llvm {
   llvm::Pass* createRemoveUnreachableBlocksPass ();
   llvm::Pass* createSimplifyAssumePass ();
   llvm::Pass* createDevirtualizeFunctionsPass(bool);
+  llvm::Pass* createDevirtualizeFunctionsDsaPass(bool);  
   llvm::Pass* createExternalizeAddressTakenFunctionsPass ();
   llvm::Pass* createPromoteMallocPass ();
   llvm::Pass* createPromoteAssumePass ();

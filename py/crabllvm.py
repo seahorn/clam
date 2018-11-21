@@ -211,8 +211,13 @@ def parseArgs (argv):
                     help='Lower ULT and ULE instructions',
                     dest='lower_unsigned_icmp', default=False, action='store_true')
     p.add_argument ('--devirt-functions',
-                    help='Resolve indirect calls',
-                    dest='devirt', default=False, action='store_true')
+                    help="Resolve indirect calls:\n"
+                    "- none : do not resolve indirect calls (default)\n"
+                    "- types: select all functions with same type signature\n"
+                    "- dsa  : use Dsa analysis to select the callees\n",
+                    dest='devirt',
+                    choices=['none','types','dsa'],
+                    default='none')
     p.add_argument ('--externalize-addr-taken-functions',
                     help='Externalize uses of address-taken functions',
                     dest='enable_ext_funcs', default=False,
@@ -540,8 +545,11 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append( '--crab-lower-gv=false')
     if args.lower_unsigned_icmp:
         crabpp_args.append( '--crab-lower-unsigned-icmp')
-    if args.devirt:
-        crabpp_args.append ('--crab-devirt')
+    if args.devirt is not 'none':
+        if args.devirt == 'types':
+            crabpp_args.append ('--crab-devirt')
+        elif args.devirt == 'dsa':
+            crabpp_args.append ('--crab-devirt-dsa')            
     if args.enable_ext_funcs:
         crabpp_args.append ('--crab-externalize-addr-taken-funcs')
         
