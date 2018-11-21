@@ -1,25 +1,9 @@
-//===-------- Resolve indirect calls using signature match ----------------===//
-//
-// This class is almost the same than Devirt in DSA but it does not
-// use alias analysis to compute the possible targets of an indirect
-// call. Instead, it simply selects those functions whose signatures
-// match.
-//
-//===----------------------------------------------------------------------===//
-
-
-#define DEBUG_TYPE "devirt-functions"
-
-
-//#include "llvm/IR/Constants.h"
-//#include "llvm/Transforms/IPO.h"
-#include "llvm/Pass.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/ADT/Statistic.h"
-
 #include "crab_llvm/Transforms/DevirtFunctions.hh"
+#include "llvm/Pass.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include<set>
+#include<algorithm>
 
 using namespace llvm;
 
@@ -53,19 +37,50 @@ namespace crab_llvm {
     return CastInst::CreateZExtOrBitCast (V, Ty, Name, InsertPt);
   }
   
-  Function* DevirtualizeFunctions::mkBounceFn (CallSite &CS) {
+  Function* DevirtualizeFunctions::mkBounceFn(CallSite &CS, AliasTargetMap& ATM) {
+    assert (isIndirectCall (CS) && "Not an indirect call");
+    
+    const bool useAliasing = !ATM.empty();
+    
     AliasSetId id = typeAliasId (CS);
-    {
-      assert (isIndirectCall (CS) && "Not an indirect call");
+    if (!useAliasing) {
+      // -- If we just use types then we can reuse the same bounce
+      // -- function to avoid many duplicates.
+      // 
+      // -- If we use Dsa we don't want to use the same bounce for the
+      // -- same callee's type since the targets returned by Dsa can
+      // -- be different from one callsite to another.
       auto it = m_bounceMap.find (id);
       if (it != m_bounceMap.end ()) return it->second;
     }
     
     // -- no direct calls in this alias set, nothing to construct
-    if (m_aliasSets.count (id) <= 0) return nullptr;
-    
-    AliasSet &Targets = m_aliasSets [id];
-            
+    if (m_typeAliasSets.count (id) <= 0) return nullptr;
+
+    // -- the final targets to build the bounce function
+    AliasSet Targets;
+    // -- all possible candidate targets whose type signatures matche
+    AliasSet& TypesTargets = m_typeAliasSets [id];
+    // -- targets provided by an external pointer analysis (optional)
+    AliasSet& AliasTargets = ATM[CS.getInstruction()];
+    if (!AliasTargets.empty()) {
+      // --- We filter out those targets whose signature do not match.
+      std::sort(TypesTargets.begin(), TypesTargets.end());
+      std::sort(AliasTargets.begin(), AliasTargets.end());
+      std::set_intersection(AliasTargets.begin(), AliasTargets.end(),
+			    TypesTargets.begin(), TypesTargets.end(),
+			    std::back_inserter(Targets));
+    } else {
+      // -- We did not have aliasing information so we just use types
+      Targets = std::move(TypesTargets);
+    }
+
+    if (Targets.empty()) {
+      // -- it's possible to be here if we had aliasing information
+      // -- but it was not type consistent.
+      return nullptr;
+    }
+
     // Create a bounce function that has a function signature almost
     // identical to the function being called.  The only difference is
     // that it will have an additional pointer argument at the
@@ -89,8 +104,7 @@ namespace crab_llvm {
     // for subsequence access.
     F->arg_begin()->setName("funcPtr");
     SmallVector<Value*, 8> fargs;
-    for(auto ai = ++F->arg_begin(), ae = F->arg_end(); ai != ae; ++ai)
-    {
+    for(auto ai = ++F->arg_begin(), ae = F->arg_end(); ai != ae; ++ai) {
       fargs.push_back(&*ai);
       ai->setName("arg");
     }
@@ -102,8 +116,7 @@ namespace crab_llvm {
     // For each function target, create a basic block that will call that
     // function directly.
     DenseMap<const Function*, BasicBlock*> targets;
-    for (const Function *FL : Targets)
-    {
+    for (const Function *FL : Targets) {
       // Create the basic block for doing the direct call
       BasicBlock* BL = BasicBlock::Create (M->getContext(), FL->getName(), F);
       targets[FL] = BL;
@@ -127,7 +140,7 @@ namespace crab_llvm {
 
 
     BasicBlock * defaultBB = nullptr;
-    if (m_allow_indirect_calls) {
+    if (m_allowIndirectCalls) {
       // Create a default basic block having the original indirect call
       defaultBB = BasicBlock::Create (M->getContext(), "default", F);
       if (CS.getType()->isVoidTy()) {
@@ -194,14 +207,13 @@ namespace crab_llvm {
   }
 
 
-  void DevirtualizeFunctions::mkDirectCall (CallSite CS) {
-    const Function *bounceFn = mkBounceFn (CS);
+  void DevirtualizeFunctions::mkDirectCall(CallSite CS, AliasTargetMap& ATM) {
+    const Function *bounceFn = mkBounceFn(CS, ATM);
     // -- something failed
     if (!bounceFn) return;
     
     // Replace the original call with a call to the bounce function.
-    if (CallInst* CI = dyn_cast<CallInst>(CS.getInstruction()))
-    {
+    if (CallInst* CI = dyn_cast<CallInst>(CS.getInstruction())) {
       // The last operand in the op list is the callee
       SmallVector<Value*, 8> Params;
       Params.reserve (std::distance (CI->op_begin(), CI->op_end()));
@@ -224,8 +236,7 @@ namespace crab_llvm {
       CI->replaceAllUsesWith(CN);
       CI->eraseFromParent();
     }
-    else if (InvokeInst* CI = dyn_cast<InvokeInst>(CS.getInstruction()))
-    {
+    else if (InvokeInst* CI = dyn_cast<InvokeInst>(CS.getInstruction())) {
       SmallVector<Value*, 8> Params;
       Params.reserve (std::distance (CI->arg_operands().begin (),
                                      CI->arg_operands().end ()));
@@ -294,27 +305,57 @@ namespace crab_llvm {
     return F.getFunctionType ()->getPointerTo ();
   }
 
-  DevirtualizeFunctions::DevirtualizeFunctions(AliasSetMap& m, llvm::CallGraph* cg,
-					       bool allow_indirect_calls)
-    : m_aliasSets(m)
-    , m_cg(cg)
-    , m_allow_indirect_calls(allow_indirect_calls)
+  DevirtualizeFunctions::DevirtualizeFunctions(llvm::CallGraph* cg,
+					       bool allowIndirectCalls)
+    : m_cg(cg)
+    , m_allowIndirectCalls(allowIndirectCalls)
   {}
       
+  void DevirtualizeFunctions::computeTypeAliasSets(Module& M) {
+    // -- Create type-based alias sets
+    for (auto const &F: M) {
+      // -- intrinsics are never called indirectly
+      if (F.isIntrinsic ()) continue;
+      
+      // -- local functions whose address is not taken cannot be
+      // -- resolved by a function pointer
+      if (F.hasLocalLinkage () && !F.hasAddressTaken ()) continue;
+      
+      // -- skip calls to declarations, these are resolved implicitly
+      // -- by calling through the function pointer argument in the
+      // -- default case of bounce function
+      if (F.isDeclaration ()) continue;
+      
+      // -- skip seahorn and verifier specific intrinsics
+      if (F.getName().startswith ("seahorn.")) continue;
+      if (F.getName().startswith ("verifier.")) continue;
+      // -- assume entry point is never called indirectly
+      if (F.getName ().equals ("main")) continue;
+      
+      // -- add F to its corresponding alias set
+      m_typeAliasSets[DevirtualizeFunctions::typeAliasId(F)].push_back(&F);
+    }
+  }
   
-  bool DevirtualizeFunctions::run(Module & M) {
-    // Visit all of the call instructions in this function and record those that
-    // are indirect function calls.
+  bool DevirtualizeFunctions::resolveCallSites(Module & M, AliasTargetMap& ATM) {
+    // -- Compute type alias sets if not computed already
+    if (m_typeAliasSets.empty()) {
+      computeTypeAliasSets(M);
+    }
+    
+    // -- Visit all of the call instructions in this function and
+    // -- record those that are indirect function calls.
     visit(M);
     
-    // Now go through and transform all of the indirect calls that we found that
-    // need transforming.
+    // -- Now go through and transform all of the indirect calls that
+    // -- we found that need transforming.
     bool Changed = !m_worklist.empty ();
     for (auto I : m_worklist) {
       CallSite CS(I);
-      mkDirectCall(CS);
+      mkDirectCall(CS, ATM);
     }
-    // Conservatively assume that we've changed one or more call sites.
+    // -- Conservatively assume that we've changed one or more call
+    // -- sites.
     return Changed;
   }
 

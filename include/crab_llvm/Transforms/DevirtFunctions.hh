@@ -1,14 +1,12 @@
 #pragma once
 
-//===-------- Resolve indirect calls using signature match ----------------===//
+//===-------------------- Resolve indirect calls --------------------------===//
 //
-// This class is almost the same than Devirt in DSA but it does not
-// use alias analysis to compute the possible targets of an indirect
-// call. Instead, it simply selects those functions whose signatures
-// match.
+// This class is a copy-and-paste version from Devirt in DSA but it
+// has been factorized a bit to be parametric in the set of possible
+// targets used to resolve indirect callsites.
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Module.h"
@@ -30,21 +28,27 @@ namespace crab_llvm {
   //
   class DevirtualizeFunctions : public llvm::InstVisitor<DevirtualizeFunctions>  {
 
-  public : 
+  private : 
    
     typedef const llvm::PointerType *AliasSetId;
     typedef llvm::SmallVector<const llvm::Function *, 8> AliasSet;
-    typedef llvm::DenseMap<AliasSetId, AliasSet> AliasSetMap;
-
+    typedef llvm::DenseMap<AliasSetId, AliasSet> TypeAliasSetMap;
+    
+  public:
+    
+    // Map a callsite to a set of targets to resolve the callsite.
+    // The callsite must be an indirect one.    
+    typedef llvm::DenseMap<llvm::Instruction*, AliasSet> AliasTargetMap;
+    
   private:
     
     /// map from alias-id to the corresponding alias set
-    AliasSetMap& m_aliasSets;
+    TypeAliasSetMap m_typeAliasSets;
     
     // Call graph of the program
     llvm::CallGraph * m_cg;    
-
-    bool m_allow_indirect_calls;
+    
+    bool m_allowIndirectCalls;
    
     // Worklist of call sites to transform
     llvm::SmallVector<llvm::Instruction*, 32> m_worklist;
@@ -52,23 +56,27 @@ namespace crab_llvm {
     /// returns an AliasId of the called value
     /// requires that CS is an indirect call through a function pointer
     static AliasSetId typeAliasId(llvm::CallSite &CS);
+
+    /// returns an id of an alias set to which this function belongs
+    static AliasSetId typeAliasId(const llvm::Function &F);
     
     /// maps alias set id to an existing bounce function
     llvm::DenseMap<AliasSetId, llvm::Function*> m_bounceMap;
     
     /// turn the indirect call-site into a direct one
-    void mkDirectCall(llvm::CallSite CS);
+    void mkDirectCall(llvm::CallSite CS, AliasTargetMap& ATM);
     
     /// create a bounce function that calls functions directly
-    llvm::Function* mkBounceFn(llvm::CallSite &CS);
+    llvm::Function* mkBounceFn(llvm::CallSite &CS, AliasTargetMap& ATM);
+
+    /// Populate m_typeAliasSets
+    void computeTypeAliasSets(llvm::Module& M);
     
    public:
     
-    DevirtualizeFunctions(AliasSetMap& m, llvm::CallGraph* cg, bool allow_indirect_calls);
-    bool run(llvm::Module& M);
+    DevirtualizeFunctions(llvm::CallGraph* cg, bool allowIndirectCalls);
 
-    /// returns an id of an alias set to which this function belongs
-    static AliasSetId typeAliasId(const llvm::Function &F);
+    bool resolveCallSites(llvm::Module& M, AliasTargetMap& ATM /*it can be empty*/);
         
     // -- VISITOR IMPLEMENTATION --
     
