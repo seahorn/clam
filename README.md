@@ -429,6 +429,8 @@ Crab. Here some of them:
 - The interprocedural analysis is summary-based but it's
   context-insensitive. 
   
+- The backward analysis is too experimental. 
+  
 - Crab does not provide any pointer or shape analysis. Points-to
   information is provided to Crab-llvm by DSA as pre-analysis step.
   Crab-llvm can reason about pointer's contents only if `llvm-dsa` can
