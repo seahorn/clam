@@ -14,7 +14,7 @@ install: true
 
 script:
   ### build and run tests with docker
-  - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t crabllvm_${UBUNTU_DIST}_${BUILD_TYPE} -f docker/crabllvm-full-size-rel.Dockerfile .
+  - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t crabllvm_${UBUNTU_DIST} -f docker/crabllvm-full-size-rel.Dockerfile .
 
 notifications:
    slack: seahornteam:NAUqZmZHFFviPH4ktQbJXgKu
