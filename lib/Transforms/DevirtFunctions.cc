@@ -62,9 +62,11 @@ namespace crab_llvm {
     // -- all possible candidate targets whose type signatures matche
     AliasSet& TypesTargets = m_typeAliasSets [id];
     // -- targets provided by an external pointer analysis (optional)
-    AliasSet& AliasTargets = ATM[CS.getInstruction()];
-    if (!AliasTargets.empty()) {
+
+    auto it = ATM.find(CS.getInstruction());
+    if (it != ATM.end()) {
       // --- We filter out those targets whose signature do not match.
+      AliasSet& AliasTargets = it->second;
       std::sort(TypesTargets.begin(), TypesTargets.end());
       std::sort(AliasTargets.begin(), AliasTargets.end());
       std::set_intersection(AliasTargets.begin(), AliasTargets.end(),
@@ -77,7 +79,8 @@ namespace crab_llvm {
 
     if (Targets.empty()) {
       // -- it's possible to be here if we had aliasing information
-      // -- but it was not type consistent.
+      // -- but it was not type consistent. If here, we won't able to
+      // -- resolve the indirect call.
       return nullptr;
     }
 
