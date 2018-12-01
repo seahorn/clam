@@ -1635,7 +1635,7 @@ namespace crab_llvm {
 	  
 	  if (len_ref->isInt()) {
 	    lin_exp_t lb_idx(number_t(0));
-	    lin_exp_t ub_idx(m_lfac.getExp(len_ref));
+	    lin_exp_t ub_idx(m_lfac.getExp(len_ref) -1);
 	    var_t arr_var = m_lfac.mkArrayVar(r);
 	    uint64_t elem_size = MSI->getAlignment(); /*double check this*/
 	    if (val_ref->isInt()) {
@@ -1710,6 +1710,8 @@ namespace crab_llvm {
 
 	  /* verifier.zero_initializer(v) */
 	  if (isInteger(ty) || isBool(ty)) {
+	    IntegerType* int_ty = cast<IntegerType>(ty);
+	    ub_idx = ikos::z_number((int_ty->getBitWidth() / 8) -1);
 	    m_bb.array_init (a, elem_size, lb_idx, ub_idx, init_val);
 	  } else if (isIntArray(*ty) || isBoolArray(*ty)) {
 	    if (cast<ArrayType>(ty)->getNumElements() == 0) {
@@ -1720,7 +1722,7 @@ namespace crab_llvm {
 	      CRABLLVM_WARNING("translation skipped a zero-length array");
 	    } else {
 	      elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
-	      ub_idx = lin_exp_t((cast<ArrayType>(ty)->getNumElements() - 1)* elem_size);
+	      ub_idx = lin_exp_t(cast<ArrayType>(ty)->getNumElements()* elem_size - 1);
 	      m_bb.array_init (a, elem_size, lb_idx, ub_idx, init_val);
 	    }
 	  } else { /** unreachable **/ }
@@ -2492,8 +2494,8 @@ namespace crab_llvm {
 		 valid interpretation whether it's integer, boolean or pointer */
 	      number_t init_val(0); 
 	      number_t lb_idx(0); 
-	      number_t ub_idx((numElems - 1) * elemSize);
-	      m_bb.array_init (m_lfac.mkArrayVar(r), elemSize, lb_idx, ub_idx, init_val);
+	      number_t ub_idx((numElems * elemSize) - 1);
+	      m_bb.array_init(m_lfac.mkArrayVar(r), elemSize, lb_idx, ub_idx, init_val);
 	    }
 	  }
 	}
