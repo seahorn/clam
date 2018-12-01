@@ -1,4 +1,4 @@
-// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-dom=int --crab-widening-delay=2 --crab-check=assert "%s"  2>&1 | OutputCheck %s
+// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-dom=int --crab-widening-delay=2 --crab-check=assert --crab-sanity-checks "%s"  2>&1 | OutputCheck %s
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$

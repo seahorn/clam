@@ -1,4 +1,4 @@
-// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-widening-delay=1 --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck %s 
+// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-widening-delay=1 --crab-dom=int --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s 
 // CHECK: ^2  Number of total warning checks$
 
 extern int __VERIFIER_NONDET();

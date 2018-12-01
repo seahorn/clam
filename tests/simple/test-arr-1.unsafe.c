@@ -1,4 +1,4 @@
-// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-dom=term-dis-int --crab-track=arr --crab-check=assert "%s" 2>&1 | OutputCheck %s
+// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-dom=term-dis-int --crab-track=arr --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^1  Number of total warning checks$
 extern int nd ();
