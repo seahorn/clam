@@ -69,8 +69,55 @@ namespace seadsa_heap_abs_impl {
       return t->isIntegerTy();
     }
   };
+
+  template <typename Set>
+  void markReachableNodes (const Node *n, Set &set) {
+    if (!n) return;
+    assert (!n->isForwarding () && "Cannot mark a forwarded node");
+    
+    if (set.insert (n).second) 
+      for (auto const &edg : n->links ())
+	markReachableNodes (edg.second->getNode (), set);
+  }
+  
+  
+  template <typename Set>
+  void reachableNodes (const Function &fn, Graph &g, Set &inputReach, Set& retReach) {
+    // formal parameters
+    for (Function::const_arg_iterator I = fn.arg_begin(), E = fn.arg_end(); I != E; ++I) {
+      const Value &arg = *I;
+      if (g.hasCell (arg)) {
+	Cell &c = g.mkCell (arg, Cell ());
+	markReachableNodes (c.getNode (), inputReach);
+      }
+    }
+    
+    // globals
+    for (auto &kv : boost::make_iterator_range (g.globals_begin (),
+						g.globals_end ())) {
+      markReachableNodes (kv.second->getNode (), inputReach);
+    }
+    
+    // return value
+    if (g.hasRetCell (fn)) {
+      markReachableNodes (g.getRetCell (fn).getNode(), retReach);
+    }
+  }
+
+  
+  /// Computes Node reachable from the call arguments in the graph.
+  /// reach - all reachable nodes
+  /// outReach - subset of reach that is only reachable from the return node
+  template <typename Set1, typename Set2>
+  void argReachableNodes(const llvm::Function&fn, Graph &G,
+				Set1 &reach, Set2 &outReach) {
+    reachableNodes (fn, G, reach, outReach);
+    seadsa_heap_abs_impl::set_difference (outReach, reach);
+    seadsa_heap_abs_impl::set_union (reach, outReach);
+  }
   
 } // end namespace seadsa_heap_abs_impl
+
   
   // return a value if the node corresponds to a typed single-cell
   // global memory cell, or nullptr otherwise.
@@ -204,54 +251,9 @@ namespace seadsa_heap_abs_impl {
     return region_info(UNTYPED_REGION, 0);
   }
 
-
-  template <typename Set>
-  void markReachableNodes (const Node *n, Set &set) {
-    if (!n) return;
-    assert (!n->isForwarding () && "Cannot mark a forwarded node");
-    
-    if (set.insert (n).second) 
-      for (auto const &edg : n->links ())
-	markReachableNodes (edg.second->getNode (), set);
-  }
-  
-  
-  template <typename Set>
-  void reachableNodes (const Function &fn, Graph &g, Set &inputReach, Set& retReach) {
-    // formal parameters
-    for (Function::const_arg_iterator I = fn.arg_begin(), E = fn.arg_end(); I != E; ++I) {
-      const Value &arg = *I;
-      if (g.hasCell (arg)) {
-	Cell &c = g.mkCell (arg, Cell ());
-	markReachableNodes (c.getNode (), inputReach);
-      }
-    }
-    
-    // globals
-    for (auto &kv : boost::make_iterator_range (g.globals_begin (),
-						g.globals_end ())) {
-      markReachableNodes (kv.second->getNode (), inputReach);
-    }
-    
-    // return value
-    if (g.hasRetCell (fn)) {
-      markReachableNodes (g.getRetCell (fn).getNode(), retReach);
-    }
-  }
-
-  
   ///////
   // class methods
   ///////
-  
-  template <typename Set1, typename Set2>
-  static void argReachableNodes(const llvm::Function&fn, Graph &G,
-				Set1 &reach, Set2 &outReach) {
-
-    reachableNodes (fn, G, reach, outReach);
-    seadsa_heap_abs_impl::set_difference (outReach, reach);
-    seadsa_heap_abs_impl::set_union (reach, outReach);
-  }
   
   int SeaDsaHeapAbstraction::getId(const Cell& c) {
     const Node* n = c.getNode();
@@ -300,7 +302,7 @@ namespace seadsa_heap_abs_impl {
 
     
     std::set<const Node*> reach, retReach;
-    argReachableNodes(f, G, reach, retReach);
+    seadsa_heap_abs_impl::argReachableNodes(f, G, reach, retReach);
     
     region_set_t reads, mods, news;
     for (const Node* n : reach) {
@@ -372,7 +374,7 @@ namespace seadsa_heap_abs_impl {
     // -- compute callee nodes reachable from arguments and returns
     std::set<const Node*> reach;
     std::set<const Node*> retReach;
-    reachableNodes (CalleeF, calleeG, reach, retReach);
+    seadsa_heap_abs_impl::argReachableNodes (CalleeF, calleeG, reach, retReach);
     
     // -- compute mapping between callee and caller graphs
     SimulationMapper simMap;
@@ -400,10 +402,10 @@ namespace seadsa_heap_abs_impl {
 	  }
 	  
 	  int id = getId(callerC);
-	  if ((n->isRead() || n->isModified()) && retReach.count(n) <= 0) {
+	  if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
 	    reads.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	  } 
-	  if (n->isModified() && retReach.count(n) <= 0) {
+	  if (n->isModified() && !retReach.count(n)) {
 	    mods.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	  }
 	  if (n->isModified() && retReach.count(n)) {
