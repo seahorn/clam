@@ -287,12 +287,13 @@ where `N` is the maximum number of thresholds.
 We also provide the option `--crab-track=VAL` to indicate the level of
 abstraction. The possible values of `VAL` are:
 
-- `num`: reasons about integer and boolean scalars (LLVM registers).
-- `ptr`: reasons about `num` and pointer offsets.	
-- `arr`: reasons about `ptr` and contents of pointers and arrays.
+- `num`: translate only operations over integer and boolean scalars (LLVM registers).
+- `ptr`: `num` + translate all operations over pointers using crab pointer operations. 
+- `arr`: `num` + translates all operations over pointers using pointer
+  arithmetic and Crab arrays.
 
    If the level is `arr` then Crab-llvm's frontend will partition the
-   heap into disjoint regions. Each region is mapped to an array, and
+   heap into disjoint regions. Each region is mapped to a Crab array, and
    each LLVM load and store is translated to an array read and write
    operation, respectively. Then, it will use an array domain provided
    by Crab whose base domain is the one selected by option
