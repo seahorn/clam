@@ -1,10 +1,8 @@
-#ifndef __HEAP_ABSTRACTION_HH_
-#define __HEAP_ABSTRACTION_HH_
+#pragma once
 
-/* Wrapper for a heap abstraction used for heap disambiguation */
+/* Generic class for a heap analysis */
 
 #include "crab_llvm/config.h"
-
 #include <set>
 
 // forward declarations
@@ -14,6 +12,7 @@ namespace llvm {
   class Value;
   class Instruction;
   class raw_ostream;
+  class StringRef;
 }
 
 namespace crab_llvm {
@@ -30,9 +29,11 @@ namespace crab_llvm {
      // 0.
      unsigned m_bitwidth;
      
-    region_info(region_type_t t, unsigned b): m_region_type(t), m_bitwidth(b){}
-     
-    region_type_t get_type() const { return m_region_type;}
+     region_info(region_type_t t, unsigned b)
+       : m_region_type(t)
+       , m_bitwidth(b){}
+       
+     region_type_t get_type() const { return m_region_type;}
      
      unsigned get_bitwidth() const { return m_bitwidth;}
    };
@@ -49,17 +50,23 @@ namespace crab_llvm {
      #ifdef HAVE_DSA
      friend class LlvmDsaHeapAbstraction;
      #endif 
-
+     friend class SeaDsaHeapAbstraction;
+     
      Mem *m_mem;
      int m_id;
      region_info m_info;
      
      Region(Mem *mem, int id, region_info info)
-       : m_mem(mem), m_id(id), m_info (info) { }
+       : m_mem(mem)
+       , m_id(id)
+       , m_info (info) { }
      
     public:
 
-     Region(): m_mem(nullptr), m_id(-1), m_info(region_info(UNTYPED_REGION,0)) { }
+     Region()
+       : m_mem(nullptr)
+       , m_id(-1),
+	 m_info(region_info(UNTYPED_REGION,0)) { }
        
      bool isUnknown() const {
        return(m_id < 0 || m_info.get_type() == UNTYPED_REGION);
@@ -89,10 +96,11 @@ namespace crab_llvm {
      }
 
      void write(llvm::raw_ostream& o) const {
-       if (isUnknown()) 
+       if (isUnknown()) {
          o << "unknown";
-       else
+       } else {
          o << "R_" << m_id;
+       }
      }
 
      friend llvm::raw_ostream& operator<<(llvm::raw_ostream &o,
@@ -139,7 +147,7 @@ namespace crab_llvm {
 
      virtual ~HeapAbstraction() { }
      
-    // f is used to know in which DSGraph we should search for V
+    // Function is used to know in which function the Value lives
      virtual region_t getRegion(const llvm::Function&, llvm::Value*) = 0;
 
      // read and written regions by the function
@@ -166,132 +174,8 @@ namespace crab_llvm {
      // regions that are reachable only from the return of the callee     
      virtual region_set_t getNewRegions(llvm::CallInst& ) = 0;
 
-     virtual const char* getHeapAbstractionName() const = 0;
-   }; 
-
-   struct DummyHeapAbstraction: public HeapAbstraction {
-
-     using typename HeapAbstraction::region_t;
-     using typename HeapAbstraction::region_set_t;
-
-     DummyHeapAbstraction(): HeapAbstraction() { }
-     const llvm::Value* getSingleton(int) const
-     { return nullptr;}
-     region_t getRegion(const llvm::Function&, llvm::Value*)
-     { return region_t(); }
-     region_set_t getAccessedRegions(const llvm::Function& )
-     { return region_set_t(); }
-     region_set_t getOnlyReadRegions(const llvm::Function& )
-     { return region_set_t(); }
-     region_set_t getModifiedRegions(const llvm::Function& )
-     { return region_set_t(); }
-     region_set_t getNewRegions(const llvm::Function& )
-     { return region_set_t(); }
-     region_set_t getAccessedRegions(llvm::CallInst& )
-     { return region_set_t(); }
-     region_set_t getOnlyReadRegions(llvm::CallInst& )
-     { return region_set_t(); }
-     region_set_t getModifiedRegions(llvm::CallInst& )
-     { return region_set_t(); }
-     region_set_t getNewRegions(llvm::CallInst& )
-     { return region_set_t(); }
-     const char* getHeapAbstractionName() const
-     { return "DummyHeapAbstraction"; }
+     virtual llvm::StringRef getName() const = 0;
    }; 
 
 } // end namespace
 
-#ifdef HAVE_DSA
-
-#include <boost/unordered_map.hpp>
-
-// forward declarations
-namespace llvm {
-  class DSNode;
-  class DSGraph;
-  class DSCallSite;
-  class DataStructures;
-}
-
-namespace crab_llvm {
-
-  /* 
-   * Each DSA node is translated into a region.
-   */
-  class LlvmDsaHeapAbstraction: public HeapAbstraction {
-
-   public:
-
-     using typename HeapAbstraction::region_t;
-     using typename HeapAbstraction::region_set_t;
-
-   private:
-
-    llvm::Module &m_M;
-    llvm::DataStructures *m_dsa;
-    
-    /// map from DSNode to ids
-    llvm::DenseMap<const llvm::DSNode*, unsigned> m_node_ids;
-    boost::unordered_map<unsigned, const llvm::DSNode*> m_rev_node_ids;
-    unsigned m_max_id;
-
-    bool m_disambiguate_unknown;
-    bool m_disambiguate_ptr_cast;
-    bool m_disambiguate_external;
-    
-    /// reach - all reachable nodes from this function
-    std::set<const llvm::DSNode*> m_reach;
-    /// outReach - subset of reach that is only reachable from the
-    ///            return node
-    std::set<const llvm::DSNode*> m_retReach;
-    
-    llvm::DenseMap<const llvm::Function*, region_set_t> m_func_accessed;
-    llvm::DenseMap<const llvm::Function*, region_set_t> m_func_mods;
-    llvm::DenseMap<const llvm::Function*, region_set_t> m_func_news;
-    //std::set<const llvm::Function*> cached_functions;
-
-    llvm::DenseMap<const llvm::CallInst*, region_set_t> m_callsite_accessed;
-    llvm::DenseMap<const llvm::CallInst*, region_set_t> m_callsite_mods;
-    llvm::DenseMap<const llvm::CallInst*, region_set_t> m_callsite_news;
-    //std::set<const llvm::CallInst*> cached_callsites;
-
-   private:
-
-    int getId(const llvm::DSNode *n, unsigned offset);
-            
-    template <typename Set1, typename Set2>
-    void argReachableNodes(const llvm::Function&f, Set1 &reach, Set2 &outReach);
-    
-    // compute and cache the set of read, mod and new nodes of a whole
-    // function such that mod nodes are a subset of the read nodes and
-    // the new nodes are disjoint from mod nodes.
-    void cacheReadModNewNodes(const llvm::Function &f);
-
-    // Compute and cache the set of read, mod and new nodes of a
-    // callsite such that mod nodes are a subset of the read nodes and
-    // the new nodes are disjoint from mod nodes.
-    void cacheReadModNewNodesFromCallSite(llvm::CallInst &I);
-
-   public:
-    
-    LlvmDsaHeapAbstraction(llvm::Module &M, llvm::DataStructures *dsa,
-			   bool disambiguate_unknown = false,
-			   bool disambiguate_ptr_cast = false,
-			   bool disambiguate_external = false);
-    
-    virtual region_t getRegion(const llvm::Function &F, llvm::Value *V) override;
-    virtual const llvm::Value* getSingleton(int region) const override;
-    virtual region_set_t getAccessedRegions(const llvm::Function &F) override;
-    virtual region_set_t getOnlyReadRegions(const llvm::Function &F) override;
-    virtual region_set_t getModifiedRegions(const llvm::Function &F) override;
-    virtual region_set_t getNewRegions(const llvm::Function &F) override;
-    virtual region_set_t getAccessedRegions(llvm::CallInst &I) override;
-    virtual region_set_t getOnlyReadRegions(llvm::CallInst &I) override;
-    virtual region_set_t getModifiedRegions(llvm::CallInst &I) override;
-    virtual region_set_t getNewRegions(llvm::CallInst &I) override;
-    virtual const char* getHeapAbstractionName() const override
-    { return "LlvmDsaHeapAbstraction"; }
-  }; 
-} // end namespace crab_llvm
-#endif /* HAVE_DSA */
-#endif 

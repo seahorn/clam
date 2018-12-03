@@ -117,6 +117,19 @@ CrabEnableWarning("crab-enable-warnings",
 	    llvm::cl::location (warning),
 	    llvm::cl::value_desc ("bool"));
 
+struct SanityChecksOpt {
+  void operator=(bool val) const 
+  { crab::CrabEnableSanityChecks(val); } 
+};
+
+SanityChecksOpt sanity;
+
+static llvm::cl::opt<SanityChecksOpt, true, llvm::cl::parser<bool> > 
+CrabSanityChecks("crab-sanity-checks",
+	    llvm::cl::desc("Enable sanity checks"),
+	    llvm::cl::location(sanity),
+	    llvm::cl::value_desc("bool"));
+
 using namespace crab_llvm;
 
 // removes extension from filename if there is one

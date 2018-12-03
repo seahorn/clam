@@ -1255,7 +1255,7 @@ namespace crab_llvm {
   //! Translate the rest of instructions
   class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
 
-    crabLitFactory &m_lfac;
+    crabLitFactory& m_lfac;
     HeapAbstraction& m_mem;
     const DataLayout* m_dl;
     const TargetLibraryInfo* m_tli;
@@ -1263,7 +1263,9 @@ namespace crab_llvm {
     const bool m_is_inter_proc;
     unsigned int m_object_id;
     bool m_has_seahorn_fail;
-        
+    mem_region_set_t& m_init_regions;
+
+    
     unsigned fieldOffset (const StructType *t, unsigned field) {
       return m_dl->getStructLayout (const_cast<StructType*>(t))->
           getElementOffset (field);
@@ -1597,7 +1599,7 @@ namespace crab_llvm {
 	}
       }
       
-      if (false && m_lfac.get_track() >= ARR && CrabArrayInit && CrabUnsoundArrayInit) {
+      if (false && m_lfac.get_track() == ARR && CrabArrayInit && CrabUnsoundArrayInit) {
         mem_region_t r = GET_REGION(I,&I);
         bool isMainCaller = I.getParent()->getParent()->getName().equals("main");
         if (isMainCaller && !r.isUnknown()) {
@@ -1612,7 +1614,13 @@ namespace crab_llvm {
     }
 
     void doMemIntrinsic(MemIntrinsic& I) {
-
+      
+      if (m_lfac.get_track() == PTR) {
+	// XXX: memory intrinsics are currently only translated for ARR
+	CRABLLVM_WARNING("Skipped memory intrinsics " << I);
+	return;
+      }
+      
       if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(&I)) {
 	Value* src = MCI->getSource ();
 	Value* dst = MCI->getDest ();
@@ -1624,7 +1632,6 @@ namespace crab_llvm {
 	  m_bb.array_assign (m_lfac.mkArrayVar(dst_reg), m_lfac.mkArrayVar(src_reg));
 	}
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
-	
 	if (CrabUnsoundArrayInit && isInteger(*(MSI->getValue()))) {
 	  Value* dst = MSI->getDest();
 	  mem_region_t r = GET_REGION(I,dst);
@@ -1635,21 +1642,25 @@ namespace crab_llvm {
 	  
 	  if (len_ref->isInt()) {
 	    lin_exp_t lb_idx(number_t(0));
-	    lin_exp_t ub_idx(m_lfac.getExp(len_ref));
+	    lin_exp_t ub_idx(m_lfac.getExp(len_ref) -1);
 	    var_t arr_var = m_lfac.mkArrayVar(r);
 	    uint64_t elem_size = MSI->getAlignment(); /*double check this*/
 	    if (val_ref->isInt()) {
-	      if (val_ref->isVar()) {
-		m_bb.array_init (arr_var, elem_size, lb_idx, ub_idx, val_ref->getVar());
+	      if (m_init_regions.insert(r).second) {
+		if (val_ref->isVar()) {
+		  m_bb.array_init(arr_var, elem_size, lb_idx, ub_idx, val_ref->getVar());
 	      } else {
-		m_bb.array_init (arr_var, elem_size, lb_idx, ub_idx, m_lfac.getIntCst(val_ref));
+		  m_bb.array_init(arr_var, elem_size, lb_idx, ub_idx, m_lfac.getIntCst(val_ref));
+		}
 	      }
 	    } else if (val_ref->isBool()) {
-	      if (val_ref->isVar()) {
-		m_bb.array_init (arr_var, elem_size,lb_idx, ub_idx, val_ref->getVar());
-	      } else {
-		m_bb.array_init (arr_var, elem_size, lb_idx, ub_idx,
-				 m_lfac.isBoolTrue(val_ref) ? number_t(1): number_t(0));
+	      if (m_init_regions.insert(r).second) {	      
+		if (val_ref->isVar()) {
+		  m_bb.array_init(arr_var, elem_size,lb_idx, ub_idx, val_ref->getVar());
+		} else {
+		  m_bb.array_init(arr_var, elem_size, lb_idx, ub_idx,
+				  m_lfac.isBoolTrue(val_ref) ? number_t(1): number_t(0));
+		}
 	      }
 	    } else if (val_ref->isPtr()) {
 	      /** This should not happen since we ignore array of pointers **/
@@ -1657,6 +1668,8 @@ namespace crab_llvm {
 	    }
 	  }
 	}
+      } else if (isa<MemMoveInst>(&I)) {
+	CRABLLVM_WARNING("Skipped memmove instruction");
       }
     }
 
@@ -1710,7 +1723,11 @@ namespace crab_llvm {
 
 	  /* verifier.zero_initializer(v) */
 	  if (isInteger(ty) || isBool(ty)) {
-	    m_bb.array_init (a, elem_size, lb_idx, ub_idx, init_val);
+	    if (m_init_regions.insert(r).second) {	      	    
+	      IntegerType* int_ty = cast<IntegerType>(ty);
+	      ub_idx = ikos::z_number((int_ty->getBitWidth() / 8) -1);
+	      m_bb.array_init(a, elem_size, lb_idx, ub_idx, init_val);
+	    }
 	  } else if (isIntArray(*ty) || isBoolArray(*ty)) {
 	    if (cast<ArrayType>(ty)->getNumElements() == 0) {
 	      // TODO: zero-length array are possible inside structs We
@@ -1719,9 +1736,11 @@ namespace crab_llvm {
 	      // the translation won't make any difference.
 	      CRABLLVM_WARNING("translation skipped a zero-length array");
 	    } else {
-	      elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
-	      ub_idx = lin_exp_t((cast<ArrayType>(ty)->getNumElements() - 1)* elem_size);
-	      m_bb.array_init (a, elem_size, lb_idx, ub_idx, init_val);
+	      if (m_init_regions.insert(r).second) {	      	    	      
+		elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
+		ub_idx = lin_exp_t(cast<ArrayType>(ty)->getNumElements()* elem_size - 1);
+		m_bb.array_init(a, elem_size, lb_idx, ub_idx, init_val);
+	      }
 	    }
 	  } else { /** unreachable **/ }
 	}
@@ -1829,15 +1848,18 @@ namespace crab_llvm {
 
    public:
 
-    CrabInstVisitor (crabLitFactory &lfac, HeapAbstraction &mem,
-                     const DataLayout* dl, const TargetLibraryInfo* tli,
-                     basic_block_t &bb, bool isInterProc)
-      : m_lfac(lfac), m_mem(mem),
-	m_dl(dl), m_tli(tli), 
-	m_bb(bb), 
-	m_is_inter_proc (isInterProc),
-	m_object_id (0),
-	m_has_seahorn_fail (false) {}
+    CrabInstVisitor(crabLitFactory &lfac, HeapAbstraction &mem,
+		    const DataLayout* dl, const TargetLibraryInfo* tli,
+		    basic_block_t &bb, bool isInterProc, mem_region_set_t& init_regions)
+      : m_lfac(lfac)
+      , m_mem(mem)
+      , m_dl(dl)
+      , m_tli(tli)
+      , m_bb(bb)
+      , m_is_inter_proc(isInterProc)
+      , m_object_id(0)
+      , m_has_seahorn_fail(false)
+      , m_init_regions(init_regions) {}
 
     bool has_seahorn_fail() const { return m_has_seahorn_fail;}
 
@@ -2295,15 +2317,7 @@ namespace crab_llvm {
 	return;
       }
 
-      if (isPointer(I, m_lfac.get_track())) {
-	if (!lhs || !lhs->isVar()) {
-	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
-	} else {
-	  // -- lhs is a pointer -> add pointer statement
-	  m_bb.ptr_load(lhs->getVar(), ptr->getVar());
-	}
-	return;
-      } else if (m_lfac.get_track() >= ARR && (isInteger(I) || isBool(I))) {
+      if (m_lfac.get_track() == ARR && (isInteger(I) || isBool(I))) {
 	// -- lhs is an integer/bool -> add array statement
 	if (!lhs || !lhs->isVar()) {
 	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
@@ -2344,10 +2358,19 @@ namespace crab_llvm {
 	  }
 	  return;
 	}
+      } else if (m_lfac.get_track() == PTR && !CrabDisablePointers) {
+	
+	if (!lhs || !lhs->isVar()) {
+	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
+	}
+	
+	m_bb.ptr_load(lhs->getVar(), ptr->getVar());
+	return;
       }
       
-      if (isTracked(I, m_lfac.get_track()) && !isPointer(I, m_lfac.get_track()))
+      if (isTracked(I, m_lfac.get_track()) && !isPointer(I, m_lfac.get_track())) {
 	havoc(lhs->getVar(), m_bb);
+      }
     }
 
     void visitStoreInst (StoreInst &I) {
@@ -2364,18 +2387,8 @@ namespace crab_llvm {
 	return;
       }
       
-      if (isPointer(*I.getValueOperand(), m_lfac.get_track())) {
-	// -- value is a pointer -> add pointer statement
-	if (!val) {
-	  CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
-	} else if (!m_lfac.isPtrNull(val)) {
-	  // We ignore the case if we store a null pointer. In
-	  // most cases, it will be fine since typical pointer analyses
-	  // ignore that case but it might be imprecise with certain analyses.
-	  m_bb.ptr_store(ptr->getVar(), val->getVar());
-	}
-      } else if (m_lfac.get_track() >= ARR &&
-		 (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))){
+      if (m_lfac.get_track() == ARR &&
+	  (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))){
 	// -- value is an integer/bool -> add array statement
 	if (!val) {
 	  // XXX: this can happen if we store a ptrtoint instruction
@@ -2435,7 +2448,20 @@ namespace crab_llvm {
 	    }
 	  }
 	}
-      }
+      } else if (isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
+	if (!val) {
+	  CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
+	}
+
+	if (val->isPtr() && m_lfac.isPtrNull(val)) {
+	  // XXX: we ignore the case if we store a null pointer. In
+	  // most cases, it will be fine since typical pointer
+	  // analyses ignore that case but it might be imprecise with
+	  // certain analyses.
+	} else {
+	  m_bb.ptr_store(ptr->getVar(), val->getVar());
+	}
+      } 
     }
 
     void visitAllocaInst (AllocaInst &I) {
@@ -2446,7 +2472,7 @@ namespace crab_llvm {
 	m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
       }
 
-      if (m_lfac.get_track() >= ARR && CrabArrayInit) {
+      if (m_lfac.get_track() == ARR && CrabArrayInit) {
 	mem_region_t r = GET_REGION(I,&I);
 	if (!r.isUnknown()) {
 	  
@@ -2469,14 +2495,19 @@ namespace crab_llvm {
 	  }
 
 	  if (elementTy && numElems > 0) {
-	    unsigned elemSize = storageSize (elementTy);
-	    if (elemSize > 0) {
-	      /* any value we want. We choose zero because it has a
-		 valid interpretation whether it's integer, boolean or pointer */
-	      number_t init_val(0); 
-	      number_t lb_idx(0); 
-	      number_t ub_idx((numElems - 1) * elemSize);
-	      m_bb.array_init (m_lfac.mkArrayVar(r), elemSize, lb_idx, ub_idx, init_val);
+	    if (m_init_regions.insert(r).second) {
+	      unsigned elemSize = storageSize (elementTy);
+	      if (elemSize > 0) {
+		/*
+		  XXX: arbitrary value: we choose zero because it has
+		  a valid interpretation whether it's integer,
+		  boolean or pointer.
+		*/
+		number_t init_val(0); 
+		number_t lb_idx(0); 
+		number_t ub_idx((numElems * elemSize) - 1);
+		m_bb.array_init(m_lfac.mkArrayVar(r), elemSize, lb_idx, ub_idx, init_val);
+	      }
 	    }
 	  }
 	}
@@ -2831,15 +2862,17 @@ namespace crab_llvm {
     }
 
     basic_block_t *ret_block = nullptr;
-    var_ref_t ret_val;
-    
+    var_ref_t ret_val;    
     bool has_seahorn_fail = false;
+    // keep track of initialized regions
+    mem_region_set_t init_regions;
+    
     for (auto &B : m_func) {     
       opt_basic_block_t BB = lookup (B);
       if (!BB) continue;
 
       // -- build a CFG block ignoring branches, phi-nodes, and return
-      CrabInstVisitor v (m_lfac, m_mem, m_dl, m_tli, *BB, m_is_inter_proc);
+      CrabInstVisitor v(m_lfac, m_mem, m_dl, m_tli, *BB, m_is_inter_proc, init_regions);
       v.visit (B);
       // hook for seahorn
       has_seahorn_fail |= (v.has_seahorn_fail() && m_func.getName().equals("main"));
@@ -2867,15 +2900,15 @@ namespace crab_llvm {
 	}
 	
       } else {
-        for (const BasicBlock *dst : succs (B)) {
+        for (const BasicBlock *dst : succs(B)) {
           // -- move branch condition in bb to a new block inserted
           //    between bb and dst
-          opt_basic_block_t mid_bb = exec_br (B, *dst);
+          opt_basic_block_t mid_bb = exec_br(B, *dst);
 
           // -- phi nodes in dst are translated into assignments in
           //    the predecessor
-          CrabPhiVisitor v (m_lfac, m_mem, (mid_bb ? *mid_bb : *BB), B);
-          v.visit (const_cast<BasicBlock &>(*dst));
+          CrabPhiVisitor v(m_lfac, m_mem, (mid_bb ? *mid_bb : *BB), B);
+          v.visit(const_cast<BasicBlock &>(*dst));
         }
       }
     }
