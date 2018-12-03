@@ -285,7 +285,7 @@ type the option
 where `N` is the maximum number of thresholds.
 
 We also provide the option `--crab-track=VAL` to indicate the level of
-abstraction. The possible values of `VAL` are:
+abstraction of the translation. The possible values of `VAL` are:
 
 - `num`: translate only operations over integer and boolean scalars (LLVM registers).
 - `ptr`: `num` + translate all operations over pointers using crab pointer operations. 
@@ -293,13 +293,13 @@ abstraction. The possible values of `VAL` are:
   arithmetic and Crab arrays.
 
    If the level is `arr` then Crab-llvm's frontend will partition the
-   heap into disjoint regions. Each region is mapped to a Crab array, and
-   each LLVM load and store is translated to an array read and write
-   operation, respectively. Then, it will use an array domain provided
-   by Crab whose base domain is the one selected by option
-   `--crab-domain`. If option `--crab-singleton-aliases` is enabled
-   then Crab-llvm translates global singleton regions to scalar
-   variables.
+   heap into disjoint regions using a pointer analysis. Each region is
+   mapped to a Crab array, and each LLVM load and store is translated
+   to an array read and write operation, respectively. Then, it will
+   use an array domain provided by Crab whose base domain is the one
+   selected by option `--crab-domain`. If option
+   `--crab-singleton-aliases` is enabled then Crab-llvm translates
+   global singleton regions to scalar variables.
 
 By default, all the analyses are run in an intra-procedural
 manner. Enable the option `--crab-inter` to run the inter-procedural
@@ -439,16 +439,21 @@ Crab. Here some of them:
   
 - The backward analysis is too experimental. 
   
-- Crab does not provide any pointer or shape analysis. Points-to
-  information is provided to Crab-llvm by `llvm-dsa`/`sea-dsa` as
-  pre-analysis step.  Crab-llvm can reason about pointer's contents
-  only if `llvm-dsa`/`sea-dsa` can infer statically that a pointer
-  points to a memory region that behaves as a C arrays (i.e.,
-  consecutive sequence of bytes where elements must have compatible
-  types and offset must be multiple of the element type size). Once a
-  logical array has been identified, Crab-llvm uses one of the Crab
-  array domains to reason about their contents. Currently, Crab-llvm
-  only supports array smashing but there are more precise array
-  domains implemented in Crab that just need to be integrated.
+- The option `--crab-track=ptr` translates pointer operations to Crab
+  pointer operations without losing precision. However, Crab does not
+  provide currently any pointer or shape analysis, and thus, very
+  little reasoning about pointer operations can be currently done.
+ 
+  To mitigate that, points-to information can be provided to Crab-llvm
+  by `llvm-dsa`/`sea-dsa` as a pre-analysis step.  Crab-llvm can
+  reason about pointer's contents if `--crab-track=arr` and whenever
+  `llvm-dsa`/`sea-dsa` can infer statically that a pointer points to a
+  memory region of consecutive bytes where elements must have
+  compatible types and accesses to the region have offsets multiple of
+  the element type size. Once a memory region of this kind has been
+  identified, Crab-llvm uses one of the Crab array domains to reason
+  about their contents. Currently, Crab-llvm only supports array
+  smashing but there are more precise array domains implemented in
+  Crab that just need to be integrated.
 	  
   
