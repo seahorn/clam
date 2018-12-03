@@ -1597,7 +1597,7 @@ namespace crab_llvm {
 	}
       }
       
-      if (false && m_lfac.get_track() >= ARR && CrabArrayInit && CrabUnsoundArrayInit) {
+      if (false && m_lfac.get_track() == ARR && CrabArrayInit && CrabUnsoundArrayInit) {
         mem_region_t r = GET_REGION(I,&I);
         bool isMainCaller = I.getParent()->getParent()->getName().equals("main");
         if (isMainCaller && !r.isUnknown()) {
@@ -1612,7 +1612,13 @@ namespace crab_llvm {
     }
 
     void doMemIntrinsic(MemIntrinsic& I) {
-
+      
+      if (m_lfac.get_track() == PTR) {
+	// XXX: memory intrinsics are currently only translated for ARR
+	CRABLLVM_WARNING("Skipped memory intrinsics " << I);
+	return;
+      }
+      
       if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(&I)) {
 	Value* src = MCI->getSource ();
 	Value* dst = MCI->getDest ();
@@ -1624,7 +1630,6 @@ namespace crab_llvm {
 	  m_bb.array_assign (m_lfac.mkArrayVar(dst_reg), m_lfac.mkArrayVar(src_reg));
 	}
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
-	
 	if (CrabUnsoundArrayInit && isInteger(*(MSI->getValue()))) {
 	  Value* dst = MSI->getDest();
 	  mem_region_t r = GET_REGION(I,dst);
@@ -1657,6 +1662,8 @@ namespace crab_llvm {
 	    }
 	  }
 	}
+      } else if (isa<MemMoveInst>(&I)) {
+	CRABLLVM_WARNING("Skipped memmove instruction");
       }
     }
 
@@ -2314,15 +2321,7 @@ namespace crab_llvm {
 	return;
       }
 
-      if (isPointer(I, m_lfac.get_track())) {
-	if (!lhs || !lhs->isVar()) {
-	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
-	} else {
-	  // -- lhs is a pointer -> add pointer statement
-	  m_bb.ptr_load(lhs->getVar(), ptr->getVar());
-	}
-	return;
-      } else if (m_lfac.get_track() >= ARR && (isInteger(I) || isBool(I))) {
+      if (m_lfac.get_track() == ARR && (isInteger(I) || isBool(I))) {
 	// -- lhs is an integer/bool -> add array statement
 	if (!lhs || !lhs->isVar()) {
 	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
@@ -2363,10 +2362,19 @@ namespace crab_llvm {
 	  }
 	  return;
 	}
+      } else if (m_lfac.get_track() == PTR && !CrabDisablePointers) {
+	
+	if (!lhs || !lhs->isVar()) {
+	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
+	}
+	
+	m_bb.ptr_load(lhs->getVar(), ptr->getVar());
+	return;
       }
       
-      if (isTracked(I, m_lfac.get_track()) && !isPointer(I, m_lfac.get_track()))
+      if (isTracked(I, m_lfac.get_track()) && !isPointer(I, m_lfac.get_track())) {
 	havoc(lhs->getVar(), m_bb);
+      }
     }
 
     void visitStoreInst (StoreInst &I) {
@@ -2383,18 +2391,8 @@ namespace crab_llvm {
 	return;
       }
       
-      if (isPointer(*I.getValueOperand(), m_lfac.get_track())) {
-	// -- value is a pointer -> add pointer statement
-	if (!val) {
-	  CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
-	} else if (!m_lfac.isPtrNull(val)) {
-	  // We ignore the case if we store a null pointer. In
-	  // most cases, it will be fine since typical pointer analyses
-	  // ignore that case but it might be imprecise with certain analyses.
-	  m_bb.ptr_store(ptr->getVar(), val->getVar());
-	}
-      } else if (m_lfac.get_track() >= ARR &&
-		 (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))){
+      if (m_lfac.get_track() == ARR &&
+	  (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))){
 	// -- value is an integer/bool -> add array statement
 	if (!val) {
 	  // XXX: this can happen if we store a ptrtoint instruction
@@ -2454,7 +2452,20 @@ namespace crab_llvm {
 	    }
 	  }
 	}
-      }
+      } else if (isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
+	if (!val) {
+	  CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
+	}
+
+	if (val->isPtr() && m_lfac.isPtrNull(val)) {
+	  // XXX: we ignore the case if we store a null pointer. In
+	  // most cases, it will be fine since typical pointer
+	  // analyses ignore that case but it might be imprecise with
+	  // certain analyses.
+	} else {
+	  m_bb.ptr_store(ptr->getVar(), val->getVar());
+	}
+      } 
     }
 
     void visitAllocaInst (AllocaInst &I) {
@@ -2465,7 +2476,7 @@ namespace crab_llvm {
 	m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
       }
 
-      if (m_lfac.get_track() >= ARR && CrabArrayInit) {
+      if (m_lfac.get_track() == ARR && CrabArrayInit) {
 	mem_region_t r = GET_REGION(I,&I);
 	if (!r.isUnknown()) {
 	  
