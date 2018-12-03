@@ -20,7 +20,7 @@ notifications:
    slack: seahornteam:NAUqZmZHFFviPH4ktQbJXgKu
    email:
      recipients:
-	- seahorn-build@googlegroups.com
+     - seahorn-build@googlegroups.com
      on_success: always
      on_failure: always
 
