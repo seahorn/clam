@@ -17,11 +17,10 @@ script:
   - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t crabllvm_${UBUNTU_DIST} -f docker/crabllvm-full-size-rel.Dockerfile .
 
 notifications:
-   #slack: seahornteam:NAUqZmZHFFviPH4ktQbJXgKu
+   slack: seahornteam:NAUqZmZHFFviPH4ktQbJXgKu
    email:
      recipients:
-      #- seahorn-build@googlegroups.com
-      - navasjorgea@gmail.com	 
+	- seahorn-build@googlegroups.com
      on_success: always
      on_failure: always
 

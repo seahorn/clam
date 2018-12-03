@@ -10,7 +10,7 @@
     that all sanity checks pass.
 **/
 
-#include <stdlib.h>
+//#include <stdlib.h>
 
 extern int nd (void);
 extern void __CRAB_assert(int);
