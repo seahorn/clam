@@ -26,14 +26,16 @@
 /** Wrappers for pointer analyses **/
 #include "crab_llvm/DummyHeapAbstraction.hh"
 #include "crab_llvm/LlvmDsaHeapAbstraction.hh"
-#include "crab_llvm/SeaDsaHeapAbstraction.hh"
+//TEMPORARY
+//#include "crab_llvm/SeaDsaHeapAbstraction.hh"
 /** Actual pointer analysis for heap disambiguation **/
 // llvm-dsa
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
 #endif
 // sea-dsa
-#include "sea_dsa/Global.hh"
+//TEMPORARY
+//#include "sea_dsa/Global.hh"
 
 #include "crab/common/debug.hpp"
 #include "crab/common/stats.hpp"
@@ -1409,9 +1411,10 @@ namespace crab_llvm {
     m_tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
     const DataLayout& dl = M.getDataLayout();
 
-    sea_dsa::GlobalAnalysis* global_sea_dsa = nullptr;
-    // The factory must be alive while global_sea_dsa is in use
-    sea_dsa::ContextInsensitiveGlobalAnalysis::SetFactory fac;
+    // TEMPORARY
+    // sea_dsa::GlobalAnalysis* global_sea_dsa = nullptr;
+    // // The factory must be alive while global_sea_dsa is in use
+    // sea_dsa::ContextInsensitiveGlobalAnalysis::SetFactory fac;
     
     switch (CrabHeapAnalysis) {
     case LLVM_DSA:
@@ -1426,31 +1429,33 @@ namespace crab_llvm {
       // execute CI_SEA_DSA
       #endif      
     case CI_SEA_DSA:
-    case CS_SEA_DSA: {
-      sea_dsa::GlobalAnalysisKind kind = sea_dsa::CONTEXT_INSENSITIVE;
-      if (CrabHeapAnalysis == CS_SEA_DSA) {
-	kind = sea_dsa::CONTEXT_SENSITIVE;
-      }
-      // XXX: We don't run sea-dsa as a LLVM pass because we don't
-      // want the pass manager to run the sea-dsa analysis if user
-      // selects llvm-dsa.
-      CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
-      CRAB_VERBOSE_IF(1, llvm::errs() << "Started sea-dsa analysis.\n";);      
-      if (kind == sea_dsa::CONTEXT_INSENSITIVE) {
-	global_sea_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(dl, *m_tli,
-								       cg, fac, false);
-      } else {
-	global_sea_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(dl, *m_tli, cg, fac);
-      }
-      global_sea_dsa->runOnModule(M);
-      CRAB_VERBOSE_IF(1, llvm::errs() << "Finished sea-dsa analysis.\n";);
-      m_mem.reset
-	(new SeaDsaHeapAbstraction(M, global_sea_dsa,
-				   CrabDsaDisambiguateUnknown,
-				   CrabDsaDisambiguatePtrCast,
-				   CrabDsaDisambiguateExternal));
-      }
-      break;
+    case CS_SEA_DSA:
+      // TEMPORARY
+      // {
+      // sea_dsa::GlobalAnalysisKind kind = sea_dsa::CONTEXT_INSENSITIVE;
+      // if (CrabHeapAnalysis == CS_SEA_DSA) {
+      // 	kind = sea_dsa::CONTEXT_SENSITIVE;
+      // }
+      // // XXX: We don't run sea-dsa as a LLVM pass because we don't
+      // // want the pass manager to run the sea-dsa analysis if user
+      // // selects llvm-dsa.
+      // CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
+      // CRAB_VERBOSE_IF(1, llvm::errs() << "Started sea-dsa analysis.\n";);      
+      // if (kind == sea_dsa::CONTEXT_INSENSITIVE) {
+      // 	global_sea_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(dl, *m_tli,
+      // 								       cg, fac, false);
+      // } else {
+      // 	global_sea_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(dl, *m_tli, cg, fac);
+      // }
+      // global_sea_dsa->runOnModule(M);
+      // CRAB_VERBOSE_IF(1, llvm::errs() << "Finished sea-dsa analysis.\n";);
+      // m_mem.reset
+      // 	(new SeaDsaHeapAbstraction(M, global_sea_dsa,
+      // 				   CrabDsaDisambiguateUnknown,
+      // 				   CrabDsaDisambiguatePtrCast,
+      // 				   CrabDsaDisambiguateExternal));
+      // }
+      // break;
     default:
       errs() << "Warning: running crab-llvm without memory analysis\n";
     }
@@ -1485,9 +1490,9 @@ namespace crab_llvm {
       }
     }
 
-    if (global_sea_dsa) {
-      delete global_sea_dsa;
-    }
+    // if (global_sea_dsa) {
+    //   delete global_sea_dsa;
+    // }
     
     if (CrabStats) {
       crab::CrabStats::PrintBrunch (crab::outs());

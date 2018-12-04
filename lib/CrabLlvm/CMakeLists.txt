@@ -2,7 +2,8 @@ add_library (CrabLlvmAnalysis ${CRABLLVM_LIBS_TYPE}
   CfgBuilder.cc
   CrabLlvm.cc
   LlvmDsaHeapAbstraction.cc
-  SeaDsaHeapAbstraction.cc  
+  ##TEMPORARY
+  ##SeaDsaHeapAbstraction.cc  
   NameValues.cc
   crab/path_analyzer.cc    
   )
