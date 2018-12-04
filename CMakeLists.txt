@@ -125,8 +125,10 @@ if (GIT_FOUND)
       ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
     add_custom_target (seahorn-llvm-git
       ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
-    
-    add_custom_target (extra DEPENDS llvm-dsa-git sea-dsa-git seahorn-llvm-git)
+
+    # TEMPORARY
+    #add_custom_target (extra DEPENDS llvm-dsa-git sea-dsa-git seahorn-llvm-git)
+    add_custom_target (extra DEPENDS llvm-dsa-git seahorn-llvm-git)
   endif ()
 
   set (CRAB_REPO "https://github.com/seahorn/crab.git" CACHE STRING "crab repo")
@@ -250,15 +252,16 @@ if (TopLevel)
     set (DSA_LIBS "")
   endif()
 
-  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
-      EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/src/DsaAnalysis.cc)
-    include_directories (BEFORE sea-dsa/include)
-    add_subdirectory (${CMAKE_SOURCE_DIR}/sea-dsa)
-    set (SEA_DSA_LIBS SeaDsaAnalysis)
-  else()
-    message (WARNING "No SEA DSA found in ${CMAKE_SOURCE_DIR}/sea-dsa. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
-    set (SEA_DSA_LIBS "")
-  endif()
+  ## TEMPORARY
+  # if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
+  #     EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/src/DsaAnalysis.cc)
+  #   include_directories (BEFORE sea-dsa/include)
+  #   add_subdirectory (${CMAKE_SOURCE_DIR}/sea-dsa)
+  #   set (SEA_DSA_LIBS SeaDsaAnalysis)
+  # else()
+  #   message (WARNING "No SEA DSA found in ${CMAKE_SOURCE_DIR}/sea-dsa. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
+  #   set (SEA_DSA_LIBS "")
+  # endif()
   
   if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND
       EXISTS ${CMAKE_SOURCE_DIR}/llvm-seahorn/lib/CMakeLists.txt)
