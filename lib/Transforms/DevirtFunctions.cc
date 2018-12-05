@@ -37,13 +37,11 @@ namespace crab_llvm {
     return CastInst::CreateZExtOrBitCast (V, Ty, Name, InsertPt);
   }
   
-  Function* DevirtualizeFunctions::mkBounceFn(CallSite &CS, AliasTargetMap& ATM) {
+  Function* DevirtualizeFunctions::mkBounceFn(CallSite &CS, CallSiteResolver* CSR) {
     assert (isIndirectCall (CS) && "Not an indirect call");
     
-    const bool useAliasing = !ATM.empty();
-    
     AliasSetId id = typeAliasId (CS);
-    if (!useAliasing) {
+    if (!CSR->useAliasing()) {
       // -- If we just use types then we can reuse the same bounce
       // -- function to avoid many duplicates.
       // 
@@ -63,10 +61,9 @@ namespace crab_llvm {
     AliasSet& TypesTargets = m_typeAliasSets [id];
     // -- targets provided by an external pointer analysis (optional)
 
-    auto it = ATM.find(CS.getInstruction());
-    if (it != ATM.end()) {
+    if (CSR->hasTargets(CS.getInstruction())) {
       // --- We filter out those targets whose signature do not match.
-      AliasSet& AliasTargets = it->second;
+      AliasSet& AliasTargets = CSR->getTargets(CS.getInstruction());
       std::sort(TypesTargets.begin(), TypesTargets.end());
       std::sort(AliasTargets.begin(), AliasTargets.end());
       std::set_intersection(AliasTargets.begin(), AliasTargets.end(),
@@ -210,8 +207,8 @@ namespace crab_llvm {
   }
 
 
-  void DevirtualizeFunctions::mkDirectCall(CallSite CS, AliasTargetMap& ATM) {
-    const Function *bounceFn = mkBounceFn(CS, ATM);
+  void DevirtualizeFunctions::mkDirectCall(CallSite CS, CallSiteResolver* CSR) {
+    const Function *bounceFn = mkBounceFn(CS, CSR);
     // -- something failed
     if (!bounceFn) return;
     
@@ -340,7 +337,7 @@ namespace crab_llvm {
     }
   }
   
-  bool DevirtualizeFunctions::resolveCallSites(Module & M, AliasTargetMap& ATM) {
+  bool DevirtualizeFunctions::resolveCallSites(Module & M, CallSiteResolver* CSR) {
     // -- Compute type alias sets if not computed already
     if (m_typeAliasSets.empty()) {
       computeTypeAliasSets(M);
@@ -355,7 +352,7 @@ namespace crab_llvm {
     bool Changed = !m_worklist.empty ();
     for (auto I : m_worklist) {
       CallSite CS(I);
-      mkDirectCall(CS, ATM);
+      mkDirectCall(CS, CSR);
     }
     // -- Conservatively assume that we've changed one or more call
     // -- sites.
