@@ -59,6 +59,60 @@ public:
   }
 };
   
+
+class DsaResolver: public CallSiteResolver {
+  dsa::CallTargetFinder<EQTDDataStructures>* m_CTF;
+  TargetMap m_TM;
+  
+public:
+  
+  DsaResolver(dsa::CallTargetFinder<EQTDDataStructures>* CTF, Module& M)
+    : CallSiteResolver()
+    , m_CTF(CTF) {
+    
+    // build the target map
+    for (auto &F: M) {
+      for (auto &BB: F) {
+	for (auto &I: BB) {
+	  Instruction *CI= nullptr;
+	  if (isa<CallInst>(&I)) {
+	    CI = &I;
+	  }
+	  if (!CI && isa<InvokeInst>(&I)) {
+	    CI = &I;
+	  }
+	  if (CI) {
+	    CallSite CS(CI);
+	    if (m_CTF->isComplete(CS)) {
+	      m_TM[CI].append(CTF->begin(CS), CTF->end(CS));
+	    }
+	  }
+	}
+      }
+    }
+  }
+  
+  bool useAliasing() const {
+    return true;
+  }
+  
+  bool hasTargets(const llvm::Instruction* CS) const {
+    return (m_TM.find(CS) != m_TM.end());
+  }
+  
+  AliasSet& getTargets(const llvm::Instruction* CS) {
+    assert(hasTargets(CS));
+    auto it = m_TM.find(CS);
+    return it->second;
+  }
+  
+  const AliasSet& getTargets(const llvm::Instruction* CS) const {
+    assert(hasTargets(CS));
+    auto it = m_TM.find(CS);
+    return it->second;
+  }
+};
+  
   
   
 bool DevirtualizeFunctionsDsaPass::runOnModule (Module & M) {
@@ -69,32 +123,11 @@ bool DevirtualizeFunctionsDsaPass::runOnModule (Module & M) {
   dsa::CallTargetFinder<EQTDDataStructures> *CTF =
     &getAnalysis<dsa::CallTargetFinder<EQTDDataStructures>>();
 
-  DevirtualizeFunctions::AliasTargetMap aliasMap;
-  
-  // -- Create dsa alias map
-  for (auto &F: M) {
-    for (auto &BB: F) {
-      for (auto &I: BB) {
-        Instruction *CI= nullptr;
-	if (isa<CallInst>(&I)) {
-	  CI = &I;
-	}
-	if (!CI && isa<InvokeInst>(&I)) {
-	  CI = &I;
-	}
-	
-	if (CI) {
-	  CallSite CS(CI);
-	  if (CTF->isComplete(CS)) {
-	    aliasMap[CI].append(CTF->begin(CS), CTF->end(CS));
-	  }
-	}
-      }
-    }
-  }
-  
   DevirtualizeFunctions DF(CG, m_allowIndirectCalls);
-  return DF.resolveCallSites(M, aliasMap);
+  CallSiteResolver* CSR = new DsaResolver(CTF, M);  
+  bool res = DF.resolveCallSites(M, CSR);
+  delete CSR;
+  return res;
 }
   
 } // end namespace

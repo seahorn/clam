@@ -39,10 +39,11 @@ namespace crab_llvm {
     // -- Get the call graph
     CallGraph* CG = &(getAnalysis<CallGraphWrapperPass> ().getCallGraph ());
 
-    /* empty because we are not using pointer analysis here*/    
-    DevirtualizeFunctions::AliasTargetMap ATM; 
     DevirtualizeFunctions DF(CG, m_allowIndirectCalls);
-    return DF.resolveCallSites(M, ATM);
+    CallSiteResolver* CSR = new NoAliasResolver();    
+    bool res = DF.resolveCallSites(M, CSR);
+    delete CSR;
+    return res;
   }
   
 
