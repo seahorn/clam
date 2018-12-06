@@ -23,7 +23,12 @@ public:
   }
   
   virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const {
+    AU.setPreservesAll();
   }
+  
+  const char* getPassName() const {
+    return "DevirtualizeFunctionsDsaPass (LLVM DSA + types)";
+  }  
 };
 }
 
@@ -38,27 +43,6 @@ public:
 using namespace llvm;
 
 namespace crab_llvm {
-
-class DevirtualizeFunctionsDsaPass:  public ModulePass {
-public:
-
-  static char ID;
-  bool m_allowIndirectCalls;
-  
-  DevirtualizeFunctionsDsaPass(bool allowIndirectCalls = false)
-    : ModulePass(ID)
-    , m_allowIndirectCalls(allowIndirectCalls) {}
-  
-  virtual bool runOnModule(Module & M);
-  
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.setPreservesAll();
-    AU.addRequired<CallGraphWrapperPass>();
-    AU.addPreserved<CallGraphWrapperPass>();
-    AU.addRequired<dsa::CallTargetFinder<EQTDDataStructures>>();    
-  }
-};
-  
 
 class DsaResolver: public CallSiteResolver {
   dsa::CallTargetFinder<EQTDDataStructures>* m_CTF;
@@ -112,40 +96,58 @@ public:
     return it->second;
   }
 };
-  
-  
-  
-bool DevirtualizeFunctionsDsaPass::runOnModule (Module & M) {
-  // -- Get the call graph
-  CallGraph* CG = &(getAnalysis<CallGraphWrapperPass> ().getCallGraph ());
-  
-  // -- Access to analysis pass which finds targets of indirect function calls
-  dsa::CallTargetFinder<EQTDDataStructures> *CTF =
-    &getAnalysis<dsa::CallTargetFinder<EQTDDataStructures>>();
+    
+class DevirtualizeFunctionsDsaPass:  public ModulePass {
+public:
 
-  DevirtualizeFunctions DF(CG, m_allowIndirectCalls);
-  CallSiteResolver* CSR = new DsaResolver(CTF, M);  
-  bool res = DF.resolveCallSites(M, CSR);
-  delete CSR;
-  return res;
-}
+  static char ID;
+  bool m_allowIndirectCalls;
   
+  DevirtualizeFunctionsDsaPass(bool allowIndirectCalls = false)
+    : ModulePass(ID)
+    , m_allowIndirectCalls(allowIndirectCalls) {}
+  
+  virtual bool runOnModule(Module & M) {
+    // -- Get the call graph
+    CallGraph* CG = &(getAnalysis<CallGraphWrapperPass> ().getCallGraph ());
+    
+    // -- Access to analysis pass which finds targets of indirect function calls
+    dsa::CallTargetFinder<EQTDDataStructures> *CTF =
+      &getAnalysis<dsa::CallTargetFinder<EQTDDataStructures>>();
+    
+    DevirtualizeFunctions DF(CG, m_allowIndirectCalls);
+    CallSiteResolver* CSR = new DsaResolver(CTF, M);  
+    bool res = DF.resolveCallSites(M, CSR);
+    delete CSR;
+    return res;
+  }    
+  
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+    AU.addRequired<CallGraphWrapperPass>();
+    AU.addRequired<dsa::CallTargetFinder<EQTDDataStructures>>();
+    // FIXME: DevirtualizeFunctions does not fully update the call
+    // graph so we don't claim it is preserved.
+    // AU.setPreservesAll();
+    // AU.addPreserved<CallGraphWrapperPass>();
+  }
+
+  const char* getPassName() const {
+    return "DevirtualizeFunctionsDsaPass (LLVM DSA + types)";
+  }
+  
+};
 } // end namespace
 #endif 
 
 
 namespace crab_llvm {
   
-// Pass ID variable
 char DevirtualizeFunctionsDsaPass::ID = 0;
 
 llvm::Pass* createDevirtualizeFunctionsDsaPass(bool allowIndirectCalls) {
   return new DevirtualizeFunctionsDsaPass(allowIndirectCalls);
 }
   
-// Pass registration
-llvm::RegisterPass<DevirtualizeFunctionsDsaPass>
-X("devirt-functions-dsa",
-  "Devirtualize indirect function calls using DSA pointer analysis");
-
 } // end namespace
+
+

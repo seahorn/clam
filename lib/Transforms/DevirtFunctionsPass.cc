@@ -26,36 +26,36 @@ namespace crab_llvm {
       , m_allowIndirectCalls(allowIndirectCalls)
     {}
     
-    virtual bool runOnModule(Module & M);
+    virtual bool runOnModule(Module & M) {
+      // -- Get the call graph
+      CallGraph* CG = &(getAnalysis<CallGraphWrapperPass> ().getCallGraph ());
+      
+      DevirtualizeFunctions DF(CG, m_allowIndirectCalls);
+      CallSiteResolver* CSR = new NoAliasResolver();    
+      bool res = DF.resolveCallSites(M, CSR);
+      delete CSR;
+      return res;
+    }      
     
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-      AU.setPreservesAll ();
       AU.addRequired<CallGraphWrapperPass> ();
-      AU.addPreserved<CallGraphWrapperPass> ();
+      // FIXME: DevirtualizeFunctions does not fully update the call
+      // graph so we don't claim it is preserved.
+      // AU.setPreservesAll ();
+      // AU.addPreserved<CallGraphWrapperPass> ();
+    }
+    
+    const char* getPassName() const {
+      return "DevirtualizeFunctionsPass (only types)";
     }
   };
 
-  bool DevirtualizeFunctionsPass::runOnModule (Module & M) {
-    // -- Get the call graph
-    CallGraph* CG = &(getAnalysis<CallGraphWrapperPass> ().getCallGraph ());
-
-    DevirtualizeFunctions DF(CG, m_allowIndirectCalls);
-    CallSiteResolver* CSR = new NoAliasResolver();    
-    bool res = DF.resolveCallSites(M, CSR);
-    delete CSR;
-    return res;
-  }
-  
-
-  // Pass ID variable
   char DevirtualizeFunctionsPass::ID = 0;
 
   Pass* createDevirtualizeFunctionsPass(bool allowIndirectCalls) {
     return new DevirtualizeFunctionsPass(allowIndirectCalls);
   }
   
-  // Pass registration
-  RegisterPass<DevirtualizeFunctionsPass>
-  XX ("devirt-functions", "Devirtualize indirect function calls using only types");
-
 } // end namespace
+
+
