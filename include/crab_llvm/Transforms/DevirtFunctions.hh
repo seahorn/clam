@@ -82,10 +82,13 @@ namespace crab_llvm {
     TypeAliasSetMap m_typeAliasSets;
     
     // Call graph of the program
-    llvm::CallGraph * m_cg;    
+    llvm::CallGraph* m_cg;    
     
     bool m_allowIndirectCalls;
-   
+
+    /// maps alias set id to an existing bounce function
+    llvm::DenseMap<AliasSetId, llvm::Function*> m_bounceMap;
+    
     // Worklist of call sites to transform
     llvm::SmallVector<llvm::Instruction*, 32> m_worklist;
 
@@ -95,9 +98,6 @@ namespace crab_llvm {
 
     /// returns an id of an alias set to which this function belongs
     static AliasSetId typeAliasId(const llvm::Function &F);
-    
-    /// maps alias set id to an existing bounce function
-    llvm::DenseMap<AliasSetId, llvm::Function*> m_bounceMap;
     
     /// turn the indirect call-site into a direct one
     void mkDirectCall(llvm::CallSite CS, CallSiteResolver* CSR);
