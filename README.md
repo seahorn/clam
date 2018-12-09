@@ -64,9 +64,8 @@ of Crab-llvm.
   
 * [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
 
-`llvm-seahorn` provides specialized versions of `InstCombine` and
-`IndVarSimplify` LLVM passes as well as a LLVM pass to convert
-undefined values into nondeterministic calls.
+   `llvm-seahorn` provides specialized versions of `InstCombine` and
+   `IndVarSimplify` LLVM passes as well as a LLVM pass to convert undefined values into nondeterministic calls.
 
 To include these external components, type instead:
 
