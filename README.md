@@ -116,7 +116,7 @@ To run some regression tests:
 
 # Crab-llvm architecture #
 
-![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
+![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/master/CrabLlvm_arch.jpg?branch=dev" Crab-Llvm Architecture")
 
 # Example 1 #
 
