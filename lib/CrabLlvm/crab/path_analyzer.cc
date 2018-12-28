@@ -140,7 +140,7 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
       //    inferred bottom.
       assert (bottom_pos < path.size());
       AbsDom abs_val; 
-      bwd_abs_tr_t abs_tr(&abs_val, stmt_dom_map, true);
+      bwd_abs_tr_t abs_tr(&abs_val, &stmt_dom_map, true);
       for(int i=bottom_pos; i >= 0; --i) {
 	basic_block_label_t node = path[i];
 	auto &b = m_cfg.get_node (node);
