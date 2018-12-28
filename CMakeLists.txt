@@ -126,10 +126,16 @@ if (GIT_FOUND)
   endif ()
   
   add_custom_target (crab-git
-     		     ${GIT_EXECUTABLE} clone ${CRAB_REPO} ${CRAB_ROOT})
+    ${GIT_EXECUTABLE} clone ${CRAB_REPO} ${CRAB_ROOT})
   
+  # Revert to the latest commit done on Dec 9, 2018		   
+  add_custom_target (crab-revert-commit-git
+    COMMAND ${GIT_EXECUTABLE} checkout 311991c41f28dba6a91a7a75d85e5c6c8da75f6a
+    WORKING_DIRECTORY ${CRAB_ROOT}
+    DEPENDS crab-git)
+		   
   add_custom_target (crab ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
-                     DEPENDS crab-git)    
+                     DEPENDS crab-revert-commit-git)    
 
 else ()
   if (TopLevel)
