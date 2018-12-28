@@ -115,15 +115,11 @@ namespace crab_llvm {
     }								     \
     								     \
     void forget(const std::vector<var_t>& vars) {		     \
-      crab::domains::domain_traits<ABS_DOM>::forget(m_abs,	     \
-						    vars.begin(),    \
-						    vars.end());     \
+      m_abs.forget(vars);					     \
     }								     \
     								     \
     void project(const std::vector<var_t>& vars) {		     \
-       crab::domains::domain_traits<ABS_DOM>::project(m_abs,         \
-                                                      vars.begin(),  \
-                                                      vars.end());   \
+      m_abs.project(vars);					     \
     }								     \
     								     \
    };                                                                \

@@ -118,9 +118,9 @@ public:
       &getAnalysis<dsa::CallTargetFinder<EQTDDataStructures>>();
     
     DevirtualizeFunctions DF(CG, m_allowIndirectCalls);
-    CallSiteResolver* CSR = new DsaResolver(CTF, M);  
+    DsaResolver DsaCSR(CTF, M);
+    CallSiteResolver* CSR = &DsaCSR;
     bool res = DF.resolveCallSites(M, CSR);
-    delete CSR;
     return res;
   }    
   

@@ -32,9 +32,9 @@ namespace crab_llvm {
       CallGraph* CG = &(getAnalysis<CallGraphWrapperPass> ().getCallGraph ());
       
       DevirtualizeFunctions DF(CG, m_allowIndirectCalls);
-      CallSiteResolver* CSR = new NoAliasResolver();    
+      NoAliasResolver NoAliasCSR;    
+      CallSiteResolver* CSR = &NoAliasCSR;    
       bool res = DF.resolveCallSites(M, CSR);
-      delete CSR;
       return res;
     }      
     
