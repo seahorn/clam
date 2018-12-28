@@ -9,7 +9,7 @@ LLVM-based languages based on
 the [Crab](https://github.com/seahorn/crab) library. It currently
 supports LLVM 5.0.
 
-# Installation #
+# Requirements #
 
 Crab-llvm is written in C++ and uses heavily the Boost library. The
 main requirements are:
@@ -25,7 +25,15 @@ In linux, you can install requirements typing the commands:
      sudo apt-get install libgmp-dev
      sudo apt-get install libmpfr-dev	
 
-Then, the basic compilation steps are:
+To run tests you need to install `lit` and `OutputCheck`. In Linux:
+
+     apt-get install python-pip
+     pip install lit
+     pip install OutputCheck
+
+# Installation # 
+
+The basic compilation steps are:
 
      mkdir build && cd build
      cmake -DCMAKE_INSTALL_PREFIX=_DIR_ ../
@@ -48,18 +56,16 @@ of Crab-llvm.
   [here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps)
   and it is used by Crab-llvm to disambiguate the heap.
   
-* [sea-dsa](https://github.com/seahorn/sea-dsa): `git clone https://github.com/seahorn/sea-dsa.git`
+* [sea-dsa](https://github.com/seahorn/sea-dsa): ```git clone https://github.com/seahorn/sea-dsa.git```
 
-  `sea-dsa` is a new DSA-based heap analysis. Unlike `llvm-dsa`,
-  `sea-dsa` is context-sensitive and therefore, a finer-grained
-  partition of the heap can be generated in presence of function
-  calls.
+  `sea-dsa` is a new DSA-based heap analysis more precise than
+  `llvm-dsa`. Details can be
+  found [here](https://jorgenavas.github.io/papers/sea-dsa-SAS17.pdf).
   
 * [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
 
-`llvm-seahorn` provides specialized versions of `InstCombine` and
-`IndVarSimplify` LLVM passes as well as a LLVM pass to convert
-undefined values into nondeterministic calls.
+   `llvm-seahorn` provides specialized versions of `InstCombine` and
+   `IndVarSimplify` LLVM passes as well as a LLVM pass to convert undefined values into nondeterministic calls.
 
 To include these external components, type instead:
 
@@ -70,11 +76,17 @@ To include these external components, type instead:
      cmake --build . --target llvm && cmake ..           
      cmake --build . --target install 
 
-If you want to use the boxes domain then add `-DUSE_LDD=ON`.
+The Boxes/Apron/Elina domains require third-party libraries. To avoid
+the burden to users who are not interested in those domains, the
+installation of the libraries is optional.
 
-If you want to use the apron domains then add `-DUSE_APRON=ON`.
+- If you want to use the Boxes domain then add `-DUSE_LDD=ON` option.
 
-If you want to use the Elina domains then add `-DUSE_ELINA=ON`.
+- If you want to use the Apron library domains then add
+  `-DUSE_APRON=ON` option.
+
+- If you want to use the Elina library domains then add
+  `-DUSE_ELINA=ON` option.
 
 **Important:** Apron and Elina are currently not compatible so you
 cannot enable `-DUSE_APRON=ON` and `-DUSE_ELINA=ON` at the same time. 
@@ -84,7 +96,7 @@ environment variable `LD_LIBRARY_PATH` if Elina is installed in a
 non-standard directory:
 
     export LD_LIBRARY_PATH=_INSTALL_DIR_/lib
-
+	
 For instance, to install `crab-llvm` with Boxes and Apron:
 
      mkdir build && cd build
@@ -96,22 +108,15 @@ For instance, to install `crab-llvm` with Boxes and Apron:
      cmake --build . --target llvm && cmake ..                
      cmake --build . --target install 
 
+## Tests ## 
 
 To run some regression tests:
 
      cmake --build . --target test-simple
 
-To run tests you need to install `lit` and `OutputCheck`. In Linux:
-
-```
-$ apt-get install python-pip
-$ pip install lit
-$ pip install OutputCheck
-```
-
 # Crab-llvm architecture #
 
-![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
+![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/dev/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
 
 # Example 1 #
 
