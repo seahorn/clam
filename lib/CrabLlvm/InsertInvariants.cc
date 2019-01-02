@@ -20,8 +20,6 @@
 #include "crab_llvm/CfgBuilder.hh"
 #include "crab_llvm/CrabLlvm.hh"
 #include "crab/analysis/abs_transformer.hpp"
-#include "crab/domains/domain_traits.hpp"
-
 
 /* 
  * Instrument LLVM bitecode by inserting invariants computed by
