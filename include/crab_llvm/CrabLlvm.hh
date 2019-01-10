@@ -24,6 +24,9 @@ namespace crab_llvm {
   class InterCrabLlvm_Impl;
 }
 
+namespace sea_dsa {
+  class AllocWrapInfo;
+}
 
 namespace crab_llvm {
    ////
@@ -306,6 +309,7 @@ namespace crab_llvm {
     checks_db_t m_checks_db; 
     AnalysisParams m_params;
     const llvm::TargetLibraryInfo *m_tli;
+    const sea_dsa::AllocWrapInfo *m_allocWrapInfo;
     
    public:
 
