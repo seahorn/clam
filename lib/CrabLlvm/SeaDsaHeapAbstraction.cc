@@ -193,7 +193,7 @@ namespace seadsa_heap_abs_impl {
 	                   << " can be disambiguated ... \n" 
 	                   << *n << "\n";);
 
-    if (n->isCollapsed()) {
+    if (n->isOffsetCollapsed()) {
       CRAB_LOG("heap-abs", 
 	       llvm::errs() << "\tCannot be disambiguated: node is already collapsed.\n";);
       return region_info(UNTYPED_REGION, 0);
