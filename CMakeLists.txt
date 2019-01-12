@@ -153,7 +153,7 @@ endif ()
 #### begin crab stuff ####
 if (IS_DIRECTORY ${CRAB_ROOT} AND EXISTS ${CRAB_ROOT}/CMakeLists.txt)
  add_subdirectory(${CRAB_ROOT})
- include_directories (${CRAB_INCLUDE_DIRS})
+ include_directories (BEFORE ${CRAB_INCLUDE_DIRS})
 else()
   message (WARNING "No crab found. Run \n\tcmake --build . --target crab && cmake ${CMAKE_SOURCE_DIR}")
   return ()
@@ -272,8 +272,8 @@ if (TopLevel)
   endif()
 endif ()
 
-include_directories(${CrabLlvm_SOURCE_DIR}/include)
-include_directories (${CMAKE_BINARY_DIR}/include)
+include_directories(BEFORE ${CrabLlvm_SOURCE_DIR}/include)
+include_directories (BEFORE ${CMAKE_BINARY_DIR}/include)
 add_subdirectory(lib)
 
 configure_file(include/crab_llvm/config.h.cmake
