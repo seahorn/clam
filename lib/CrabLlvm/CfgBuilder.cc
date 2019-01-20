@@ -20,6 +20,17 @@
  * - Almost ignore memset/memmove/memcpy
  */
 
+/*
+  FIXME: array operations take as indexes pointer expressions.  They
+  must be integer expressions. This requires some pre-analysis to
+  figure out if the pointer operand or the load/store is the base
+  address of the accessed memory region. 
+
+  FIXME: we do some imprecise array initialization (e.g., alloca) that
+  is useful for array smashing. Revisit this once we use a more
+  powerful array domain. 
+*/
+
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
@@ -1653,18 +1664,19 @@ namespace crab_llvm {
 	    if (val_ref->isInt()) {
 	      if (m_init_regions.insert(r).second) {
 		if (val_ref->isVar()) {
-		  m_bb.array_init(arr_var, elem_size, lb_idx, ub_idx, val_ref->getVar());
+		  m_bb.array_init(arr_var, lb_idx, ub_idx, val_ref->getVar(), elem_size);
 	      } else {
-		  m_bb.array_init(arr_var, elem_size, lb_idx, ub_idx, m_lfac.getIntCst(val_ref));
+		  m_bb.array_init(arr_var, lb_idx, ub_idx, m_lfac.getIntCst(val_ref), elem_size);
 		}
 	      }
 	    } else if (val_ref->isBool()) {
 	      if (m_init_regions.insert(r).second) {	      
 		if (val_ref->isVar()) {
-		  m_bb.array_init(arr_var, elem_size,lb_idx, ub_idx, val_ref->getVar());
+		  m_bb.array_init(arr_var, lb_idx, ub_idx, val_ref->getVar(), elem_size);
 		} else {
-		  m_bb.array_init(arr_var, elem_size, lb_idx, ub_idx,
-				  m_lfac.isBoolTrue(val_ref) ? number_t(1): number_t(0));
+		  m_bb.array_init(arr_var, lb_idx, ub_idx,
+				  m_lfac.isBoolTrue(val_ref) ? number_t(1): number_t(0),
+				  elem_size);
 		}
 	      }
 	    } else if (val_ref->isPtr()) {
@@ -1733,7 +1745,7 @@ namespace crab_llvm {
 	    if (m_init_regions.insert(r).second) {	      	    
 	      IntegerType* int_ty = cast<IntegerType>(ty);
 	      ub_idx = ikos::z_number((int_ty->getBitWidth() / 8) -1);
-	      m_bb.array_init(a, elem_size, lb_idx, ub_idx, init_val);
+	      m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
 	    }
 	  } else if (isIntArray(*ty) || isBoolArray(*ty)) {
 	    if (cast<ArrayType>(ty)->getNumElements() == 0) {
@@ -1746,7 +1758,7 @@ namespace crab_llvm {
 	      if (m_init_regions.insert(r).second) {	      	    	      
 		elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
 		ub_idx = lin_exp_t(cast<ArrayType>(ty)->getNumElements()* elem_size - 1);
-		m_bb.array_init(a, elem_size, lb_idx, ub_idx, init_val);
+		m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
 	      }
 	    }
 	  } else { /** unreachable **/ }
@@ -2533,7 +2545,7 @@ namespace crab_llvm {
 		number_t init_val(0); 
 		number_t lb_idx(0); 
 		number_t ub_idx((numElems * elemSize) - 1);
-		m_bb.array_init(m_lfac.mkArrayVar(r), elemSize, lb_idx, ub_idx, init_val);
+		m_bb.array_init(m_lfac.mkArrayVar(r), lb_idx, ub_idx, init_val, elemSize);
 	      }
 	    }
 	  }
