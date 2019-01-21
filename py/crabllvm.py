@@ -211,8 +211,13 @@ def parseArgs (argv):
                     help='Lower ULT and ULE instructions',
                     dest='lower_unsigned_icmp', default=False, action='store_true')
     p.add_argument ('--devirt-functions',
-                    help='Resolve indirect calls',
-                    dest='devirt', default=False, action='store_true')
+                    help="Resolve indirect calls:\n"
+                    "- none : do not resolve indirect calls (default)\n"
+                    "- types: select all functions with same type signature\n"
+                    "- dsa  : use Dsa analysis to select the callees\n",
+                    dest='devirt',
+                    choices=['none','types','dsa'],
+                    default='none')
     p.add_argument ('--externalize-addr-taken-functions',
                     help='Externalize uses of address-taken functions',
                     dest='enable_ext_funcs', default=False,
@@ -262,8 +267,14 @@ def parseArgs (argv):
     #                 help='Boolean variables are treated as integers',
     #                 dest='crab_disable_bool', default=False, action='store_true')        
     p.add_argument ('--crab-disable-ptr',
-                    help='Track memory contents but ignoring pointer offsets',
-                    dest='crab_disable_ptr', default=False, action='store_true')    
+                    help=a.SUPPRESS,
+                    #help='Track memory contents but ignoring pointer offsets',
+                    dest='crab_disable_ptr', default=False, action='store_true')
+    p.add_argument ('--crab-heap-analysis',
+                    help='Heap analysis used for memory disambiguation',
+                    choices=['llvm-dsa', 'ci-sea-dsa', 'cs-sea-dsa'],
+                    dest='crab_heap_analysis',
+                    default='llvm-dsa')
     p.add_argument ('--crab-singleton-aliases',
                     help='Treat singleton alias sets as scalar values',
                     dest='crab_singleton_aliases', default=False, action='store_true')
@@ -275,7 +286,7 @@ def parseArgs (argv):
                     choices=['zones','oct','rtz'],
                     dest='crab_inter_sum_dom', default='zones')
     p.add_argument ('--crab-backward',
-                    help='Run iterative forward/backward analysis (only intra version available)',
+                    help='Run iterative forward/backward analysis (only intra version available and very experimental)',
                     dest='crab_backward', default=False, action='store_true')
     # --crab-live may lose precision e.g. when computing summaries.
     # However, note that due to non-monotonicity of operators such as widening the use of
@@ -314,11 +325,14 @@ def parseArgs (argv):
                     help='Display Crab statistics',
                     dest='print_stats', default=False, action='store_true')
     p.add_argument ('--crab-print-unjustified-assumptions',
-                    help='Print unjustified assumptions done by the analyzer',
+                    help='Print unjustified assumptions done by the analyzer (experimental, only for integer overflows)',
                     dest='print_assumptions', default=False, action='store_true')
     p.add_argument ('--crab-disable-warnings',
                     help='Disable crab-llvm and crab warnings',
                     dest='crab_disable_warnings', default=False, action='store_true')
+    p.add_argument ('--crab-sanity-checks',
+                    help='Enable crab-llvm and crab sanity checks',
+                    dest='crab_sanity_checks', default=False, action='store_true')
     ######################################################################
     p.add_argument ('--crab-dsa-disambiguate-unknown',
                     help=a.SUPPRESS,
@@ -541,8 +555,11 @@ def crabpp (in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append( '--crab-lower-gv=false')
     if args.lower_unsigned_icmp:
         crabpp_args.append( '--crab-lower-unsigned-icmp')
-    if args.devirt:
-        crabpp_args.append ('--crab-devirt')
+    if args.devirt is not 'none':
+        if args.devirt == 'types':
+            crabpp_args.append ('--crab-devirt')
+        elif args.devirt == 'dsa':
+            crabpp_args.append ('--crab-devirt-dsa')            
     if args.enable_ext_funcs:
         crabpp_args.append ('--crab-externalize-addr-taken-funcs')
         
@@ -579,6 +596,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     crabllvm_cmd.append ('--crab-track={0}'.format(args.track))
     #if args.crab_disable_bool: crabllvm_cmd.append ('--crab-bool-as-int')    
     if args.crab_disable_ptr: crabllvm_cmd.append ('--crab-disable-ptr')
+    crabllvm_cmd.append('--crab-heap-analysis={0}'.format(args.crab_heap_analysis))
     if args.crab_singleton_aliases: crabllvm_cmd.append ('--crab-singleton-aliases')
     if args.crab_inter: crabllvm_cmd.append ('--crab-inter')
     if args.crab_backward: crabllvm_cmd.append ('--crab-backward')
@@ -598,7 +616,7 @@ def crabllvm (in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         crabllvm_cmd.append('--crab-disable-warnings')
         ## crab warning messages
         crabllvm_cmd.append('--crab-enable-warnings={0}'.format('false'))
-                            
+    if args.crab_sanity_checks: crabllvm_cmd.append('--crab-sanity-checks')
     # hidden options
     if args.crab_dsa_unknown: crabllvm_cmd.append ('--crab-dsa-disambiguate-unknown')
     if args.crab_dsa_ptr_cast: crabllvm_cmd.append ('--crab-dsa-disambiguate-ptr-cast')

@@ -1,5 +1,6 @@
-// RUN: %crabllvm -O0 --crab-dom=zones --crab-check=assert "%s" 2>&1 | OutputCheck %s
-// CHECK: ^1  Number of total error checks$
+// RUN: %crabllvm -O0 --crab-dom=zones --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// CHECK: ^0  Number of total error checks$
+// CHECK: ^1  Number of total warning checks$
 
 extern void __CRAB_assert(int);
 extern void __SEAHORN_error(int);

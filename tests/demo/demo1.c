@@ -1,4 +1,4 @@
-// RUN: %crabllvm -O0 --crab-dom=zones  --crab-check=assert "%s" 2>&1 | OutputCheck -l debug %s
+// RUN: %crabllvm -O0 --crab-dom=zones  --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck -l debug %s
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$

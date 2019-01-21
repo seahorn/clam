@@ -1,141 +1,28 @@
-//===-------- Resolve indirect calls using signature match ----------------===//
-//
-// This class is almost the same than Devirt in DSA but it does not
-// use alias analysis to compute the possible targets of an indirect
-// call. Instead, it simply selects those functions whose signatures
-// match.
-//
-//===----------------------------------------------------------------------===//
-
-
-#define DEBUG_TYPE "devirt-functions"
-
-
-#include "llvm/IR/Constants.h"
-#include "llvm/Transforms/IPO.h"
+#include "crab_llvm/Transforms/DevirtFunctions.hh"
 #include "llvm/Pass.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/InstVisitor.h"
-#include "llvm/IR/DataLayout.h"
-#include "llvm/Analysis/CallGraph.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/ADT/Statistic.h"
+
+#include<set>
+#include<algorithm>
 
 using namespace llvm;
 
 namespace crab_llvm {
 
-  static bool isIndirectCall (CallSite &CS)
-  {
+  static bool isIndirectCall(CallSite &CS) {
     Value *v = CS.getCalledValue ();
     if (!v) return false;
     
     v = v->stripPointerCasts ();
     return !isa<Function> (v);
   }
-  
-  //
-  // Class: DevirtualizeFunctions
-  //
-  // Description:
-  //  This transform pass will look for indirect function calls and transform
-  //  them into a switch statement that selects one of several direct function
-  //  calls to execute.
-  //
-  class DevirtualizeFunctions : 
-    public ModulePass, public InstVisitor<DevirtualizeFunctions> 
-  {
 
-    typedef const llvm::PointerType *AliasSetId;
-    typedef SmallVector<const Function *, 8> AliasSet;
-
-    // Call graph of the program
-    CallGraph * CG;    
-
-    // Worklist of call sites to transform
-    SmallVector<Instruction*, 32> m_worklist;
-
-    /// map from alias-id to the corresponding alias set
-    DenseMap<AliasSetId, AliasSet> m_aliasSets;
-    
-    /// maps alias set id to an existing bounce function
-    DenseMap<AliasSetId, Function*> m_bounceMap;
-    
-    /// turn the indirect call-site into a direct one
-    void mkDirectCall (CallSite CS);
-    /// create a bounce function that calls functions directly
-    Function* mkBounceFn (CallSite &CS);
-    
-    
-    /// returns an AliasId of the called value
-    /// requires that CS is an indirect call through a function pointer
-    AliasSetId typeAliasId (CallSite &CS) const
-    {
-      assert (isIndirectCall (CS) && "Not an indirect call");
-      PointerType *pTy = dyn_cast<PointerType> (CS.getCalledValue ()->getType ());
-      assert (pTy && "Unexpected call not through a pointer");
-      assert (isa<FunctionType> (pTy->getElementType ())
-              && "The type of called value is not a pointer to a function");
-      return pTy;
-    }
-    
-    /// returns an id of an alias set to which this function belongs
-    AliasSetId typeAliasId (const Function &F) const
-    {return F.getFunctionType ()->getPointerTo ();}
-    
-   public:
-    static char ID;
-    DevirtualizeFunctions() : ModulePass(ID), CG (nullptr) {}
-    
-    virtual bool runOnModule(Module & M);
-    
-    virtual void getAnalysisUsage(AnalysisUsage &AU) const
-    {
-      AU.setPreservesAll ();
-      AU.addRequired<CallGraphWrapperPass> ();
-      AU.addPreserved<CallGraphWrapperPass> ();
-    }
-    
-    // -- VISITOR IMPLEMENTATION --
-    
-    void visitCallSite(CallSite &CS);
-    
-    void visitCallInst(CallInst &CI)
-    {
-      // we cannot take the address of an inline asm
-      if (CI.isInlineAsm ()) return;
-      
-      CallSite CS(&CI);
-      visitCallSite(CS);
-    }
-    void visitInvokeInst(InvokeInst &II)
-    {
-      CallSite CS(&II);
-      visitCallSite(CS);
-    }
-  };
-
-  // Pass ID variable
-  char DevirtualizeFunctions::ID = 0;
-
-  // Pass statistics
-  STATISTIC(FuncAdded, "Number of bounce functions added");
-  STATISTIC(CSConvert, "Number of call sites resolved");
-
-  static inline PointerType * getVoidPtrType (LLVMContext & C)
-  {
+  static PointerType * getVoidPtrType(LLVMContext & C) {
     Type * Int8Type  = IntegerType::getInt8Ty(C);
     return PointerType::getUnqual(Int8Type);
   }
 
-  static inline Value *
-  castTo (Value * V, Type * Ty, std::string Name, Instruction * InsertPt)
-  {
+  static Value * castTo(Value * V, Type * Ty, std::string Name, Instruction * InsertPt) {
     // Don't bother creating a cast if it's already the correct type.
     if (V->getType() == Ty) return V;
     
@@ -149,26 +36,51 @@ namespace crab_llvm {
     // Otherwise, insert a cast instruction.
     return CastInst::CreateZExtOrBitCast (V, Ty, Name, InsertPt);
   }
-
-  /**
-   * Creates a bounce function that calls functions in an alias set directly
-   */
-  Function* DevirtualizeFunctions::mkBounceFn (CallSite &CS)
-  {
-    ++FuncAdded;
-
+  
+  Function* DevirtualizeFunctions::mkBounceFn(CallSite &CS, CallSiteResolver* CSR) {
+    assert (isIndirectCall (CS) && "Not an indirect call");
+    
     AliasSetId id = typeAliasId (CS);
-    {
-      assert (isIndirectCall (CS) && "Not an indirect call");
+    if (!CSR->useAliasing()) {
+      // -- If we just use types then we can reuse the same bounce
+      // -- function to avoid many duplicates.
+      // 
+      // -- If we use Dsa we don't want to use the same bounce for the
+      // -- same callee's type since the targets returned by Dsa can
+      // -- be different from one callsite to another.
       auto it = m_bounceMap.find (id);
       if (it != m_bounceMap.end ()) return it->second;
     }
     
     // -- no direct calls in this alias set, nothing to construct
-    if (m_aliasSets.count (id) <= 0) return nullptr;
-    
-    AliasSet &Targets = m_aliasSets [id];
-            
+    if (m_typeAliasSets.count (id) <= 0) return nullptr;
+
+    // -- the final targets to build the bounce function
+    AliasSet Targets;
+    // -- all possible candidate targets whose type signatures matche
+    AliasSet& TypesTargets = m_typeAliasSets [id];
+    // -- targets provided by an external pointer analysis (optional)
+
+    if (CSR->hasTargets(CS.getInstruction())) {
+      // --- We filter out those targets whose signature do not match.
+      AliasSet& AliasTargets = CSR->getTargets(CS.getInstruction());
+      std::sort(TypesTargets.begin(), TypesTargets.end());
+      std::sort(AliasTargets.begin(), AliasTargets.end());
+      std::set_intersection(AliasTargets.begin(), AliasTargets.end(),
+			    TypesTargets.begin(), TypesTargets.end(),
+			    std::back_inserter(Targets));
+    } else {
+      // -- We did not have aliasing information so we just use types
+      Targets = std::move(TypesTargets);
+    }
+
+    if (Targets.empty()) {
+      // -- it's possible to be here if we had aliasing information
+      // -- but it was not type consistent. If here, we won't able to
+      // -- resolve the indirect call.
+      return nullptr;
+    }
+
     // Create a bounce function that has a function signature almost
     // identical to the function being called.  The only difference is
     // that it will have an additional pointer argument at the
@@ -192,8 +104,7 @@ namespace crab_llvm {
     // for subsequence access.
     F->arg_begin()->setName("funcPtr");
     SmallVector<Value*, 8> fargs;
-    for(auto ai = ++F->arg_begin(), ae = F->arg_end(); ai != ae; ++ai)
-    {
+    for(auto ai = ++F->arg_begin(), ae = F->arg_end(); ai != ae; ++ai) {
       fargs.push_back(&*ai);
       ai->setName("arg");
     }
@@ -205,8 +116,7 @@ namespace crab_llvm {
     // For each function target, create a basic block that will call that
     // function directly.
     DenseMap<const Function*, BasicBlock*> targets;
-    for (const Function *FL : Targets)
-    {
+    for (const Function *FL : Targets) {
       // Create the basic block for doing the direct call
       BasicBlock* BL = BasicBlock::Create (M->getContext(), FL->getName(), F);
       targets[FL] = BL;
@@ -214,9 +124,9 @@ namespace crab_llvm {
       CallInst* directCall = CallInst::Create (const_cast<Function*>(FL),
                                                fargs, "", BL);
       // update call graph
-      if (CG) {
-        auto fl_cg = CG->getOrInsertFunction (const_cast<Function*> (FL));
-        auto cf_cg = CG->getOrInsertFunction (directCall->getCalledFunction ());
+      if (m_cg) {
+        auto fl_cg = m_cg->getOrInsertFunction (const_cast<Function*> (FL));
+        auto cf_cg = m_cg->getOrInsertFunction (directCall->getCalledFunction ());
         fl_cg->addCalledFunction (CallSite (directCall), cf_cg);
       }
       
@@ -226,18 +136,26 @@ namespace crab_llvm {
       else
         ReturnInst::Create (M->getContext(), directCall, BL);
     }
-    
-    // Create a default basic block having the original indirect call
-    BasicBlock * defaultBB = BasicBlock::Create (M->getContext(),
-                                                 "default",
-                                                 F);
 
-    Value* defaultRet = CallInst::Create (&*(F->arg_begin()), fargs, "", defaultBB);
-    if (CS.getType()->isVoidTy())
-      ReturnInst::Create (M->getContext(), defaultBB);
-    else
-      ReturnInst::Create (M->getContext(), defaultRet, defaultBB);
-                          
+
+
+    BasicBlock * defaultBB = nullptr;
+    if (m_allowIndirectCalls) {
+      // Create a default basic block having the original indirect call
+      defaultBB = BasicBlock::Create (M->getContext(), "default", F);
+      if (CS.getType()->isVoidTy()) {
+	ReturnInst::Create (M->getContext(), defaultBB);
+      } else {
+	CallInst *defaultRet = CallInst::Create(&*(F->arg_begin()), fargs, "", defaultBB);
+	ReturnInst::Create (M->getContext(), defaultRet, defaultBB);
+      }
+    } else {
+      // Create a failure basic block.  This basic block should simply be an
+      // unreachable instruction.
+      defaultBB = BasicBlock::Create (M->getContext(), "fail", F);
+      new UnreachableInst (M->getContext(), defaultBB);
+    }
+                             
     // Setup the entry basic block.  For now, just have it call the default
     // basic block.  We'll change the basic block to which it branches later.
     BranchInst * InsertPt = BranchInst::Create (defaultBB, entryBB);
@@ -289,15 +207,13 @@ namespace crab_llvm {
   }
 
 
-  void DevirtualizeFunctions::mkDirectCall (CallSite CS)
-  {
-    const Function *bounceFn = mkBounceFn (CS);
+  void DevirtualizeFunctions::mkDirectCall(CallSite CS, CallSiteResolver* CSR) {
+    const Function *bounceFn = mkBounceFn(CS, CSR);
     // -- something failed
     if (!bounceFn) return;
     
     // Replace the original call with a call to the bounce function.
-    if (CallInst* CI = dyn_cast<CallInst>(CS.getInstruction()))
-    {
+    if (CallInst* CI = dyn_cast<CallInst>(CS.getInstruction())) {
       // The last operand in the op list is the callee
       SmallVector<Value*, 8> Params;
       Params.reserve (std::distance (CI->op_begin(), CI->op_end()));
@@ -310,19 +226,17 @@ namespace crab_llvm {
                                        CI);
 
       // update call graph
-      if (CG)
-      {
-        CG->getOrInsertFunction (const_cast<Function*> (bounceFn));
-        (*CG)[CI->getParent ()->getParent ()]->addCalledFunction
-          (CallSite (CN), (*CG)[CN->getCalledFunction ()]);
+      if (m_cg) {
+        m_cg->getOrInsertFunction (const_cast<Function*> (bounceFn));
+        (*m_cg)[CI->getParent ()->getParent ()]->addCalledFunction
+          (CallSite (CN), (*m_cg)[CN->getCalledFunction ()]);
       }
 
       CN->setDebugLoc (CI->getDebugLoc ());
       CI->replaceAllUsesWith(CN);
       CI->eraseFromParent();
     }
-    else if (InvokeInst* CI = dyn_cast<InvokeInst>(CS.getInstruction()))
-    {
+    else if (InvokeInst* CI = dyn_cast<InvokeInst>(CS.getInstruction())) {
       SmallVector<Value*, 8> Params;
       Params.reserve (std::distance (CI->arg_operands().begin (),
                                      CI->arg_operands().end ()));
@@ -341,24 +255,20 @@ namespace crab_llvm {
                                            CI);
 
       // update call graph
-      if (CG)
-      {
-        CG->getOrInsertFunction (const_cast<Function*> (bounceFn));
-        (*CG)[CI->getParent ()->getParent ()]->addCalledFunction
-          (CallSite (CN), (*CG)[CN->getCalledFunction ()]);
+      if (m_cg) {
+        m_cg->getOrInsertFunction (const_cast<Function*> (bounceFn));
+        (*m_cg)[CI->getParent ()->getParent ()]->addCalledFunction
+          (CallSite (CN), (*m_cg)[CN->getCalledFunction ()]);
       }
 
       CN->setDebugLoc (CI->getDebugLoc ());
       CI->replaceAllUsesWith(CN);
       CI->eraseFromParent();
     }
-
-    ++CSConvert;
     return;
   }
   
-  void DevirtualizeFunctions::visitCallSite (CallSite &CS)
-  {
+  void DevirtualizeFunctions::visitCallSite (CallSite &CS) {
     // -- skip direct calls
     if (!isIndirectCall (CS)) return;
     
@@ -368,21 +278,49 @@ namespace crab_llvm {
     return;
   }
 
-  bool DevirtualizeFunctions::runOnModule (Module & M)
-  {
-    // -- Get the call graph
-    CG = &(getAnalysis<CallGraphWrapperPass> ().getCallGraph ());
+  void DevirtualizeFunctions::visitCallInst(CallInst &CI) {
+    // we cannot take the address of an inline asm
+    if (CI.isInlineAsm ()) return;
+    
+    CallSite CS(&CI);
+    visitCallSite(CS);
+  }
+  
+  void DevirtualizeFunctions::visitInvokeInst(InvokeInst &II) {
+    CallSite CS(&II);
+    visitCallSite(CS);
+  }
 
-    // -- Create alias sets
-    for (auto const &F: M)
-    {
+  DevirtualizeFunctions::AliasSetId DevirtualizeFunctions::typeAliasId (CallSite &CS) {
+    assert (isIndirectCall (CS) && "Not an indirect call");
+    PointerType *pTy = dyn_cast<PointerType> (CS.getCalledValue ()->getType ());
+    assert (pTy && "Unexpected call not through a pointer");
+    assert (isa<FunctionType> (pTy->getElementType ())
+	    && "The type of called value is not a pointer to a function");
+    return pTy;
+  }
+  
+  /// returns an id of an alias set to which this function belongs
+  DevirtualizeFunctions::AliasSetId DevirtualizeFunctions::typeAliasId(const Function &F) {
+    return F.getFunctionType ()->getPointerTo ();
+  }
+
+  DevirtualizeFunctions::DevirtualizeFunctions(llvm::CallGraph* cg,
+					       bool allowIndirectCalls)
+    : m_cg(cg)
+    , m_allowIndirectCalls(allowIndirectCalls)
+  {}
+      
+  void DevirtualizeFunctions::computeTypeAliasSets(Module& M) {
+    // -- Create type-based alias sets
+    for (auto const &F: M) {
       // -- intrinsics are never called indirectly
       if (F.isIntrinsic ()) continue;
       
       // -- local functions whose address is not taken cannot be
       // -- resolved by a function pointer
       if (F.hasLocalLinkage () && !F.hasAddressTaken ()) continue;
-
+      
       // -- skip calls to declarations, these are resolved implicitly
       // -- by calling through the function pointer argument in the
       // -- default case of bounce function
@@ -393,32 +331,32 @@ namespace crab_llvm {
       if (F.getName().startswith ("verifier.")) continue;
       // -- assume entry point is never called indirectly
       if (F.getName ().equals ("main")) continue;
-
+      
       // -- add F to its corresponding alias set
-      m_aliasSets [typeAliasId (F)].push_back (&F);
+      m_typeAliasSets[DevirtualizeFunctions::typeAliasId(F)].push_back(&F);
     }
-
-    // Visit all of the call instructions in this function and record those that
-    // are indirect function calls.
-    visit (M);
-    
-    // Now go through and transform all of the indirect calls that we found that
-    // need transforming.
-    bool Changed = !m_worklist.empty ();
-    for (auto I : m_worklist) {
-      CallSite CS (I);
-      mkDirectCall (CS);
-    }
-    // Conservatively assume that we've changed one or more call sites.
-    return Changed;
   }
   
-  Pass* createDevirtualizeFunctionsPass () {
-    return new DevirtualizeFunctions ();
+  bool DevirtualizeFunctions::resolveCallSites(Module & M, CallSiteResolver* CSR) {
+    // -- Compute type alias sets if not computed already
+    if (m_typeAliasSets.empty()) {
+      computeTypeAliasSets(M);
+    }
+    
+    // -- Visit all of the call instructions in this function and
+    // -- record those that are indirect function calls.
+    visit(M);
+    
+    // -- Now go through and transform all of the indirect calls that
+    // -- we found that need transforming.
+    bool Changed = !m_worklist.empty ();
+    for (auto I : m_worklist) {
+      CallSite CS(I);
+      mkDirectCall(CS, CSR);
+    }
+    // -- Conservatively assume that we've changed one or more call
+    // -- sites.
+    return Changed;
   }
-
-  // Pass registration
-  RegisterPass<DevirtualizeFunctions>
-  XX ("devirt-functions", "Devirtualize indirect function calls using only types");
 
 } // end namespace

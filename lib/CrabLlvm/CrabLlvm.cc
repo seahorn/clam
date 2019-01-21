@@ -10,6 +10,7 @@
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/CFG.h"
+#include "llvm/Analysis/CallGraph.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/CommandLine.h"
@@ -21,8 +22,18 @@
 #include "crab_llvm/wrapper_domain.hh"
 #include "crab_llvm/CrabLlvm.hh"
 #include "crab_llvm/CfgBuilder.hh"
-#include "crab_llvm/HeapAbstraction.hh"
 #include "crab_llvm/Support/NameValues.hh"
+/** Wrappers for pointer analyses **/
+#include "crab_llvm/DummyHeapAbstraction.hh"
+#include "crab_llvm/LlvmDsaHeapAbstraction.hh"
+#include "crab_llvm/SeaDsaHeapAbstraction.hh"
+/** Actual pointer analysis for heap disambiguation **/
+// llvm-dsa
+#ifdef HAVE_DSA
+#include "dsa/Steensgaard.hh"
+#endif
+// sea-dsa
+#include "sea_dsa/Global.hh"
 
 #include "crab/common/debug.hpp"
 #include "crab/common/stats.hpp"
@@ -36,7 +47,6 @@
 #include "crab/checkers/checker.hpp"
 #include "crab/cg/cg.hpp"
 #include "crab/cg/cg_bgl.hpp"
-
 #include "./crab/path_analyzer.hpp"
 
 #include <boost/shared_ptr.hpp>
@@ -47,10 +57,6 @@
 #include <functional>
 #include <map>
 
-#ifdef HAVE_DSA
-#include "dsa/DSNode.h"
-#include "dsa/Steensgaard.hh"
-#endif 
 
 using namespace llvm;
 using namespace crab_llvm;
@@ -68,7 +74,7 @@ CrabPrintSumm ("crab-print-summaries",
 
 cl::opt<bool>
 CrabPrintPreCond ("crab-print-preconditions", 
-               cl::desc ("Print Crab necessary preconditions (experimental)"),
+               cl::desc ("Print Crab necessary preconditions"),
                cl::init (false));
 
 cl::opt<bool>
@@ -131,7 +137,7 @@ CrabLlvmDomain("crab-dom",
 
 cl::opt<bool>
 CrabBackward ("crab-backward", 
-           cl::desc ("Perform an iterative forward/backward analysis\n"
+           cl::desc ("Perform an iterative forward/backward analysis (very experimental)\n"
 		     "(Only intra-procedural version implemented)"),
            cl::init (false));
 
@@ -177,8 +183,17 @@ CrabTrackLev("crab-track",
      clEnumValEnd),
    cl::init (tracked_precision::NUM));
 
+cl::opt<enum heap_analysis_t>
+CrabHeapAnalysis("crab-heap-analysis",
+   cl::desc("Heap analysis used for memory disambiguation"),
+   cl::values
+    (clEnumValN(LLVM_DSA  , "llvm-dsa"  , "context-insensitive llvm dsa"),
+     clEnumValN(CI_SEA_DSA, "ci-sea-dsa", "context-insensitive sea dsa"),
+     clEnumValN(CS_SEA_DSA, "cs-sea-dsa", "context-sensitive sea dsa"),
+     clEnumValEnd),
+   cl::init(heap_analysis_t::LLVM_DSA));
 
-// llvm-dsa options
+// Specific llvm-dsa/sea-dsa options
 cl::opt<bool>
 CrabDsaDisambiguateUnknown ("crab-dsa-disambiguate-unknown",
     cl::desc ("Disambiguate unknown pointers (unsound)"), 
@@ -204,7 +219,7 @@ CrabCheck ("crab-check",
 	   cl::values(
 	       clEnumValN (NOCHECKS  , "none"  , "None"),
 	       clEnumValN (ASSERTION , "assert", "User assertions"),
-	       clEnumValN (NULLITY   , "null"  , "Null dereference"),
+	       clEnumValN (NULLITY   , "null"  , "Null dereference (unused/untested)"),
 	       clEnumValEnd),
 	   cl::init (assert_check_kind_t::NOCHECKS));
 
@@ -707,8 +722,12 @@ namespace crab_llvm {
 	typedef pretty_printer_impl::nec_precondition_annotation<intra_analyzer_t> pre_annotation_t;
 	typedef pretty_printer_impl::unjust_assumption_annotation unjust_assume_annotation_t;
 	std::vector<std::unique_ptr<block_annotation_t>> pool_annotations;
-	
-	llvm::outs() << "\n" << "function " << m_fun.getName() << "\n";
+
+	if (auto f_decl = m_cfg->get_func_decl()) {
+	  crab::outs() << "\n" << *f_decl << "\n";
+	} else {
+	  llvm::outs() << "\n" << "function " << m_fun.getName() << "\n";
+	}
 	if (params.print_invars) {
 	  pool_annotations.emplace_back(
 	       make_unique<inv_annotation_t>(m_vfac, results.premap, results.postmap, 
@@ -1122,7 +1141,11 @@ namespace crab_llvm {
 	    
 	    // --- print invariants and summaries
 	    if (params.print_invars && isTrackable(*F)) {
-	      llvm::outs() << "\n" << "function " << F->getName () << "\n";
+	      if (auto f_decl = cfg.get_func_decl()) {
+		crab::outs() << "\n" << *f_decl << "\n";
+	      } else {
+		llvm::outs() << "\n" << "function " << F->getName () << "\n";
+	      }
 	      std::vector<std::unique_ptr<pretty_printer_impl::block_annotation>> annotations;
 	      annotations.emplace_back(make_unique<pretty_printer_impl::invariant_annotation>
 				       (m_vfac, results.premap, results.postmap,
@@ -1211,14 +1234,20 @@ namespace crab_llvm {
 
       std::vector<cfg_ref_t> cfg_ref_vector;
       for (auto &F : m_M) {
-        if (!isTrackable(F)) continue;
-        // -- build cfg's 
-        CfgBuilder B(F, m_vfac, *mem, cfg_precision,
-		     /*include function decls and callsites*/
-		     true,  &tli);
-        cfg_t *cfg = B.get_cfg();
-	cfg_man.add(F, cfg);
-        cfg_ref_vector.push_back (*cfg);
+        if (isTrackable(F)) {
+	  // -- build cfg's 
+	  CfgBuilder B(F, m_vfac, *mem, cfg_precision,
+		       /*include function decls and callsites*/
+		       true,  &tli);
+	  cfg_t *cfg = B.get_cfg();
+	  cfg_man.add(F, cfg);
+	  cfg_ref_vector.push_back (*cfg);
+	  CRAB_VERBOSE_IF(1, llvm::outs() << "Built Crab CFG for "
+			  << F.getName() << "\n");
+	} else {
+	  CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
+			                  << F.getName() << "\n");
+	}
       }
       // build call graph
       m_cg = make_unique<call_graph_t>(cfg_ref_vector.begin(), cfg_ref_vector.end());
@@ -1379,15 +1408,67 @@ namespace crab_llvm {
   }
   
   bool CrabLlvmPass::runOnModule (Module &M) {
-    #ifdef HAVE_DSA
-    m_mem.reset
-      (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
-				  CrabDsaDisambiguateUnknown,
-				  CrabDsaDisambiguatePtrCast,
-				  CrabDsaDisambiguateExternal));
-    #endif     
+
+    CRAB_VERBOSE_IF(1,
+	     get_crab_os() << "Started crab-llvm\n"; 
+             unsigned num_analyzed_funcs = 0;
+             for (auto &F : M) {
+	       if (!isTrackable(F)) continue;
+               num_analyzed_funcs++;
+             }
+             get_crab_os() << "Total number of analyzed functions:" 
+                           << num_analyzed_funcs << "\n";);
 
     m_tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+    const DataLayout& dl = M.getDataLayout();
+
+    sea_dsa::GlobalAnalysis* global_sea_dsa = nullptr;
+    // The factory must be alive while global_sea_dsa is in use
+    sea_dsa::ContextInsensitiveGlobalAnalysis::SetFactory fac;
+    
+    switch (CrabHeapAnalysis) {
+    case LLVM_DSA:
+      #ifdef HAVE_DSA
+      m_mem.reset
+	(new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
+				    CrabDsaDisambiguateUnknown,
+				    CrabDsaDisambiguatePtrCast,
+				    CrabDsaDisambiguateExternal));
+      break;
+      #else
+      // execute CI_SEA_DSA
+      #endif      
+    case CI_SEA_DSA:
+    case CS_SEA_DSA: {
+      sea_dsa::GlobalAnalysisKind kind = sea_dsa::CONTEXT_INSENSITIVE;
+      if (CrabHeapAnalysis == CS_SEA_DSA) {
+	kind = sea_dsa::CONTEXT_SENSITIVE;
+      }
+      // XXX: We don't run sea-dsa as a LLVM pass because we don't
+      // want the pass manager to run the sea-dsa analysis if user
+      // selects llvm-dsa.
+      CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
+      CRAB_VERBOSE_IF(1, llvm::errs() << "Started sea-dsa analysis.\n";);      
+      if (kind == sea_dsa::CONTEXT_INSENSITIVE) {
+	global_sea_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(dl, *m_tli,
+								       cg, fac, false);
+      } else {
+	global_sea_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(dl, *m_tli, cg, fac);
+      }
+      global_sea_dsa->runOnModule(M);
+      CRAB_VERBOSE_IF(1, llvm::errs() << "Finished sea-dsa analysis.\n";);
+      m_mem.reset
+	(new SeaDsaHeapAbstraction(M, global_sea_dsa,
+				   CrabDsaDisambiguateUnknown,
+				   CrabDsaDisambiguatePtrCast,
+				   CrabDsaDisambiguateExternal));
+      }
+      break;
+    default:
+      errs() << "Warning: running crab-llvm without memory analysis\n";
+    }
+
+    CRAB_VERBOSE_IF(1, llvm::errs() << "Using "  << m_mem->getName() << "\n";);
     
     m_params.dom = CrabLlvmDomain;
     m_params.sum_dom = CrabSummDomain;
@@ -1406,17 +1487,7 @@ namespace crab_llvm {
     m_params.keep_shadow_vars = CrabKeepShadows;
     m_params.check = CrabCheck;
     m_params.check_verbose = CrabCheckVerbose;
-    
-    CRAB_VERBOSE_IF(1,
-	     get_crab_os() << "Started crab-llvm\n"; 
-             unsigned num_analyzed_funcs = 0;
-             for (auto &F : M) {
-	       if (!isTrackable(F)) continue;
-               num_analyzed_funcs++;
-             }
-             get_crab_os() << "Total number of analyzed functions:" 
-                           << num_analyzed_funcs << "\n";);
-    
+        
     if (CrabInter){
       InterCrabLlvm_Impl inter_crab(M, CrabTrackLev, m_mem, m_vfac, m_cfg_man, *m_tli);
       InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
@@ -1427,6 +1498,10 @@ namespace crab_llvm {
       }
     }
 
+    if (global_sea_dsa) {
+      delete global_sea_dsa;
+    }
+    
     if (CrabStats) {
       crab::CrabStats::PrintBrunch (crab::outs());
     }
@@ -1454,6 +1529,7 @@ namespace crab_llvm {
         llvm::outs() << "************** BRUNCH STATS END *****************\n\n";
       }
     }
+    
    return false;
   }
 
@@ -1465,6 +1541,8 @@ namespace crab_llvm {
     AU.addRequired<TargetLibraryInfoWrapperPass>();
     AU.addRequired<UnifyFunctionExitNodes>();
     AU.addRequired<crab_llvm::NameValues>();
+    AU.addRequired<CallGraphWrapperPass>();
+    AU.addPreserved<CallGraphWrapperPass>();
   } 
   
   /**

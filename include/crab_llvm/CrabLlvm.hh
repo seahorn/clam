@@ -49,13 +49,26 @@ namespace crab_llvm {
      };
 
   ////
+  // Heap analysis for memory disambiguation
+  ////
+  enum heap_analysis_t
+    { // use llvm-dsa (only context-insensitive)
+      LLVM_DSA = 0,
+      // use context-insensitive sea-dsa
+      CI_SEA_DSA = 1,
+      // use context-sensitive sea-dsa
+      CS_SEA_DSA = 2
+  };
+  
+  ////
   // Kind of checker
   ////
   enum assert_check_kind_t
     { NOCHECKS = 0,
       ASSERTION = 1,
       NULLITY = 2
-    };  
+    };
+
 }
 
 namespace crab_llvm {
