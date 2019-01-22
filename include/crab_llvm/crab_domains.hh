@@ -7,6 +7,7 @@
 #include "crab/domains/intervals.hpp"                      
 #include "crab/domains/dis_intervals.hpp"                      
 #include "crab/domains/split_dbm.hpp"
+#include "crab/domains/split_oct.hpp"
 #include "crab/domains/boxes.hpp"
 #ifdef HAVE_APRON
 #include "crab/domains/apron_domains.hpp"
@@ -57,6 +58,10 @@ namespace crab_llvm {
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
   typedef SDBM_impl::DefaultParams<number_t> SplitDBMGraph;
   typedef SplitDBM<number_t, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
+  /// -- Octagons using split normal form
+  typedef split_octagons_impl::DefaultParams<number_t,
+					     split_octagons_impl::GraphRep::adapt_ss> z_SplitOctGraph;
+  typedef split_oct_domain<number_t,varname_t,z_SplitOctGraph> BASE(split_oct_domain_t);
   /// -- Boxes
   typedef boxes_domain<number_t, varname_t> BASE(boxes_domain_t);
   // typedef diff_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>,
@@ -94,6 +99,7 @@ namespace crab_llvm {
 
   ARRAY_BOOL_NUM(interval_domain_t);
   ARRAY_BOOL_NUM(split_dbm_domain_t);
+  ARRAY_BOOL_NUM(split_oct_domain_t);  
   ARRAY_BOOL_NUM(dis_interval_domain_t);
   ARRAY_BOOL_NUM(oct_domain_t);
   ARRAY_BOOL_NUM(pk_domain_t);

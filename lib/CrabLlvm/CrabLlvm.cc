@@ -125,6 +125,8 @@ CrabLlvmDomain("crab-dom",
 		   "Disjunctive intervals based on ldds"),
        clEnumValN (ZONES_SPLIT_DBM, "zones",
 		   "Zones domain with Sparse DBMs in Split Normal Form"),
+       clEnumValN (OCT_SPLIT_DBM, "soct",
+		   "Octagons domain with Sparse DBMs in Split Normal Form"),
        clEnumValN (OCT, "oct", "Octagons domain"),
        clEnumValN (PK, "pk", "Polyhedra domain"),
        clEnumValN (TERMS_ZONES, "rtz",
@@ -572,6 +574,7 @@ namespace crab_llvm {
     case BOXES:                 return boxes_domain_t::getDomainName();
     case DIS_INTERVALS:         return dis_interval_domain_t::getDomainName();
     case ZONES_SPLIT_DBM:       return split_dbm_domain_t::getDomainName();
+    case OCT_SPLIT_DBM:         return split_oct_domain_t::getDomainName();      
     case TERMS_DIS_INTERVALS:   return term_dis_int_domain_t::getDomainName();
     case TERMS_ZONES:           return num_domain_t::getDomainName();
     case OCT:                   return oct_domain_t::getDomainName();
@@ -838,6 +841,7 @@ namespace crab_llvm {
       #endif 	
       , { WRAPPED_INTERVALS     , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<wrapped_interval_domain_t>), "wrapped intervals" }}
       , { ZONES_SPLIT_DBM       , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<split_dbm_domain_t>), "zones" }}
+      , { OCT_SPLIT_DBM         , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<split_oct_domain_t>), "octagons in SNF" }}      
       , { BOXES                 , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<boxes_domain_t>), "boxes" }}
       , { OCT                   , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<oct_domain_t>), "octagons" }}
       , { PK                    , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<pk_domain_t>), "polyhedra" }}
