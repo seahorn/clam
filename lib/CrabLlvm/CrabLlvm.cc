@@ -659,9 +659,9 @@ namespace crab_llvm {
       
       Dom post_cond = Dom::top();
       if (params.check && params.run_backward) {
-	// XXX: we compute preconditions that ensure that the program
-	// fail. If those preconditions are false then we can conclude
-	// the program is safe.
+	// XXX: we compute preconditions that might lead some program
+	// execution to an error state. If those preconditions are
+	// false then we can conclude the program is safe.
 	post_cond = Dom::bottom();
       }
 
@@ -693,9 +693,9 @@ namespace crab_llvm {
 	  update(results.postmap, *B,  mkGenericAbsDomWrapper(post));	
 	  if (params.stats) {
 	    unsigned num_block_invars = 0;
-	    // TODO CRAB: for boxes we would like to use
-	    // to_disjunctive_linear_constraint_system() but it needs to
-	    // be exposed to all domains
+	    // XXX: for boxes it would be more useful to get a measure
+	    // from to_disjunctive_linear_constraint_system() but it
+	    // can be really slow. 
 	    num_block_invars += pre.to_linear_constraint_system().size();
 	    num_invars += num_block_invars;
 	    if (num_block_invars > 0) num_nontrivial_blocks++;
