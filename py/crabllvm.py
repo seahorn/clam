@@ -558,10 +558,11 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.lower_unsigned_icmp:
         crabpp_args.append( '--crab-lower-unsigned-icmp')
     if args.devirt is not 'none':
+        crabpp_args.append('--crab-devirt')
         if args.devirt == 'types':
-            crabpp_args.append('--crab-devirt')
+            crabpp_args.append('--devirt-resolver=types')            
         elif args.devirt == 'dsa':
-            crabpp_args.append('--crab-devirt-dsa')            
+            crabpp_args.append('--devirt-resolver=dsa')            
     if args.enable_ext_funcs:
         crabpp_args.append('--crab-externalize-addr-taken-funcs')
         

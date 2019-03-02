@@ -1420,17 +1420,20 @@ namespace crab_llvm {
     switch (CrabHeapAnalysis) {
     case LLVM_DSA:
       #ifdef HAVE_DSA
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Started llvm-dsa analysis\n";);                  
       m_mem.reset
 	(new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
 				    CrabDsaDisambiguateUnknown,
 				    CrabDsaDisambiguatePtrCast,
 				    CrabDsaDisambiguateExternal));
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Finished llvm-dsa analysis\n";);      
       break;
       #else
       // execute CI_SEA_DSA
       #endif      
     case CI_SEA_DSA:
     case CS_SEA_DSA: {
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Started sea-dsa analysis\n";);            
       sea_dsa::GlobalAnalysisKind kind = sea_dsa::CONTEXT_INSENSITIVE;
       if (CrabHeapAnalysis == CS_SEA_DSA) {
 	kind = sea_dsa::CONTEXT_SENSITIVE;
@@ -1439,7 +1442,6 @@ namespace crab_llvm {
       // want the pass manager to run the sea-dsa analysis if user
       // selects llvm-dsa.
       CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
-      CRAB_VERBOSE_IF(1, llvm::errs() << "Started sea-dsa analysis.\n";);      
       if (kind == sea_dsa::CONTEXT_INSENSITIVE) {
 	global_sea_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(dl, *m_tli,
 								       cg, fac, false);
@@ -1447,20 +1449,18 @@ namespace crab_llvm {
 	global_sea_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(dl, *m_tli, cg, fac);
       }
       global_sea_dsa->runOnModule(M);
-      CRAB_VERBOSE_IF(1, llvm::errs() << "Finished sea-dsa analysis.\n";);
       m_mem.reset
 	(new SeaDsaHeapAbstraction(M, global_sea_dsa,
 				   CrabDsaDisambiguateUnknown,
 				   CrabDsaDisambiguatePtrCast,
 				   CrabDsaDisambiguateExternal));
       }
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Finished sea-dsa analysis\n";);      
       break;
     default:
       errs() << "Warning: running crab-llvm without memory analysis\n";
     }
 
-    CRAB_VERBOSE_IF(1, llvm::errs() << "Using "  << m_mem->getName() << "\n";);
-    
     m_params.dom = CrabLlvmDomain;
     m_params.sum_dom = CrabSummDomain;
     m_params.run_backward = CrabBackward;
