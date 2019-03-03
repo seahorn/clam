@@ -871,14 +871,16 @@ namespace crab_llvm {
 		       CfgManager &cfg_man, const TargetLibraryInfo &tli)
 		       
       : m_cfg(nullptr), m_fun(fun), m_vfac(vfac) {
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Started Crab CFG construction for "
+		                       << fun.getName() << "\n");
       if (isTrackable(m_fun)) {
 	// -- build a crab cfg for func
 	CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
 	m_cfg = builder.get_cfg();
 	m_edge_bb_map = builder.getEdgeToBBMap();
-	CRAB_VERBOSE_IF(1, llvm::outs() << "Built Crab CFG for "
-			                << fun.getName() << "\n");
 	cfg_man.add(fun, m_cfg);
+	CRAB_VERBOSE_IF(1, get_crab_os() << "Finished Crab CFG construction for "
+			                 << fun.getName() << "\n");	
 	  
       } else {
 	CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
