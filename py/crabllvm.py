@@ -596,9 +596,11 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     crabllvm_cmd.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
     crabllvm_cmd.append('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
     crabllvm_cmd.append('--crab-relational-threshold={0}'.format(args.num_threshold))
-    crabllvm_cmd.append('--crab-track={0}'.format(args.track))
-    if args.track == 'arr-no-ptr':
-        crabllvm_cmd.append('--crab-disable-ptr')
+    if args.track == 'arr-no-ptr':    
+        crabllvm_cmd.append('--crab-track=arr')
+        crabllvm_cmd.append('--crab-disable-ptr')        
+    else:
+        crabllvm_cmd.append('--crab-track={0}'.format(args.track))        
     crabllvm_cmd.append('--crab-heap-analysis={0}'.format(args.crab_heap_analysis))
     if args.crab_singleton_aliases: crabllvm_cmd.append('--crab-singleton-aliases')
     if args.crab_inter: crabllvm_cmd.append('--crab-inter')
