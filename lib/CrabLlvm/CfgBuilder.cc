@@ -1,25 +1,31 @@
 /* 
  * Translate a LLVM function to a CFG language understood by Crab.
  * 
- * The translation considers the following Crab types:
+ * Crab supports operations over boolean, integers and
+ * pointers. Moreover, Crab supports unidimensional arrays. Arrays are
+ * interpreted as sequence of consecutive bytes which are disjoint
+ * from each other.
+ *
+ * The translation of LLVM integer operations (tracked precision = NUM)
+ * is pretty straightforward.  LLVM branches are translated to Crab
+ * assume and goto statements. The translation also removes phi nodes.
+ *
+ * If tracked precision is PTR then LLVM pointer operations are
+ * translated to Crab pointer operations. This translation is almost
+ * one-to-one, except some unsupported cases (see below limitations).
  * 
- * - booleans <--> isIntegerTy(1)
- * - integers <--> isIntegerTy() && !isIntegerTy(1)
- * - pointers <--> isPointerTy()
+ * If tracked precision is ARR then the translation is more
+ * complex. We use a heap analysis to partition statically memory into
+ * disjoint regions. Then, each memory region is mapped to a Crab
+ * array and LLVM load/store are translated to array read/write. Some
+ * memory regions might not be mapped to Crab arrays because
+ * otherwise, the Crab array domains wouldn't be sound (see e.g.,
+ * SeaDsaHeapAbstraction).
  * 
- * In addition, there is a type for unidimensional arrays which
- * doesn't exist in LLVM but it does in Crab. An array is a sequence
- * of consecutive bytes. For some of the crab array domains to be
- * sound (e.g., array smashing), certain conditions are guaranteed by
- * this translation:
- * 
- * - the multiplicity of all array accesses is always the same. That
- *   is, all accesses must be multiple of the same constant value.
- * 
- * - the number of accessed bytes is always the same.
- * 
- * Arrays satistying the above conditions are identified by
- * HeapAbstraction.
+ * The translation of function calls is also straigthforward except if
+ * tracked precision = ARR. In that case, all functions are
+ * _purified_. That is, the translation ensures that functions have no
+ * side-effects.
  * 
  * Known limitations of the translation:
  * 
@@ -1589,12 +1595,13 @@ namespace crab_llvm {
 	  havoc(ref->getVar(), m_bb);
 	}
       }
-      
+
+      // TODO: add an array_init statement.
       // if (m_lfac.get_track() == ARR && CrabArrayInit && CrabUnsoundArrayInit) {
       //   mem_region_t r = GET_REGION(I,&I);
       //   bool isMainCaller = I.getParent()->getParent()->getName().equals("main");
       //   if (isMainCaller && !r.isUnknown()) {
-      //      // TODO: add an array_init statement.
+      //      
       //      // We need to figure out:
       //      // - the number of elements and the size of each element
       //      // - Otherwise, we create a fresh (unbounded) variable and use it
@@ -2939,21 +2946,19 @@ namespace crab_llvm {
       }
     }
 
-        
+
+    /// TODO: add an array init statement
     /// Allocate arrays with initial values 
-    if (m_lfac.get_track() == ARR && CrabArrayInit && CrabUnsoundArrayInit) {
-      // getNewRegions returns all the new nodes created by the
-      // function (via malloc-like functions) except if the function
-      // is main.
-      #if 0
-      basic_block_t & entry = m_cfg->get_node(m_cfg->entry());
-      mem_region_set_t news =  get_new_regions(m_mem, m_func);
-      for (auto n: news) {
-	entry.set_insert_point_front();
-	// TODO: we can the same as we do for AllocaInst.
-      }
-      #endif 
-    }
+    // if (m_lfac.get_track() == ARR && CrabArrayInit && CrabUnsoundArrayInit) {
+    //   // getNewRegions returns all the new nodes created by the
+    //   // function (via malloc-like functions) except if the function
+    //   // is main.
+    //   // basic_block_t & entry = m_cfg->get_node(m_cfg->entry());
+    //   // mem_region_set_t news =  get_new_regions(m_mem, m_func);
+    //   // for (auto n: news) {
+    //   // 	entry.set_insert_point_front();
+    //   // }
+    // }
 
     /// Add function declaration
     if (m_is_inter_proc && !m_func.isVarArg()) {
