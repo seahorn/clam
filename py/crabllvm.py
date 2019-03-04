@@ -272,7 +272,7 @@ def parseArgs(argv):
                     help='Heap analysis used for memory disambiguation',
                     choices=['llvm-dsa', 'ci-sea-dsa', 'cs-sea-dsa'],
                     dest='crab_heap_analysis',
-                    default='llvm-dsa')
+                    default='ci-sea-dsa')
     p.add_argument('--crab-singleton-aliases',
                     help='Translate singleton alias sets (mostly globals) as scalar values',
                     dest='crab_singleton_aliases', default=False, action='store_true')
