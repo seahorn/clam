@@ -91,18 +91,15 @@ namespace crab_llvm {
   } // namespace devirt_impl
 
   struct FunctionCompare {
-    // Try compare two functions in a deterministic way across
-    // multiple executions.
-    // 
-    // If both functions have the same name then we rely on pointer
-    // comparison which will not be deterministic across different
-    // executions.
+
+    // TODO: we should compare two functions in a deterministic way
+    // across multiple executions.
     bool operator()(const Function *F1, const Function *F2) {
-      if (F1->hasName() && F2->hasName()) {
-	if (F1->getName () != F2->getName()) {
-	  return F1->getName() < F2->getName();
-	}
-      } 
+      // if (F1->hasName() && F2->hasName()) {
+      // 	if (F1->getName () != F2->getName()) {
+      // 	  return F1->getName() < F2->getName();
+      // 	}
+      // } 
       return F1 < F2;
     }
   };
