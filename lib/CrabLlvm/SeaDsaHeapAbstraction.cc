@@ -313,7 +313,7 @@ namespace seadsa_heap_abs_impl {
     }
 
     // TODO: caching
-    if (is_overlapping_cell(c, m_M.getDataLayout())) {
+    if (is_overlapping_cell(c, m_dl)) {
       // TOIMPROVE: we can assign same id to all overlapping cells but it
       // wouldn't be sound for array domains that ignore pointer
       // arithmetic. Maybe have a flag?
@@ -512,15 +512,30 @@ namespace seadsa_heap_abs_impl {
     m_callsite_news[&I] = news; 
   }
 
-  SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M,
-					       sea_dsa::GlobalAnalysis* dsa,
+  SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& cg,
+					       const llvm::DataLayout& dl,
+					       const llvm::TargetLibraryInfo& tli,
+					       bool is_context_sensitive,
 					       bool disambiguate_unknown,
 					       bool disambiguate_ptr_cast,
 					       bool disambiguate_external)
-    : m_M(M), m_dsa(dsa), m_max_id(0),
+    : m_m(M), m_dl(dl), 
+      m_dsa(nullptr), m_fac(nullptr), m_max_id(0),
       m_disambiguate_unknown(disambiguate_unknown),
       m_disambiguate_ptr_cast(disambiguate_ptr_cast),
       m_disambiguate_external(disambiguate_external) {
+
+    // The factory must be alive while sea_dsa is in use    
+    m_fac = new SetFactory();
+    
+    // -- Run sea-dsa
+    if (!is_context_sensitive) {
+      m_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(m_dl, tli, cg, *m_fac, false); 
+    } else {
+      m_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(m_dl, tli, cg, *m_fac);
+    }
+    
+    m_dsa->runOnModule(m_m);
     
     // --- Pre-compute all the information per function and
     //     callsites
@@ -538,7 +553,7 @@ namespace seadsa_heap_abs_impl {
 		    });
 
     // populate caches
-    for (auto &F: boost::make_iterator_range(m_M)) {    
+    for (auto &F: boost::make_iterator_range(m_m)) {    
       cacheReadModNewNodes(F);
       llvm::inst_iterator InstIt = inst_begin(F), InstItEnd = inst_end(F);
       for (; InstIt != InstItEnd; ++InstIt) {
@@ -549,6 +564,11 @@ namespace seadsa_heap_abs_impl {
     }
   }
 
+  SeaDsaHeapAbstraction::~SeaDsaHeapAbstraction() {
+    delete m_dsa;
+    delete m_fac;
+  }
+  
   // f is used to know in which Graph we should search for V
   SeaDsaHeapAbstraction::region_t
   SeaDsaHeapAbstraction::getRegion(const llvm::Function& fn, llvm::Value* V)  {
@@ -638,6 +658,6 @@ namespace seadsa_heap_abs_impl {
   SeaDsaHeapAbstraction::region_set_t
   SeaDsaHeapAbstraction::getNewRegions(llvm::CallInst& I)  {
     return m_callsite_news[&I];
-  }
+  }  
   
 } // end namespace
