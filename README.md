@@ -91,12 +91,6 @@ installation of the libraries is optional.
 **Important:** Apron and Elina are currently not compatible so you
 cannot enable `-DUSE_APRON=ON` and `-DUSE_ELINA=ON` at the same time. 
 
-To use Elina on Linux, you will need to add `_INSTALL_DIR_/lib` in the
-environment variable `LD_LIBRARY_PATH` if Elina is installed in a
-non-standard directory:
-
-    export LD_LIBRARY_PATH=_INSTALL_DIR_/lib
-	
 For instance, to install `crab-llvm` with Boxes and Apron:
 
      mkdir build && cd build
@@ -449,16 +443,13 @@ Crab. Here some of them:
   provide currently any pointer or shape analysis, and thus, very
   little reasoning about pointer operations can be currently done.
  
-  To mitigate that, points-to information can be provided to Crab-llvm
-  by `llvm-dsa`/`sea-dsa` as a pre-analysis step.  Crab-llvm can
-  reason about pointer's contents if `--crab-track=arr` and whenever
-  `llvm-dsa`/`sea-dsa` can infer statically that a pointer points to a
-  memory region of consecutive bytes where elements must have
-  compatible types and accesses to the region have offsets multiple of
-  the element type size. Once a memory region of this kind has been
-  identified, Crab-llvm uses one of the Crab array domains to reason
-  about their contents. Currently, Crab-llvm only supports array
-  smashing but there are more precise array domains implemented in
-  Crab that just need to be integrated.
+  Alternatively, points-to information can be provided to Crab-llvm by
+  `llvm-dsa`/`sea-dsa` as a pre-analysis step if `--crab-track=arr`.
+  Crab-llvm uses this pre-analysis step to statically partition memory
+  into disjoint regions and then (under some conditions) translate
+  regions to Crab arrays. Then, Crab-llvm uses one of the Crab array
+  domains to reason about their contents. Currently, Crab-llvm only
+  supports array smashing but there are more precise array domains
+  implemented in Crab that just need to be integrated.
 	  
   

@@ -656,9 +656,9 @@ namespace crab_llvm {
       
       Dom post_cond = Dom::top();
       if (params.check && params.run_backward) {
-	// XXX: we compute preconditions that ensure that the program
-	// fail. If those preconditions are false then we can conclude
-	// the program is safe.
+	// XXX: we compute preconditions that might lead some program
+	// execution to an error state. If those preconditions are
+	// false then we can conclude the program is safe.
 	post_cond = Dom::bottom();
       }
 
@@ -690,9 +690,9 @@ namespace crab_llvm {
 	  update(results.postmap, *B,  mkGenericAbsDomWrapper(post));	
 	  if (params.stats) {
 	    unsigned num_block_invars = 0;
-	    // TODO CRAB: for boxes we would like to use
-	    // to_disjunctive_linear_constraint_system() but it needs to
-	    // be exposed to all domains
+	    // XXX: for boxes it would be more useful to get a measure
+	    // from to_disjunctive_linear_constraint_system() but it
+	    // can be really slow. 
 	    num_block_invars += pre.to_linear_constraint_system().size();
 	    num_invars += num_block_invars;
 	    if (num_block_invars > 0) num_nontrivial_blocks++;
@@ -868,14 +868,16 @@ namespace crab_llvm {
 		       CfgManager &cfg_man, const TargetLibraryInfo &tli)
 		       
       : m_cfg(nullptr), m_fun(fun), m_vfac(vfac) {
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Started Crab CFG construction for "
+		                       << fun.getName() << "\n");
       if (isTrackable(m_fun)) {
 	// -- build a crab cfg for func
 	CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
 	m_cfg = builder.get_cfg();
 	m_edge_bb_map = builder.getEdgeToBBMap();
-	CRAB_VERBOSE_IF(1, llvm::outs() << "Built Crab CFG for "
-			                << fun.getName() << "\n");
 	cfg_man.add(fun, m_cfg);
+	CRAB_VERBOSE_IF(1, get_crab_os() << "Finished Crab CFG construction for "
+			                 << fun.getName() << "\n");	
 	  
       } else {
 	CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
@@ -1419,48 +1421,47 @@ namespace crab_llvm {
     switch (CrabHeapAnalysis) {
     case LLVM_DSA:
       #ifdef HAVE_DSA
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Started llvm-dsa analysis\n";);                  
       m_mem.reset
 	(new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
 				    CrabDsaDisambiguateUnknown,
 				    CrabDsaDisambiguatePtrCast,
 				    CrabDsaDisambiguateExternal));
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Finished llvm-dsa analysis\n";);      
       break;
       #else
       // execute CI_SEA_DSA
       #endif      
     case CI_SEA_DSA:
-    case CS_SEA_DSA:
-	  {
-	   sea_dsa::GlobalAnalysisKind kind = sea_dsa::CONTEXT_INSENSITIVE;
-	   if (CrabHeapAnalysis == CS_SEA_DSA) {
-		   kind = sea_dsa::CONTEXT_SENSITIVE;
-	   }
-	   // XXX: We don't run sea-dsa as a LLVM pass because we don't
-	   // want the pass manager to run the sea-dsa analysis if user
-	   // selects llvm-dsa.
-	   CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
-	   CRAB_VERBOSE_IF(1, llvm::errs() << "Started sea-dsa analysis.\n";);
-	   if (kind == sea_dsa::CONTEXT_INSENSITIVE) {
-		  global_sea_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(dl, *m_tli, *m_allocWrapInfo,
-												 cg, fac, false);
-	   } else {
-		  global_sea_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(dl, *m_tli, *m_allocWrapInfo, cg, fac);
-	   }
-	   global_sea_dsa->runOnModule(M);
-	   CRAB_VERBOSE_IF(1, llvm::errs() << "Finished sea-dsa analysis.\n";);
-	   m_mem.reset
-		 (new SeaDsaHeapAbstraction(M, global_sea_dsa,
-		 				                    CrabDsaDisambiguateUnknown,
-		 				                    CrabDsaDisambiguatePtrCast,
-		 				                    CrabDsaDisambiguateExternal));
-	  }
-	  break;
-   default:
+    case CS_SEA_DSA: {
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Started sea-dsa analysis\n";);            
+      sea_dsa::GlobalAnalysisKind kind = sea_dsa::CONTEXT_INSENSITIVE;
+      if (CrabHeapAnalysis == CS_SEA_DSA) {
+	kind = sea_dsa::CONTEXT_SENSITIVE;
+      }
+      // XXX: We don't run sea-dsa as a LLVM pass because we don't
+      // want the pass manager to run the sea-dsa analysis if user
+      // selects llvm-dsa.
+      CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
+      if (kind == sea_dsa::CONTEXT_INSENSITIVE) {
+	global_sea_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(dl, *m_tli, *m_allocWrapInfo,
+								       cg, fac, false);
+      } else {
+	global_sea_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(dl, *m_tli, *m_allocWrapInfo, cg, fac);
+      }
+      global_sea_dsa->runOnModule(M);
+      m_mem.reset
+	(new SeaDsaHeapAbstraction(M, global_sea_dsa,
+				   CrabDsaDisambiguateUnknown,
+				   CrabDsaDisambiguatePtrCast,
+				   CrabDsaDisambiguateExternal));
+      }
+      CRAB_VERBOSE_IF(1, get_crab_os() << "Finished sea-dsa analysis\n";);      
+      break;
+    default:
       errs() << "Warning: running crab-llvm without memory analysis\n";
     }
 
-    CRAB_VERBOSE_IF(1, llvm::errs() << "Using "  << m_mem->getName() << "\n";);
-    
     m_params.dom = CrabLlvmDomain;
     m_params.sum_dom = CrabSummDomain;
     m_params.run_backward = CrabBackward;

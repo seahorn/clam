@@ -254,10 +254,19 @@ namespace crab_llvm {
   ///////
   
 
-  // field-sensitive: assigns an id to each offset
+  // Return -1 if it cannot assign an id.
   int LlvmDsaHeapAbstraction::getId(const llvm::DSNode *n, unsigned offset) {
     auto it = m_node_ids.find(n);
-    if (it != m_node_ids.end()) return it->second + offset;
+    if (it != m_node_ids.end()) {
+      return it->second + offset;
+    }
+
+    /** 
+     * FIXME: we need to check for some extra conditions so that we
+     * can generate translations that can be analyzed by array
+     * smashing-like abstractions. See SeaDsaHeapAbstraction.cc
+     **/
+    
     
     unsigned id = m_max_id;
     m_node_ids[n] = id;
@@ -315,15 +324,17 @@ namespace crab_llvm {
 	  continue;
 	}
 
+	int id = getId(n,o);
+	if (id < 0) {
+	  continue;
+	}
 	if ((n->isReadNode() || n->isModifiedNode()) && retReach.count(n) <= 0)
-	  reads.insert(region_t(static_cast<HeapAbstraction*>(this),
-				getId(n,o), r_info));
+	  reads.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	if (n->isModifiedNode() && retReach.count(n) <= 0)
-	  mods.insert(region_t(static_cast<HeapAbstraction*>(this),
-			       getId(n,o), r_info));
+	  mods.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	if (n->isModifiedNode() && retReach.count(n)) 
-	  news.insert(region_t(static_cast<HeapAbstraction*>(this),
-			       getId(n,o), r_info));	
+	  news.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+			       
       }
     }
     m_func_accessed [&f] = reads;
@@ -387,18 +398,22 @@ namespace crab_llvm {
 						m_disambiguate_unknown,
 						m_disambiguate_ptr_cast,
 						m_disambiguate_external);
-	if (r_info.get_type() == UNTYPED_REGION)
+	if (r_info.get_type() == UNTYPED_REGION) {
 	  continue;
+	}
+
+	int id = getId(n,o);
+	if (id < 0) {
+	  continue;
+	}
 	
 	if ((n->isReadNode() || n->isModifiedNode()) && retReach.count(n) <= 0)
-	  reads.insert(region_t(static_cast<HeapAbstraction*>(this),
-				getId(n,o), r_info));
+	  reads.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	if (n->isModifiedNode() && retReach.count(n) <= 0)
-	  mods.insert(region_t(static_cast<HeapAbstraction*>(this),
-			       getId(n,o), r_info));
+	  mods.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	if (n->isModifiedNode() && retReach.count(n))
-	  news.insert(region_t(static_cast<HeapAbstraction*>(this),
-			       getId(n,o), r_info));	
+	  news.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info)); 
+			       
       }
     }
     
@@ -465,10 +480,17 @@ namespace crab_llvm {
 					    m_disambiguate_unknown,
 					    m_disambiguate_ptr_cast,
 					    m_disambiguate_external);
-    return (r_info.get_type() == UNTYPED_REGION ?
-	    region_t() :
-	    region_t(static_cast<HeapAbstraction*>(this),
-		     getId(n,cell.getOffset()), r_info)); 
+
+    if (r_info.get_type() == UNTYPED_REGION) {
+      return region_t();
+    } else {
+      int id = getId(n,cell.getOffset());
+      if (id < 0) {
+	return region_t();
+      } else {
+	return region_t(static_cast<HeapAbstraction*>(this), id, r_info);
+      }
+    }
   }
   
   const llvm::Value* LlvmDsaHeapAbstraction::getSingleton(int region) const {
