@@ -165,9 +165,9 @@ def parseArgs(argv):
     p.add_argument("--no-preprocess", dest="preprocess", 
                     help='Skip compilation and preprocessing', action='store_false',
                     default=True)
-    p.add_argument("--no-analyze", dest="analyze", 
-                    help='Skip analysis(for debugging)', action='store_false',
-                    default=True)
+    p.add_argument("--only-preprocess", dest="only_preprocess", 
+                    help='Run only the preprocessor', action='store_true',
+                    default=False)
     p.add_argument('-O', type=int, dest='L', metavar='INT',
                     help='Optimization level L:[0,1,2,3]', default=0)
     p.add_argument('--cpu', type=int, dest='cpu', metavar='SEC',
@@ -228,6 +228,9 @@ def parseArgs(argv):
                     help='Enable verbose messages',
                     dest='crab_verbose',
                     default=0, metavar='UINT')
+    p.add_argument("--crab-only-cfg", dest="crab_only_cfg", 
+                    help='Build only the Crab CFG', action='store_true',
+                    default=False)    
     p.add_argument('--crab-cfg-simplify',
                     help='Perform some crab CFG transformations',
                     dest='crab_cfg_simplify', default=False, action='store_true')    
@@ -590,8 +593,10 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.log is not None:
         for l in args.log.split(':'): crabllvm_cmd.extend(['-log', l])
 
-    if args.crab_verbose: crabllvm_cmd.append('--crab-verbose={0}'.format(args.crab_verbose))
-    
+    if args.crab_verbose:
+        crabllvm_cmd.append('--crab-verbose={0}'.format(args.crab_verbose))
+    if args.crab_only_cfg:
+        crabllvm_cmd.append('--crab-only-cfg')
     ## This option already run in crabpp    
     if args.undef_nondet: crabllvm_cmd.append( '--crab-turn-undef-nondet')
         
@@ -709,7 +714,7 @@ def main(argv):
     pp_out = defOutPPName(in_name, workdir)
     with stats.timer('CrabLlvm'):
         extra_opts = []
-        if not args.analyze:
+        if args.only_preprocess:
             extra_opts.append('-no-crab')
         crabllvm(in_name, pp_out, args, extra_opts, cpu=args.cpu, mem=args.mem)
 
