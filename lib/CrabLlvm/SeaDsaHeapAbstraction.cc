@@ -215,6 +215,12 @@ namespace seadsa_heap_abs_impl {
   static bool is_overlapping_cell(const Cell& c, const DataLayout &dl) {
     const Node* n1 = c.getNode();
     unsigned o1 = c.getOffset();
+    if (!n1->hasAccessedType(o1)) {
+      // this might be unsound but assuming cell overlaps might be too
+      // pessimistic.
+      return false;
+    }
+    
     if (auto c1_sz = size_of(n1->getAccessedType(o1), dl)) {
       uint64_t s1 = *c1_sz;
       for (auto& kv: n1->types()) {
