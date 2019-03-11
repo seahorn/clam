@@ -272,8 +272,15 @@ def parseArgs(argv):
                     "- arr-no-ptr: as arr but excluding non-constant pointer offsets\n",
                     choices=['num', 'ptr', 'arr', 'arr-no-ptr'], dest='track', default='num')
     p.add_argument('--crab-heap-analysis',
-                    help='Heap analysis used for memory disambiguation',
-                    choices=['llvm-dsa', 'ci-sea-dsa', 'cs-sea-dsa'],
+                   help="Heap analysis used for memory disambiguation:\n"
+                   "- llvm-dsa: context-insensitive llvm-dsa\n"
+                   "- ci-sea-dsa: context-insensitive sea-dsa\n"
+                   "- cs-sea-dsa: context-sensitive sea-dsa\n"
+                   "- ci-sea-dsa-types: context-insensitive sea-dsa with types\n"
+                   "- cs-sea-dsa-types: context-sensitive sea-dsa with types\n",
+                   choices=['llvm-dsa',
+                             'ci-sea-dsa', 'cs-sea-dsa',
+                             'ci-sea-dsa-types', 'cs-sea-dsa-types'],
                     dest='crab_heap_analysis',
                     default='ci-sea-dsa')
     p.add_argument('--crab-singleton-aliases',
@@ -611,8 +618,17 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         crabllvm_cmd.append('--crab-track=arr')
         crabllvm_cmd.append('--crab-disable-ptr')        
     else:
-        crabllvm_cmd.append('--crab-track={0}'.format(args.track))        
-    crabllvm_cmd.append('--crab-heap-analysis={0}'.format(args.crab_heap_analysis))
+        crabllvm_cmd.append('--crab-track={0}'.format(args.track))
+    if args.crab_heap_analysis == 'llvm-dsa' or \
+       args.crab_heap_analysis == 'ci-sea-dsa' or \
+       args.crab_heap_analysis == 'cs-sea-dsa':
+        crabllvm_cmd.append('--crab-heap-analysis={0}'.format(args.crab_heap_analysis))
+    elif args.crab_heap_analysis == 'ci-sea-dsa-types':
+        crabllvm_cmd.append('--crab-heap-analysis=ci-sea-dsa')
+        crabllvm_cmd.append('--sea-dsa-type-aware=true')
+    elif args.crab_heap_analysis == 'cs-sea-dsa-types':
+        crabllvm_cmd.append('--crab-heap-analysis=cs-sea-dsa')
+        crabllvm_cmd.append('--sea-dsa-type-aware=true')
     if args.crab_singleton_aliases: crabllvm_cmd.append('--crab-singleton-aliases')
     if args.crab_inter: crabllvm_cmd.append('--crab-inter')
     if args.crab_backward: crabllvm_cmd.append('--crab-backward')
