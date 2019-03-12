@@ -3,13 +3,20 @@
 #include "crab_llvm/config.h"
 #include "crab_llvm/HeapAbstraction.hh"
 #include "llvm/ADT/StringRef.h"
-#include <boost/unordered_map.hpp>
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/ImmutableSet.h"
 
 // forward declarations
 namespace sea_dsa {
   class GlobalAnalysis;
   class Node;
   class Cell;
+}
+
+namespace llvm {
+  class DataLayout;
+  class CallGraph;
+  class TargetLibraryInfo;
 }
 
 namespace crab_llvm {
@@ -25,23 +32,15 @@ namespace crab_llvm {
 
    private:
 
-    llvm::Module &m_M;
-    
-    sea_dsa::GlobalAnalysis *m_dsa;
-    
-    /// map from Node to id
-    llvm::DenseMap<const sea_dsa::Node*, unsigned> m_node_ids;
-    boost::unordered_map<unsigned, const sea_dsa::Node*> m_rev_node_ids;
-    unsigned m_max_id;
-
-    bool m_disambiguate_unknown;
-    bool m_disambiguate_ptr_cast;
-    bool m_disambiguate_external;
+    // XXX: We should use sea_dsa::Graph::SetFactory.
+    // We copy here the definition of sea_dsa::Graph::SetFactory so
+    // that we don't need to include Graph.hh
+    typedef llvm::ImmutableSet<llvm::Type *> Set;
+    typedef typename Set::Factory SetFactory;
     
     llvm::DenseMap<const llvm::Function*, region_set_t> m_func_accessed;
     llvm::DenseMap<const llvm::Function*, region_set_t> m_func_mods;
     llvm::DenseMap<const llvm::Function*, region_set_t> m_func_news;
-
     llvm::DenseMap<const llvm::CallInst*, region_set_t> m_callsite_accessed;
     llvm::DenseMap<const llvm::CallInst*, region_set_t> m_callsite_mods;
     llvm::DenseMap<const llvm::CallInst*, region_set_t> m_callsite_news;
@@ -59,11 +58,16 @@ namespace crab_llvm {
     void cacheReadModNewNodesFromCallSite(llvm::CallInst &I);
 
    public:
-    
-    SeaDsaHeapAbstraction(llvm::Module &M, sea_dsa::GlobalAnalysis *dsa,
+
+    SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& cg,
+			  const llvm::DataLayout& dl,
+			  const llvm::TargetLibraryInfo& tli,
+			  bool is_context_sensitive,
 			  bool disambiguate_unknown  = false,
 			  bool disambiguate_ptr_cast = false,
 			  bool disambiguate_external = false);
+
+    ~SeaDsaHeapAbstraction();
     
     virtual region_t getRegion(const llvm::Function &F, llvm::Value *V) override;
     
@@ -88,6 +92,22 @@ namespace crab_llvm {
     virtual llvm::StringRef getName() const override {
       return "SeaDsaHeapAbstraction";
     }
-  }; 
-} // end namespace crab_llvm
 
+  private:
+    
+    llvm::Module &m_m;
+    const llvm::DataLayout& m_dl;
+    sea_dsa::GlobalAnalysis* m_dsa;
+    SetFactory* m_fac;
+    /// map from Node to id
+    llvm::DenseMap<const sea_dsa::Node*, unsigned> m_node_ids;
+    /// reverse map
+    boost::unordered_map<unsigned, const sea_dsa::Node*> m_rev_node_ids;
+    unsigned m_max_id;
+    bool m_disambiguate_unknown;
+    bool m_disambiguate_ptr_cast;
+    bool m_disambiguate_external;
+
+  };
+
+} // end namespace crab_llvm

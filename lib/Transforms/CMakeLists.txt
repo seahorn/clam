@@ -8,7 +8,6 @@ add_library(LlvmPasses ${CRABLLVM_LIBS_TYPE}
   SimplifyAssume.cc
   DevirtFunctions.cc
   DevirtFunctionsPass.cc
-  DevirtFunctionsDsaPass.cc  
   ExternalizeAddressTakenFunctions.cc
   PromoteAssume.cc  
   PromoteMalloc.cc
