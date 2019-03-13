@@ -11,6 +11,10 @@ ARG UBUNTU
 # Pull base image.
 FROM seahorn/seahorn-build-llvm5:$UBUNTU
 
+# Needed to run clang with -m32
+RUN apt-get update && \
+    apt-get install -yqq libc6-dev-i386 
+
 RUN cd / && rm -rf /crabllvm && \
     git clone https://github.com/seahorn/crab-llvm -b dev-llvm-5.0 crabllvm --depth=10 ; \
     mkdir -p /crabllvm/build
