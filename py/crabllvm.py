@@ -666,7 +666,7 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_dsa_external: crabllvm_cmd.append('--crab-dsa-disambiguate-external')    
     if args.crab_unsound_array_init: crabllvm_cmd.append('--crab-unsound-array-init') 
     if args.crab_keep_shadows: crabllvm_cmd.append('--crab-keep-shadows')
-    crabllvm_cmd.append('--crab-name-values={0}'.format(args.crab_name_values)
+    crabllvm_cmd.append('--crab-name-values={0}'.format(args.crab_name_values))
     if args.unsigned_to_signed: crabllvm_cmd.append('--crab-unsigned-to-signed')
     
     if verbose: print ' '.join(crabllvm_cmd)
