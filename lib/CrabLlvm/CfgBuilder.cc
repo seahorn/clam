@@ -2850,6 +2850,12 @@ namespace crab_llvm {
   }
 
   static bool checkAllDefinitionsHaveNames(const Function& F) {
+    for (auto &Arg : F.args()) {
+      if (!Arg.hasName()) {
+	return false;
+      }
+    }
+    
     for (const BasicBlock &BB: F) {
       if(!BB.hasName()) {
 	return false;
