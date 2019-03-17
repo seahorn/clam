@@ -369,7 +369,7 @@ namespace crab_llvm {
     }
 
     virtual StringRef getPassName() const {
-      return "LowerGvInitializers";
+      return "CrabLlvm: Lower global initializers";
     }
     
   };

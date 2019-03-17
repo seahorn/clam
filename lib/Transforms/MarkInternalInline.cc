@@ -23,7 +23,7 @@ namespace crab_llvm {
     }
 
     virtual StringRef getPassName() const {
-      return "Mark internal functions with AlwaysInline attribute";
+      return "CrabLlvm: Mark internal functions with AlwaysInline attribute";
     }
     
   };

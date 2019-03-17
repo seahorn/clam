@@ -1,5 +1,4 @@
-#ifndef __INSERT_INVARIANTS_HPP_
-#define __INSERT_INVARIANTS_HPP_
+#pragma once
 
 /* 
  * Instrument LLVM bitecode by inserting invariants computed by
@@ -42,10 +41,10 @@ namespace crab_llvm {
 
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const ;
 
-    virtual llvm::StringRef getPassName () const {return "InsertInvariants";}
+    virtual llvm::StringRef getPassName () const {
+      return "CrabLlvm: insert invariants as verifier.assume instructions";
+    }
 
   };
 
 } // end namespace crab_llvm
-
-#endif

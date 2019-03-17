@@ -92,7 +92,7 @@ namespace crab_llvm {
     }
 
     virtual StringRef getPassName() const {
-      return "Lower constant expressions";
+      return "CrabLlvm: Lower constant expressions";
     }
     
   };

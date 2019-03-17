@@ -112,7 +112,7 @@ namespace crab_llvm {
     }
 
     StringRef getPassName () const {
-      return "Externalize uses of address-taken functions";
+      return "CrabLlvm: Externalize uses of address-taken functions";
     }
   };
 

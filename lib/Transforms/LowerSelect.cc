@@ -115,7 +115,7 @@ namespace crab_llvm
     }
         
     virtual StringRef getPassName() const {
-      return "Lower select instructions";
+      return "CrabLlvm: Lower select instructions";
     }
 
     virtual void getAnalysisUsage (AnalysisUsage &AU) const {

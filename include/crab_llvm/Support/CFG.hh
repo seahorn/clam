@@ -1,5 +1,4 @@
-#ifndef __CFG_HH_
-#define __CFG_HH_
+#pragma once
 
 /// Extra support for llvm CFG
 #include "boost/range/iterator_range.hpp"
@@ -30,5 +29,3 @@ namespace crab_llvm
   preds (const llvm::BasicBlock &bb) 
   {return boost::make_iterator_range (pred_begin (&bb), pred_end (&bb));}
 }
-
-#endif

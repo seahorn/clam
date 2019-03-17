@@ -72,8 +72,13 @@ namespace crab_llvm {
         ++line_iter;
       }
     }
-    return false;
-  }      
+    return true;
+  }
+
+  void NameValues::getAnalysisUsage (llvm::AnalysisUsage &AU) const {
+    AU.setPreservesAll (); 
+  }
+
 } // end namespace
 
 static llvm::RegisterPass<crab_llvm::NameValues> 

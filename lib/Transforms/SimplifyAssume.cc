@@ -82,7 +82,7 @@ namespace crab_llvm
     }
 
     virtual StringRef getPassName() const {
-      return "Simplify assume instructions";
+      return "CrabLlvm: Simplify assume instructions";
     }
     
   };

@@ -97,7 +97,7 @@ namespace crab_llvm {
     }
     
     StringRef getPassName() const {
-      return "DevirtualizeFunctionsPass";
+      return "CrabLlvm: Devirtualize indirect calls";
     }
   };
 

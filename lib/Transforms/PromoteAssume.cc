@@ -99,7 +99,7 @@ namespace crab_llvm {
     }
     
     virtual StringRef getPassName() const {
-      return "PromoteAssume";
+      return "CrabLlvm: Convert verifier.assume to llvm.assume";
     }
     
   };

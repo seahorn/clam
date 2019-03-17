@@ -61,7 +61,9 @@ namespace crab_llvm {
       //AU.setPreservesAll ();
     }
     
-    virtual StringRef getPassName () const {return "PromoteMalloc";}
+    virtual StringRef getPassName () const {
+      return "CrabLlvm: Promote malloc to alloca instructions";
+    }
     
   };
 

@@ -19,7 +19,7 @@ namespace crab_llvm
     }
     
     virtual StringRef getPassName() const {
-      return "Remove unreachable blocks";
+      return "CrabLlvm: Remove unreachable blocks";
     }
 
   };

@@ -1,5 +1,4 @@
-#ifndef _NAME_VALUES_HPP_
-#define _NAME_VALUES_HPP_
+#pragma once
 
 #include "llvm/Pass.h"
 #include "llvm/IR/Module.h"
@@ -18,14 +17,10 @@ namespace crab_llvm {
 
     bool runOnFunction (llvm::Function &F);
 
-    virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const { 
-      AU.setPreservesAll (); 
-    }
-
+    virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const;
+   
     virtual llvm::StringRef getPassName() const {
-      return "Name values";
+      return "CrabLlvm: Name values";
     }
   };
-
 } 
-#endif 
