@@ -13,7 +13,6 @@
 
 #include "crab/cfg/cfg.hpp"
 #include "crab/cfg/var_factory.hpp"
-#include "crab/common/bignums.hpp"
 
 #include <boost/functional/hash.hpp>
 
