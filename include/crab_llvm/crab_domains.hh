@@ -20,7 +20,6 @@
 #include "crab/domains/wrapped_interval_domain.hpp"
 //#include "crab/domains/array_sparse_graph.hpp"
 //#include "crab/domains/nullity.hpp"
-//#include "crab/domains/diff_domain.hpp" /* only debugging */
 
 /*
    Definition of the abstract domains (no instantiation done here)
@@ -55,8 +54,7 @@ namespace crab_llvm {
   /// -- Wrapped interval domain (APLAS'12)
   typedef wrapped_interval_domain<number_t, varname_t> BASE(wrapped_interval_domain_t);
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
-  typedef SDBM_impl::DefaultParams<number_t> SplitDBMGraph;
-  typedef SplitDBM<number_t, varname_t, SplitDBMGraph> BASE(split_dbm_domain_t);
+  typedef SplitDBM<number_t, varname_t> BASE(split_dbm_domain_t);
   /// -- Boxes
   typedef boxes_domain<number_t, varname_t> BASE(boxes_domain_t);
   // typedef diff_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>,
