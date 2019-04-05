@@ -15,11 +15,22 @@ endif()
 enable_testing()
 include (CTest)
 
+# By default, we don't include crab-llvm transformations if we are an
+# embedded project, but user can change that.
+option(CrabTransforms OFF)
+
 # determine if this is top-level or embedded project
 if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
-  set (TopLevel TRUE)
+  set(TopLevel TRUE)
+  set(CrabTransforms ON)  
 else()
-  set (TopLevel FALSE)
+  set(TopLevel FALSE)
+endif()
+
+if (CrabTransforms)
+  message(STATUS "Including crab-llvm transformations.")
+else()
+  message(STATUS "Excluding crab-llvm transformations.")
 endif()
 
 # Default is release with debug info
@@ -287,16 +298,22 @@ endif()
 
 # Propagate to the parent
 if (NOT TopLevel)
-   set (CRABLLVM_LIBS
-       CrabLlvmAnalysis CrabLlvmInstrumentation
+   set(XCRABLLVM_LIBS
+       CrabLlvmAnalysis CrabLlvmInstrumentation)
+   if (CrabTransforms)
+     set(XCRABLLVM_LIBS ${XCRABLLVM_LIBS} LlvmPasses)
+   endif()
+  
+   set(CRABLLVM_LIBS
+       ${XCRABLLVM_LIBS}
        ${CRAB_LIBS}
        PARENT_SCOPE)
-    
-   set (CRABLLVM_INCLUDE_DIRS
-        ${CrabLlvm_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/include 
-        ${CRAB_INCLUDE_DIRS}
-        PARENT_SCOPE)    
+     
+   set(CRABLLVM_INCLUDE_DIRS
+       ${CrabLlvm_SOURCE_DIR}/include
+       ${CMAKE_BINARY_DIR}/include 
+       ${CRAB_INCLUDE_DIRS}
+       PARENT_SCOPE)    
 endif ()  
 
 if (TopLevel)
