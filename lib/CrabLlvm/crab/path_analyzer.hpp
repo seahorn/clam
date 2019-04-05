@@ -74,12 +74,15 @@ namespace analyzer {
   private:
     
     bool has_kid(basic_block_label_t b1, basic_block_label_t b2);
-    void minimize_path(const std::vector<crab::cfg::statement_wrapper>& path);
-    bool remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& path);
+    void minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
+		       unsigned bottom_stmt);
+    bool remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& path,
+				      unsigned bottom_stmt);
     bool solve_path(const std::vector<basic_block_label_t>& path,
 		    const bool only_bool_reasoning,
 		    std::vector<typename crab::cfg::statement_wrapper>& stmts,
-		    unsigned& bottom_pos);
+		    unsigned& bottom_block,
+		    unsigned& bottom_stmt);
 
     // the cfg from which all paths are originated
     CFG m_cfg;
