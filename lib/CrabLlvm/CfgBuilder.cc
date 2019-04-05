@@ -1007,7 +1007,7 @@ namespace crab_llvm {
 
     if (I.getPredicate() != CmpInst::ICMP_EQ &&
 	I.getPredicate() != CmpInst::ICMP_NE) {
-      CRABLLVM_WARNING("unexpected pointer comparison " << I);
+      //CRABLLVM_WARNING("unexpected pointer comparison " << I);
       return boost::optional<ptr_cst_t>();            
     }
     
@@ -2047,9 +2047,9 @@ namespace crab_llvm {
       // -- POINTER CAST      
       if (isPointerCast(I)) {
 	if (isa<PtrToIntInst>(I)) {
-	  CRABLLVM_WARNING("translation skipped pointer to integer cast");
+	  //CRABLLVM_WARNING("translation skipped pointer to integer cast");
 	} else if (isa<IntToPtrInst>(I)) {
-	  CRABLLVM_WARNING("translation skipped integer to pointer cast");
+	  //CRABLLVM_WARNING("translation skipped integer to pointer cast");
 	} else if (isa<BitCastInst>(I) && isPointer(*I.getOperand(0), m_lfac.get_track())) {
 
 	  if (src->isPtr()) {
