@@ -368,7 +368,9 @@ namespace seadsa_heap_abs_impl {
     
     if (n->size() == 0) {
       // XXX: nodes can have zero size
-      assert (offset == 0);
+      if (offset != 0) {
+	return -1;
+      }
       m_max_id++;
       return id;
     }
