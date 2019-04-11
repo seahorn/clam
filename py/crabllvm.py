@@ -374,8 +374,10 @@ def parseArgs(argv):
                     dest='crab_keep_shadows', default=False, action='store_true')
     p.add_argument('--crab-unsigned-to-signed',
                     help=a.SUPPRESS,
-                    dest='unsigned_to_signed', default=False, action='store_true')    
-    
+                    dest='unsigned_to_signed', default=False, action='store_true')
+    p.add_argument('--crab-enable-bignums',
+                    help=a.SUPPRESS,
+                    dest='crab_enable_bignums', default=False, action='store_true')
     #### END CRAB
     
     args = p.parse_args(argv)
@@ -668,6 +670,7 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_keep_shadows: crabllvm_cmd.append('--crab-keep-shadows')
     crabllvm_cmd.append('--crab-name-values={0}'.format(args.crab_name_values))
     if args.unsigned_to_signed: crabllvm_cmd.append('--crab-unsigned-to-signed')
+    crabllvm_cmd.append('--crab-enable-bignums={0}'.format(args.crab_enable_bignums))
     
     if verbose: print ' '.join(crabllvm_cmd)
 

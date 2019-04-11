@@ -128,6 +128,11 @@ CrabUnsoundArrayInit("crab-unsound-array-init",
 		     cl::Hidden);
 
 cl::opt<bool>
+CrabEnableBignums("crab-enable-bignums",
+     cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."), 
+     cl::init(false));
+
+cl::opt<bool>
 CrabDisableWarnings("crab-disable-warnings",
 	      cl::desc("Disable warning messages"), 
 	      cl::init(false),
@@ -147,7 +152,24 @@ namespace crab_llvm {
     }
     return *result;
   }
-  
+
+  // Any integer that cannot be represented by 64 bits is considered a bignum.
+  static bool isSignedBigNum(const llvm::APInt& v) {
+    unsigned b = v.getBitWidth();
+    if (b <= 64) {
+      return false;
+    } else {
+      // if bitwidth > 64 then we check the actual value
+      llvm::APInt max(b,
+		      llvm::APInt::getSignedMaxValue(64).getSExtValue(),
+		      true);
+      llvm::APInt min(b,
+		      llvm::APInt::getSignedMinValue(64).getSExtValue(),
+		      true);
+      return (v.sgt(max) || v.slt(min));
+    }
+  }
+
   static void CRABLLVM_ERROR(std::string msg, const char *file, unsigned line) {
     llvm::errs() << "CRABLLVM ERROR: " << msg << "\n";
     llvm::errs() << "File: " << file << "\n";
@@ -198,10 +220,12 @@ namespace crab_llvm {
   }
 
   // The return value should be ikos::z_number and not number_t
-  static ikos::z_number getIntConstant(const ConstantInt* CI){
+  static ikos::z_number getIntConstant(const ConstantInt* CI, bool& is_bignum){
+    is_bignum = false;
     if (CI->getType()->isIntegerTy(1)) {
       return ikos::z_number((int64_t) CI->getZExtValue());
     } else {
+      is_bignum = (CrabEnableBignums && isSignedBigNum(CI->getValue()));
       return ikos::z_number(toMpz(CI->getValue()));
     }
   }
@@ -582,12 +606,15 @@ namespace crab_llvm {
     if (isBool(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant boolean
-	ikos::z_number n = getIntConstant(c);
-	return crabBoolLit(n > 0 ? true : false);
+	bool is_bignum;
+	ikos::z_number n = getIntConstant(c, is_bignum);
+	if (!is_bignum) {
+	  return crabBoolLit(n > 0 ? true : false);
+	}
       } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
 	// -- boolean variable 
 	return crabBoolLit(var_t(m_vfac[&v], BOOL_TYPE, 1));
-	}
+      }
     }
     return boost::optional<crabBoolLit>();
   }
@@ -607,8 +634,11 @@ namespace crab_llvm {
     if (isInteger(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant integer
-	ikos::z_number n = getIntConstant(c);
-	return crabIntLit(n);
+	bool is_bignum;	
+	ikos::z_number n = getIntConstant(c, is_bignum);
+	if (!is_bignum) {
+	  return crabIntLit(n);
+	}
       } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
 	// -- integer variable
 	unsigned bitwidth = v.getType()->getIntegerBitWidth();
@@ -1680,7 +1710,7 @@ namespace crab_llvm {
 	  if (!isInteger(*(MSI->getValue()))) {
 	    CRABLLVM_WARNING("Skipped memset instruction of non-integer type.");
 	  } else {
-	    CRABLLVM_WARNING("Skipped memset instruction of integer type." <<
+	    CRABLLVM_WARNING("Skipped memset instruction of integer type. " <<
 			     "You can enable --crab-unsound-array-init on your own risk.");
 	  }
 	}
@@ -1795,22 +1825,25 @@ namespace crab_llvm {
       
       if (ConstantInt *CI = dyn_cast<ConstantInt>(cond)) {
         // -- cond is a constant
-	ikos::z_number cond_val = getIntConstant(CI);
-	if (cond_val > 0) {
-	  if (isAssertFn(callee) || isAssumeFn(callee)) {
-	    // do nothing
+	bool is_bignum;
+	ikos::z_number cond_val = getIntConstant(CI, is_bignum);
+	if (!is_bignum) {
+	  if (cond_val > 0) {
+	    if (isAssertFn(callee) || isAssumeFn(callee)) {
+	      // do nothing
+	    } else {
+	      assert(isNotAssumeFn(callee));
+	      m_bb.assume(lin_cst_t::get_false()); 	      
+	    }
 	  } else {
-	    assert(isNotAssumeFn(callee));
-	    m_bb.assume(lin_cst_t::get_false()); 	      
-	  }
-	} else {
-	  if (isNotAssumeFn(callee)) {
-	    // do nothing
-	  } else if (isAssumeFn(callee)) {
+	    if (isNotAssumeFn(callee)) {
+	      // do nothing
+	    } else if (isAssumeFn(callee)) {
 	      m_bb.assume(lin_cst_t::get_false());
-	  } else {
-	    assert(isAssertFn(callee));
-	    m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
+	    } else {
+	      assert(isAssertFn(callee));
+	      m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
+	    }
 	  }
 	}
       } else {
@@ -2003,6 +2036,10 @@ namespace crab_llvm {
       crab_lit_ref_t dst = m_lfac.getLit(I);
       assert(dst && dst->isVar());
       crab_lit_ref_t src = m_lfac.getLit(*(I.getOperand(0)));
+      if (!src) {
+	havoc(dst->getVar(), m_bb);
+	return;
+      }
       
       // -- INTEGER OR BOOLEAN CAST
       if (isIntCast(I)) {
