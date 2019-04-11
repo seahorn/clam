@@ -1136,6 +1136,8 @@ namespace crab_llvm {
     // we should not reach this point since v is tracked.
     CRABLLVM_ERROR("cannot normalize function parameter or return value",
 		   __FILE__, __LINE__);
+    // clang complains otherwise
+    abort();
   }
   
   //! Translate PHI nodes
