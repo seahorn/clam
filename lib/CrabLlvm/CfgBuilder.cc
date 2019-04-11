@@ -467,7 +467,7 @@ namespace crab_llvm {
 	  boost::static_pointer_cast<crabLit>(boost::make_shared<crabIntLit>(*lit));
 	m_lit_cache.insert(binding_t(&v, ref));
 	return ref;
-	}
+      }
     } else if (t.isPointerTy()) {
       if (boost::optional<crabPtrLit> lit = getPtrLit(v)) {
 	crab_lit_ref_t ref =
@@ -505,6 +505,10 @@ namespace crab_llvm {
     if (const Value* v= mem_region.getSingleton()) {
       Type* ty = cast<PointerType>(v->getType())->getElementType();      
       bitwidth = ty->getIntegerBitWidth();
+      if (mem_region.get_type() == INT_REGION && bitwidth <= 1) {
+	CRABLLVM_ERROR("Integer region must have bitwidth > 1",
+		       __FILE__,__LINE__);
+      }
       // If the singleton contains a pointer then getIntegerBitWidth()
       // returns zero which means for us "unknown" bitwidth so we are
       // good.
@@ -531,7 +535,7 @@ namespace crab_llvm {
   {  return var_t(m_vfac.get(), ARR_PTR_TYPE); }     
   
   var_t crabLitFactoryImpl::mkIntVar(unsigned bitwidth)
-  { return var_t(m_vfac.get(), INT_TYPE, bitwidth); }     
+  { return var_t(m_vfac.get(), INT_TYPE, bitwidth);}     
   
   var_t crabLitFactoryImpl::mkBoolVar()
   { return var_t(m_vfac.get(), BOOL_TYPE, 1); }
@@ -1132,8 +1136,8 @@ namespace crab_llvm {
       }
     }
     // we should not reach this point since v is tracked.
-    CRABLLVM_ERROR("cannot normalize function parameter or return value", __FILE__, __LINE__);
-    abort(); /* to remove warning */
+    CRABLLVM_ERROR("cannot normalize function parameter or return value",
+		   __FILE__, __LINE__);
   }
   
   //! Translate PHI nodes
@@ -1638,6 +1642,7 @@ namespace crab_llvm {
 
 	  crab_lit_ref_t len_ref = m_lfac.getLit(*(MSI->getLength()));
 	  crab_lit_ref_t val_ref = m_lfac.getLit(*(MSI->getValue()));
+	  if (!len_ref || !val_ref) return;
 	  
 	  if (len_ref->isInt()) {
 	    lin_exp_t lb_idx(number_t(0));
@@ -2731,7 +2736,7 @@ namespace crab_llvm {
     void visitInstruction(Instruction &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
       crab_lit_ref_t lhs = m_lfac.getLit(I);
-      if (lhs->isVar()) {
+      if (lhs && lhs->isVar()) {
 	havoc(lhs->getVar(), m_bb);
       }
     }
@@ -3117,14 +3122,14 @@ namespace crab_llvm {
 			    sorted_outs.begin(), sorted_outs.end(),
 			    std::back_inserter(intersect));
       if (!intersect.empty()) {
-	llvm::errs() << "CRALLVM ERROR: function inputs and outputs should not intersect\n";
 	crab::errs() << "INPUTS: {";
 	for (auto i: inputs) { crab::outs() << i << ";"; }
 	crab::errs() << "}\n";
 	crab::errs() << "OUTPUTS: {";
 	for (auto o: outputs) { crab::outs() << o << ";"; }
 	crab::errs() << "}\n";
-	abort();
+	CRABLLVM_ERROR("function inputs and outputs should not intersect",
+		       __FILE__, __LINE__);
       }
 
       typedef function_decl<number_t, varname_t> function_decl_t;
