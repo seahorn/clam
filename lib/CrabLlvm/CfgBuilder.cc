@@ -467,7 +467,7 @@ namespace crab_llvm {
 	  boost::static_pointer_cast<crabLit>(boost::make_shared<crabIntLit>(*lit));
 	m_lit_cache.insert(binding_t(&v, ref));
 	return ref;
-	}
+      }
     } else if (t.isPointerTy()) {
       if (boost::optional<crabPtrLit> lit = getPtrLit(v)) {
 	crab_lit_ref_t ref =
@@ -505,6 +505,10 @@ namespace crab_llvm {
     if (const Value* v= mem_region.getSingleton()) {
       Type* ty = cast<PointerType>(v->getType())->getElementType();      
       bitwidth = ty->getIntegerBitWidth();
+      if (mem_region.get_type() == INT_REGION && bitwidth <= 1) {
+	CRABLLVM_ERROR("Integer region must have bitwidth > 1",
+		       __FILE__,__LINE__);
+      }
       // If the singleton contains a pointer then getIntegerBitWidth()
       // returns zero which means for us "unknown" bitwidth so we are
       // good.
@@ -531,7 +535,7 @@ namespace crab_llvm {
   {  return var_t(m_vfac.get(), ARR_PTR_TYPE); }     
   
   var_t crabLitFactoryImpl::mkIntVar(unsigned bitwidth)
-  { return var_t(m_vfac.get(), INT_TYPE, bitwidth); }     
+  { return var_t(m_vfac.get(), INT_TYPE, bitwidth);}     
   
   var_t crabLitFactoryImpl::mkBoolVar()
   { return var_t(m_vfac.get(), BOOL_TYPE, 1); }
@@ -698,8 +702,6 @@ namespace crab_llvm {
       return mem_region_t();
     }
   }
-
-  #define GET_REGION(I,V) get_region(m_mem, *(I.getParent()->getParent()), V)
 
   template<typename V>
   static inline mem_region_set_t get_read_only_regions(HeapAbstraction &mem, V& v) {
@@ -1132,8 +1134,10 @@ namespace crab_llvm {
       }
     }
     // we should not reach this point since v is tracked.
-    CRABLLVM_ERROR("cannot normalize function parameter or return value", __FILE__, __LINE__);
-    abort(); /* to remove warning */
+    CRABLLVM_ERROR("cannot normalize function parameter or return value",
+		   __FILE__, __LINE__);
+    // clang complains otherwise
+    abort();
   }
   
   //! Translate PHI nodes
@@ -1281,17 +1285,20 @@ namespace crab_llvm {
       for (auto &U: V->uses()) {
         if (StoreInst *SI = dyn_cast<StoreInst>(U.getUser())) {
 	  if (Instruction *I = dyn_cast<Instruction>(V))  {
-	    if (GET_REGION((*I),SI->getPointerOperand()).isUnknown() &&
+	    Function& parent = *(I->getParent()->getParent());	    
+	    if (get_region(m_mem,parent,SI->getPointerOperand()).isUnknown() &&
 		(!SI->getValueOperand()->getType()->isPointerTy() ||
-		 GET_REGION((*I),SI->getValueOperand()).isUnknown()))
+		 get_region(m_mem,parent,SI->getValueOperand()).isUnknown()))
 	      continue;
 	  }
 	  return false;
         }
         else if (LoadInst *LI = dyn_cast<LoadInst>(U.getUser())) {
 	  if (Instruction *I = dyn_cast<Instruction>(V))  {
-	    if (GET_REGION((*I),LI->getPointerOperand()).isUnknown() &&
-		(!I->getType()->isPointerTy() || GET_REGION((*I),LI).isUnknown()))
+	    Function& parent = *(I->getParent()->getParent());	    
+	    if (get_region(m_mem,parent,LI->getPointerOperand()).isUnknown() &&
+		(!I->getType()->isPointerTy() ||
+		 get_region(m_mem, parent, LI).isUnknown()))
 	      continue;
 	  }
 	  return false;
@@ -1619,12 +1626,13 @@ namespace crab_llvm {
 	CRABLLVM_WARNING("Skipped memory intrinsics " << I);
 	return;
       }
-      
+
+      Function& parent = *(I.getParent()->getParent());      
       if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(&I)) {
 	Value* src = MCI->getSource();
 	Value* dst = MCI->getDest();
-	mem_region_t src_reg = GET_REGION(I,src);
-	mem_region_t dst_reg = GET_REGION(I,dst); 
+	mem_region_t src_reg = get_region(m_mem, parent, src);
+	mem_region_t dst_reg = get_region(m_mem, parent, dst); 
 	if (dst_reg.isUnknown() || src_reg.isUnknown()) return;
 	m_bb.havoc(m_lfac.mkArrayVar(dst_reg));
 	if (dst_reg.get_type() == src_reg.get_type()) {
@@ -1633,11 +1641,12 @@ namespace crab_llvm {
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
 	if (CrabUnsoundArrayInit && isInteger(*(MSI->getValue()))) {
 	  Value* dst = MSI->getDest();
-	  mem_region_t r = GET_REGION(I,dst);
+	  mem_region_t r = get_region(m_mem, parent, dst);
 	  if (r.isUnknown()) return;
 
 	  crab_lit_ref_t len_ref = m_lfac.getLit(*(MSI->getLength()));
 	  crab_lit_ref_t val_ref = m_lfac.getLit(*(MSI->getValue()));
+	  if (!len_ref || !val_ref) return;
 	  
 	  if (len_ref->isInt()) {
 	    lin_exp_t lb_idx(number_t(0));
@@ -1687,8 +1696,9 @@ namespace crab_llvm {
       // indexes an address inside the global variable.
       Value *v = CS.getArgument(0);
       Type* ty = cast<PointerType>(v->getType())->getElementType();
+      Function& parent = *(I.getParent()->getParent());
       
-      auto r = GET_REGION(I, v);
+      auto r = get_region(m_mem, parent, v);
       if (!r.isUnknown()) {
 	crab_lit_ref_t ref = nullptr;
 	if (CS.arg_size() == 2) {
@@ -2208,7 +2218,8 @@ namespace crab_llvm {
       
       CRAB_LOG("cfg-gep", llvm::errs() << "Translating " << I << "\n");
 
-      mem_region_t r = GET_REGION(I, &I); 
+      Function& parent = *(I.getParent()->getParent());
+      mem_region_t r = get_region(m_mem, parent, &I); 
       if (isGlobalSingleton(r)) {
 	CRAB_LOG("cfg-gep", llvm::errs() << "Skipped singleton region\n");
 	return;
@@ -2304,9 +2315,11 @@ namespace crab_llvm {
 
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
       crab_lit_ref_t val = m_lfac.getLit(*I.getValueOperand());
+      Function& parent = *(I.getParent()->getParent());
       
       if (!ptr || !ptr->isPtr()) {
-	CRABLLVM_ERROR("unexpected pointer operand of store instruction",__FILE__, __LINE__);
+	CRABLLVM_ERROR("unexpected pointer operand of store instruction",
+		       __FILE__, __LINE__);
       }
       
       if (m_lfac.isPtrNull(ptr)) {
@@ -2322,9 +2335,10 @@ namespace crab_llvm {
 	  // For simplicity, we don't deal with this case here and we
 	  // assume that the client must make sure that all constant
 	  // expressions are lowered. 
-	  CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
+	  CRABLLVM_ERROR("unexpected value operand of store instruction",
+			 __FILE__, __LINE__);
 	}
-	mem_region_t r = GET_REGION(I, I.getPointerOperand()); 
+	mem_region_t r = get_region(m_mem, parent, I.getPointerOperand()); 
 	if (!r.isUnknown()) {
 	  if (isGlobalSingleton(r)) {
 	    // Promote the global to an integer/boolean scalar
@@ -2362,15 +2376,18 @@ namespace crab_llvm {
 		m_bb.truncate(val->getVar(), t);
 	      } 
 	      m_bb.array_store(m_lfac.mkArrayVar(r), idx, t, 
-				m_dl->getTypeAllocSize(ty), r.getSingleton() != nullptr);
+				m_dl->getTypeAllocSize(ty),
+			       r.getSingleton() != nullptr);
 	    } else {
 	      if (val->isInt()) {
 		m_bb.array_store(m_lfac.mkArrayVar(r), idx, m_lfac.getIntCst(val),
-				  m_dl->getTypeAllocSize(ty), r.getSingleton() != nullptr);
+				  m_dl->getTypeAllocSize(ty),
+				 r.getSingleton() != nullptr);
 	      } else if (val->isBool()){
 		m_bb.array_store(m_lfac.mkArrayVar(r), idx, 
 				  m_lfac.isBoolTrue(val) ? number_t(1): number_t(0),
-				  m_dl->getTypeAllocSize(ty), r.getSingleton() != nullptr);
+				  m_dl->getTypeAllocSize(ty),
+				 r.getSingleton() != nullptr);
 	      } else { /* unreachable */}
 	    }
 	  }
@@ -2414,9 +2431,11 @@ namespace crab_llvm {
       
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
+      Function& parent = *(I.getParent()->getParent());
       
       if (!ptr || !ptr->isPtr()) {
-	CRABLLVM_ERROR("unexpected pointer operand of load instruction",__FILE__, __LINE__);
+	CRABLLVM_ERROR("unexpected pointer operand of load instruction",
+		       __FILE__, __LINE__);
       }
       
       if (m_lfac.isPtrNull(ptr)) {
@@ -2430,7 +2449,7 @@ namespace crab_llvm {
 	if (!lhs || !lhs->isVar()) {
 	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
 	} 	
-	mem_region_t r = GET_REGION(I, I.getPointerOperand()); 
+	mem_region_t r = get_region(m_mem, parent, I.getPointerOperand()); 
 	if (!(r.isUnknown())) {
 	  if (isGlobalSingleton(r)) {
 	    // Promote the global to an integer/boolean scalar
@@ -2488,8 +2507,9 @@ namespace crab_llvm {
 	m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
       }
 
+      Function& parent = *(I.getParent()->getParent());
       if (m_lfac.get_track() == ARR && CrabArrayInit) {
-	mem_region_t r = GET_REGION(I,&I);
+	mem_region_t r = get_region(m_mem, parent, &I);
 	if (!r.isUnknown()) {
 	  
 	  // Nodes which do not have an explicit initialization are
@@ -2714,7 +2734,7 @@ namespace crab_llvm {
     void visitInstruction(Instruction &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
       crab_lit_ref_t lhs = m_lfac.getLit(I);
-      if (lhs->isVar()) {
+      if (lhs && lhs->isVar()) {
 	havoc(lhs->getVar(), m_bb);
       }
     }
@@ -3106,14 +3126,14 @@ namespace crab_llvm {
 			    sorted_outs.begin(), sorted_outs.end(),
 			    std::back_inserter(intersect));
       if (!intersect.empty()) {
-	llvm::errs() << "CRALLVM ERROR: function inputs and outputs should not intersect\n";
 	crab::errs() << "INPUTS: {";
 	for (auto i: inputs) { crab::outs() << i << ";"; }
 	crab::errs() << "}\n";
 	crab::errs() << "OUTPUTS: {";
 	for (auto o: outputs) { crab::outs() << o << ";"; }
 	crab::errs() << "}\n";
-	abort();
+	CRABLLVM_ERROR("function inputs and outputs should not intersect",
+		       __FILE__, __LINE__);
       }
 
       typedef function_decl<number_t, varname_t> function_decl_t;
