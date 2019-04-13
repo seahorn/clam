@@ -1,6 +1,9 @@
 #pragma once
 
 #include "crab_llvm/config.h"
+
+#ifdef HAVE_SEA_DSA
+
 #include "crab_llvm/HeapAbstraction.hh"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -113,3 +116,4 @@ namespace crab_llvm {
   };
 
 } // end namespace crab_llvm
+#endif  /*HAVE_SEA_DSA*/

@@ -30,7 +30,9 @@
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
 #endif
+#ifdef HAVE_SEA_DSA
 #include "sea_dsa/AllocWrapInfo.hh"
+#endif 
 
 #include "crab/common/debug.hpp"
 #include "crab/common/stats.hpp"
@@ -1434,6 +1436,7 @@ namespace crab_llvm {
       #endif      
     case CI_SEA_DSA:
     case CS_SEA_DSA: {
+      #ifdef HAVE_SEA_DSA      
       CRAB_VERBOSE_IF(1, get_crab_os() << "Started sea-dsa analysis\n";);
       CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();      
       const DataLayout& dl = M.getDataLayout();
@@ -1446,6 +1449,7 @@ namespace crab_llvm {
 				   CrabDsaDisambiguateExternal));
       CRAB_VERBOSE_IF(1, get_crab_os() << "Finished sea-dsa analysis\n";);      
       break;
+      #endif 
     }
     default:
       errs() << "Warning: running crab-llvm without memory analysis\n";
@@ -1516,7 +1520,9 @@ namespace crab_llvm {
     AU.addRequiredTransitive<SteensgaardDataStructures> ();
     #endif 
     AU.addRequired<TargetLibraryInfoWrapperPass>();
+    #ifdef HAVE_SEA_DSA    
     AU.addRequired<sea_dsa::AllocWrapInfo>();
+    #endif     
     AU.addRequired<UnifyFunctionExitNodes>();
     AU.addRequired<crab_llvm::NameValues>();
     AU.addRequired<CallGraphWrapperPass>();

@@ -1,5 +1,6 @@
 #include "crab_llvm/config.h"
 
+#ifdef HAVE_SEA_DSA
 /**
  * Heap abstraction based on sea-dsa (https://github.com/seahorn/sea-dsa).
  */
@@ -680,3 +681,4 @@ namespace seadsa_heap_abs_impl {
   }  
   
 } // end namespace
+#endif /*HAVE_SEA_DSA*/

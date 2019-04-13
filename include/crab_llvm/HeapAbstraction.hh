@@ -50,8 +50,10 @@ namespace crab_llvm {
      friend struct DummyHeapAbstraction;
      #ifdef HAVE_DSA
      friend class LlvmDsaHeapAbstraction;
-     #endif 
+     #endif
+     #ifdef HAVE_SEA_DSA
      friend class SeaDsaHeapAbstraction;
+     #endif 
      
      Mem *m_mem;
      int m_id;

@@ -13,13 +13,13 @@
 #include "dsa/CallTargets.h"
 #endif 
 
-cl::opt<crab_llvm::CallSiteResolverKind>
+llvm::cl::opt<crab_llvm::CallSiteResolverKind>
 DevirtResolver("devirt-resolver",
-      cl::desc ("Method used to select potential callees"),
-      cl::values 
+      llvm::cl::desc ("Method used to select potential callees"),
+      llvm::cl::values 
       (clEnumValN(crab_llvm::RESOLVER_TYPES, "types", "Callees with same type"),
        clEnumValN(crab_llvm::RESOLVER_DSA  , "dsa"  , "DSA selects the potential callees")),
-      cl::init(crab_llvm::RESOLVER_TYPES));
+      llvm::cl::init(crab_llvm::RESOLVER_TYPES));
 		   
 static llvm::cl::opt<bool>
 AllowIndirectCalls("devirt-allow-indirect-calls",
