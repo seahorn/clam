@@ -1682,7 +1682,7 @@ namespace crab_llvm {
 	    lin_exp_t lb_idx(number_t(0));
 	    lin_exp_t ub_idx(m_lfac.getExp(len_ref) -1);
 	    var_t arr_var = m_lfac.mkArrayVar(r);
-	    uint64_t elem_size = MSI->getAlignment(); /*double check this*/
+	    uint64_t elem_size = MSI->getDestAlignment(); 
 	    if (val_ref->isInt()) {
 	      if (m_init_regions.insert(r).second) {
 		if (val_ref->isVar()) {

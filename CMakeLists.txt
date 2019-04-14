@@ -123,21 +123,20 @@ find_package (Git)
 
 if (GIT_FOUND)
   if (TopLevel)
-    set (LLVM_DSA_REPO "https://github.com/seahorn/llvm-dsa"
-      CACHE STRING "llvm-dsa repo")
-    set (SEA_DSA_REPO "https://github.com/seahorn/sea-dsa"
-      CACHE STRING "sea-dsa repo")
-    set (SEAHORN_LLVM_REPO "https://github.com/seahorn/llvm-seahorn"
-      CACHE STRING "seahorn-llvm repo")
+    # set (LLVM_DSA_REPO "https://github.com/seahorn/llvm-dsa"
+    #   CACHE STRING "llvm-dsa repo")
+    # set (SEA_DSA_REPO "https://github.com/seahorn/sea-dsa"
+    #   CACHE STRING "sea-dsa repo")
+    # set (SEAHORN_LLVM_REPO "https://github.com/seahorn/llvm-seahorn"
+    #   CACHE STRING "seahorn-llvm repo")
 
-    add_custom_target (llvm-dsa-git
-      ${GIT_EXECUTABLE} clone -b llvm-5.0 ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
-    add_custom_target (sea-dsa-git
-      ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
-    add_custom_target (seahorn-llvm-git
-      ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
-
-    add_custom_target (extra DEPENDS llvm-dsa-git sea-dsa-git seahorn-llvm-git)
+    # add_custom_target (llvm-dsa-git
+    #   ${GIT_EXECUTABLE} clone -b llvm-5.0 ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
+    # add_custom_target (sea-dsa-git
+    #   ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
+    # add_custom_target (seahorn-llvm-git
+    #   ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
+    # add_custom_target (extra DEPENDS llvm-dsa-git sea-dsa-git seahorn-llvm-git)
   endif ()
 
   set (CRAB_REPO "https://github.com/seahorn/crab.git" CACHE STRING "crab repo")
@@ -174,7 +173,7 @@ endif()
 if (TopLevel)
   # if top-level, offer to build llvm
   ExternalProject_Add (llvm
-    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_500/final/      
+    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_800/final/
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/llvm
     INSTALL_DIR ${CMAKE_BINARY_DIR}/run
     CMAKE_ARGS
@@ -194,7 +193,7 @@ if (TopLevel)
     LOG_BUILD 1
     LOG_INSTALL 1)
 
-  find_package (LLVM 5.0 CONFIG NO_DEFAULT_PATH)
+  find_package (LLVM 8.0 CONFIG NO_DEFAULT_PATH)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})
@@ -290,7 +289,10 @@ if (TopLevel)
     if (NOT HAVE_LLVM_SEAHORN)
       set(EXTRA_MSG "${EXTRA_MSG}\n - No LLVM-SEAHORN in ${CMAKE_SOURCE_DIR}/llvm-seahorn.")
     endif()
-    message(WARNING "The following packages cannot be found:${EXTRA_MSG}\nRun cmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
+    #message(WARNING "The following packages cannot be found:${EXTRA_MSG}\nRun cmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
+    message(WARNING "These packages have not been ported yet to LLVM 8.0: ${EXTRA_MSG}\n"
+      "The lack of these packages might affect both performance and precision "
+      " of the tool.")
   endif()  
   
 endif ()
