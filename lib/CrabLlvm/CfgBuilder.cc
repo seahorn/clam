@@ -207,17 +207,32 @@ namespace crab_llvm {
   }
 
   /** Converts v to mpz_class. Assumes that v is signed */
-  static mpz_class toMpz(const llvm::APInt &v) {
-    // Based on:
-    // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
-    llvm::APInt abs;
-    abs = v.isNegative() ? v.abs() : v;
-    const uint64_t *rawdata = abs.getRawData();
-    unsigned numWords = abs.getNumWords();
-    mpz_class res;
-    mpz_import(res.get_mpz_t(), numWords, 1,  sizeof(uint64_t), 0, 0, rawdata);
-    return v.isNegative() ? mpz_class(-res) : res;
-  }
+   static mpz_class toMpz(const llvm::APInt &v, bool& is_bignum) {
+     is_bignum = false;
+     if (!CrabEnableBignums) {
+       is_bignum = isSignedBigNum(v);
+       
+     }
+     // Convert to strings is not ideal but it shouldn't be a big
+     // bottleneck.
+     std::string val = v.toString(10,true /*is signed*/);
+     return mpz_class(val);
+     
+     // Based on:
+     // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
+     //
+     // This code seems buggy. For instance, it will make these conversions:
+     //    30903631872 --> 570071388090917616591046705152
+     //    453350497004842588831744 --> 61144488376177518244492741363942580224
+     //
+     //  llvm::APInt abs;
+     // abs = v.isNegative() ? v.abs() : v;
+     // const uint64_t *rawdata = abs.getRawData();
+     // unsigned numWords = abs.getNumWords();
+     // mpz_class res;
+     // mpz_import(res.get_mpz_t(), numWords, 1,  sizeof(uint64_t), 0, 0, rawdata);
+     // return v.isNegative() ? mpz_class(-res) : res;
+   }
 
   // The return value should be ikos::z_number and not number_t
   static ikos::z_number getIntConstant(const ConstantInt* CI, bool& is_bignum){
@@ -225,8 +240,7 @@ namespace crab_llvm {
     if (CI->getType()->isIntegerTy(1)) {
       return ikos::z_number((int64_t) CI->getZExtValue());
     } else {
-      is_bignum = (CrabEnableBignums && isSignedBigNum(CI->getValue()));
-      return ikos::z_number(toMpz(CI->getValue()));
+      return ikos::z_number(toMpz(CI->getValue(), is_bignum));
     }
   }
     
@@ -1276,7 +1290,9 @@ namespace crab_llvm {
 	      }
 	    } else { /* unreachable*/ }
 	  } else {
-	    CRABLLVM_ERROR("unexpected PHI node", __FILE__, __LINE__);
+	    // we can be here if the incoming value is a bignum and we
+	    // don't allow bignums.
+	    m_bb.havoc(lhs);
 	  }
 	}
       }
@@ -1733,7 +1749,9 @@ namespace crab_llvm {
 	crab_lit_ref_t ref = nullptr;
 	if (CS.arg_size() == 2) {
 	  ref= m_lfac.getLit(*(CS.getArgument(1)));
-	  assert(ref);
+	  if (!ref) { // this can happen if k is bignum and bignums are not allowed
+	    return;
+	  }
 	}
 	if (isGlobalSingleton(r)) {
 	  // Promote the global to an integer/boolean scalar
@@ -2279,13 +2297,19 @@ namespace crab_llvm {
       assert(ptr->isVar());
       
       // -- translation if the GEP offset is constant
-      unsigned BitWidth = m_dl->getPointerTypeSizeInBits(I.getType());
-      APInt Offset(BitWidth, 0);
-      if (I.accumulateConstantOffset(*m_dl, Offset)) {
-        lin_exp_t offset(toMpz(Offset).get_str());
-	m_bb.ptr_assign(lhs->getVar(), ptr->getVar(), offset);
-	CRAB_LOG("cfg-gep",
-		 crab::outs() << "-- " << *lhs << ":=" << *ptr  << "+" << offset << "\n");
+      unsigned bitwidth = m_dl->getPointerTypeSizeInBits(I.getType());
+      APInt offset(bitwidth, 0);
+      if (I.accumulateConstantOffset(*m_dl, offset)) {
+	bool is_bignum = false;
+	mpz_class o(toMpz(offset, is_bignum));
+	if (is_bignum) {
+	  m_bb.havoc(lhs->getVar());
+	} else {
+	  m_bb.ptr_assign(lhs->getVar(), ptr->getVar(), lin_exp_t(ikos::z_number(o)));
+	  CRAB_LOG("cfg-gep",
+	   	   crab::outs() << "-- " << *lhs << ":=" << *ptr  << "+"
+		                << ikos::z_number(o) << "\n");
+	}
         return;
       }
 

@@ -653,7 +653,7 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         ## crab-llvm warning messages
         crabllvm_cmd.append('--crab-disable-warnings')
         ## crab warning messages
-        crabllvm_cmd.append('--crab-enable-warnings={0}'.format('false'))
+        crabllvm_cmd.append('--crab-enable-warnings=false')
     if args.crab_sanity_checks: crabllvm_cmd.append('--crab-sanity-checks')
     if args.crab_cfg_simplify: crabllvm_cmd.append('--crab-cfg-simplify')
     if args.crab_print_invariants:
@@ -668,10 +668,15 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_dsa_external: crabllvm_cmd.append('--crab-dsa-disambiguate-external')    
     if args.crab_unsound_array_init: crabllvm_cmd.append('--crab-unsound-array-init') 
     if args.crab_keep_shadows: crabllvm_cmd.append('--crab-keep-shadows')
-    crabllvm_cmd.append('--crab-name-values={0}'.format(args.crab_name_values))
+    if args.crab_name_values:
+        crabllvm_cmd.append('--crab-name-values=true')
+    else:
+        crabllvm_cmd.append('--crab-name-values=false')    
     if args.unsigned_to_signed: crabllvm_cmd.append('--crab-unsigned-to-signed')
-    crabllvm_cmd.append('--crab-enable-bignums={0}'.format(args.crab_enable_bignums))
-    
+    if args.crab_enable_bignums:
+        crabllvm_cmd.append('--crab-enable-bignums=true')
+    else:
+        crabllvm_cmd.append('--crab-enable-bignums=false')
     if verbose: print ' '.join(crabllvm_cmd)
 
     if args.out_name is not None:
