@@ -248,9 +248,23 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
   endif ()
 endif ()
 
+if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-dsa AND
+    EXISTS ${CMAKE_SOURCE_DIR}/llvm-dsa/lib/DSA/Steensgaard.cpp)
+  set (HAVE_DSA TRUE)
+endif()
+
+if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
+    EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/src/DsaAnalysis.cc)
+  set (HAVE_SEA_DSA TRUE)    
+endif()
+
+if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND
+    EXISTS ${CMAKE_SOURCE_DIR}/llvm-seahorn/lib/CMakeLists.txt)
+  set (HAVE_LLVM_SEAHORN TRUE)
+endif()
+
 if (TopLevel)
-  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-dsa AND
-      EXISTS ${CMAKE_SOURCE_DIR}/llvm-dsa/lib/DSA/Steensgaard.cpp)
+  if (HAVE_DSA)
     include_directories (AFTER llvm-dsa/include)
     add_subdirectory (llvm-dsa/lib/AssistDS)
     add_subdirectory (llvm-dsa/lib/DSA)
@@ -260,8 +274,7 @@ if (TopLevel)
     set (DSA_LIBS "")
   endif()
 
-  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
-      EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/src/DsaAnalysis.cc)
+  if (HAVE_SEA_DSA)
     include_directories (BEFORE sea-dsa/include)
     add_subdirectory (${CMAKE_SOURCE_DIR}/sea-dsa)
     set (SEA_DSA_LIBS SeaDsaAnalysis)
@@ -270,8 +283,7 @@ if (TopLevel)
     set (SEA_DSA_LIBS "")
   endif()
   
-  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND
-      EXISTS ${CMAKE_SOURCE_DIR}/llvm-seahorn/lib/CMakeLists.txt)
+  if (HAVE_LLVM_SEAHORN)
     include_directories (BEFORE llvm-seahorn/include)
     add_subdirectory(llvm-seahorn/lib)
     add_subdirectory(llvm-seahorn/tools)
