@@ -1,4 +1,4 @@
-// RUN: %crabllvm --inline  --lower-select --lower-unsigned-icmp --crab-do-not-print-invariants --crab-dom=boxes --crab-check=assert %opts --crab-sanity-checks "%s" 2>&1 | OutputCheck -l debug %s
+// RUN: %crabllvm --inline  --lower-select --lower-unsigned-icmp --crab-do-not-print-invariants --crab-dom=boxes --crab-check=assert %opts --crab-sanity-checks --llvm-pp-loops "%s" 2>&1 | OutputCheck -l debug %s
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
