@@ -25,11 +25,9 @@ target_link_libraries (crabllvm
   CrabLlvmInstrumentation 
   LlvmPasses
   ${LLVM_SEAHORN_LIBS}
+  ${DSA_LIBS}
+  ${SEA_DSA_LIBS}
 )
-if (HAVE_DSA)
-  target_link_libraries (crabllvm ${DSA_LIBS})
-endif ()
-target_link_libraries (crabllvm ${SEA_DSA_LIBS})
 llvm_config (crabllvm ${LLVM_LINK_COMPONENTS})
 install(TARGETS crabllvm RUNTIME DESTINATION bin)
 
