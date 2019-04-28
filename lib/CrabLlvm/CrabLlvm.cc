@@ -1083,7 +1083,7 @@ namespace crab_llvm {
 				params.widening_delay, 
 				params.narrowing_iters, 
 				params.widening_jumpset);
-      analyzer.Run (TDDom::top ());
+      analyzer.run(TDDom::top ());
     
       CRAB_VERBOSE_IF(1, get_crab_os() << "Finished inter-procedural analysis.\n");
       
