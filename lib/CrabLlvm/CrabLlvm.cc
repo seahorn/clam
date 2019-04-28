@@ -56,7 +56,6 @@
 #include <functional>
 #include <map>
 
-
 using namespace llvm;
 using namespace crab_llvm;
 using namespace crab::cfg;
@@ -770,15 +769,14 @@ namespace crab_llvm {
     template<typename AbsDom>
     void wrapperPathAnalyze(const std::vector<llvm_basic_block_wrapper>& path,
 			    std::vector<crab::cfg::statement_wrapper>& core,
-			    bool layered_solving, bool populate_maps,
-			    invariant_map_t& post, invariant_map_t& pre, bool &res) {
+			    bool layered_solving, bool populate_inv_map,
+			    invariant_map_t& post, bool &res) {
       
       typedef path_analyzer<cfg_ref_t, AbsDom> path_analyzer_t;
       AbsDom init;
       path_analyzer_t path_analyzer(*m_cfg, init);
-      bool compute_preconditions = populate_maps;
-      res = path_analyzer.solve(path, layered_solving, compute_preconditions);
-      if (populate_maps) {
+      res = path_analyzer.solve(path, layered_solving, false /*compute_preconditions*/);
+      if (populate_inv_map) {
 	for(auto n: path) {
 	  if (const llvm::BasicBlock* bb = n.get_basic_block()) {
 	    AbsDom abs_val = path_analyzer.get_fwd_constraints(n);
@@ -794,24 +792,9 @@ namespace crab_llvm {
 
       if (!res) {
 	path_analyzer.get_unsat_core(core);
-
-	if (populate_maps) {
-	  for(auto n: path) {
-	    if (const llvm::BasicBlock* bb = n.get_basic_block()) {
-	      AbsDom abs_val = path_analyzer.get_bwd_constraints(n);
-	      pre.insert(std::make_pair(bb, mkGenericAbsDomWrapper(abs_val)));
-	      if (abs_val.is_bottom()) {
-		// the rest of blocks must be also bottom so we don't
-		// bother storing them.
-		break;
-	      }
-	    }
-	  }
-	}
       }
     }
-        
-    
+
     struct intra_analysis {
       std::function<void(const AnalysisParams&,
 			 const BasicBlock*,
@@ -824,7 +807,7 @@ namespace crab_llvm {
     struct path_analysis {
       std::function<void(const std::vector<llvm_basic_block_wrapper>&,
 			 std::vector<crab::cfg::statement_wrapper>&,
-			 bool, bool, invariant_map_t&, invariant_map_t&,bool&)> analyze;
+			 bool, bool, invariant_map_t&,bool&)> analyze;
       std::string name;
     };
     
@@ -854,7 +837,7 @@ namespace crab_llvm {
       #endif 	
       , { WRAPPED_INTERVALS     , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<wrapped_interval_domain_t>), "wrapped intervals" }}
       , { ZONES_SPLIT_DBM       , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<split_dbm_domain_t>), "zones" }}
-      , { BOXES                  , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<boxes_domain_t>), "boxes" }}      
+      , { BOXES                 , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<boxes_domain_t>), "boxes" }}      
       , { TERMS_ZONES           , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<num_domain_t>), "terms with zones" }}
       /* 
 	 To add new domains here make sure you add an explicit
@@ -955,8 +938,8 @@ namespace crab_llvm {
 		     const std::vector<const llvm::BasicBlock*>& blocks,
 		     bool layered_solving, 
 		     std::vector<crab::cfg::statement_wrapper>& core,
-		     bool populate_maps, 
-		     invariant_map_t& post, invariant_map_t& pre) const {
+		     bool populate_inv_map, invariant_map_t& post) const { 
+		     
       assert(m_cfg);
 
       // build the full path (included internal basic blocks added
@@ -975,13 +958,13 @@ namespace crab_llvm {
 
       bool res;
       if (path_analyses.count(params.dom)) {
-      	path_analyses.at(params.dom).analyze(path, core, layered_solving , populate_maps,
-					     post, pre, res);
+      	path_analyses.at(params.dom).analyze(path, core, layered_solving , populate_inv_map,
+					     post, res);
       } else {
       	crab::outs() << "Warning: abstract domain not found or enabled.\n"
       		     << "Running " << path_analyses.at(INTERVALS).name << " ...\n";
-      	path_analyses.at(INTERVALS).analyze(path, core, layered_solving, populate_maps,
-					    post, pre, res);
+      	path_analyses.at(INTERVALS).analyze(path, core, layered_solving, populate_inv_map,
+					    post, res);
 	
       }
       return res;
@@ -1031,9 +1014,9 @@ namespace crab_llvm {
 				   const std::vector<const llvm::BasicBlock*>& path,
 				   bool layered_solving, 
 				   std::vector<crab::cfg::statement_wrapper>& core) const {
-    invariant_map_t pre_conditions, post_conditions;
-    return m_impl->pathAnalyze(params, path, layered_solving, core, false,
-			       post_conditions, pre_conditions);
+    invariant_map_t post_conditions;
+    return m_impl->pathAnalyze(params, path, layered_solving, core, false, post_conditions);
+			       
   }
 
   template<>
@@ -1041,10 +1024,8 @@ namespace crab_llvm {
 				   const std::vector<const llvm::BasicBlock*>& path,
 				   bool layered_solving, 
 				   std::vector<crab::cfg::statement_wrapper>& core,
-				   invariant_map_t& post_conditions,
-				   invariant_map_t& pre_conditions) const {
-    return m_impl->pathAnalyze(params, path, layered_solving, core, true,
-			       post_conditions, pre_conditions);
+				   invariant_map_t& post_conditions) const {
+    return m_impl->pathAnalyze(params, path, layered_solving, core, true, post_conditions);
   }
 
   wrapper_dom_ptr IntraCrabLlvm::get_pre(const llvm::BasicBlock *block,
@@ -1102,7 +1083,7 @@ namespace crab_llvm {
 				params.widening_delay, 
 				params.narrowing_iters, 
 				params.widening_jumpset);
-      analyzer.Run (TDDom::top ());
+      analyzer.run(TDDom::top ());
     
       CRAB_VERBOSE_IF(1, get_crab_os() << "Finished inter-procedural analysis.\n");
       
@@ -1178,6 +1159,7 @@ namespace crab_llvm {
       }
       return;
     }
+
     // Domains used for inter-procedural analysis
     struct inter_analysis {
       std::function<void(const AnalysisParams&, InvarianceAnalysisResults&)> analyze;
@@ -1202,7 +1184,7 @@ namespace crab_llvm {
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, num_domain_t>), "bottom-up:zones, top-down:terms+zones" }}
       , {{ZONES_SPLIT_DBM, TERMS_DIS_INTERVALS},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, term_dis_int_domain_t>), "bottom-up:zones, top-down:terms+dis_intervals" }}
-      //////////////////////////////////////////////////////
+      #ifdef HAVE_ALL_DOMAINS		
       , {{OCT, INTERVALS},
 	 { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, interval_domain_t>), "bottom-up:oct, top-down:intervals" }}
       , {{OCT, WRAPPED_INTERVALS},
@@ -1219,6 +1201,7 @@ namespace crab_llvm {
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, num_domain_t>), "bottom-up:oct, top-down:terms+zones" }}
       , {{OCT, TERMS_DIS_INTERVALS},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, term_dis_int_domain_t>), "bottom-up:oct, top-down:terms+dis_intervals" }}
+      #endif 	
     };
     
   public:

@@ -197,7 +197,6 @@ namespace crab_llvm {
      *
      * post contains the post-conditions at each block.
      * If it returns false then:
-     *   - pre contains that necessary preconditions that imply false
      *   - core is a minimal subset of statements that implies false
      **/
     template<typename Statement>
@@ -205,8 +204,7 @@ namespace crab_llvm {
 		      const std::vector<const llvm::BasicBlock*>& path,
 		      /* use gradually more expensive domains until unsat is proven*/
 		      bool layered_solving,
-		      std::vector<Statement>& core,
-		      invariant_map_t& post, invariant_map_t& pre) const;
+		      std::vector<Statement>& core, invariant_map_t& post) const;
     
     template<typename Statement>
     bool path_analyze(const AnalysisParams& params,

@@ -528,6 +528,11 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if out_name is not None: opt_args.extend(['-o', out_name])
     opt_args.append('-O{0}'.format(args.L))
 
+    # disable sinking instructions to end of basic block
+    # this might create unwanted aliasing scenarios
+    # for now, there is no option to undo this switch
+    opt_args.append('--simplifycfg-sink-common=false')
+    
     # These two should be optional
     opt_args.append('--enable-indvar=true')
     opt_args.append('--enable-loop-idiom=true')
@@ -569,6 +574,12 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         out_name = defPPName(in_name)
 
     crabpp_args = [getCrabLlvmPP(), '-o', out_name, in_name ]
+    
+    # disable sinking instructions to end of basic block
+    # this might create unwanted aliasing scenarios
+    # for now, there is no option to undo this switch
+    crabpp_args.append('--simplifycfg-sink-common=false')
+    
     if args.inline: 
         crabpp_args.append('--crab-inline-all')
     if args.pp_loops: 
@@ -606,6 +617,11 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.log is not None:
         for l in args.log.split(':'): crabllvm_cmd.extend(['-log', l])
 
+    # disable sinking instructions to end of basic block
+    # this might create unwanted aliasing scenarios
+    # for now, there is no option to undo this switch
+    crabllvm_cmd.append('--simplifycfg-sink-common=false')
+        
     if args.crab_verbose:
         crabllvm_cmd.append('--crab-verbose={0}'.format(args.crab_verbose))
     if args.crab_only_cfg:
@@ -653,7 +669,7 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         ## crab-llvm warning messages
         crabllvm_cmd.append('--crab-disable-warnings')
         ## crab warning messages
-        crabllvm_cmd.append('--crab-enable-warnings={0}'.format('false'))
+        crabllvm_cmd.append('--crab-enable-warnings=false')
     if args.crab_sanity_checks: crabllvm_cmd.append('--crab-sanity-checks')
     if args.crab_cfg_simplify: crabllvm_cmd.append('--crab-cfg-simplify')
     if args.crab_print_invariants:
@@ -668,10 +684,15 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_dsa_external: crabllvm_cmd.append('--crab-dsa-disambiguate-external')    
     if args.crab_unsound_array_init: crabllvm_cmd.append('--crab-unsound-array-init') 
     if args.crab_keep_shadows: crabllvm_cmd.append('--crab-keep-shadows')
-    crabllvm_cmd.append('--crab-name-values={0}'.format(args.crab_name_values))
+    if args.crab_name_values:
+        crabllvm_cmd.append('--crab-name-values=true')
+    else:
+        crabllvm_cmd.append('--crab-name-values=false')    
     if args.unsigned_to_signed: crabllvm_cmd.append('--crab-unsigned-to-signed')
-    crabllvm_cmd.append('--crab-enable-bignums={0}'.format(args.crab_enable_bignums))
-    
+    if args.crab_enable_bignums:
+        crabllvm_cmd.append('--crab-enable-bignums=true')
+    else:
+        crabllvm_cmd.append('--crab-enable-bignums=false')
     if verbose: print ' '.join(crabllvm_cmd)
 
     if args.out_name is not None:
