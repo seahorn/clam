@@ -436,7 +436,7 @@ Crab. Here some of them:
 
 - Most Crab numerical domains reason about mathematical integers. The
   `w-int` domain is an exception. The `zones` domain can use machine
-  arithmetic but it is enabled by default.
+  arithmetic but it is not enabled by default.
 
 - There are several Crab numerical domains that compute disjunctive
   invariants (e.g., `boxes` or `dis-int`) but they are still limited
