@@ -1,15 +1,15 @@
 # Crab-llvm #
 
-<a href="https://travis-ci.org/seahorn/crab-llvm"><img src="https://travis-ci.org/seahorn/crab-llvm.svg?branch=dev-llvm-5.0" title="Ubuntu 12.04 LTS 64bit, g++-5"/></a>
+<a href="https://travis-ci.org/seahorn/crab-llvm"><img src="https://travis-ci.org/seahorn/crab-llvm.svg?branch=llvm-8.0" title="Ubuntu 16.04 LTS 64bit, g++-5"/></a>
 
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /><img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
 Crab-llvm is a static analyzer that computes inductive invariants for
 LLVM-based languages based on
 the [Crab](https://github.com/seahorn/crab) library. This branch
-supports LLVM 8.0. However, the external packages `llvm-dsa`
-and `llvm-seahorn` cannot be used because they have not been ported
-yet to LLVM 8.0.
+supports LLVM 8.0. However, the external packages `llvm-dsa` and
+`llvm-seahorn` cannot be used because they have not been ported yet to
+LLVM 8.0.
 
 # Requirements #
 
@@ -33,7 +33,7 @@ To run tests you need to install `lit` and `OutputCheck`. In Linux:
      pip install lit
      pip install OutputCheck
 
-# Installation # 
+# Installation from sources # 
 
 The basic compilation steps are:
 
@@ -104,15 +104,21 @@ For instance, to install `crab-llvm` with Boxes and Apron:
      cmake --build . --target llvm && cmake ..                
      cmake --build . --target install 
 
-## Tests ## 
+## Checking installation ## 
 
 To run some regression tests:
 
      cmake --build . --target test-simple
 
+# Running Crab-llvm without installation #
+
+You can get the latest binary from docker hub using the command:
+
+     docker push seahorn/crabllvm_llvm_8.0:latest
+	 
 # Crab-llvm architecture #
 
-![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/dev/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
+![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
 
 # Example 1 #
 
@@ -149,7 +155,7 @@ command:
 
 **Important:** the first thing that `crabllvm.py` does is to compile
   the C program into LLVM bitcode by using Clang. Since Crab-llvm is
-  based on LLVM 5.0, the version of clang must be 5.0 as well. 
+  based on LLVM 8.0, the version of clang must be 8.0 as well. 
 
 
 If the above command succeeds, then the output should be something
@@ -426,10 +432,12 @@ Well, there are many. Most of these limitations are coming from
 Crab. Here some of them:
 
 - Most Crab numerical domains reason about linear arithmetic. The
-  `term-int` domain is an exception.
+  `term-int` domain is an exception. This domain can treat non-linear
+  arithmetic expressions as uninterpreted functions.
 
-- Most Crab numerical domains reason about infinite integers. The
-  `w-int` domain is an exception.
+- Most Crab numerical domains reason about mathematical integers. The
+  `w-int` domain is an exception. The `zones` domain can use machine
+  arithmetic but it is not enabled by default.
 
 - There are several Crab numerical domains that compute disjunctive
   invariants (e.g., `boxes` or `dis-int`) but they are still limited
@@ -438,7 +446,7 @@ Crab. Here some of them:
 - The interprocedural analysis is summary-based but it's
   context-insensitive. 
   
-- The backward analysis is too experimental. 
+- The backward analysis is too experimental and it requires more work.
   
 - The option `--crab-track=ptr` translates pointer operations to Crab
   pointer operations without losing precision. However, Crab does not
