@@ -113,7 +113,7 @@ To run some regression tests:
 
 You can get the latest binary from docker hub using the command:
 
-     docker push seahorn/crabllvm_llvm_5.0:latest
+     docker pull seahorn/crabllvm_llvm_5.0:latest
 	 
 # Crab-llvm architecture #
 
