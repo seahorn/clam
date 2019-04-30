@@ -34,7 +34,7 @@ CRAB_MEMORY_OUT = 27
 CRAB_SEGFAULT = 28 ## unexpected segfaults
 #############################################################
 
-llvm_version = "5.0"
+llvm_version = "8.0"
 
 def isexec(fpath):
     if fpath == None: return False
@@ -441,15 +441,15 @@ def getClangVersion(clang):
 def getClang(is_plus_plus):
     cmd_name = None
     if is_plus_plus:
-        cmd_name = which (['clang++-mp-5.0', 'clang++-5.0', 'clang++'])
+        cmd_name = which (['clang++-mp-' + llvm_version, 'clang++-' + llvm_version, 'clang++'])
     else:
-        cmd_name = which (['clang-mp-5.0', 'clang-5.0', 'clang'])
+        cmd_name = which (['clang-mp-' + llvm_version, 'clang-' + llvm_version, 'clang'])
     if cmd_name is None:
         raise IOError('clang was not found')
     return cmd_name
 
 def getOptLlvm ():
-    cmd_name = which (['seaopt', 'opt-mp-5.0', 'opt-5.0', 'opt'])
+    cmd_name = which (['seaopt', 'opt-mp-' + llvm_version, 'opt-' + llvm_version, 'opt'])
     if cmd_name is None: raise IOError ('neither seaopt nor opt where found')
     return cmd_name
 
@@ -502,7 +502,7 @@ def clang(in_name, out_name, arch=32, extra_args=[]):
     
     clang_args = [clang_cmd, '-emit-llvm', '-o', out_name, '-c', in_name ]
     
-    # New for clang 5.0: to avoid add optnone if -O0
+    # New for clang >= 5.0: to avoid add optnone if -O0
     # Otherwise, seaopt cannot optimize.
     clang_args.append('-Xclang')
     clang_args.append('-disable-O0-optnone')
