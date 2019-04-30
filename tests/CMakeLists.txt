@@ -1,6 +1,8 @@
 # find lit. Assume we are using external lit installed from pip
 find_program(LIT_COMMAND lit REQUIRED)
 
+set(LLVM_EXTERNAL_LIT ${LIT_COMMAND})
+
 add_lit_testsuite(test-simple "Run simple tests"
   -v
   ${CMAKE_CURRENT_SOURCE_DIR}/simple  ## where .cfg file is located
