@@ -17,8 +17,8 @@ Dockerhub: `docker pull seahorn/crabllvm-build-llvm8`
 ## crabllvm-full-size-rel.Dockerfile (building CrabLlvm with Docker):
 
 ```shell
-docker build --build-arg UBUNTU=xenial --build-arg BUILD_TYPE=Release -t crabllvm_xenial_rel -f docker/crabllvm-full-size-rel.Dockerfile .
-docker run -v `pwd`:/host -it crabllvm_xenial_rel"
+docker build --build-arg UBUNTU=xenial --build-arg BUILD_TYPE=Release -t seahorn/crabllvm_xenial_rel -f docker/crabllvm-full-size-rel.Dockerfile .
+docker run -v `pwd`:/host -it seahorn/crabllvm_xenial_rel"
 ```
 
 This will automatically download all dependencies from a base image

@@ -16,7 +16,7 @@ RUN apt-get update && \
     apt-get install -yqq libc6-dev-i386 
 
 RUN cd / && rm -rf /crabllvm && \
-    git clone https://github.com/seahorn/crab-llvm crabllvm --depth=10 ; \
+    git clone https://github.com/seahorn/crab-llvm -b llvm-8.0 crabllvm --depth=10 ; \
     mkdir -p /crabllvm/build
 WORKDIR /crabllvm/build
 
