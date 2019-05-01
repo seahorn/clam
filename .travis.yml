@@ -18,7 +18,7 @@ script:
   - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t seahorn/crabllvm_llvm_5.0 -f docker/crabllvm-full-size-rel.Dockerfile .
   
   - 'if [ "$TRAVIS_EVENT_TYPE" = "cron" ] ;
-        then docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
+        then echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
           && docker push seahorn/crabllvm_llvm_5.0:latest ;
      fi '
 
