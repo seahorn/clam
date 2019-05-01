@@ -1,5 +1,5 @@
 language: cpp
-
+cache: apt
 env:
   matrix:
      ## - UBUNTU_DIST=trusty
@@ -14,7 +14,13 @@ install: true
 
 script:
   ### build and run tests with docker
-  - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t crabllvm_${UBUNTU_DIST} -f docker/crabllvm-full-size-rel.Dockerfile .
+  ##- docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t crabllvm_${UBUNTU_DIST} -f docker/crabllvm-full-size-rel.Dockerfile .
+  - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t seahorn/crabllvm_llvm_8.0 -f docker/crabllvm-full-size-rel.Dockerfile .
+  
+  - 'if [ "$TRAVIS_EVENT_TYPE" = "cron" ] ;
+        then echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          && docker push seahorn/crabllvm_llvm_8.0:latest ;
+     fi '
 
 notifications:
    slack: seahornteam:NAUqZmZHFFviPH4ktQbJXgKu
