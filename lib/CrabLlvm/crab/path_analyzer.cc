@@ -12,8 +12,8 @@ namespace analyzer {
 static bool do_sanity_check = false;
 
 template<typename CFG, typename AbsDom>
-path_analyzer<CFG,AbsDom>::path_analyzer(CFG cfg, AbsDom init, bool ignore_assertions)
-  : m_cfg(cfg), m_init(init), m_ignore_assertions(ignore_assertions) { }
+path_analyzer<CFG,AbsDom>::path_analyzer(CFG cfg, AbsDom init)
+  : m_cfg(cfg), m_init(init) { }
 
 template<typename CFG, typename AbsDom>  
 bool path_analyzer<CFG,AbsDom>::
@@ -60,10 +60,6 @@ solve_path(const std::vector<basic_block_label_t>& path,
       if (!s.is_assert() && !s.is_ptr_assert() && !s.is_bool_assert()) {
 	path_statements.push_back(crab::cfg::statement_wrapper(&s, node));
       }
-      // XXX: we can store forward constraints that might help the
-      // backward analysis. This step is optional. We don't use it
-      // for now.
-      // stmt_dom_map.insert(std::make_pair(&s, m_fwd_abs_tr.inv()));
       s.accept (&abs_tr);
       if (pre.is_bottom()) {
 	break;
@@ -78,11 +74,10 @@ solve_path(const std::vector<basic_block_label_t>& path,
   
 template<typename CFG, typename AbsDom>  
 bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& path,
-				      bool layered_solving, bool compute_preconditions) {
+				      bool layered_solving) {
   
   // Reset state
   m_fwd_dom_map.clear();
-  m_bwd_dom_map.clear();
   m_core.clear();
   
   if (path.empty()) {
@@ -123,7 +118,6 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
   // Compute strongest post-condition over the path
   unsigned bottom_block; // block where bottom was detected
   unsigned bottom_stmt; // first statement in bottom_block where bottom was detected
-  stmt_to_dom_map_t stmt_dom_map;
   bool bottom_found;
   if (!layered_solving) {
     bottom_found = solve_path(path, false /*only_bool_reasoning*/,
@@ -149,27 +143,6 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
   }
   
   if (bottom_found) {
-    if (compute_preconditions) {
-      // -- Compute pre-conditions starting from the block for which we
-      //    inferred bottom.
-      assert (bottom_block < path.size());
-      AbsDom abs_val; 
-      bwd_abs_tr_t abs_tr(&abs_val, &stmt_dom_map, true);
-      for(int i=bottom_block; i >= 0; --i) {
-	basic_block_label_t node = path[i];
-	auto &b = m_cfg.get_node (node);
-	for(auto &s: boost::make_iterator_range(b.rbegin(),b.rend())) {
-	  s.accept (&abs_tr);
-	}
-	auto it = m_bwd_dom_map.find (node);
-	if (it == m_bwd_dom_map.end()) {
-	  m_bwd_dom_map.insert(std::make_pair (node, abs_val));
-	}
-	if (abs_val.is_bottom())
-	  break;
-      }
-    }
-    
     // -- Compute minimal subset of statements that still implies
     //    bottom.
     minimize_path(path_statements, bottom_stmt);

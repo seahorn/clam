@@ -71,11 +71,6 @@ CrabPrintSumm("crab-print-summaries",
                cl::init(false));
 
 cl::opt<bool>
-CrabPrintPreCond("crab-print-preconditions", 
-               cl::desc("Print Crab necessary preconditions"),
-               cl::init(false));
-
-cl::opt<bool>
 CrabStoreInvariants("crab-store-invariants", 
                cl::desc("Store invariants"),
                cl::init(true));
@@ -407,24 +402,6 @@ namespace crab_llvm {
       }
     };
 
-    /** Annotation for neccesary_preconditions **/
-    template<typename Analyzer>
-    class nec_precondition_annotation: public block_annotation {
-    private:
-      Analyzer &m_analyzer;
-      
-    public:
-      nec_precondition_annotation (Analyzer &analyzer)
-	: block_annotation(), m_analyzer(analyzer) {}
-      
-      std::string name() const { return "NECESSARY PRECONDITIONS";}
-      
-      void print_begin(basic_block_label_t bbl, crab::crab_os &o) const {
-	auto pre = m_analyzer.get_preconditions(bbl);
-	o << "  " << name() << ": " << pre << "\n";	
-      }
-    };
-
     /** Annotation for unjustified assumptions done by the analysis **/
     class unjust_assumption_annotation: public block_annotation {
     private:
@@ -705,12 +682,10 @@ namespace crab_llvm {
       
       // -- print all cfg annotations (if any)
       if (params.print_invars ||
-	  (params.print_preconds && params.run_backward) ||
 	  params.print_unjustified_assumptions) {
 
 	typedef pretty_printer_impl::block_annotation block_annotation_t;
 	typedef pretty_printer_impl::invariant_annotation inv_annotation_t;
-	typedef pretty_printer_impl::nec_precondition_annotation<intra_analyzer_t> pre_annotation_t;
 	typedef pretty_printer_impl::unjust_assumption_annotation unjust_assume_annotation_t;
 	std::vector<std::unique_ptr<block_annotation_t>> pool_annotations;
 
@@ -723,10 +698,6 @@ namespace crab_llvm {
 	  pool_annotations.emplace_back(
 	       make_unique<inv_annotation_t>(m_vfac, results.premap, results.postmap, 
 					     params.keep_shadow_vars));
-	}
-
-	if (params.print_preconds && params.run_backward) {
-	  pool_annotations.emplace_back(make_unique<pre_annotation_t>(analyzer));
 	}
 
 	// XXX: it must be alive when print_annotations is called.
@@ -775,7 +746,7 @@ namespace crab_llvm {
       typedef path_analyzer<cfg_ref_t, AbsDom> path_analyzer_t;
       AbsDom init;
       path_analyzer_t path_analyzer(*m_cfg, init);
-      res = path_analyzer.solve(path, layered_solving, false /*compute_preconditions*/);
+      res = path_analyzer.solve(path, layered_solving);
       if (populate_inv_map) {
 	for(auto n: path) {
 	  if (const llvm::BasicBlock* bb = n.get_basic_block()) {
@@ -1448,7 +1419,6 @@ namespace crab_llvm {
     m_params.widening_jumpset = CrabWideningJumpSet;
     m_params.stats = CrabStats;
     m_params.print_invars = CrabPrintAns;
-    m_params.print_preconds = CrabPrintPreCond;
     m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
     m_params.print_summaries = CrabPrintSumm;
     m_params.store_invariants = CrabStoreInvariants;
