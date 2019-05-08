@@ -1984,7 +1984,9 @@ namespace crab_llvm {
 	if (AllUsesAreBrOrIntSelectCondInst(&I)) {
 	  // do nothing: already lowered elsewhere
 	} else {
-	  cmpInstToCrabBool(I, m_lfac, m_bb);	  
+	  if (isBool(I)) {
+	    cmpInstToCrabBool(I, m_lfac, m_bb);
+	  }
 	}
       }
     }
