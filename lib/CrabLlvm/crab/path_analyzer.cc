@@ -9,7 +9,9 @@
 namespace crab {
 namespace analyzer {
 
-static bool do_sanity_check = false;
+static bool do_sanity_check = true;
+static bool do_debugging = false;
+static bool only_syntactic_core = false;
 
 template<typename CFG, typename AbsDom>
 path_analyzer<CFG,AbsDom>::path_analyzer(CFG cfg, AbsDom init)
@@ -85,15 +87,15 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
     return true;
   }
     
-  #if 0
-  // Sanity checks
-  basic_block_label_t first = path.front();
-  basic_block_label_t last = path.back();  
-  if (m_cfg.entry() != first)
-    CRAB_ERROR("First block of the path must be the entry block of the cfg");
-  if (m_cfg.has_exit() && (m_cfg.exit() != last))
-    CRAB_ERROR("Last block of the path must be the exit block of the cfg");
-  #endif
+  if (do_sanity_check) {
+    // Sanity checks
+    basic_block_label_t first = path.front();
+    basic_block_label_t last = path.back();  
+    if (m_cfg.entry() != first)
+      CRAB_ERROR("First block of the path must be the entry block of the cfg");
+    if (m_cfg.has_exit() && (m_cfg.exit() != last))
+      CRAB_ERROR("Last block of the path must be the exit block of the cfg");
+  }
   
   if (path.size() > 1) {
     boost::unordered_set<basic_block_label_t> visited;
@@ -169,17 +171,17 @@ remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core,
 			     unsigned bottom_stmt) {
   typedef typename CFG::basic_block_t::assume_t assume_t;
   typedef typename CFG::basic_block_t::bool_assume_t bool_assume_t;
-  
+
   unsigned size = core.size();
   basic_block_label_t parent_label = core[size-1].m_parent;
   auto& parent_bb = m_cfg.get_node(parent_label);
 
-  #if 0
-  crab::outs() << "CRAB PATH:\n";
-  for(auto s: core) {
+  if (do_debugging) {
+    crab::outs() << "CRAB PATH:\n";
+    for(auto s: core) {
     crab::outs() << "\t" << *(s.m_s) << "\n";
+    }
   }
-  #endif
   
   // if the core contains at most one constraint then we are done
   if (size <= 1) {
@@ -248,9 +250,9 @@ remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core,
     d += bool_assume->cond();
   }
 
-  #if 0
-  crab::outs() << "Slicing criteria: " << *last_stmt << "\n";
-  #endif
+  if (do_debugging) {
+    crab::outs() << "Slicing criteria: " << *last_stmt << "\n";
+  }
   
   // Traverse the whole path backwards and remove irrelevant
   // statements based on data dependencies.
@@ -276,16 +278,16 @@ remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core,
     }
   }
 
-  #if 0
-  crab::outs() << "SLICED CRAB PATH:\n";
-  #endif 
+  if (do_debugging) {
+    crab::outs() << "SYNTACTIC UNSAT CORE PATH:\n";
+  }
   std::vector<crab::cfg::statement_wrapper> res;
   res.reserve(size);
   for(unsigned i=0; i < size; ++i) {
     if (enabled[i]) {
-      #if 0
-      crab::outs () << "\t" << *(core[i].m_s) << "\n";
-      #endif 
+      if (do_debugging) {
+	crab::outs () << "\t" << *(core[i].m_s) << "\n";
+      }
       res.push_back(core[i]);
     }
   }
@@ -308,53 +310,63 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
 
   std::vector<crab::cfg::statement_wrapper> core(path.begin(), path.end());
   
-#if 0
-  /* only syntactic */
-  remove_irrelevant_statements(core, bottom_stmt);
-  m_core.clear();
-  m_core.insert(m_core.end(), core.begin(), core.end());
-  return;
-#else
-  /* syntactic + semantic */
-
-  // Remove first syntactically irrelevant statements wrt to the last
-  // statement which should be an assume statement where bottom was
-  // first inferred.
-  
-  if (remove_irrelevant_statements(core, bottom_stmt)) {
-    // the path contains "assume(false)"
+  if (only_syntactic_core) {
+    /* only syntactic */
+    remove_irrelevant_statements(core, bottom_stmt);
     m_core.clear();
     m_core.insert(m_core.end(), core.begin(), core.end());
-    return;
-  }
+  } else {
+    /* syntactic + semantic */
+    
+    // Remove first syntactically irrelevant statements wrt to the last
+    // statement which should be an assume statement where bottom was
+    // first inferred.
+    
+    if (remove_irrelevant_statements(core, bottom_stmt)) {
+      // the path contains "assume(false)"
+      m_core.clear();
+      m_core.insert(m_core.end(), core.begin(), core.end());
+      return;
+    }
+    
+    std::vector<bool> enabled(core.size(), true);
+    for (unsigned i=0; i < core.size (); ++i) {
+      AbsDom inv;
+      fwd_abs_tr_t abs_tr(&inv);    
+      for(unsigned j=0; j < core.size(); ++j) {
+	if (i != j && enabled[j]) {
+	  core[j].m_s->accept (&abs_tr);
+	  if (inv.is_bottom()) {
+	    break;
+	  }
+	}
+      }
+      if (inv.is_bottom()) {
+	enabled[i] = false;
+      }
+    }
 
-  std::vector<bool> enabled(core.size(), true);
-  for (unsigned i=0; i < core.size (); ++i) {
-    AbsDom inv;
-    fwd_abs_tr_t abs_tr(&inv);    
-    for(unsigned j=0; j < core.size(); ++j) {
-      if (i != j && enabled[j]) {
-	core[j].m_s->accept (&abs_tr);
-	if (inv.is_bottom()) {
-	  break;
+
+    if (do_debugging) {
+      crab::outs() << "SEMANTIC UNSAT CORE PATH:\n"; 
+    }
+    
+    m_core.reserve(core.size());
+    for (unsigned i=0; i < core.size();++i) {
+      if (enabled[i]) {
+	m_core.push_back(core[i]);
+	if (do_debugging) {
+	  crab::outs() << "\t" << core[i] << "\n";
 	}
       }
     }
-    if (inv.is_bottom()) {
-      enabled[i] = false;
-    }
   }
-
-  m_core.reserve(core.size());
-  for (unsigned i=0; i < core.size();++i) {
-    if (enabled[i]) {
-      m_core.push_back(core[i]);
-    }
-  }
-#endif
   
   // sanity checks  
-  assert(!m_core.empty());
+  if (m_core.empty()) {
+    CRAB_ERROR("Abstract core cannot be empty");
+  }
+  
   if (do_sanity_check) { 
     AbsDom inv;
     fwd_abs_tr_t abs_tr(&inv);        
@@ -367,7 +379,7 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
       }
     }
     if (!is_bottom) {
-      CRAB_ERROR("Abstract core is not unsat!\n");
+      CRAB_ERROR("Abstract core is not unsat!");
     }
   }
 }
