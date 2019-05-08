@@ -272,7 +272,7 @@ def parseArgs(argv):
                     "- arr-no-ptr: as arr but excluding non-constant pointer offsets\n",
                     choices=['num', 'ptr', 'arr', 'arr-no-ptr'], dest='track', default='num')
     p.add_argument('--crab-heap-analysis',
-                   help="Heap analysis used for memory disambiguation:\n"
+                   help="Heap analysis used for Crab memory disambiguation:\n"
                    "- llvm-dsa: context-insensitive llvm-dsa\n"
                    "- ci-sea-dsa: context-insensitive sea-dsa\n"
                    "- cs-sea-dsa: context-sensitive sea-dsa\n"
@@ -294,7 +294,7 @@ def parseArgs(argv):
                     choices=['zones','oct','rtz'],
                     dest='crab_inter_sum_dom', default='zones')
     p.add_argument('--crab-backward',
-                    help='Run iterative forward/backward analysis (only intra version available and very experimental)',
+                    help='Run iterative forward/backward analysis for proving assertions (only intra version available and very experimental)',
                     dest='crab_backward', default=False, action='store_true')
     # --crab-live may lose precision e.g. when computing summaries.
     # However, note that due to non-monotonicity of operators such as widening the use of
@@ -314,8 +314,8 @@ def parseArgs(argv):
                     help='Promote verifier.assume calls to llvm.assume intrinsics',
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
-                    help='Check assertions: user assertions, null dereference, etc',
-                    choices=['none', 'assert', 'null'],
+                    help='Check user assertions (default no check)',
+                    choices=['none', 'assert'],
                     dest='assert_check', default='none')
     p.add_argument('--crab-check-verbose', metavar='INT',
                     help='Print verbose information about checks\n' + 
@@ -326,9 +326,6 @@ def parseArgs(argv):
     p.add_argument('--crab-print-summaries',
                     help='Display computed summaries (if --crab-inter)',
                     dest='print_summs', default=False, action='store_true')
-    p.add_argument('--crab-print-preconditions',
-                    help='Display computed necessary preconditions (if --crab-backward)',
-                    dest='print_preconds', default=False, action='store_true')
     p.add_argument('--crab-print-cfg',
                     help='Display crab CFG',
                     dest='print_cfg', default=False, action='store_true')
@@ -661,7 +658,6 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.check_verbose:
         crabllvm_cmd.append('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.print_summs: crabllvm_cmd.append('--crab-print-summaries')
-    if args.print_preconds: crabllvm_cmd.append('--crab-print-preconditions')    
     if args.print_cfg: crabllvm_cmd.append('--crab-print-cfg')
     if args.print_stats: crabllvm_cmd.append('--crab-stats')
     if args.print_assumptions: crabllvm_cmd.append('--crab-print-unjustified-assumptions')
