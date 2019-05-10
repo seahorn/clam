@@ -1347,23 +1347,21 @@ namespace crab_llvm {
   }
 
   bool CrabLlvmPass::runOnFunction(Function &F) {
-    if (!CrabInter && isTrackable(F)) {
-      IntraCrabLlvm_Impl crab(F, CrabTrackLev, m_mem, m_vfac, m_cfg_man, *m_tli);
-      InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
-      crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
-    }
+    IntraCrabLlvm_Impl crab(F, CrabTrackLev, m_mem, m_vfac, m_cfg_man, *m_tli);
+    InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
+    crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
     return false;
   }
   
   bool CrabLlvmPass::runOnModule(Module &M) {
-
+    unsigned num_analyzed_funcs = 0;
+    for (auto &F : M) {
+      if (!isTrackable(F)) continue;
+      num_analyzed_funcs++;
+    }
+    
     CRAB_VERBOSE_IF(1,
 	     get_crab_os() << "Started crab-llvm\n"; 
-             unsigned num_analyzed_funcs = 0;
-             for (auto &F : M) {
-	       if (!isTrackable(F)) continue;
-               num_analyzed_funcs++;
-             }
              get_crab_os() << "Total number of analyzed functions:" 
                            << num_analyzed_funcs << "\n";);
 
@@ -1425,8 +1423,15 @@ namespace crab_llvm {
       InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
       inter_crab.Analyze(m_params, assumption_map_t(), results);
     } else {
-      for (auto &f : M) {
-        runOnFunction(f); 
+      unsigned fun_counter = 1;
+      for (auto &F : M) {
+	if (!CrabInter && isTrackable(F)) {
+	  CRAB_VERBOSE_IF(1,
+			  get_crab_os() << "###Function "
+			  << fun_counter << "/" << num_analyzed_funcs << "###\n";);
+	  ++fun_counter;
+	  runOnFunction(F); 
+	}
       }
     }
 
