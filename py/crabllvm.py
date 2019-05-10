@@ -585,8 +585,9 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append( '--crab-turn-undef-nondet')
     if args.disable_lower_gv:
         crabpp_args.append( '--crab-lower-gv=false')
-    if args.lower_unsigned_icmp:
-        crabpp_args.append( '--crab-lower-unsigned-icmp')
+    # Postponed until crabllvm is run, otherwise it can be undone by the optLlvm
+    # if args.lower_unsigned_icmp:
+    #     crabpp_args.append( '--crab-lower-unsigned-icmp')
     if args.devirt is not 'none':
         crabpp_args.append('--crab-devirt')
         if args.devirt == 'types':
@@ -625,7 +626,8 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         crabllvm_cmd.append('--crab-only-cfg')
     ## This option already run in crabpp    
     if args.undef_nondet: crabllvm_cmd.append( '--crab-turn-undef-nondet')
-        
+
+    if args.lower_unsigned_icmp: crabllvm_cmd.append( '--crab-lower-unsigned-icmp')
     if args.lower_select: crabllvm_cmd.append( '--crab-lower-select')
     crabllvm_cmd.append('--crab-dom={0}'.format(args.crab_dom))
     crabllvm_cmd.append('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))
