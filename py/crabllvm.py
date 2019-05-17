@@ -222,6 +222,10 @@ def parseArgs(argv):
                     help='Externalize uses of address-taken functions',
                     dest='enable_ext_funcs', default=False,
                     action='store_true')
+    p.add_argument('--print-after-all',
+                    help='Print IR after each pass (for debugging)',
+                    dest='print_after_all', default=False,
+                    action='store_true')
     p.add_argument('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument('--crab-verbose', type=int,
@@ -544,6 +548,7 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.unroll_threshold is not None:
         opt_args.append('--unroll-threshold={t}'.format
                         (t=args.unroll_threshold))
+    if args.print_after_all: opt_args.append('--print-after-all')
     opt_args.extend(extra_args)
     opt_args.append(in_name)
 
@@ -596,7 +601,8 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
             crabpp_args.append('--devirt-resolver=dsa')            
     if args.enable_ext_funcs:
         crabpp_args.append('--crab-externalize-addr-taken-funcs')
-        
+    if args.print_after_all: crabpp_args.append('--print-after-all')
+    
     crabpp_args.extend(extra_args)
     if verbose: print ' '.join(crabpp_args)
     returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabpp_args, cpu, mem)
@@ -695,6 +701,9 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
 
     if args.out_name is not None:
         crabllvm_cmd.append('-o={0}'.format(args.out_name))
+
+    if args.print_after_all:
+        crabllvm_cmd.append('--print-after-all')
 
     returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabllvm_cmd, cpu, mem)
     if timeout:
