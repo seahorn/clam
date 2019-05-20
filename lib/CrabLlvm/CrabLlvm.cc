@@ -605,10 +605,9 @@ namespace crab_llvm {
       
       CRAB_VERBOSE_IF(1,
 		      auto fdecl = m_cfg->get_func_decl();            
-		      assert(fdecl);
 		      crab::get_msg_stream() << "Running intra-procedural analysis with " 
 		                    << "\"" << Dom::getDomainName()  << "\""
-		                    << " for "  << (*fdecl).get_func_name()
+		                    << " for "  << fdecl.get_func_name()
 		                    << "  ... \n";);
       
       // -- run intra-procedural analysis
@@ -670,8 +669,9 @@ namespace crab_llvm {
 	typedef pretty_printer_impl::unjust_assumption_annotation unjust_assume_annotation_t;
 	std::vector<std::unique_ptr<block_annotation_t>> pool_annotations;
 
-	if (auto f_decl = m_cfg->get_func_decl()) {
-	  crab::outs() << "\n" << *f_decl << "\n";
+	if (m_cfg->has_func_decl()) {
+	  auto fdecl = m_cfg->get_func_decl();
+	  crab::outs() << "\n" << fdecl << "\n";
 	} else {
 	  llvm::outs() << "\n" << "function " << m_fun.getName() << "\n";
 	}
@@ -839,9 +839,8 @@ namespace crab_llvm {
       if (params.run_liveness || isRelationalDomain(params.dom)) {
 	CRAB_VERBOSE_IF(1,
 			auto fdecl = m_cfg->get_func_decl();            
-			assert(fdecl);
 			crab::get_msg_stream() << "Running liveness analysis for " 
-			              << (*fdecl).get_func_name()
+			              << fdecl.get_func_name()
 		                      << "  ...\n";);
 	live.exec();
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished liveness analysis.\n");
@@ -1071,8 +1070,9 @@ namespace crab_llvm {
 	    
 	    // --- print invariants and summaries
 	    if (params.print_invars && isTrackable(*F)) {
-	      if (auto f_decl = cfg.get_func_decl()) {
-		crab::outs() << "\n" << *f_decl << "\n";
+	      if (cfg.has_func_decl()) {
+		auto fdecl = cfg.get_func_decl();
+		crab::outs() << "\n" << fdecl << "\n";
 	      } else {
 		llvm::outs() << "\n" << "function " << F->getName() << "\n";
 	      }
@@ -1201,9 +1201,8 @@ namespace crab_llvm {
 	  auto cfg_ref = cg_node.get_cfg();
           CRAB_VERBOSE_IF(1,
 			  auto fdecl = cfg_ref.get_func_decl();            
-			  assert(fdecl);
 			  crab::get_msg_stream() << "Running liveness analysis for " 
-			                <<(*fdecl).get_func_name() << "  ...\n";);
+			                << fdecl.get_func_name() << "  ...\n";);
 	  liveness_t* live = new liveness_t(cfg_ref);
           live->exec();
           CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished liveness analysis.\n";);
