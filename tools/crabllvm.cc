@@ -64,6 +64,11 @@ TurnUndefNondet ("crab-turn-undef-nondet",
                  llvm::cl::Hidden);
 
 static llvm::cl::opt<bool>
+LowerUnsignedICmp("crab-lower-unsigned-icmp",
+	 llvm::cl::desc("Lower ULT and ULE instructions"),
+	 llvm::cl::init(false));
+
+static llvm::cl::opt<bool>
 LowerSelect ("crab-lower-select", 
              llvm::cl::desc ("Lower all select instructions"),
              llvm::cl::init (false));
@@ -265,6 +270,14 @@ int main(int argc, char **argv) {
     pass_manager.add (llvm_seahorn::createDeadNondetElimPass ());
   #endif 
 
+  // -- lower ULT and ULE instructions  
+  if(LowerUnsignedICmp) {
+    pass_manager.add(crab_llvm::createLowerUnsignedICmpPass());   
+    // cleanup unnecessary and unreachable blocks   
+    pass_manager.add(llvm::createCFGSimplificationPass());
+    pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
+  }
+  
   // -- must be the last ones before running crab.
   if (LowerSelect)
     pass_manager.add (crab_llvm::createLowerSelectPass ());   

@@ -222,6 +222,10 @@ def parseArgs(argv):
                     help='Externalize uses of address-taken functions',
                     dest='enable_ext_funcs', default=False,
                     action='store_true')
+    p.add_argument('--print-after-all',
+                    help='Print IR after each pass (for debugging)',
+                    dest='print_after_all', default=False,
+                    action='store_true')
     p.add_argument('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument('--crab-verbose', type=int,
@@ -272,7 +276,7 @@ def parseArgs(argv):
                     "- arr-no-ptr: as arr but excluding non-constant pointer offsets\n",
                     choices=['num', 'ptr', 'arr', 'arr-no-ptr'], dest='track', default='num')
     p.add_argument('--crab-heap-analysis',
-                   help="Heap analysis used for memory disambiguation:\n"
+                   help="Heap analysis used for Crab memory disambiguation:\n"
                    "- llvm-dsa: context-insensitive llvm-dsa\n"
                    "- ci-sea-dsa: context-insensitive sea-dsa\n"
                    "- cs-sea-dsa: context-sensitive sea-dsa\n"
@@ -294,7 +298,7 @@ def parseArgs(argv):
                     choices=['zones','oct','rtz'],
                     dest='crab_inter_sum_dom', default='zones')
     p.add_argument('--crab-backward',
-                    help='Run iterative forward/backward analysis (only intra version available and very experimental)',
+                    help='Run iterative forward/backward analysis for proving assertions (only intra version available and very experimental)',
                     dest='crab_backward', default=False, action='store_true')
     # --crab-live may lose precision e.g. when computing summaries.
     # However, note that due to non-monotonicity of operators such as widening the use of
@@ -314,8 +318,8 @@ def parseArgs(argv):
                     help='Promote verifier.assume calls to llvm.assume intrinsics',
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
-                    help='Check assertions: user assertions, null dereference, etc',
-                    choices=['none', 'assert', 'null'],
+                    help='Check user assertions (default no check)',
+                    choices=['none', 'assert'],
                     dest='assert_check', default='none')
     p.add_argument('--crab-check-verbose', metavar='INT',
                     help='Print verbose information about checks\n' + 
@@ -326,9 +330,6 @@ def parseArgs(argv):
     p.add_argument('--crab-print-summaries',
                     help='Display computed summaries (if --crab-inter)',
                     dest='print_summs', default=False, action='store_true')
-    p.add_argument('--crab-print-preconditions',
-                    help='Display computed necessary preconditions (if --crab-backward)',
-                    dest='print_preconds', default=False, action='store_true')
     p.add_argument('--crab-print-cfg',
                     help='Display crab CFG',
                     dest='print_cfg', default=False, action='store_true')
@@ -547,6 +548,7 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.unroll_threshold is not None:
         opt_args.append('--unroll-threshold={t}'.format
                         (t=args.unroll_threshold))
+    if args.print_after_all: opt_args.append('--print-after-all')
     opt_args.extend(extra_args)
     opt_args.append(in_name)
 
@@ -588,8 +590,9 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append( '--crab-turn-undef-nondet')
     if args.disable_lower_gv:
         crabpp_args.append( '--crab-lower-gv=false')
-    if args.lower_unsigned_icmp:
-        crabpp_args.append( '--crab-lower-unsigned-icmp')
+    # Postponed until crabllvm is run, otherwise it can be undone by the optLlvm
+    # if args.lower_unsigned_icmp:
+    #     crabpp_args.append( '--crab-lower-unsigned-icmp')
     if args.devirt is not 'none':
         crabpp_args.append('--crab-devirt')
         if args.devirt == 'types':
@@ -598,7 +601,8 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
             crabpp_args.append('--devirt-resolver=dsa')            
     if args.enable_ext_funcs:
         crabpp_args.append('--crab-externalize-addr-taken-funcs')
-        
+    if args.print_after_all: crabpp_args.append('--print-after-all')
+    
     crabpp_args.extend(extra_args)
     if verbose: print ' '.join(crabpp_args)
     returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabpp_args, cpu, mem)
@@ -628,7 +632,8 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         crabllvm_cmd.append('--crab-only-cfg')
     ## This option already run in crabpp    
     if args.undef_nondet: crabllvm_cmd.append( '--crab-turn-undef-nondet')
-        
+
+    if args.lower_unsigned_icmp: crabllvm_cmd.append( '--crab-lower-unsigned-icmp')
     if args.lower_select: crabllvm_cmd.append( '--crab-lower-select')
     crabllvm_cmd.append('--crab-dom={0}'.format(args.crab_dom))
     crabllvm_cmd.append('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))
@@ -661,7 +666,6 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.check_verbose:
         crabllvm_cmd.append('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.print_summs: crabllvm_cmd.append('--crab-print-summaries')
-    if args.print_preconds: crabllvm_cmd.append('--crab-print-preconditions')    
     if args.print_cfg: crabllvm_cmd.append('--crab-print-cfg')
     if args.print_stats: crabllvm_cmd.append('--crab-stats')
     if args.print_assumptions: crabllvm_cmd.append('--crab-print-unjustified-assumptions')
@@ -697,6 +701,9 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
 
     if args.out_name is not None:
         crabllvm_cmd.append('-o={0}'.format(args.out_name))
+
+    if args.print_after_all:
+        crabllvm_cmd.append('--print-after-all')
 
     returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabllvm_cmd, cpu, mem)
     if timeout:
