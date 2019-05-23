@@ -2361,6 +2361,12 @@ namespace crab_llvm {
 	 ignored.
       */
 
+      if (isa<ConstantExpr>(I.getPointerOperand()) ||
+	  isa<ConstantExpr>(I.getValueOperand())) {
+	// We don't handle constant expressions. 
+	return;
+      }
+
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
       crab_lit_ref_t val = m_lfac.getLit(*I.getValueOperand());
       Function& parent = *(I.getParent()->getParent());
@@ -2476,8 +2482,15 @@ namespace crab_llvm {
       /*
 	This case is symmetric to StoreInst.
        */
-      
+
       crab_lit_ref_t lhs = m_lfac.getLit(I);
+
+      if (isa<ConstantExpr>(I.getPointerOperand())) {
+	// We don't handle constant expressions. 
+	havoc(lhs->getVar(), m_bb);
+	return;
+      }
+      
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
       Function& parent = *(I.getParent()->getParent());
       
@@ -2781,6 +2794,7 @@ namespace crab_llvm {
     /// base case. if all else fails.
     void visitInstruction(Instruction &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
+      CRABLLVM_WARNING("Skipped " << I); 
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       if (lhs && lhs->isVar()) {
 	havoc(lhs->getVar(), m_bb);
