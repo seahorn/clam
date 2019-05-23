@@ -16,8 +16,7 @@ using namespace llvm::PatternMatch;
 namespace crab_llvm {
 
   /// Returns true if v is used by assume
-  static bool hasAssumeUsers (Value &v)
-  {
+  static bool hasAssumeUsers (Value &v) {
     for (User *U : v.users ())
       if (CallInst *ci = dyn_cast<CallInst> (U))
         if (match (ci, m_Intrinsic<Intrinsic::assume>()))
@@ -79,7 +78,7 @@ namespace crab_llvm {
 	  
 	  /*
 	    enqueue verifier.assume to be removed
-	   */
+	  */
 	  to_remove.push_back(&I);
         }
       }
@@ -90,7 +89,6 @@ namespace crab_llvm {
 	I->eraseFromParent();
       }
 
-      errs () << F << "\n";
       return Changed;
     }
 
