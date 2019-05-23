@@ -31,18 +31,20 @@ using namespace llvm;
 using namespace crab_llvm;
 using namespace crab::cfg;
 
-enum InsertInvsLoc { NONE, BLOCK_ENTRY, AFTER_LOAD, ALL};
+enum InsertInvsLoc { NONE, ONLY_UNREACH, PER_BLOCK, PER_LOAD, ALL};
 static cl::opt<InsertInvsLoc>
 InsertInvs("crab-add-invariants", 
      cl::desc("Instrument code with invariants"),
      cl::values(
 	 clEnumValN(NONE, "none", "None"),
-         clEnumValN(BLOCK_ENTRY, "block-entry",
-                     "Add invariants that hold at each block entry"),
-         clEnumValN(AFTER_LOAD, "after-load",
-                     "Add invariants that hold after each load instruction"),
+         clEnumValN(ONLY_UNREACH, "only-unreach",
+		    "Add only assume(false) at each unreachable block"),	 	 
+         clEnumValN(PER_BLOCK, "block-entry",
+		    "Add invariants that hold at the entry of each basic block"),
+         clEnumValN(PER_LOAD, "after-load",
+		    "Add invariants that hold after each load instruction"),
          clEnumValN(ALL, "all",
-                    "Add invariants at all above locations")),
+                    "Add all invariants (very verbose)")),
      cl::init(NONE));
             
 #define DEBUG_TYPE "crab-insert-invars"
@@ -311,6 +313,8 @@ bool InsertInvariants::runOnFunction(Function &F) {
   if (F.isDeclaration() || F.empty() || F.isVarArg()) 
     return false;
 
+  assert(InsertInvs != NONE);
+  
   CrabLlvmPass* crab = &getAnalysis<CrabLlvmPass>();
 
   if (!crab->has_cfg(F))
@@ -333,25 +337,23 @@ bool InsertInvariants::runOnFunction(Function &F) {
       }
     }
     if (skip_block) continue;
-      
-    if (InsertInvs == BLOCK_ENTRY || InsertInvs == ALL) {
-      // --- Instrument basic block entry
-      auto pre = crab->get_pre(&B, false /*remove shadows*/);
-      if (!pre) {
-	continue;
-      }
-      auto csts = pre->to_linear_constraints();
-      change |= instrument_entries(csts, &B, F.getContext(), cg);
+
+    if (InsertInvs == ONLY_UNREACH || InsertInvs == PER_BLOCK || InsertInvs == ALL) {
+      // --- Instrument basic block 
+      if (auto pre = crab->get_pre(&B, false /*keep shadows*/)) {
+	if (InsertInvs != ONLY_UNREACH || pre->is_bottom()) {
+	  auto csts = pre->to_linear_constraints();
+	  change |= instrument_entries(csts, &B, F.getContext(), cg);
+	}
+      } 
     }
 
-    if (InsertInvs == AFTER_LOAD || InsertInvs == ALL) {
-      // --- We only instrument Load instructions
+    if (InsertInvs == PER_LOAD || InsertInvs == ALL) {
+      // --- Instrument Load instructions
       if (reads_memory(B)) {
-
 	auto pre = crab->get_pre(&B, true /*keep shadows*/);
-	if (!pre) {
-	  continue;
-	}
+	if (!pre) continue;
+	
 	// --- Figure out the type of the wrappee
 	switch(pre->getId()) {
 #ifdef HAVE_ALL_DOMAINS  
