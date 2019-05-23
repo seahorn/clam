@@ -3,14 +3,12 @@
 #include "llvm/Pass.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/CFG.h"
-#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/CallSite.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/Analysis/CFG.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
 using namespace llvm;
 
@@ -19,8 +17,12 @@ namespace crab_llvm {
 struct SimplifyAssume : public ModulePass {
   static char ID;
   Function* m_assumeFn;
-
-  SimplifyAssume() : ModulePass(ID), m_assumeFn(0) {}
+  unsigned int m_num_removed_blocks; // for stats
+  
+  SimplifyAssume()
+    : ModulePass(ID)
+    , m_assumeFn(0)
+    , m_num_removed_blocks(0) {}
         
   virtual bool runOnModule(Module &M) {
     LLVMContext& ctx = M.getContext();
@@ -33,11 +35,14 @@ struct SimplifyAssume : public ModulePass {
 			      as,
 			      Type::getVoidTy(ctx),
 			      Type::getInt1Ty(ctx)));
-      
+
     bool change=false;
     for (auto &f : M) {
       change |= runOnFunction(f);
     }
+
+    llvm::errs() << "*** CRABLLVM: " << m_num_removed_blocks
+		 << " number of unreachable blocks\n";
     return change;
   }
 
@@ -46,6 +51,7 @@ struct SimplifyAssume : public ModulePass {
       return false;
     }
 
+    LLVMContext& ctx = F.getContext();
     std::vector<Instruction*> RedundantInstructions;
     std::vector<BasicBlock*> UnreachableBlocks;    
     for (auto& BB: F) {
@@ -56,9 +62,11 @@ struct SimplifyAssume : public ModulePass {
 	    CallSite CS(CI);          
 	    Value* Cond = CS.getArgument(0);
 	    if (ConstantInt* C = dyn_cast<ConstantInt>(Cond)) {
-	      if (C == ConstantInt::getTrue(F.getContext())) {
+	      if (C == ConstantInt::getTrue(ctx)) {
+		// mark it as redundant instruction
 		RedundantInstructions.push_back(CI);
-	      } else if (C == ConstantInt::getFalse(F.getContext())) {
+	      } else if (C == ConstantInt::getFalse(ctx)) {
+		// mark the block as unreachable
 		UnreachableBlocks.push_back(CI->getParent());
 	      }
 	    }
@@ -78,26 +86,35 @@ struct SimplifyAssume : public ModulePass {
       I->eraseFromParent();
     }
 
-    // Make unreachable blocks
-    IRBuilder<> Builder(F.getContext());
+    // Remove all unreachable blocks 
     while(!UnreachableBlocks.empty()) {
       BasicBlock* BB = UnreachableBlocks.back();
       UnreachableBlocks.pop_back();
-      // Important to remove first all instructions in the block
-      std::vector<Instruction*> BB_insts;
-      for (Instruction&I: *BB) {
-	BB_insts.push_back(&I);
+      m_num_removed_blocks++;
+      
+      TerminatorInst *BBTerm = BB->getTerminator();
+      // Loop through all of our successors and make sure they know that one
+      // of their predecessors is going away.
+      for (BasicBlock *Succ : BBTerm->successors()) {
+	Succ->removePredecessor(BB);
       }
-      while(!BB_insts.empty()) {
-	Instruction* I = BB_insts.back();
-	BB_insts.pop_back();
-	I->eraseFromParent();
+      // Zap all the instructions in the block.
+      while (!BB->empty()) {
+	Instruction &I = BB->back();
+	// If this instruction is used, replace uses with an arbitrary value.
+	// Because control flow can't get here, we don't care what we replace the
+	// value with.  Note that since this block is unreachable, and all values
+	// contained within it must dominate their uses, that all uses will
+	// eventually be removed (they are themselves dead).
+	if (!I.use_empty()) {
+	  I.replaceAllUsesWith(UndefValue::get(I.getType()));
+	}
+	BB->getInstList().pop_back();
       }
-      // Add unreachable instruction
-      Builder.SetInsertPoint(BB);
-      Builder.CreateUnreachable();
+      // Add unreachable terminator
+      BB->getInstList().push_back(new UnreachableInst(ctx));
     }
-    
+
     return true;
   }
     
