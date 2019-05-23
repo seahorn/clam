@@ -210,6 +210,9 @@ def parseArgs(argv):
     p.add_argument('--lower-unsigned-icmp',
                     help='Lower ULT and ULE instructions',
                     dest='lower_unsigned_icmp', default=False, action='store_true')
+    p.add_argument('--disable-lower-constant-expr',
+                    help='Disable lowering of constant expressions to instructions',
+                    dest='disable_lower_cst_expr', default=False, action='store_true')
     p.add_argument('--devirt-functions',
                     help="Resolve indirect calls:\n"
                     "- none : do not resolve indirect calls (default)\n"
@@ -309,7 +312,7 @@ def parseArgs(argv):
                     dest='crab_live', default=False, action='store_true')        
     p.add_argument('--crab-add-invariants',
                     help='Instrument code with invariants',
-                    choices=['none', 'block-entry', 'after-load', 'all'],
+                    choices=['none', 'only-unreach', 'block-entry', 'after-load', 'all'],
                     dest='insert_invs', default='none')
     p.add_argument('--crab-do-not-store-invariants',
                     help='Do not store invariants',
@@ -633,8 +636,10 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     ## This option already run in crabpp    
     if args.undef_nondet: crabllvm_cmd.append( '--crab-turn-undef-nondet')
 
-    if args.lower_unsigned_icmp: crabllvm_cmd.append( '--crab-lower-unsigned-icmp')
-    if args.lower_select: crabllvm_cmd.append( '--crab-lower-select')
+    if args.lower_unsigned_icmp: crabllvm_cmd.append('--crab-lower-unsigned-icmp')
+    if args.lower_select: crabllvm_cmd.append('--crab-lower-select')
+    if args.disable_lower_cst_expr: crabllvm_cmd.append('--crab-lower-constant-expr=false')
+    
     crabllvm_cmd.append('--crab-dom={0}'.format(args.crab_dom))
     crabllvm_cmd.append('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))
     crabllvm_cmd.append('--crab-widening-delay={0}'.format(args.widening_delay))
