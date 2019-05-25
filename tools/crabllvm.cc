@@ -83,7 +83,6 @@ PromoteAssume("crab-promote-assume",
 	       llvm::cl::desc("Promote verifier.assume to llvm.assume intrinsics"),
 	       llvm::cl::init(false));
 
-
 /* logging and verbosity */
 
 struct LogOpt {
@@ -234,14 +233,7 @@ int main(int argc, char **argv) {
    * useless results. Passes that are only for improving precision
    * should be run in crabllvm-pp.
    **/
-
-  // -- turn all functions internal so that we can use DSA
-  // -- turn all functions internal so that we can apply some global
-  // -- optimizations inline them if requested
-  auto PreserveMain = [=](const llvm::GlobalValue &GV) {
-    return GV.getName() == "main";
-  };    
-  pass_manager.add(llvm::createInternalizePass(PreserveMain));
+    
   // kill unused internal global    
   pass_manager.add(llvm::createGlobalDCEPass()); 
   pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
@@ -273,8 +265,9 @@ int main(int argc, char **argv) {
   // cleanup after lowering constant expressions
   pass_manager.add(llvm::createDeadCodeEliminationPass());
   #ifdef HAVE_LLVM_SEAHORN
-  if (TurnUndefNondet) 
+  if (TurnUndefNondet) {
     pass_manager.add(llvm_seahorn::createDeadNondetElimPass());
+  }
   #endif 
 
   // -- lower ULT and ULE instructions  
@@ -286,8 +279,9 @@ int main(int argc, char **argv) {
   }
   
   // -- must be the last ones before running crab.
-  if (LowerSelect)
-    pass_manager.add(crab_llvm::createLowerSelectPass());   
+  if (LowerSelect) {
+    pass_manager.add(crab_llvm::createLowerSelectPass());
+  }
 
   if (!NoCrab) {
     /// -- run the crab analyzer
@@ -298,14 +292,16 @@ int main(int argc, char **argv) {
     pass_manager.add(createPrintModulePass(asmOutput->os()));
  
   if (!NoCrab) {
-    /// -- insert invariants as assume instructions
+    // -- insert invariants as assume instructions
     pass_manager.add(new crab_llvm::InsertInvariants());
-    /// -- simplify invariants added in the bytecode.
+    // -- simplify invariants added in the bytecode.
     #ifdef HAVE_LLVM_SEAHORN
     pass_manager.add(llvm_seahorn::createInstructionCombiningPass());
     #else
     pass_manager.add(llvm::createInstructionCombiningPass());
-    #endif 
+    #endif
+    // -- remove verifier.assume(true) and convert
+    // -- verifier.assume(false) into unreachable blocks
     pass_manager.add(crab_llvm::createSimplifyAssumePass());
     if (PromoteAssume) {
       // -- promote verifier.assume to llvm.assume intrinsics
