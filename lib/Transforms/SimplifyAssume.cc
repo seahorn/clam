@@ -41,8 +41,8 @@ struct SimplifyAssume : public ModulePass {
       change |= runOnFunction(f);
     }
 
-    llvm::errs() << "*** CRABLLVM: " << m_num_removed_blocks
-		 << " number of unreachable blocks\n";
+    // llvm::errs() << "*** CRABLLVM: " << m_num_removed_blocks
+    // 		 << " number of unreachable blocks\n";
     return change;
   }
 
