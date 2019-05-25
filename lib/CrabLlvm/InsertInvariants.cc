@@ -7,6 +7,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/CFG.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -31,20 +32,50 @@ using namespace llvm;
 using namespace crab_llvm;
 using namespace crab::cfg;
 
-enum InsertInvsLoc { NONE, ONLY_UNREACH, PER_BLOCK, PER_LOAD, ALL};
-static cl::opt<InsertInvsLoc>
-InsertInvs("crab-add-invariants", 
-     cl::desc("Instrument code with invariants"),
+/*
+The invariants are inserted following this kind of partial ordered set
+where an element x is below y if it adds more instructions:
+
+              NONE -----------
+             /    \           |
+            /      \          |
+    ONLY_UNREACH   PER_LOOP   |
+           \       /          |
+            \     /           |
+             \   /            |
+       UNREACH_AND_PER_LOOP   |
+              |            PER_LOAD
+           PER_BLOCK          /
+               \             /
+                \           /
+                 \__     __/
+                     ALL
+ */
+
+enum InvariantsLocation{ NONE
+			 , ONLY_UNREACH
+			 , PER_LOOP  			 
+			 , UNREACH_AND_PER_LOOP
+			 , PER_BLOCK 
+			 , PER_LOAD			 
+			 , ALL       
+};
+static cl::opt<InvariantsLocation>
+InvLoc("crab-add-invariants", 
+     cl::desc("Instrument code with invariants at specific location"),
      cl::values(
 	 clEnumValN(NONE, "none", "None"),
          clEnumValN(ONLY_UNREACH, "only-unreach",
-		    "Add only assume(false) at each unreachable block"),	 	 
+		    "Add invariants only at unreachable blocks"),
          clEnumValN(PER_BLOCK, "block-entry",
-		    "Add invariants that hold at the entry of each basic block"),
+		    "Add invariants at the entry of each basic block"),
          clEnumValN(PER_LOAD, "after-load",
-		    "Add invariants that hold after each load instruction"),
-         clEnumValN(ALL, "all",
-                    "Add all invariants (very verbose)")),
+		    "Add invariants after each load instruction"),
+         clEnumValN(PER_LOOP, "loop-headers",
+		    "Add invariants only at loop headers"),
+         clEnumValN(UNREACH_AND_PER_LOOP, "unreach-and-loops",
+		    "only-unreach + loop-headers"),
+         clEnumValN(ALL, "all", "Add all invariants (very verbose)")),
      cl::init(NONE));
             
 #define DEBUG_TYPE "crab-insert-invars"
@@ -198,9 +229,8 @@ struct CodeExpander {
 
 
 //! Instrument basic block entries.
-bool InsertInvariants::
-instrument_entries(lin_cst_sys_t csts, llvm::BasicBlock* bb, 
-		   LLVMContext &ctx, CallGraph* cg) {
+static bool instrument_block(lin_cst_sys_t csts, llvm::BasicBlock* bb, 
+			     LLVMContext &ctx, CallGraph* cg, Function* assumeFn) {
   
   // If the block is an exit we do not instrument it.
   const ReturnInst *ret = dyn_cast<const ReturnInst>(bb->getTerminator());
@@ -210,7 +240,7 @@ instrument_entries(lin_cst_sys_t csts, llvm::BasicBlock* bb,
   Builder.SetInsertPoint(bb->getFirstNonPHI());
   CodeExpander g;
   NumInstrBlocks++;
-  bool res = g.gen_code(csts, Builder, ctx, m_assumeFn, cg, 
+  bool res = g.gen_code(csts, Builder, ctx, assumeFn, cg, 
 			bb->getParent(), "crab_");
   return res;
 }
@@ -225,8 +255,8 @@ instrument_entries(lin_cst_sys_t csts, llvm::BasicBlock* bb,
 // redo some work but it's more efficient than storing all
 // invariants at each program point.
 template<typename AbsDomain>
-bool InsertInvariants::
-instrument_loads(AbsDomain inv, basic_block_t& bb, LLVMContext &ctx, CallGraph* cg) {
+static bool instrument_loads(AbsDomain inv, basic_block_t& bb,
+			     LLVMContext &ctx, CallGraph* cg, Function* assumeFn) {
   // -- it will propagate forward inv through the basic block
   //    but ignoring callsites    
   typedef crab::analyzer::intra_abs_transformer<AbsDomain> abs_tr_t; 
@@ -258,8 +288,6 @@ instrument_loads(AbsDomain inv, basic_block_t& bb, LLVMContext &ctx, CallGraph* 
       
     if (!I) continue;
 
-    CrabLlvmPass* crab = &getAnalysis<CrabLlvmPass>();
-
     if (inv.is_top()) continue;
     // -- Filter out all constraints that do not use x.
     lin_cst_sys_t rel_csts;
@@ -277,14 +305,14 @@ instrument_loads(AbsDomain inv, basic_block_t& bb, LLVMContext &ctx, CallGraph* 
     Builder.SetInsertPoint(InsertBlk, InsertPt);
     CodeExpander g;
     NumInstrLoads++;
-    change |= g.gen_code(rel_csts, Builder, ctx, m_assumeFn, cg, 
+    change |= g.gen_code(rel_csts, Builder, ctx, assumeFn, cg, 
 			 I->getParent()->getParent(), "crab_");
   }
   return change;
 }
 
 bool InsertInvariants::runOnModule(Module &M) {
-  if (InsertInvs == NONE) return false;
+  if (InvLoc == NONE) return false;
 
   LLVMContext& ctx = M.getContext();
   AttrBuilder B;
@@ -310,18 +338,18 @@ bool InsertInvariants::runOnModule(Module &M) {
 }
    
 bool InsertInvariants::runOnFunction(Function &F) {
+  if (InvLoc == NONE) 
+    return false;
+    
   if (F.isDeclaration() || F.empty() || F.isVarArg()) 
     return false;
 
-  assert(InsertInvs != NONE);
-  
   CrabLlvmPass* crab = &getAnalysis<CrabLlvmPass>();
-
+  
   if (!crab->has_cfg(F))
     return false;
       
   cfg_ref_t cfg = crab->get_cfg(F);
-
   CallGraphWrapperPass *cgwp =getAnalysisIfAvailable<CallGraphWrapperPass>();
   CallGraph* cg = cgwp ? &cgwp->getCallGraph() : nullptr;
 
@@ -329,26 +357,42 @@ bool InsertInvariants::runOnFunction(Function &F) {
   for (auto &B : F) {
 
     // -- if the block has an unreachable instruction we skip it.
-    bool skip_block = false;
+    bool alread_dead_block = false;
     for (auto &I: B) {
       if (isa<UnreachableInst>(I)) {
-	skip_block=true;
+	alread_dead_block=true;
 	break;
       }
     }
-    if (skip_block) continue;
+    if (alread_dead_block) continue;
 
-    if (InsertInvs == ONLY_UNREACH || InsertInvs == PER_BLOCK || InsertInvs == ALL) {
-      // --- Instrument basic block 
-      if (auto pre = crab->get_pre(&B, false /*keep shadows*/)) {
-	if (InsertInvs != ONLY_UNREACH || pre->is_bottom()) {
-	  auto csts = pre->to_linear_constraints();
-	  change |= instrument_entries(csts, &B, F.getContext(), cg);
+    if (auto pre = crab->get_pre(&B, false /*keep shadows*/)) {
+      if (InvLoc == PER_BLOCK || InvLoc == ALL) {
+	auto csts = pre->to_linear_constraints();
+	change |= instrument_block(csts, &B, F.getContext(), cg, m_assumeFn);
+      } else {
+
+	if (InvLoc == ONLY_UNREACH || InvLoc == UNREACH_AND_PER_LOOP) {
+	  if (pre->is_bottom()) {
+	    auto csts = pre->to_linear_constraints();
+	    change |= instrument_block(csts, &B, F.getContext(), cg, m_assumeFn);
+	  }
 	}
-      } 
+
+	if (InvLoc == PER_LOOP || InvLoc == UNREACH_AND_PER_LOOP) {
+	  LoopInfo& LI = getAnalysis<LoopInfoWrapperPass>(F).getLoopInfo();
+	  if (LI.isLoopHeader(&B)) {
+	    if (!(InvLoc == UNREACH_AND_PER_LOOP && pre->is_bottom())) {
+	      auto csts = pre->to_linear_constraints();
+	      change |= instrument_block(csts, &B, F.getContext(), cg, m_assumeFn);
+	    }
+	  }
+	}
+      }
     }
 
-    if (InsertInvs == PER_LOAD || InsertInvs == ALL) {
+    
+    if (InvLoc == PER_LOAD || InvLoc == ALL) {
       // --- Instrument Load instructions
       if (reads_memory(B)) {
 	auto pre = crab->get_pre(&B, true /*keep shadows*/);
@@ -356,60 +400,60 @@ bool InsertInvariants::runOnFunction(Function &F) {
 	
 	// --- Figure out the type of the wrappee
 	switch(pre->getId()) {
-#ifdef HAVE_ALL_DOMAINS  
+        #ifdef HAVE_ALL_DOMAINS  
 	case GenericAbsDomWrapper::ric: {
 	  ric_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
 	case GenericAbsDomWrapper::term_intv: {
 	  term_int_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}	      
-#endif 	    
+        #endif 	    
 	case GenericAbsDomWrapper::intv:{
 	  interval_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
 	case GenericAbsDomWrapper::split_dbm: {
 	  split_dbm_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
 	case GenericAbsDomWrapper::term_dis_intv: {
 	  term_dis_int_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
 	case GenericAbsDomWrapper::boxes: {
 	  boxes_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
 	case GenericAbsDomWrapper::oct: {
 	  oct_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
 	case GenericAbsDomWrapper::pk: {
 	  pk_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
 	case GenericAbsDomWrapper::num: {
 	  num_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
 	default :
@@ -427,6 +471,9 @@ void InsertInvariants::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<UnifyFunctionExitNodes>();
   AU.addRequired<CallGraphWrapperPass>();
   AU.addPreserved<CallGraphWrapperPass>();
+  if (InvLoc == PER_LOOP || InvLoc == UNREACH_AND_PER_LOOP) {
+    AU.addRequired<LoopInfoWrapperPass>();
+  }
 } 
 
 } // end namespace 

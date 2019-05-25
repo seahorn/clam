@@ -307,17 +307,22 @@ def parseArgs(argv):
     p.add_argument('--crab-backward',
                     help='Run iterative forward/backward analysis for proving assertions (only intra version available and very experimental)',
                     dest='crab_backward', default=False, action='store_true')
-    # --crab-live may lose precision e.g. when computing summaries.
-    # However, note that due to non-monotonicity of operators such as widening the use of
-    # liveness information may actually improve precision. Thus, it's quite unpredictable
-    # the impact of this option.
+    # WARNING: --crab-live may lose precision.
+    # If x=z in bb1 and y=z in bb2 and z is dead after bb1 and bb2 then
+    # the equality x=y is lost.
     p.add_argument('--crab-live',
-                    help='Use of liveness information: may lose precision with relational domains.',
+                    help='Delete dead symbols: may lose precision with relational domains.',
                     dest='crab_live', default=False, action='store_true')        
     p.add_argument('--crab-add-invariants',
-                    help='Instrument code with invariants',
-                    choices=['none', 'only-unreach', 'block-entry', 'after-load', 'all'],
-                    dest='insert_invs', default='none')
+                    help='Instrument code with invariants at different locations',
+                    choices=['none',
+                             'only-unreach',
+                             'loop-headers',
+                             'unreach-and-loops',
+                             'block-entry',
+                             'after-load',
+                             'all'],
+                    dest='insert_inv_loc', default='none')
     p.add_argument('--crab-do-not-store-invariants',
                     help='Do not store invariants',
                     dest='store_invariants', default=True, action='store_false')        
@@ -702,7 +707,7 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_inter: crabllvm_args.append('--crab-inter')
     if args.crab_backward: crabllvm_args.append('--crab-backward')
     if args.crab_live: crabllvm_args.append('--crab-live')
-    crabllvm_args.append('--crab-add-invariants={0}'.format(args.insert_invs))
+    crabllvm_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
     if args.crab_promote_assume: crabllvm_args.append('--crab-promote-assume')
     if args.assert_check: crabllvm_args.append('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:
