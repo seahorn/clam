@@ -229,6 +229,10 @@ def parseArgs(argv):
                     help='Print IR after each pass (for debugging)',
                     dest='print_after_all', default=False,
                     action='store_true')
+    p.add_argument('--debug-pass',
+                    help='Print all LLVM passes executed (--debug-pass=Structure)',
+                    dest='debug_pass', default=False,
+                    action='store_true')
     p.add_argument('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
     p.add_argument('--crab-verbose', type=int,
@@ -514,8 +518,13 @@ def clang(in_name, out_name, arch=32, extra_args=[]):
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
 
+    # Disable always vectorization
+    clang_args.append('-fno-vectorize') ## disable loop vectorization
+    clang_args.append('-fno-slp-vectorize') ## disable store/load vectorization
+    
     if verbose: print ' '.join(clang_args)
-    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(clang_args, -1, -1)
+    returnvalue, timeout, out_of_mem, segfault, unknown = \
+        run_command_with_limits(clang_args, -1, -1)
     if timeout:
         sys.exit(FRONTEND_TIMEOUT)
     elif out_of_mem:
@@ -536,10 +545,23 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
     opt_args.append('--simplifycfg-sink-common=false')
+
+    # disable always vectorization
+    opt_args.append('--disable-loop-vectorization')
+    opt_args.append('--disable-slp-vectorization')
+
+    # disable always loop rotation. Loop rotation converts to loops
+    # that are much harder to reason about them using crab due to
+    # several reasons:
+    # 
+    # 1. Complex loops that break widening heuristics
+    # 2. Rewrite loop exits by adding often disequalities
+    # 3. Introduce new *unsigned* loop variables.
+    opt_args.append('--disable-loop-rotate')
     
     # These two should be optional
-    opt_args.append('--enable-indvar=true')
-    opt_args.append('--enable-loop-idiom=true')
+    #opt_args.append('--enable-indvar=true')
+    #opt_args.append('--enable-loop-idiom=true')
 
     if args.undef_nondet: 
         opt_args.append('--enable-nondet-init=true')
@@ -552,11 +574,13 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         opt_args.append('--unroll-threshold={t}'.format
                         (t=args.unroll_threshold))
     if args.print_after_all: opt_args.append('--print-after-all')
+    if args.debug_pass: opt_args.append('--debug-pass=Structure')    
     opt_args.extend(extra_args)
     opt_args.append(in_name)
 
     if verbose: print ' '.join(opt_args)
-    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(opt_args, cpu, mem)
+    returnvalue, timeout, out_of_mem, segfault, unknown = \
+        run_command_with_limits(opt_args, cpu, mem)
     if timeout:
         sys.exit(FRONTEND_TIMEOUT)
     elif out_of_mem:
@@ -584,7 +608,7 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
     crabpp_args.append('--simplifycfg-sink-common=false')
-    
+
     if args.inline: 
         crabpp_args.append('--crab-inline-all')
     if args.pp_loops: 
@@ -605,10 +629,12 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.enable_ext_funcs:
         crabpp_args.append('--crab-externalize-addr-taken-funcs')
     if args.print_after_all: crabpp_args.append('--print-after-all')
+    if args.debug_pass: crabpp_args.append('--debug-pass=Structure')        
     
     crabpp_args.extend(extra_args)
     if verbose: print ' '.join(crabpp_args)
-    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabpp_args, cpu, mem)
+    returnvalue, timeout, out_of_mem, segfault, unknown = \
+        run_command_with_limits(crabpp_args, cpu, mem)
     if timeout:
         sys.exit(FRONTEND_TIMEOUT)
     elif out_of_mem:
@@ -628,7 +654,7 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
     crabllvm_cmd.append('--simplifycfg-sink-common=false')
-        
+
     if args.crab_verbose:
         crabllvm_cmd.append('--crab-verbose={0}'.format(args.crab_verbose))
     if args.crab_only_cfg:
@@ -710,7 +736,11 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.print_after_all:
         crabllvm_cmd.append('--print-after-all')
 
-    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabllvm_cmd, cpu, mem)
+    if args.debug_pass:        
+        crabllvm_cmd.append('--debug-pass=Structure')            
+
+    returnvalue, timeout, out_of_mem, segfault, unknown = \
+        run_command_with_limits(crabllvm_cmd, cpu, mem)
     if timeout:
         sys.exit(CRAB_TIMEOUT)
     elif out_of_mem:
