@@ -306,7 +306,8 @@ int main(int argc, char **argv) {
     pass_manager.add(createPrintModulePass(asmOutput->os()));
  
   if (!NoCrab) {
-    // -- insert invariants as assume instructions
+    // -- perform dead code elimination and insert invariants as
+    // -- assume instructions
     pass_manager.add(new crab_llvm::InsertInvariants());
     // -- simplify invariants added in the bytecode.
     #ifdef HAVE_LLVM_SEAHORN
@@ -314,9 +315,6 @@ int main(int argc, char **argv) {
     #else
     pass_manager.add(llvm::createInstructionCombiningPass());
     #endif
-    // -- remove verifier.assume(true) and convert
-    // -- verifier.assume(false) into unreachable blocks
-    pass_manager.add(crab_llvm::createSimplifyAssumePass());
     if (PromoteAssume) {
       // -- promote verifier.assume to llvm.assume intrinsics
       pass_manager.add(crab_llvm::createPromoteAssumePass());

@@ -204,12 +204,12 @@ def parseArgs(argv):
     p.add_argument('--lower-select',
                     help='Lower select instructions',
                     dest='lower_select', default=False, action='store_true')
+    p.add_argument('--lower-unsigned-icmp',
+                    help='Lower ULT and ULE instructions',
+                    dest='lower_unsigned_icmp', default=False, action='store_true')    
     p.add_argument('--disable-lower-gv',
                     help='Disable lowering of global variable initializers into main',
                     dest='disable_lower_gv', default=False, action='store_true')
-    p.add_argument('--lower-unsigned-icmp',
-                    help='Lower ULT and ULE instructions',
-                    dest='lower_unsigned_icmp', default=False, action='store_true')
     p.add_argument('--disable-lower-constant-expr',
                     help='Disable lowering of constant expressions to instructions',
                     dest='disable_lower_cst_expr', default=False, action='store_true')
@@ -316,10 +316,9 @@ def parseArgs(argv):
     p.add_argument('--crab-add-invariants',
                     help='Instrument code with invariants at different locations',
                     choices=['none',
-                             'only-unreach',
-                             'loop-headers',
-                             'unreach-and-loops',
+                             'dead-code',
                              'block-entry',
+                             'loop-headers',                             
                              'after-load',
                              'all'],
                     dest='insert_inv_loc', default='none')
