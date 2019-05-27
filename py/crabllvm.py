@@ -213,6 +213,9 @@ def parseArgs(argv):
     p.add_argument('--disable-lower-constant-expr',
                     help='Disable lowering of constant expressions to instructions',
                     dest='disable_lower_cst_expr', default=False, action='store_true')
+    p.add_argument('--disable-lower-switch',
+                    help='Disable lowering of switch instructions',
+                    dest='disable_lower_switch', default=False, action='store_true')
     p.add_argument('--devirt-functions',
                     help="Resolve indirect calls:\n"
                     "- none : do not resolve indirect calls (default)\n"
@@ -629,9 +632,15 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.pp_loops: 
         crabpp_args.append('--crab-llvm-pp-loops')
     if args.undef_nondet:
-        crabpp_args.append( '--crab-turn-undef-nondet')
+        crabpp_args.append('--crab-turn-undef-nondet')
+        
     if args.disable_lower_gv:
-        crabpp_args.append( '--crab-lower-gv=false')
+        crabpp_args.append('--crab-lower-gv=false')
+    if args.disable_lower_cst_expr:
+        crabpp_args.append('--crab-lower-constant-expr=false')
+    if args.disable_lower_switch:
+        crabpp_args.append('--crab-lower-switch=false')
+        
     # Postponed until crabllvm is run, otherwise it can be undone by the optLlvm
     # if args.lower_unsigned_icmp:
     #     crabpp_args.append( '--crab-lower-unsigned-icmp')
@@ -677,9 +686,14 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     ## This option already run in crabpp    
     if args.undef_nondet: crabllvm_args.append( '--crab-turn-undef-nondet')
 
-    if args.lower_unsigned_icmp: crabllvm_args.append('--crab-lower-unsigned-icmp')
-    if args.lower_select: crabllvm_args.append('--crab-lower-select')
-    if args.disable_lower_cst_expr: crabllvm_args.append('--crab-lower-constant-expr=false')
+    if args.lower_unsigned_icmp:
+        crabllvm_args.append('--crab-lower-unsigned-icmp')
+    if args.lower_select:
+        crabllvm_args.append('--crab-lower-select')
+    if args.disable_lower_cst_expr:
+        crabllvm_args.append('--crab-lower-constant-expr=false')
+    if args.disable_lower_switch:
+        crabllvm_args.append('--crab-lower-switch=false')
     
     crabllvm_args.append('--crab-dom={0}'.format(args.crab_dom))
     crabllvm_args.append('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))

@@ -60,14 +60,29 @@ Devirtualize("crab-devirt",
               llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-LowerSelect("crab-lower-select",
-	     llvm::cl::desc("Lower all select instructions"),
-             llvm::cl::init(false));
-
-static llvm::cl::opt<bool>
 LowerGv("crab-lower-gv",
 	 llvm::cl::desc("Lower global initializers in main"),
 	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerInvoke("crab-lower-invoke",
+	 llvm::cl::desc("Lower invoke instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerCstExpr("crab-lower-constant-expr",
+	 llvm::cl::desc("Lower constant expressions to instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerSwitch("crab-lower-switch",
+	 llvm::cl::desc("Lower switch instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerSelect("crab-lower-select",
+	     llvm::cl::desc("Lower all select instructions"),
+             llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
 ExternalizeAddrTakenFuncs("crab-externalize-addr-taken-funcs", 
@@ -261,10 +276,12 @@ int main(int argc, char **argv) {
   }
   #endif 
 
-  // -- lower invoke's
-  pass_manager.add(llvm::createLowerInvokePass());
-  // cleanup after lowering invoke's
-  pass_manager.add(llvm::createCFGSimplificationPass());  
+  if (LowerInvoke) {
+    // -- lower invoke's
+    pass_manager.add(llvm::createLowerInvokePass());
+    // cleanup after lowering invoke's
+    pass_manager.add(llvm::createCFGSimplificationPass());
+  }
   
   if (InlineAll) {
     pass_manager.add (crab_llvm::createMarkInternalInlinePass ());   
@@ -314,15 +331,19 @@ int main(int argc, char **argv) {
   // -- remove unreachable blocks also dead cycles
   pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
 
-  // -- remove switch constructions
-  pass_manager.add(llvm::createLowerSwitchPass());
-  // cleanup unnecessary blocks     
-  pass_manager.add(llvm::createCFGSimplificationPass());  
-  
-  // -- lower constant expressions to instructions
-  pass_manager.add(crab_llvm::createLowerCstExprPass());   
-  pass_manager.add(llvm::createDeadCodeEliminationPass());
+  if (LowerSwitch) {
+    // -- remove switch constructions
+    pass_manager.add(llvm::createLowerSwitchPass());
+    // cleanup unnecessary blocks     
+    pass_manager.add(llvm::createCFGSimplificationPass());
+  }
 
+  if (LowerCstExpr) {
+    // -- lower constant expressions to instructions
+    pass_manager.add(crab_llvm::createLowerCstExprPass());   
+    pass_manager.add(llvm::createDeadCodeEliminationPass());
+  }
+  
   // -- lower ULT and ULE instructions  
   if(LowerUnsignedICmp) {
     pass_manager.add(crab_llvm::createLowerUnsignedICmpPass());   
@@ -332,8 +353,9 @@ int main(int argc, char **argv) {
   }
   
   // -- must be the last one to avoid llvm undoing it
-  if (LowerSelect)
-    pass_manager.add(crab_llvm::createLowerSelectPass());   
+  if (LowerSelect) {
+    pass_manager.add(crab_llvm::createLowerSelectPass());
+  }
 
   if(!AsmOutputFilename.empty()) 
     pass_manager.add(createPrintModulePass(asmOutput->os()));
