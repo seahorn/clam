@@ -53,7 +53,7 @@ DefaultDataLayout("default-data-layout",
 
 static llvm::cl::opt<bool>
 NoCrab("no-crab", 
-        llvm::cl::desc("Output preprocessed bitecode but disabling Crab analysis"),
+        llvm::cl::desc("Output preprocessed bitcode but disabling Crab analysis"),
         llvm::cl::init(false),
         llvm::cl::Hidden);
 
@@ -71,6 +71,16 @@ LowerUnsignedICmp("crab-lower-unsigned-icmp",
 static llvm::cl::opt<bool>
 LowerCstExpr("crab-lower-constant-expr",
 	 llvm::cl::desc("Lower constant expressions to instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerInvoke("crab-lower-invoke",
+	 llvm::cl::desc("Lower invoke instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerSwitch("crab-lower-switch",
+	 llvm::cl::desc("Lower switch instructions"),
 	 llvm::cl::init(true));
 
 static llvm::cl::opt<bool>
@@ -245,25 +255,29 @@ int main(int argc, char **argv) {
     // -- Turn undef into nondet
     pass_manager.add(llvm_seahorn::createNondetInitPass());
   }
-  #endif 
-  // -- lower invoke's
-  pass_manager.add(llvm::createLowerInvokePass());
-  // cleanup after lowering invoke's
-  pass_manager.add(llvm::createCFGSimplificationPass());  
+  #endif
+  if (LowerInvoke) {
+    // -- lower invoke's
+    pass_manager.add(llvm::createLowerInvokePass());
+    // cleanup after lowering invoke's
+    pass_manager.add(llvm::createCFGSimplificationPass());
+  }
   // -- ensure one single exit point per function
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
   // -- remove unreachable blocks 
   pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
-  // -- remove switch constructions
-  pass_manager.add(llvm::createLowerSwitchPass());
-  // cleanup after lowering switches
-  pass_manager.add(llvm::createCFGSimplificationPass());  
+  if (LowerSwitch) {
+    // -- remove switch constructions
+    pass_manager.add(llvm::createLowerSwitchPass());
+    // cleanup after lowering switches
+    pass_manager.add(llvm::createCFGSimplificationPass());
+  }
   // -- lower constant expressions to instructions
   if (LowerCstExpr) {
     pass_manager.add(crab_llvm::createLowerCstExprPass());
+    // cleanup after lowering constant expressions
+    pass_manager.add(llvm::createDeadCodeEliminationPass());
   }
-  // cleanup after lowering constant expressions
-  pass_manager.add(llvm::createDeadCodeEliminationPass());
   #ifdef HAVE_LLVM_SEAHORN
   if (TurnUndefNondet) {
     pass_manager.add(llvm_seahorn::createDeadNondetElimPass());
