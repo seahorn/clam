@@ -144,8 +144,8 @@ namespace crab_llvm {
     
     void add_edge(llvm::BasicBlock &Src, const llvm::BasicBlock &Target);
 
-    opt_basic_block_t exec_br(llvm::BasicBlock &Src,
-			      const llvm::BasicBlock &Target); 
+    opt_basic_block_t exec_edge(llvm::BasicBlock &Src,
+				const llvm::BasicBlock &Target); 
 
     void add_block_in_between(basic_block_t &src, basic_block_t &dst,
 			      basic_block_t &between);

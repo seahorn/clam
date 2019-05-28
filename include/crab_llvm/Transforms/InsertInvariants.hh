@@ -20,15 +20,6 @@ namespace crab_llvm {
 
     llvm::Function* m_assumeFn;
 
-    // TODO: move this to InsertInvariants.cc so this header file does
-    // not expose crab_llvm/crab_cfg.hh
-    bool instrument_entries (lin_cst_sys_t csts, llvm::BasicBlock* bb, 
-                             llvm::LLVMContext &ctx, llvm::CallGraph* cg);
-      
-    template<typename AbsDomain> 
-    bool instrument_loads (AbsDomain pre, basic_block_t& bb,  
-                           llvm::LLVMContext& ctx, llvm::CallGraph* cg);
-
   public:
     
     static char ID;        

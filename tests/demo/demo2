@@ -1,6 +1,5 @@
 ; RUN: %crabllvm -O0 --crab-do-not-print-invariants --crab-add-invariants=all --crab-track=arr "%s".c -o %s.bc
 ; RUN: %llvm_dis < %s.bc | OutputCheck %s --comment=";"
-; XFAIL: *
 
 ; ModuleID = '../tests/demo/demo2.bc'
 source_filename = "/Users/E30338/Repos/crab-llvm-5.0/tests/demo/demo2.c"

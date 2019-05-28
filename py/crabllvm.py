@@ -204,12 +204,18 @@ def parseArgs(argv):
     p.add_argument('--lower-select',
                     help='Lower select instructions',
                     dest='lower_select', default=False, action='store_true')
+    p.add_argument('--lower-unsigned-icmp',
+                    help='Lower ULT and ULE instructions',
+                    dest='lower_unsigned_icmp', default=False, action='store_true')    
     p.add_argument('--disable-lower-gv',
                     help='Disable lowering of global variable initializers into main',
                     dest='disable_lower_gv', default=False, action='store_true')
-    p.add_argument('--lower-unsigned-icmp',
-                    help='Lower ULT and ULE instructions',
-                    dest='lower_unsigned_icmp', default=False, action='store_true')
+    p.add_argument('--disable-lower-constant-expr',
+                    help='Disable lowering of constant expressions to instructions',
+                    dest='disable_lower_cst_expr', default=False, action='store_true')
+    p.add_argument('--disable-lower-switch',
+                    help='Disable lowering of switch instructions',
+                    dest='disable_lower_switch', default=False, action='store_true')
     p.add_argument('--devirt-functions',
                     help="Resolve indirect calls:\n"
                     "- none : do not resolve indirect calls (default)\n"
@@ -225,6 +231,10 @@ def parseArgs(argv):
     p.add_argument('--print-after-all',
                     help='Print IR after each pass (for debugging)',
                     dest='print_after_all', default=False,
+                    action='store_true')
+    p.add_argument('--debug-pass',
+                    help='Print all LLVM passes executed (--debug-pass=Structure)',
+                    dest='debug_pass', default=False,
                     action='store_true')
     p.add_argument('file', metavar='FILE', help='Input file')
     ### BEGIN CRAB
@@ -300,17 +310,21 @@ def parseArgs(argv):
     p.add_argument('--crab-backward',
                     help='Run iterative forward/backward analysis for proving assertions (only intra version available and very experimental)',
                     dest='crab_backward', default=False, action='store_true')
-    # --crab-live may lose precision e.g. when computing summaries.
-    # However, note that due to non-monotonicity of operators such as widening the use of
-    # liveness information may actually improve precision. Thus, it's quite unpredictable
-    # the impact of this option.
+    # WARNING: --crab-live may lose precision.
+    # If x=z in bb1 and y=z in bb2 and z is dead after bb1 and bb2 then
+    # the equality x=y is lost.
     p.add_argument('--crab-live',
-                    help='Use of liveness information: may lose precision with relational domains.',
+                    help='Delete dead symbols: may lose precision with relational domains.',
                     dest='crab_live', default=False, action='store_true')        
     p.add_argument('--crab-add-invariants',
-                    help='Instrument code with invariants',
-                    choices=['none', 'block-entry', 'after-load', 'all'],
-                    dest='insert_invs', default='none')
+                    help='Instrument code with invariants at different locations',
+                    choices=['none',
+                             'dead-code',
+                             'block-entry',
+                             'loop-headers',                             
+                             'after-load',
+                             'all'],
+                    dest='insert_inv_loc', default='none')
     p.add_argument('--crab-do-not-store-invariants',
                     help='Do not store invariants',
                     dest='store_invariants', default=True, action='store_false')        
@@ -449,10 +463,17 @@ def getClang(is_plus_plus):
         raise IOError('clang was not found')
     return cmd_name
 
+# return a pair: the first element is the command and the second is a
+# bool that it is true if seaopt has been found.
 def getOptLlvm ():
-    cmd_name = which (['seaopt', 'opt-mp-' + llvm_version, 'opt-' + llvm_version, 'opt'])
-    if cmd_name is None: raise IOError ('neither seaopt nor opt where found')
-    return cmd_name
+    cmd_name = which (['seaopt'])
+    if cmd_name is not None:
+        return (cmd_name, True)
+    
+    cmd_name = which (['opt-mp-' + llvm_version, 'opt-' + llvm_version, 'opt'])
+    if cmd_name is None:
+        raise IOError ('neither seaopt nor opt where found')
+    return (cmd_name, False)
 
 ### Passes
 def defBCName(name, wd=None):
@@ -511,8 +532,13 @@ def clang(in_name, out_name, arch=32, extra_args=[]):
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
 
+    # Disable always vectorization
+    clang_args.append('-fno-vectorize') ## disable loop vectorization
+    clang_args.append('-fno-slp-vectorize') ## disable store/load vectorization
+    
     if verbose: print ' '.join(clang_args)
-    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(clang_args, -1, -1)
+    returnvalue, timeout, out_of_mem, segfault, unknown = \
+        run_command_with_limits(clang_args, -1, -1)
     if timeout:
         sys.exit(FRONTEND_TIMEOUT)
     elif out_of_mem:
@@ -524,8 +550,9 @@ def clang(in_name, out_name, arch=32, extra_args=[]):
 def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if out_name == '' or out_name == None:
         out_name = defOptName(in_name)
-
-    opt_args = [getOptLlvm(), '-f', '-funit-at-a-time']
+    opt_cmd, is_seaopt = getOptLlvm()
+        
+    opt_args = [opt_cmd, '-f', '-funit-at-a-time']
     if out_name is not None: opt_args.extend(['-o', out_name])
     opt_args.append('-O{0}'.format(args.L))
 
@@ -533,15 +560,31 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
     opt_args.append('--simplifycfg-sink-common=false')
+
+    # disable always vectorization
+    opt_args.append('--disable-loop-vectorization')
+    opt_args.append('--disable-slp-vectorization')
+
+    if is_seaopt:
+        # disable always loop rotation. Loop rotation converts to loops
+        # that are much harder to reason about them using crab due to
+        # several reasons:
+        # 
+        # 1. Complex loops that break widening heuristics
+        # 2. Rewrite loop exits by adding often disequalities
+        # 3. Introduce new *unsigned* loop variables.
+        opt_args.append('--disable-loop-rotate')
     
     # These two should be optional
-    opt_args.append('--enable-indvar=true')
-    opt_args.append('--enable-loop-idiom=true')
+    #opt_args.append('--enable-indvar=true')
+    #opt_args.append('--enable-loop-idiom=true')
 
-    if args.undef_nondet: 
-        opt_args.append('--enable-nondet-init=true')
-    else: 
-        opt_args.append('--enable-nondet-init=false')
+    if is_seaopt:
+        if args.undef_nondet: 
+            opt_args.append('--enable-nondet-init=true')
+        else: 
+            opt_args.append('--enable-nondet-init=false')
+            
     if args.inline_threshold is not None:
         opt_args.append('--inline-threshold={t}'.format
                         (t=args.inline_threshold))
@@ -549,11 +592,13 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         opt_args.append('--unroll-threshold={t}'.format
                         (t=args.unroll_threshold))
     if args.print_after_all: opt_args.append('--print-after-all')
+    if args.debug_pass: opt_args.append('--debug-pass=Structure')    
     opt_args.extend(extra_args)
     opt_args.append(in_name)
 
     if verbose: print ' '.join(opt_args)
-    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(opt_args, cpu, mem)
+    returnvalue, timeout, out_of_mem, segfault, unknown = \
+        run_command_with_limits(opt_args, cpu, mem)
     if timeout:
         sys.exit(FRONTEND_TIMEOUT)
     elif out_of_mem:
@@ -581,15 +626,21 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
     crabpp_args.append('--simplifycfg-sink-common=false')
-    
+
     if args.inline: 
         crabpp_args.append('--crab-inline-all')
     if args.pp_loops: 
         crabpp_args.append('--crab-llvm-pp-loops')
     if args.undef_nondet:
-        crabpp_args.append( '--crab-turn-undef-nondet')
+        crabpp_args.append('--crab-turn-undef-nondet')
+        
     if args.disable_lower_gv:
-        crabpp_args.append( '--crab-lower-gv=false')
+        crabpp_args.append('--crab-lower-gv=false')
+    if args.disable_lower_cst_expr:
+        crabpp_args.append('--crab-lower-constant-expr=false')
+    if args.disable_lower_switch:
+        crabpp_args.append('--crab-lower-switch=false')
+        
     # Postponed until crabllvm is run, otherwise it can be undone by the optLlvm
     # if args.lower_unsigned_icmp:
     #     crabpp_args.append( '--crab-lower-unsigned-icmp')
@@ -602,10 +653,12 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.enable_ext_funcs:
         crabpp_args.append('--crab-externalize-addr-taken-funcs')
     if args.print_after_all: crabpp_args.append('--print-after-all')
+    if args.debug_pass: crabpp_args.append('--debug-pass=Structure')        
     
     crabpp_args.extend(extra_args)
     if verbose: print ' '.join(crabpp_args)
-    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabpp_args, cpu, mem)
+    returnvalue, timeout, out_of_mem, segfault, unknown = \
+        run_command_with_limits(crabpp_args, cpu, mem)
     if timeout:
         sys.exit(FRONTEND_TIMEOUT)
     elif out_of_mem:
@@ -615,97 +668,108 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     
 # Run crabllvm
 def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
-    crabllvm_cmd = [ getCrabLlvm(), in_name, '-oll', out_name]
-    crabllvm_cmd = crabllvm_cmd + extra_opts
+    crabllvm_args = [ getCrabLlvm(), in_name, '-oll', out_name]
+    crabllvm_args = crabllvm_args + extra_opts
     
     if args.log is not None:
-        for l in args.log.split(':'): crabllvm_cmd.extend(['-log', l])
+        for l in args.log.split(':'): crabllvm_args.extend(['-log', l])
 
     # disable sinking instructions to end of basic block
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
-    crabllvm_cmd.append('--simplifycfg-sink-common=false')
-        
-    if args.crab_verbose:
-        crabllvm_cmd.append('--crab-verbose={0}'.format(args.crab_verbose))
-    if args.crab_only_cfg:
-        crabllvm_cmd.append('--crab-only-cfg')
-    ## This option already run in crabpp    
-    if args.undef_nondet: crabllvm_cmd.append( '--crab-turn-undef-nondet')
+    crabllvm_args.append('--simplifycfg-sink-common=false')
 
-    if args.lower_unsigned_icmp: crabllvm_cmd.append( '--crab-lower-unsigned-icmp')
-    if args.lower_select: crabllvm_cmd.append( '--crab-lower-select')
-    crabllvm_cmd.append('--crab-dom={0}'.format(args.crab_dom))
-    crabllvm_cmd.append('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))
-    crabllvm_cmd.append('--crab-widening-delay={0}'.format(args.widening_delay))
-    crabllvm_cmd.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
-    crabllvm_cmd.append('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
-    crabllvm_cmd.append('--crab-relational-threshold={0}'.format(args.num_threshold))
+    if args.crab_verbose:
+        crabllvm_args.append('--crab-verbose={0}'.format(args.crab_verbose))
+    if args.crab_only_cfg:
+        crabllvm_args.append('--crab-only-cfg')
+    ## This option already run in crabpp    
+    if args.undef_nondet: crabllvm_args.append( '--crab-turn-undef-nondet')
+
+    if args.lower_unsigned_icmp:
+        crabllvm_args.append('--crab-lower-unsigned-icmp')
+    if args.lower_select:
+        crabllvm_args.append('--crab-lower-select')
+    if args.disable_lower_cst_expr:
+        crabllvm_args.append('--crab-lower-constant-expr=false')
+    if args.disable_lower_switch:
+        crabllvm_args.append('--crab-lower-switch=false')
+    
+    crabllvm_args.append('--crab-dom={0}'.format(args.crab_dom))
+    crabllvm_args.append('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))
+    crabllvm_args.append('--crab-widening-delay={0}'.format(args.widening_delay))
+    crabllvm_args.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
+    crabllvm_args.append('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
+    crabllvm_args.append('--crab-relational-threshold={0}'.format(args.num_threshold))
     if args.track == 'arr-no-ptr':    
-        crabllvm_cmd.append('--crab-track=arr')
-        crabllvm_cmd.append('--crab-disable-ptr')        
+        crabllvm_args.append('--crab-track=arr')
+        crabllvm_args.append('--crab-disable-ptr')        
     else:
-        crabllvm_cmd.append('--crab-track={0}'.format(args.track))
+        crabllvm_args.append('--crab-track={0}'.format(args.track))
     if args.crab_heap_analysis == 'llvm-dsa' or \
        args.crab_heap_analysis == 'ci-sea-dsa' or \
        args.crab_heap_analysis == 'cs-sea-dsa':
-        crabllvm_cmd.append('--crab-heap-analysis={0}'.format(args.crab_heap_analysis))
+        crabllvm_args.append('--crab-heap-analysis={0}'.format(args.crab_heap_analysis))
     elif args.crab_heap_analysis == 'ci-sea-dsa-types':
-        crabllvm_cmd.append('--crab-heap-analysis=ci-sea-dsa')
-        crabllvm_cmd.append('--sea-dsa-type-aware=true')
+        crabllvm_args.append('--crab-heap-analysis=ci-sea-dsa')
+        crabllvm_args.append('--sea-dsa-type-aware=true')
     elif args.crab_heap_analysis == 'cs-sea-dsa-types':
-        crabllvm_cmd.append('--crab-heap-analysis=cs-sea-dsa')
-        crabllvm_cmd.append('--sea-dsa-type-aware=true')
-    if args.crab_singleton_aliases: crabllvm_cmd.append('--crab-singleton-aliases')
-    if args.crab_inter: crabllvm_cmd.append('--crab-inter')
-    if args.crab_backward: crabllvm_cmd.append('--crab-backward')
-    if args.crab_live: crabllvm_cmd.append('--crab-live')
-    crabllvm_cmd.append('--crab-add-invariants={0}'.format(args.insert_invs))
-    if args.crab_promote_assume: crabllvm_cmd.append('--crab-promote-assume')
-    if args.assert_check: crabllvm_cmd.append('--crab-check={0}'.format(args.assert_check))
+        crabllvm_args.append('--crab-heap-analysis=cs-sea-dsa')
+        crabllvm_args.append('--sea-dsa-type-aware=true')
+    if args.crab_singleton_aliases: crabllvm_args.append('--crab-singleton-aliases')
+    if args.crab_inter: crabllvm_args.append('--crab-inter')
+    if args.crab_backward: crabllvm_args.append('--crab-backward')
+    if args.crab_live: crabllvm_args.append('--crab-live')
+    crabllvm_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
+    if args.crab_promote_assume: crabllvm_args.append('--crab-promote-assume')
+    if args.assert_check: crabllvm_args.append('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:
-        crabllvm_cmd.append('--crab-check-verbose={0}'.format(args.check_verbose))
-    if args.print_summs: crabllvm_cmd.append('--crab-print-summaries')
-    if args.print_cfg: crabllvm_cmd.append('--crab-print-cfg')
-    if args.print_stats: crabllvm_cmd.append('--crab-stats')
-    if args.print_assumptions: crabllvm_cmd.append('--crab-print-unjustified-assumptions')
+        crabllvm_args.append('--crab-check-verbose={0}'.format(args.check_verbose))
+    if args.print_summs: crabllvm_args.append('--crab-print-summaries')
+    if args.print_cfg: crabllvm_args.append('--crab-print-cfg')
+    if args.print_stats: crabllvm_args.append('--crab-stats')
+    if args.print_assumptions: crabllvm_args.append('--crab-print-unjustified-assumptions')
     if args.crab_disable_warnings:
         ## crab-llvm warning messages
-        crabllvm_cmd.append('--crab-disable-warnings')
+        crabllvm_args.append('--crab-disable-warnings')
         ## crab warning messages
-        crabllvm_cmd.append('--crab-enable-warnings=false')
-    if args.crab_sanity_checks: crabllvm_cmd.append('--crab-sanity-checks')
-    if args.crab_cfg_simplify: crabllvm_cmd.append('--crab-cfg-simplify')
+        crabllvm_args.append('--crab-enable-warnings=false')
+    if args.crab_sanity_checks: crabllvm_args.append('--crab-sanity-checks')
+    if args.crab_cfg_simplify: crabllvm_args.append('--crab-cfg-simplify')
     if args.crab_print_invariants:
-        crabllvm_cmd.append('--crab-print-invariants')
+        crabllvm_args.append('--crab-print-invariants')
     if args.store_invariants:
-        crabllvm_cmd.append('--crab-store-invariants=true')
+        crabllvm_args.append('--crab-store-invariants=true')
     else:
-        crabllvm_cmd.append('--crab-store-invariants=false')    
+        crabllvm_args.append('--crab-store-invariants=false')    
     # hidden options
-    if args.crab_dsa_unknown: crabllvm_cmd.append('--crab-dsa-disambiguate-unknown')
-    if args.crab_dsa_ptr_cast: crabllvm_cmd.append('--crab-dsa-disambiguate-ptr-cast')
-    if args.crab_dsa_external: crabllvm_cmd.append('--crab-dsa-disambiguate-external')    
-    if args.crab_unsound_array_init: crabllvm_cmd.append('--crab-unsound-array-init') 
-    if args.crab_keep_shadows: crabllvm_cmd.append('--crab-keep-shadows')
+    if args.crab_dsa_unknown: crabllvm_args.append('--crab-dsa-disambiguate-unknown')
+    if args.crab_dsa_ptr_cast: crabllvm_args.append('--crab-dsa-disambiguate-ptr-cast')
+    if args.crab_dsa_external: crabllvm_args.append('--crab-dsa-disambiguate-external')    
+    if args.crab_unsound_array_init: crabllvm_args.append('--crab-unsound-array-init') 
+    if args.crab_keep_shadows: crabllvm_args.append('--crab-keep-shadows')
     if args.crab_name_values:
-        crabllvm_cmd.append('--crab-name-values=true')
+        crabllvm_args.append('--crab-name-values=true')
     else:
-        crabllvm_cmd.append('--crab-name-values=false')    
-    if args.unsigned_to_signed: crabllvm_cmd.append('--crab-unsigned-to-signed')
+        crabllvm_args.append('--crab-name-values=false')    
+    if args.unsigned_to_signed: crabllvm_args.append('--crab-unsigned-to-signed')
     if args.crab_enable_bignums:
-        crabllvm_cmd.append('--crab-enable-bignums=true')
+        crabllvm_args.append('--crab-enable-bignums=true')
     else:
-        crabllvm_cmd.append('--crab-enable-bignums=false')
-    if verbose: print ' '.join(crabllvm_cmd)
+        crabllvm_args.append('--crab-enable-bignums=false')
+    if verbose: print ' '.join(crabllvm_args)
 
     if args.out_name is not None:
-        crabllvm_cmd.append('-o={0}'.format(args.out_name))
+        crabllvm_args.append('-o={0}'.format(args.out_name))
 
     if args.print_after_all:
-        crabllvm_cmd.append('--print-after-all')
+        crabllvm_args.append('--print-after-all')
 
-    returnvalue, timeout, out_of_mem, segfault, unknown = run_command_with_limits(crabllvm_cmd, cpu, mem)
+    if args.debug_pass:        
+        crabllvm_args.append('--debug-pass=Structure')            
+
+    returnvalue, timeout, out_of_mem, segfault, unknown = \
+        run_command_with_limits(crabllvm_args, cpu, mem)
     if timeout:
         sys.exit(CRAB_TIMEOUT)
     elif out_of_mem:

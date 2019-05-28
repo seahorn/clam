@@ -270,18 +270,23 @@ namespace crab_llvm {
     return !fun.isDeclaration() && !fun.empty() && !fun.isVarArg();
   }
 
-  /** convenient wrapper for the invariance analysis datastructures **/
-  struct InvarianceAnalysisResults {
+  /** convenient wrapper for the analysis datastructures **/
+  struct AnalysisResults {
     // invariants that hold at the entry of a block
     invariant_map_t &premap;
     // invariants that hold at the exit of a block
     invariant_map_t &postmap;
+    // infeasible edges 
+    edges_set &infeasible_edges;
     // database with all the checks
     checks_db_t &checksdb;
 
-    InvarianceAnalysisResults(invariant_map_t &pre, invariant_map_t &post,
-			      checks_db_t &db)
-      : premap(pre), postmap(post), checksdb(db) {}
+    AnalysisResults(invariant_map_t &pre, invariant_map_t &post,
+		    edges_set& false_edges,  checks_db_t &db)
+      : premap(pre)
+      , postmap(post)
+      , infeasible_edges(false_edges)
+      , checksdb(db) {}
   };
 
   /** return invariant for block in table but filtering out shadow_varnames **/
@@ -594,7 +599,7 @@ namespace crab_llvm {
     void analyzeCfg(const AnalysisParams &params,
 		    const BasicBlock *entry,
 		    const assumption_map_t &assumptions, liveness_t *live,
-		    InvarianceAnalysisResults &results) {
+		    AnalysisResults &results) {
       
       // -- we use the combined forward/backward analyzer
       typedef intra_forward_backward_analyzer<cfg_ref_t,Dom> intra_analyzer_t;
@@ -638,23 +643,34 @@ namespace crab_llvm {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing invariants.\n");       
 	for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
 								m_cfg->label_end())) {
-	  const BasicBlock *B = bl.get_basic_block();
-	  if (!B) continue; // we only store those which correspond to llvm basic blocks
-	  
-	  // --- invariants that hold at the entry of the blocks
-	  auto pre = analyzer.get_pre(bl);
-	  update(results.premap, *B,  mkGenericAbsDomWrapper(pre));
-	  // --- invariants that hold at the exit of the blocks
-	  auto post = analyzer.get_post(bl);
-	  update(results.postmap, *B,  mkGenericAbsDomWrapper(post));	
-	  if (params.stats) {
-	    unsigned num_block_invars = 0;
-	    // XXX: for boxes it would be more useful to get a measure
-	    // from to_disjunctive_linear_constraint_system() but it
-	    // can be really slow. 
-	    num_block_invars += pre.to_linear_constraint_system().size();
-	    num_invars += num_block_invars;
-	    if (num_block_invars > 0) num_nontrivial_blocks++;
+	  if (bl.is_edge()) {
+	    // Note that we use get_post instead of get_pre:
+	    //   the crab block (bl) has an assume statement corresponding
+	    //   to the branch condition in the predecessor of the
+	    //   LLVM edge. We want the invariant *after* the
+	    //   evaluation of the assume.		
+	    if (analyzer.get_post(bl).is_bottom()) {
+	      results.infeasible_edges.insert({bl.get_edge().first, bl.get_edge().second});
+	    }
+	  } else if (const BasicBlock *B = bl.get_basic_block()) {
+	    // --- invariants that hold at the entry of the blocks
+	    auto pre = analyzer.get_pre(bl);
+	    update(results.premap, *B,  mkGenericAbsDomWrapper(pre));
+	    // --- invariants that hold at the exit of the blocks
+	    auto post = analyzer.get_post(bl);
+	    update(results.postmap, *B,  mkGenericAbsDomWrapper(post));
+	    if (params.stats) {
+	      unsigned num_block_invars = 0;
+	      // XXX: for boxes it would be more useful to get a measure
+	      // from to_disjunctive_linear_constraint_system() but it
+	      // can be really slow. 
+	      num_block_invars += pre.to_linear_constraint_system().size();
+	      num_invars += num_block_invars;
+	      if (num_block_invars > 0) num_nontrivial_blocks++;
+	    }
+	  } else {
+	    // this should be unreachable
+	    assert(false && "A Crab block should correspond to either an LLVM edge or block");
 	  }
 	}
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "All invariants stored.\n");
@@ -752,7 +768,7 @@ namespace crab_llvm {
 			 const BasicBlock*,
 			 const assumption_map_t&,
 			 liveness_t*,
-			 InvarianceAnalysisResults&)> analyze;
+			 AnalysisResults&)> analyze;
       std::string name;
     };
 
@@ -826,7 +842,7 @@ namespace crab_llvm {
     void Analyze(AnalysisParams &params,
 		 const llvm::BasicBlock *entry,
 		 const assumption_map_t &assumptions,
-		 InvarianceAnalysisResults &results) {
+		 AnalysisResults &results) {
 
       if (!m_cfg) {
 	CRAB_VERBOSE_IF(1, llvm::outs() << "Skipped analysis for "
@@ -948,15 +964,14 @@ namespace crab_llvm {
   
   void IntraCrabLlvm::analyze(AnalysisParams &params,
 			      const assumption_map_t &assumptions) {    
-    InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
-    
+    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     m_impl->Analyze(params, &(m_fun->getEntryBlock()), assumptions, results);
   }
 
   void IntraCrabLlvm::analyze(AnalysisParams &params,
 			      const llvm::BasicBlock *entry,
 			      const assumption_map_t &assumptions) {
-    InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
+    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     m_impl->Analyze(params, entry, assumptions, results);
   }
   
@@ -997,6 +1012,11 @@ namespace crab_llvm {
     return lookup(m_post_map, *block, shadows);
   }
 
+  bool IntraCrabLlvm::has_feasible_edge(const llvm::BasicBlock *b1,
+					const llvm::BasicBlock* b2) const {
+    return !(m_infeasible_edges.count({b1, b2}) > 0);    
+  }
+  
   const checks_db_t& IntraCrabLlvm::get_checks_db() const { return m_checks_db;}
   
   /**
@@ -1015,7 +1035,7 @@ namespace crab_llvm {
     /** Run inter-procedural analysis on the whole call graph **/
     template<typename BUDom, typename TDDom>
     void analyzeCg(const AnalysisParams &params,
-		   InvarianceAnalysisResults &results) {
+		   AnalysisResults &results) {
       
       typedef inter_fwd_analyzer<call_graph_ref_t, BUDom, TDDom> inter_analyzer_t;
       typedef inter_checker<inter_analyzer_t> inter_checker_t;
@@ -1046,25 +1066,38 @@ namespace crab_llvm {
       for (auto &n: boost::make_iterator_range(vertices(*m_cg))) {
 	cfg_ref_t cfg = n.get_cfg();
 	if (const Function *F = m_M.getFunction(n.name())) {
-	  
-
 	  if (params.store_invariants || params.print_invars) {
-	    for (auto &B : *F) {
-	      // --- invariants that hold at the entry of the blocks
-	      auto pre = analyzer.get_pre(cfg, &B);
-	      update(results.premap, B, mkGenericAbsDomWrapper(pre));
-	      // --- invariants that hold at the exit of the blocks
-	      auto post = analyzer.get_post(cfg, &B);
-	      update(results.postmap, B, mkGenericAbsDomWrapper(post));
+	    for (basic_block_label_t bl:
+		   boost::make_iterator_range(cfg.label_begin(),cfg.label_end())) {
+	      if (bl.is_edge()) {
+		// Note that we use get_post instead of get_pre:
+		//   the crab block (bl) has an assume statement corresponding
+		//   to the branch condition in the predecessor of the
+		//   LLVM edge. We want the invariant *after* the
+		//   evaluation of the assume.		
+		if (analyzer.get_post(cfg, bl).is_bottom()) {
+		  results.infeasible_edges.insert({bl.get_edge().first, bl.get_edge().second});
+		}
+	      } else if (const BasicBlock *B = bl.get_basic_block()) {
+		// --- invariants that hold at the entry of the blocks
+		auto pre = analyzer.get_pre(cfg, B);
+		update(results.premap, *B, mkGenericAbsDomWrapper(pre));
+		// --- invariants that hold at the exit of the blocks
+		auto post = analyzer.get_post(cfg, B);
+		update(results.postmap, *B, mkGenericAbsDomWrapper(post));
 	      
-	      if (params.stats) {
-		unsigned num_block_invars = 0;
-		// TODO CRAB: for boxes we would like to use
-		// to_disjunctive_linear_constraint_system() but it needs to
-		// be exposed to all domains
-		num_block_invars += pre.to_linear_constraint_system().size();
-		num_invars += num_block_invars;
-	      if (num_block_invars > 0) num_nontrivial_blocks++;
+		if (params.stats) {
+		  unsigned num_block_invars = 0;
+		  // TODO CRAB: for boxes we would like to use
+		  // to_disjunctive_linear_constraint_system() but it needs to
+		  // be exposed to all domains
+		  num_block_invars += pre.to_linear_constraint_system().size();
+		  num_invars += num_block_invars;
+		  if (num_block_invars > 0) num_nontrivial_blocks++;
+		}
+	      } else {
+		// this should be unreachable
+	      assert(false && "A Crab block should correspond to either an LLVM edge or block");
 	      }
 	    }
 	    
@@ -1114,7 +1147,7 @@ namespace crab_llvm {
 
     // Domains used for inter-procedural analysis
     struct inter_analysis {
-      std::function<void(const AnalysisParams&, InvarianceAnalysisResults&)> analyze;
+      std::function<void(const AnalysisParams&, AnalysisResults&)> analyze;
       std::string name;
     };
 
@@ -1187,7 +1220,7 @@ namespace crab_llvm {
     
     void Analyze(AnalysisParams &params,
 		 const assumption_map_t &/*assumptions*/ /*unused*/,
-		 InvarianceAnalysisResults &results) {
+		 AnalysisResults &results) {
 
       // If the number of live variables per block is too high we
       // switch to a cheap domain regardless what the user wants.
@@ -1290,7 +1323,7 @@ namespace crab_llvm {
   
   void InterCrabLlvm::analyze(AnalysisParams &params,
 			      const assumption_map_t &assumptions) {
-    InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
+    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     m_impl->Analyze(params, assumptions, results);
   }
 
@@ -1312,6 +1345,11 @@ namespace crab_llvm {
     return lookup(m_post_map, *block, shadows);
   }
 
+  bool InterCrabLlvm::has_feasible_edge(const llvm::BasicBlock *b1,
+					const llvm::BasicBlock* b2) const {
+    return !(m_infeasible_edges.count({b1, b2}) > 0);
+  }
+  
   const checks_db_t& InterCrabLlvm::get_checks_db() const { return m_checks_db;}
   
   /**
@@ -1334,7 +1372,7 @@ namespace crab_llvm {
 
   bool CrabLlvmPass::runOnFunction(Function &F) {
     IntraCrabLlvm_Impl crab(F, CrabTrackLev, m_mem, m_vfac, m_cfg_man, *m_tli);
-    InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
+    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
     return false;
   }
@@ -1355,7 +1393,7 @@ namespace crab_llvm {
     switch(CrabHeapAnalysis) {
     case LLVM_DSA:
       #ifdef HAVE_DSA
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);                  
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);
       m_mem.reset
 	(new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
 				    CrabDsaDisambiguateUnknown,
@@ -1406,7 +1444,7 @@ namespace crab_llvm {
         
     if (CrabInter){
       InterCrabLlvm_Impl inter_crab(M, CrabTrackLev, m_mem, m_vfac, m_cfg_man, *m_tli);
-      InvarianceAnalysisResults results = { m_pre_map, m_post_map, m_checks_db};
+      AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
       inter_crab.Analyze(m_params, assumption_map_t(), results);
     } else {
       unsigned fun_counter = 1;
@@ -1500,6 +1538,11 @@ namespace crab_llvm {
     return lookup(m_post_map, *block, shadows);
   }
 
+  bool CrabLlvmPass::has_feasible_edge(const llvm::BasicBlock *b1,
+				       const llvm::BasicBlock* b2) const {
+    return !(m_infeasible_edges.count({b1, b2}) > 0);
+  }
+  
   /**
    * For assertion checking
    **/

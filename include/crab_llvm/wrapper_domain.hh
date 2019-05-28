@@ -105,15 +105,15 @@ namespace crab_llvm {
     }								     \
     								     \
     ABS_DOM& get() { return m_abs; }				     \
-    								     \
-    lin_cst_sys_t to_linear_constraints() {			     \
-      return m_abs.to_linear_constraint_system();		     \
+                                                                     \
+    bool is_bottom() {						     \
+      return m_abs.is_bottom();					     \
     }								     \
-    								     \
-    void write(crab::crab_os& o) {				     \
-      m_abs.write (o);						     \
+								     \
+    bool is_top() {						     \
+      return m_abs.is_top();					     \
     }								     \
-    								     \
+  								     \
     void forget(const std::vector<var_t>& vars) {		     \
       m_abs.forget(vars);					     \
     }								     \
@@ -121,7 +121,14 @@ namespace crab_llvm {
     void project(const std::vector<var_t>& vars) {		     \
       m_abs.project(vars);					     \
     }								     \
+  								     \
+    lin_cst_sys_t to_linear_constraints() {			     \
+      return m_abs.to_linear_constraint_system();		     \
+    }								     \
     								     \
+    void write(crab::crab_os& o) {				     \
+      m_abs.write (o);						     \
+    }								     \
    };                                                                \
                                                                      \
    template <> inline GenericAbsDomWrapperPtr                        \
@@ -166,7 +173,11 @@ namespace crab_llvm {
     virtual GenericAbsDomWrapperPtr clone() const = 0;
     
     virtual void write(crab::crab_os& o) = 0;
-    
+
+    virtual bool is_bottom() = 0;
+
+    virtual bool is_top() = 0;
+      
     virtual lin_cst_sys_t to_linear_constraints() = 0;
     
     virtual void forget(const std::vector<var_t>& vars) = 0;

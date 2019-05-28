@@ -1925,6 +1925,9 @@ namespace crab_llvm {
 
     /// skip BranchInst (processed elsewhere)
     void visitBranchInst(BranchInst &I) {}
+
+    /// skip SwitchInst (processed elsewhere)
+    void visitSwitchInst(SwitchInst& I) {}
     
     /// I is already translated if it is the condition of a branch or
     /// a select's condition.  Here we cover cases where I is an
@@ -1975,7 +1978,7 @@ namespace crab_llvm {
 	}
       }
     }
-      
+    
     void visitBinaryOperator(BinaryOperator &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
       
@@ -2361,6 +2364,12 @@ namespace crab_llvm {
 	 ignored.
       */
 
+      if (isa<ConstantExpr>(I.getPointerOperand()) ||
+	  isa<ConstantExpr>(I.getValueOperand())) {
+	// We don't handle constant expressions. 
+	return;
+      }
+
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
       crab_lit_ref_t val = m_lfac.getLit(*I.getValueOperand());
       Function& parent = *(I.getParent()->getParent());
@@ -2476,8 +2485,15 @@ namespace crab_llvm {
       /*
 	This case is symmetric to StoreInst.
        */
-      
+
       crab_lit_ref_t lhs = m_lfac.getLit(I);
+
+      if (isa<ConstantExpr>(I.getPointerOperand())) {
+	// We don't handle constant expressions. 
+	havoc(lhs->getVar(), m_bb);
+	return;
+      }
+      
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
       Function& parent = *(I.getParent()->getParent());
       
@@ -2781,6 +2797,7 @@ namespace crab_llvm {
     /// base case. if all else fails.
     void visitInstruction(Instruction &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
+      CRABLLVM_WARNING("Skipped " << I); 
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       if (lhs && lhs->isVar()) {
 	havoc(lhs->getVar(), m_bb);
@@ -2854,25 +2871,27 @@ namespace crab_llvm {
   
   //! return the new block inserted between src and dest if any
   CfgBuilder::opt_basic_block_t
-  CfgBuilder::exec_br(BasicBlock &src, const BasicBlock &dst) {
+  CfgBuilder::exec_edge(BasicBlock &src, const BasicBlock &dst) {
     
-    // -- the branch condition
     if (const BranchInst *br=dyn_cast<const BranchInst>(src.getTerminator())) {
       if (br->isConditional()) {
         opt_basic_block_t Src = lookup(src);
         opt_basic_block_t Dst = lookup(dst);
         assert(Src && Dst);
 
+	// Create a new crab block that represents the LLVM edge
 	llvm_basic_block_wrapper bb_wrapper(&src, &dst, create_bb_name(m_id));
 	m_edge_bb_map.insert(std::make_pair(std::make_pair(&src, &dst), bb_wrapper));
   	basic_block_t &bb = m_cfg->insert(bb_wrapper);
         add_block_in_between(*Src, *Dst, bb);
 
+	// Populate the new crab block with an assume
         const Value &c = *br->getCondition();
         if (const ConstantInt *ci = dyn_cast<const ConstantInt>(&c)) {
           if ((ci->isOne()  && br->getSuccessor(0) != &dst) ||
-              (ci->isZero() && br->getSuccessor(1) != &dst))
+              (ci->isZero() && br->getSuccessor(1) != &dst)) {
             bb.unreachable();
+	  }
         } else {
           bool isNegated = (br->getSuccessor(1) == &dst);
 	  bool lower_cond_as_bool = false;
@@ -2910,9 +2929,25 @@ namespace crab_llvm {
 	      bb.bool_assume(lhs->getVar());
 	  }
         }
+	
         return opt_basic_block_t(bb);
+      } else {
+	// br is unconditional
+	add_edge(src,dst);
       }
-      else add_edge(src,dst);
+    } else  if (SwitchInst *SI = dyn_cast<SwitchInst>(src.getTerminator())) {
+      // switch <value>, label <defaultdest> [ <val>, label <dest> ... ]
+      //
+      // TODO: we do not translate precisely switch instructions. We
+      // simply add an edge from src to dest.
+
+      // To be precise, we need to create a block between src and dest
+      // and add the statement "assume(value == val)" if dest is not
+      // the default block. For the default block, we need to add the
+      // sequence:
+      //      "assume(value != val1); ... ; assume(value != valk);"
+
+      add_edge(src,dst);
     }
     return opt_basic_block_t();    
   }
@@ -2990,10 +3025,17 @@ namespace crab_llvm {
 	}
 	
       } else {
-        for (const BasicBlock *dst : succs(B)) {
+	std::vector<const BasicBlock*> succs_vector(succs(B).begin(), succs(B).end());
+	// The default destination of a switch instruction does not
+	// count as a successor but we want to consider it as a such.
+	if (SwitchInst* SI = dyn_cast<SwitchInst>(B.getTerminator())) {
+	  succs_vector.push_back(SI->getDefaultDest());
+	}
+	
+        for (const BasicBlock *dst : succs_vector) {
           // -- move branch condition in bb to a new block inserted
           //    between bb and dst
-          opt_basic_block_t mid_bb = exec_br(B, *dst);
+          opt_basic_block_t mid_bb = exec_edge(B, *dst);
 
           // -- phi nodes in dst are translated into assignments in
           //    the predecessor
