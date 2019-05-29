@@ -977,11 +977,11 @@ namespace crab_llvm {
     var_t lhs = ref->getVar();
 
     crab_lit_ref_t ref0 = lfac.getLit(v0);
-    if (!(ref0->isInt()))
+    if (!ref0 || !(ref0->isInt()))
     { havoc(lhs,bb); return;}
 
     crab_lit_ref_t ref1 = lfac.getLit(v1);
-    if (!(ref1->isInt()))
+    if (!ref1 || !(ref1->isInt()))
     { havoc(lhs,bb); return;}
     
     lin_exp_t op0 = lfac.getExp(ref0);
@@ -2349,7 +2349,7 @@ namespace crab_llvm {
     }
 
     void visitStoreInst(StoreInst &I) {
-      /* The LLVM store instruction will interpreted as EITHER:
+      /* The LLVM store instruction will be translated to EITHER:
 
 	 a) crab array store, or
 	 b) crab pointer store
@@ -2360,7 +2360,7 @@ namespace crab_llvm {
 	 If the type of the stored value is a pointer then it will be
 	 interpreted as a pointer store.
 
-	 Otherwise, e.g., a store of a floating point, it will
+	 Otherwise, e.g., a store of a floating point or vector type, it will
 	 ignored.
       */
 
@@ -2486,10 +2486,15 @@ namespace crab_llvm {
 	This case is symmetric to StoreInst.
        */
 
+      if (!isTracked(I, m_lfac.get_track())) {
+	return;
+      }
+      
       crab_lit_ref_t lhs = m_lfac.getLit(I);
-
+      assert(lhs);
+      
       if (isa<ConstantExpr>(I.getPointerOperand())) {
-	// We don't handle constant expressions. 
+	// We don't handle constant expressions.
 	havoc(lhs->getVar(), m_bb);
 	return;
       }
@@ -2558,13 +2563,15 @@ namespace crab_llvm {
 	return;
       } 
       
-      if (isTracked(I, m_lfac.get_track())) {
-	havoc(lhs->getVar(), m_bb);
-      }
+      havoc(lhs->getVar(), m_bb);
     }
     
     void visitAllocaInst(AllocaInst &I) {
 
+      if (!isTracked(I, m_lfac.get_track())) {
+	return;
+      }
+      
       if (isPointer(I, m_lfac.get_track())) {
 	crab_lit_ref_t lhs = m_lfac.getLit(I);
 	assert(lhs && lhs->isVar());
