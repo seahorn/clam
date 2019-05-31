@@ -321,7 +321,7 @@ def parseArgs(argv):
                     choices=['none',
                              'dead-code',
                              'block-entry',
-                             'loop-headers',                             
+                             'loop-header',                             
                              'after-load',
                              'all'],
                     dest='insert_inv_loc', default='none')

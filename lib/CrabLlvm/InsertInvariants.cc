@@ -2,9 +2,10 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/CFG.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/DataLayout.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Support/raw_ostream.h"
@@ -124,11 +125,11 @@ struct CodeExpander {
   //! Generate llvm bitcode from a set of linear constraints    
   //  TODO: generate bitcode from disjunctive linear constraints.
   bool gen_code(lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
-		Function* assumeFn, CallGraph* cg,
+		Function* assumeFn, CallGraph* cg, DominatorTree* DT,
 		const Function* insertFun, const Twine &Name = "") {
     bool change = false;
     for (auto cst: csts) {
-      if (Value* cst_code = gen_code(cst, B, ctx, Name)) {
+      if (Value* cst_code = gen_code(cst, B, ctx, DT, Name)) {
 	CallInst *ci =  B.CreateCall(assumeFn, cst_code);
 	// errs() << "Added " << *ci << " with " << *cst_code << "\n";
 	change = true;
@@ -141,10 +142,11 @@ struct CodeExpander {
     }
     return change;
   }
-    
+
   // post: return a value of bool type(Int1Ty) that contains the
   // computation of cst
-  Value* gen_code(lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx, const Twine &Name) {
+  Value* gen_code(lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx,
+		  DominatorTree* DT, const Twine &Name) {
     if (cst.is_tautology()) {    
       return nullptr; // mk_bool(ctx, true);
     }
@@ -153,7 +155,7 @@ struct CodeExpander {
       return mk_bool(ctx, false);
     }
 
-    // infer type from cst
+    // translate only expressions of LLVM integer type
     IntegerType* ty = nullptr;
     for (auto v: cst.variables()) {
       if (!ty) {
@@ -169,36 +171,59 @@ struct CodeExpander {
     if (!ty) {
       return nullptr;
     }
-    
-    auto e = cst.expression() - cst.expression().constant();
-    Value * ee = mk_num(number_t("0"), ty, ctx);
 
-    for (auto t : e) {
-      number_t n  = t.first;
-      if (n == 0) continue; 
+    // more sanity checks before we insert the invariants
+    for (auto t : cst.expression()) {
       varname_t v = t.second.name();
       if (Value * vv = mk_var(v)) {
 	// cst can contain pointer variables representing their offsets.
 	// We ignore them for now.
-	if (!vv->getType()->isIntegerTy())
+	if (!vv->getType()->isIntegerTy()) {
 	  return nullptr;
-	if (n == 1) {
-	  ee = mk_bin_op(ADD, B, ee, vv, Name);
-	} else if (n == -1) {
-	  ee = mk_bin_op(SUB, B, ee, vv, Name);
-	} else {
-	  ee = mk_bin_op(ADD, B, ee, 
-			 mk_bin_op(MUL, B, mk_num(n, ty, ctx), vv, Name), 
-			 Name);
 	}
-      }
-      else
+	if (Instruction* Def = dyn_cast<Instruction>(vv)) {
+	  // check definition of invariant variable dominates the
+	  // block where the invariant will be inserted.
+	  BasicBlock* User = B.GetInsertBlock();
+	  if (Def->getParent() == User && isa<PHINode>(Def)) {
+	    // definition is a PHI node and its user is in the same
+	    // basic block.  Since we only insert invariants after the
+	    // last PHI node, we are ok.
+	    continue;
+	  } else if (DT && !(DT->dominates(Def, User))) {
+	    //llvm::errs() << *Def << " does not dominate its use at block "
+	    //             << User->getName() << "\n";
+	    return nullptr;
+	  }
+	}
+      } else {
 	return nullptr;
+      }
+    }
+
+    
+    auto e = cst.expression() - cst.expression().constant();
+    Value * ee = mk_num(number_t("0"), ty, ctx);
+    for (auto t : e) {
+      number_t n  = t.first;
+      if (n == 0) continue; 
+      varname_t v = t.second.name();
+      Value * vv = mk_var(v);
+      assert(vv);
+      assert(vv->getType()->isIntegerTy());
+      if (n == 1) {
+	ee = mk_bin_op(ADD, B, ee, vv, Name);
+      } else if (n == -1) {
+	ee = mk_bin_op(SUB, B, ee, vv, Name);
+      } else {
+	ee = mk_bin_op(ADD, B, ee, 
+		       mk_bin_op(MUL, B, mk_num(n, ty, ctx), vv, Name), 
+		       Name);
+      }
     }
       
     number_t c = -cst.expression().constant();
     Value* cc = mk_num(c, ty, ctx);
-
     if (cst.is_inequality()) {
       return B.CreateICmpSLE(ee, cc, Name);
     } else if (cst.is_equality()) {
@@ -212,7 +237,8 @@ struct CodeExpander {
 
 //! Instrument basic block entries.
 static bool instrument_block(lin_cst_sys_t csts, llvm::BasicBlock* bb, 
-			     LLVMContext &ctx, CallGraph* cg, Function* assumeFn) {
+			     LLVMContext &ctx, CallGraph* cg, DominatorTree* DT,
+			     Function* assumeFn) {
   
   // If the block is an exit we do not instrument it.
   const ReturnInst *ret = dyn_cast<const ReturnInst>(bb->getTerminator());
@@ -222,7 +248,7 @@ static bool instrument_block(lin_cst_sys_t csts, llvm::BasicBlock* bb,
   Builder.SetInsertPoint(bb->getFirstNonPHI());
   CodeExpander g;
   NumInstrBlocks++;
-  bool res = g.gen_code(csts, Builder, ctx, assumeFn, cg, 
+  bool res = g.gen_code(csts, Builder, ctx, assumeFn, cg, DT,
 			bb->getParent(), "crab_");
   return res;
 }
@@ -238,7 +264,7 @@ static bool instrument_block(lin_cst_sys_t csts, llvm::BasicBlock* bb,
 // invariants at each program point.
 template<typename AbsDomain>
 static bool instrument_loads(AbsDomain inv, basic_block_t& bb,
-			     LLVMContext &ctx, CallGraph* cg, Function* assumeFn) {
+			     LLVMContext &ctx, CallGraph* cg, Function* assumeFn) { 
   // -- it will propagate forward inv through the basic block
   //    but ignoring callsites    
   typedef crab::analyzer::intra_abs_transformer<AbsDomain> abs_tr_t; 
@@ -287,7 +313,7 @@ static bool instrument_loads(AbsDomain inv, basic_block_t& bb,
     Builder.SetInsertPoint(InsertBlk, InsertPt);
     CodeExpander g;
     NumInstrLoads++;
-    change |= g.gen_code(rel_csts, Builder, ctx, assumeFn, cg, 
+    change |= g.gen_code(rel_csts, Builder, ctx, assumeFn, cg, nullptr,
 			 I->getParent()->getParent(), "crab_");
   }
   return change;
@@ -295,7 +321,6 @@ static bool instrument_loads(AbsDomain inv, basic_block_t& bb,
 
 static void removeUnreachableBlock(BasicBlock* BB, LLVMContext& ctx) {
   ++NumDeadBlocks;
-  
   // Loop through all of our successors and make sure they know that one
   // of their predecessors is going away.
   for (BasicBlock *Succ : successors(BB)) {
@@ -394,8 +419,11 @@ bool InsertInvariants::runOnFunction(Function &F) {
   bool change = false;  
   
   cfg_ref_t cfg = crab->get_cfg(F);
-  CallGraphWrapperPass *cgwp =getAnalysisIfAvailable<CallGraphWrapperPass>();
+  CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass>();
   CallGraph* cg = cgwp ? &cgwp->getCallGraph() : nullptr;
+  DominatorTree* DT = ((InvLoc == PER_BLOCK || InvLoc == PER_LOOP || InvLoc == ALL) ?
+		       &(getAnalysis<DominatorTreeWrapperPass>(F).getDomTree()) :
+		       nullptr);
   LLVMContext& ctx = F.getContext();
   std::vector<BasicBlock*> UnreachableBlocks;
   std::vector<std::pair<BasicBlock*, BasicBlock*>> InfeasibleEdges;
@@ -438,12 +466,12 @@ bool InsertInvariants::runOnFunction(Function &F) {
       // --- Instrument basic block with invariants
       if (InvLoc == PER_BLOCK || InvLoc == ALL) {
 	auto csts = pre->to_linear_constraints();
-	change |= instrument_block(csts, &B, F.getContext(), cg, m_assumeFn);
+	change |= instrument_block(csts, &B, F.getContext(), cg, DT, m_assumeFn);
       } else if (InvLoc == PER_LOOP) {
 	LoopInfo& LI = getAnalysis<LoopInfoWrapperPass>(F).getLoopInfo();
 	if (LI.isLoopHeader(&B)) {
 	  auto csts = pre->to_linear_constraints();
-	  change |= instrument_block(csts, &B, F.getContext(), cg, m_assumeFn);
+	  change |= instrument_block(csts, &B, F.getContext(), cg, DT, m_assumeFn);
 	}
       }
     }
@@ -540,6 +568,9 @@ void InsertInvariants::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<UnifyFunctionExitNodes>();
   AU.addRequired<CallGraphWrapperPass>();
   AU.addPreserved<CallGraphWrapperPass>();
+  if (InvLoc == PER_BLOCK || InvLoc == PER_LOOP || InvLoc == ALL) {  
+    AU.addRequired<DominatorTreeWrapperPass>();
+  }  
   if (InvLoc == PER_LOOP) {
     AU.addRequired<LoopInfoWrapperPass>();
   }

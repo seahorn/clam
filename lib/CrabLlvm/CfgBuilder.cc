@@ -977,11 +977,11 @@ namespace crab_llvm {
     var_t lhs = ref->getVar();
 
     crab_lit_ref_t ref0 = lfac.getLit(v0);
-    if (!(ref0->isInt()))
+    if (!ref0 || !(ref0->isInt()))
     { havoc(lhs,bb); return;}
 
     crab_lit_ref_t ref1 = lfac.getLit(v1);
-    if (!(ref1->isInt()))
+    if (!ref1 || !(ref1->isInt()))
     { havoc(lhs,bb); return;}
     
     lin_exp_t op0 = lfac.getExp(ref0);
@@ -2349,7 +2349,7 @@ namespace crab_llvm {
     }
 
     void visitStoreInst(StoreInst &I) {
-      /* The LLVM store instruction will interpreted as EITHER:
+      /* The LLVM store instruction will be translated to EITHER:
 
 	 a) crab array store, or
 	 b) crab pointer store
@@ -2360,7 +2360,7 @@ namespace crab_llvm {
 	 If the type of the stored value is a pointer then it will be
 	 interpreted as a pointer store.
 
-	 Otherwise, e.g., a store of a floating point, it will
+	 Otherwise, e.g., a store of a floating point or vector type, it will
 	 ignored.
       */
 
@@ -2486,10 +2486,15 @@ namespace crab_llvm {
 	This case is symmetric to StoreInst.
        */
 
+      if (!isTracked(I, m_lfac.get_track())) {
+	return;
+      }
+      
       crab_lit_ref_t lhs = m_lfac.getLit(I);
-
+      assert(lhs);
+      
       if (isa<ConstantExpr>(I.getPointerOperand())) {
-	// We don't handle constant expressions. 
+	// We don't handle constant expressions.
 	havoc(lhs->getVar(), m_bb);
 	return;
       }
@@ -2558,13 +2563,15 @@ namespace crab_llvm {
 	return;
       } 
       
-      if (isTracked(I, m_lfac.get_track())) {
-	havoc(lhs->getVar(), m_bb);
-      }
+      havoc(lhs->getVar(), m_bb);
     }
     
     void visitAllocaInst(AllocaInst &I) {
 
+      if (!isTracked(I, m_lfac.get_track())) {
+	return;
+      }
+      
       if (isPointer(I, m_lfac.get_track())) {
 	crab_lit_ref_t lhs = m_lfac.getLit(I);
 	assert(lhs && lhs->isVar());
@@ -3004,17 +3011,19 @@ namespace crab_llvm {
       
       // -- process the exit block of the function and its returned value.
       if (ReturnInst *RI = dyn_cast<ReturnInst>(B.getTerminator())) {
-	if (ret_block)
-	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first",__FILE__, __LINE__);
+	if (ret_block) {
+	  //UnifyFunctionExitNodes ensures *at most* one return
+	  //instruction per function.
+	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first",
+			 __FILE__, __LINE__);
+	}
 	
         basic_block_t &bb = *BB;
         ret_block = &bb;
 	m_cfg->set_exit(ret_block->label());
-
 	if (has_seahorn_fail) {
 	  ret_block->assertion(lin_cst_t::get_false(), getDebugLoc(RI));	  
 	}
-	
 	if (m_is_inter_proc) {
 	  if (Value * RV = RI->getReturnValue()) {
 	    if (isTracked(*RV, m_lfac.get_track())) {
@@ -3023,7 +3032,6 @@ namespace crab_llvm {
 	    }
 	  }
 	}
-	
       } else {
 	std::vector<const BasicBlock*> succs_vector(succs(B).begin(), succs(B).end());
 	// The default destination of a switch instruction does not
@@ -3031,7 +3039,6 @@ namespace crab_llvm {
 	if (SwitchInst* SI = dyn_cast<SwitchInst>(B.getTerminator())) {
 	  succs_vector.push_back(SI->getDefaultDest());
 	}
-	
         for (const BasicBlock *dst : succs_vector) {
           // -- move branch condition in bb to a new block inserted
           //    between bb and dst
@@ -3231,7 +3238,6 @@ namespace crab_llvm {
     }
 
     if (m_cfg->has_exit()) {
-      #if 1
       // -- Connect all sink blocks with an unreachable instruction to
       //    the exit block.  For a forward analysis this doesn't have
       //    any impact since unreachable becomes bottom anyway.
@@ -3254,18 +3260,53 @@ namespace crab_llvm {
 	  }
 	}
       }
-      #endif 
     } else {
-      // If there is no exit block so far, we search for the first
-      // block without successors.
-      // XXX: we won't have an exit block with programs like this:
+      // We did not find an exit block yet:
+
+      // (1) search for this pattern:
       //   entry: goto loop;
       //    loop: goto loop;
-      for (auto &B: m_func) {
-	if (opt_basic_block_t b = lookup(B)) {
-	  auto it_pair = (*b).next_blocks();
-	  if (it_pair.first == it_pair.second) {
-	    m_cfg->set_exit((*b).label());
+      BasicBlock& entry = m_func.getEntryBlock();
+      auto entry_next = succs(entry);
+      if (std::distance(entry_next.begin(), entry_next.end()) == 1) {
+	const BasicBlock* succ = *(entry_next.begin());
+	auto succ_next = succs(*succ);
+	if (std::distance(succ_next.begin(), succ_next.end()) == 1) {
+	  if ((*(succ_next.begin())) == succ) {
+	    if (opt_basic_block_t exit = lookup(*succ)) {
+	      m_cfg->set_exit((*exit).label());
+	    }
+	  }
+	}
+      }
+
+      if (!m_cfg->has_exit()) {
+	// (2) We check if there is a block with an unreachable
+	// instruction. The pass UnifyFunctionExitNodes ensures that
+	// there is at most one unreachable instruction.
+	for (auto &B: m_func) {
+	  for (auto &I: B) {
+	    if (isa<UnreachableInst>(I)) {
+	      if (opt_basic_block_t b = lookup(B)) {
+		m_cfg->set_exit((*b).label());
+		break;
+	      }
+	    }
+	  }
+	  if (m_cfg->has_exit()) {
+	    break;
+	  }
+	}
+      }
+
+      if (!m_cfg->has_exit()) {
+	// (3) Search for the first block without successors.
+	for (auto &B: m_func) {
+	  if (opt_basic_block_t b = lookup(B)) {
+	    auto it_pair = (*b).next_blocks();
+	    if (it_pair.first == it_pair.second) {
+	      m_cfg->set_exit((*b).label());
+	    }
 	  }
 	}
       }
