@@ -369,12 +369,19 @@ static void removeInfeasibleEdge(BasicBlock* BB, BasicBlock* Succ) {
       TI->eraseFromParent();
       
       // Fix phi nodes of the successor.
+      std::vector<std::pair<PHINode*, unsigned>> PHIValues;      
       for (PHINode& PHI: Succ->phis()) {
 	for (unsigned i=0,e=PHI.getNumIncomingValues();i<e;++i) {
 	  if (PHI.getIncomingBlock(i) == BB) {
-	    PHI.removeIncomingValue(i);
+	    PHIValues.push_back({&PHI, i});
 	  }
 	}
+      }
+      
+      for (auto& p: PHIValues) {
+	PHINode* PHI = p.first;
+	unsigned i = p.second;
+	PHI->removeIncomingValue(i);
       }
     }
   }
