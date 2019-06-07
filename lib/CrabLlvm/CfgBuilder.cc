@@ -232,7 +232,7 @@ namespace crab_llvm {
   }
     
   static bool isTracked(const llvm::Value &v,
-			 const crab::cfg::tracked_precision tracklev) {
+			const crab::cfg::tracked_precision tracklev) {
     // -- ignore any shadow variable created by seahorn
     if (v.getName().startswith("shadow.mem")) 
       return false;
@@ -244,7 +244,24 @@ namespace crab_llvm {
     // -- always track integer and boolean registers
     return v.getType()->isIntegerTy();
   }
-  
+
+  /*
+    We can have cases where the callsite has a return value but the
+    function actually does not return any value. Because of that, we
+    check first the noreturn attribute of the function. Note that if a
+    noreturn function actually returns it is undefined behavior.
+  */
+  static bool DoesCallSiteReturn(llvm::CallInst& I,
+				 const crab::cfg::tracked_precision tracklev) {
+    bool non_void_tracked_ret = (!I.getType()->isVoidTy() && isTracked(I, tracklev));
+    llvm::CallSite CS(&I);
+    if (llvm::Function* Callee = CS.getCalledFunction()) {
+      return (!(Callee->doesNotReturn()) && non_void_tracked_ret);
+    } else {
+      return non_void_tracked_ret;
+    }
+  }
+
   // Convenient wrapper for a LLVM variable or constant
   class crabLit {
   public:
@@ -2636,7 +2653,7 @@ namespace crab_llvm {
 	  // -- unresolved indirect call
 	  CRABLLVM_WARNING("skipped indirect call. Enabling --devirt-functions might help.");
 	  
-	  if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_lfac.get_track())) {
 	    // havoc return value
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
@@ -2670,7 +2687,7 @@ namespace crab_llvm {
         if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I)) {
           doMemIntrinsic(*MI);
         } else {
-	  if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_lfac.get_track())) {
 	    // -- havoc return value of the intrinsics
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
@@ -2689,7 +2706,7 @@ namespace crab_llvm {
 	 **/      
 	
         // -- havoc return value
-        if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+        if (DoesCallSiteReturn(I, m_lfac.get_track())) {
 	  crab_lit_ref_t lhs = m_lfac.getLit(I);
 	  assert(lhs && lhs->isVar());
 	  havoc(lhs->getVar(), m_bb);
@@ -2737,7 +2754,7 @@ namespace crab_llvm {
       }
       
       // -- add the return value of the llvm calliste: o
-      if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+      if (DoesCallSiteReturn(I, m_lfac.get_track())) {
 	crab_lit_ref_t ret = m_lfac.getLit(I);
 	assert(ret && ret->isVar());
 	outputs.push_back(ret->getVar());
