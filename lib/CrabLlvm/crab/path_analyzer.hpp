@@ -61,7 +61,8 @@ namespace analyzer {
     void minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
 		       unsigned bottom_stmt);
     bool remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& path,
-				      unsigned bottom_stmt);
+				      unsigned bottom_stmt,
+				      bool only_data_dependencies);
     bool solve_path(const std::vector<basic_block_label_t>& path,
 		    const bool only_bool_reasoning,
 		    std::vector<typename crab::cfg::statement_wrapper>& stmts,
