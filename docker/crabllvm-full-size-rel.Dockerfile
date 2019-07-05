@@ -2,7 +2,7 @@
 # Dockerfile for CrabLlvm binary
 # produces package in /crabllvm/build
 # Arguments:
-#  - UBUNTU:     trusty, xenial
+#  - UBUNTU:     trusty, xenial, bionic
 #  - BUILD_TYPE: debug, release
 #
 
