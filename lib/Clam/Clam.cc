@@ -20,6 +20,7 @@
 #include "llvm/Support/Debug.h"
 
 #include "clam/config.h"
+#define TOP_DOWN_INTER_ANALYSIS // TODO: move to cmake
 #include "clam/AbstractDomain.hh"
 #include "clam/Clam.hh"
 #include "clam/CfgBuilder.hh"
@@ -39,7 +40,11 @@
 #include "crab/common/stats.hpp"
 #include "crab/analysis/fwd_analyzer.hpp"
 #include "crab/analysis/bwd_analyzer.hpp"
-#include "crab/analysis/inter_fwd_analyzer.hpp"
+#ifdef TOP_DOWN_INTER_ANALYSIS
+#include "crab/analysis/inter/top_down_inter_analyzer.hpp"
+#else
+#include "crab/analysis/inter/bottom_up_inter_analyzer.hpp"
+#endif 
 #include "crab/analysis/dataflow/liveness.hpp"
 #include "crab/analysis/dataflow/assumptions.hpp"
 #include "crab/checkers/assertion.hpp"
@@ -967,8 +972,33 @@ namespace clam {
     template<typename BUDom, typename TDDom>
     void analyzeCg(const AnalysisParams &params,
 		   AnalysisResults &results) {
-      
-      typedef inter_fwd_analyzer<call_graph_ref_t, BUDom, TDDom> inter_analyzer_t;
+
+#ifdef TOP_DOWN_INTER_ANALYSIS
+      CRAB_VERBOSE_IF(1, 
+ 		      crab::get_msg_stream() << "Running top-down inter-procedural analysis " 
+		                             << "with domain:" 
+		                             << "\"" << TDDom::getDomainName() << "\""
+		                             << "  ...\n";);
+
+      typedef top_down_inter_analyzer<call_graph_ref_t, TDDom> inter_analyzer_t;
+      typedef top_down_inter_analyzer_parameters<call_graph_ref_t> inter_params_t;      
+
+      inter_params_t inter_params;
+      inter_params.run_checker = params.check;
+      inter_params.checker_verbosity  = params.check_verbose;
+      inter_params.minimize_invariants = true;
+      inter_params.max_call_contexts = params.max_calling_contexts;
+      inter_params.live_map = (params.run_liveness ? &m_live_map : nullptr);
+      inter_params.widening_delay = params.widening_delay;
+      inter_params.descending_iters = params.narrowing_iters;
+      inter_params.thresholds_size = params.widening_jumpset;
+      inter_analyzer_t analyzer(*m_cg, inter_params);
+      analyzer.run(TDDom::top());
+      if (inter_params.run_checker) {
+	results.checksdb += analyzer.get_all_checks();
+      }
+#else      
+      typedef bottom_up_inter_analyzer<call_graph_ref_t, BUDom, TDDom> inter_analyzer_t;
       typedef inter_checker<inter_analyzer_t> inter_checker_t;
       typedef assert_property_checker<inter_analyzer_t> assert_prop_t;
       //typedef null_property_checker<inter_analyzer_t> null_prop_t;
@@ -986,6 +1016,7 @@ namespace clam {
 				params.narrowing_iters, 
 				params.widening_jumpset);
       analyzer.run(TDDom::top());
+#endif
     
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished inter-procedural analysis.\n");
       
@@ -1050,19 +1081,22 @@ namespace clam {
 	      pretty_printer_impl::print_annotations(cfg, annotations);	    
 	    }
 	  }
-	  
+
+#ifndef TOP_DOWN_INTER_ANALYSIS	  
 	  // Summaries are not currently stored but it would be easy to do so.	    
 	  if (params.print_summaries && analyzer.has_summary(cfg)) {
 	    auto summ = analyzer.get_summary(cfg);
 	    crab::outs() << "SUMMARY " << *summ << "\n";
 	  }
+#endif 	  
 	}
       }
       
       if (params.store_invariants || params.print_invars) {	
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "All invariants stored.\n");
       }
-      
+
+#ifndef TOP_DOWN_INTER_ANALYSIS      
       // --- checking assertions and collecting data
       if (params.check) {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Checking assertions ... \n"); 
@@ -1076,6 +1110,7 @@ namespace clam {
 	results.checksdb += checker.get_all_checks();
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished assert checking.\n"); 
       }
+#endif       
       return;
     }
 
@@ -1271,6 +1306,8 @@ namespace clam {
     m_params.dom = ClamDomain;
     m_params.sum_dom = CrabSummDomain;
     m_params.run_backward = CrabBackward;
+    m_params.run_inter = CrabInter;
+    m_params.max_calling_contexts = CrabInterMaxContexts;
     m_params.run_liveness = CrabLive;
     m_params.relational_threshold = CrabRelationalThreshold;
     m_params.widening_delay = CrabWideningDelay;

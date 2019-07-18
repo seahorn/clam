@@ -22,6 +22,7 @@ namespace clam {
 }
 
 namespace clam {
+
   using edges_set = std::set<std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>>;
   
   /**
