@@ -1794,7 +1794,7 @@ namespace crab_llvm {
 	  if (isInteger(ty) || isBool(ty)) {
 	    if (m_init_regions.insert(r).second) {	      	    
 	      IntegerType* int_ty = cast<IntegerType>(ty);
-	      ub_idx = ikos::z_number((int_ty->getBitWidth() / 8) -1);
+	      ub_idx = (isBool(ty) ? 0 : ikos::z_number((int_ty->getBitWidth() / 8) -1));
 	      m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
 	    }
 	  } else if (isIntArray(*ty) || isBoolArray(*ty)) {

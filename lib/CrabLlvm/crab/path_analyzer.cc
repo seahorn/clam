@@ -12,6 +12,12 @@ namespace analyzer {
 static bool do_sanity_check = true;
 static bool do_debugging = false;
 static bool only_syntactic_core = false;
+// remove irrelevant constraints in two phases: first, by considering
+// only data dependencies. This usually creates small set of
+// statements but they might not imply bottom. If not, then we ignore
+// them and try again but this time considering both data and control
+// dependencies.
+static bool speculative_only_data = true;
 
 template<typename CFG, typename AbsDom>
 path_analyzer<CFG,AbsDom>::path_analyzer(CFG cfg, AbsDom init)
@@ -168,7 +174,8 @@ bool path_analyzer<CFG,AbsDom>::has_kid(basic_block_label_t b1, basic_block_labe
 template<typename CFG, typename AbsDom>    
 bool path_analyzer<CFG,AbsDom>::
 remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core,
-			     unsigned bottom_stmt) {
+			     unsigned bottom_stmt,
+			     bool only_data_dependencies) {
   typedef typename CFG::basic_block_t::assume_t assume_t;
   typedef typename CFG::basic_block_t::bool_assume_t bool_assume_t;
 
@@ -266,10 +273,18 @@ remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core,
     { uses += v; }
     for (auto v: boost::make_iterator_range(ls.defs_begin(), ls.defs_end()))
     { defs += v; }
-    if (defs.is_bottom() && !uses.is_bottom() && !(uses & d).is_bottom ()) {
-      d += uses;
-      enabled[i] = true;
+
+    
+    if (defs.is_bottom() && !uses.is_bottom()) {
+      // control and data dependencies
+      if (!only_data_dependencies || !(uses & d).is_bottom()) {
+	d += uses;
+	enabled[i] = true;
+      } else {
+	// irrelevant statement
+      }
     } else if (!(d & defs).is_bottom()) {
+      // data dependencies
       d -= defs;
       d += uses;
       enabled[i] = true;
@@ -312,21 +327,50 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
   
   if (only_syntactic_core) {
     /* only syntactic */
-    remove_irrelevant_statements(core, bottom_stmt);
+    remove_irrelevant_statements(core, bottom_stmt, false /*data+control dependencies*/);
     m_core.clear();
     m_core.insert(m_core.end(), core.begin(), core.end());
   } else {
     /* syntactic + semantic */
-    
+
     // Remove first syntactically irrelevant statements wrt to the last
     // statement which should be an assume statement where bottom was
     // first inferred.
-    
-    if (remove_irrelevant_statements(core, bottom_stmt)) {
-      // the path contains "assume(false)"
-      m_core.clear();
-      m_core.insert(m_core.end(), core.begin(), core.end());
-      return;
+    bool only_data = speculative_only_data;
+    for (unsigned i=0; i < 2; ++i) {
+      if (i==1) {
+	core.assign(path.begin(), path.end());
+      }
+      
+      if (remove_irrelevant_statements(core, bottom_stmt, only_data)) {
+	// the path contains "assume(false)"
+	m_core.clear();
+	m_core.insert(m_core.end(), core.begin(), core.end());
+	return;
+      }
+
+      if (only_data) {
+	// check that what we get still implies bottom: it might not
+	// imply bottom because we only considered data dependencies.
+	AbsDom inv;
+	fwd_abs_tr_t abs_tr(&inv);        
+	bool is_bottom = false;
+	for (unsigned i=0, e=core.size(); i<e; ++i) {
+	  core[i].m_s->accept (&abs_tr);
+	  if (inv.is_bottom()) {
+	    is_bottom=true;
+	    break;
+	  }
+	}
+	if (is_bottom) {
+	  break;
+	} else {
+	  // try next iteration considering data+control dependencies.
+	  only_data = false;
+	}
+      } else {
+	break;
+      }
     }
     
     std::vector<bool> enabled(core.size(), true);
@@ -345,8 +389,8 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
 	enabled[i] = false;
       }
     }
-
-
+      
+    
     if (do_debugging) {
       crab::outs() << "SEMANTIC UNSAT CORE PATH:\n"; 
     }
@@ -360,26 +404,26 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
 	}
       }
     }
-  }
   
-  // sanity checks  
-  if (m_core.empty()) {
-    CRAB_ERROR("Abstract core cannot be empty");
-  }
-  
-  if (do_sanity_check) { 
-    AbsDom inv;
-    fwd_abs_tr_t abs_tr(&inv);        
-    bool is_bottom = false;
-    for (unsigned i=0, e=m_core.size(); i<e; ++i) {
-      m_core[i].m_s->accept (&abs_tr);
-      if (inv.is_bottom()) {
-	is_bottom=true;
-	break;
+    
+    // sanity checks  
+    if (do_sanity_check) {
+      if (m_core.empty()) {
+	CRAB_ERROR("Abstract core cannot be empty");
       }
-    }
-    if (!is_bottom) {
-      CRAB_ERROR("Abstract core is not unsat!");
+      AbsDom inv;
+      fwd_abs_tr_t abs_tr(&inv);        
+      bool is_bottom = false;
+      for (unsigned i=0, e=m_core.size(); i<e; ++i) {
+	m_core[i].m_s->accept (&abs_tr);
+	if (inv.is_bottom()) {
+	  is_bottom=true;
+	  break;
+	}
+      }
+      if (!is_bottom) {
+	CRAB_ERROR("Abstract core is not unsat!");
+      }
     }
   }
 }
