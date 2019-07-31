@@ -18,8 +18,8 @@ namespace crab_llvm
       //  AU.setPreservesAll ();
     }
     
-    virtual const char * getPassName() const {
-      return "Remove unreachable blocks";
+    virtual StringRef getPassName() const {
+      return "CrabLlvm: Remove unreachable blocks";
     }
 
   };

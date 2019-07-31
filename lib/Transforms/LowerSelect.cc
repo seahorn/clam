@@ -18,11 +18,9 @@ namespace crab_llvm
 
   //STATISTIC(totalLowered, "Number of Lowered Select Instructions");
 
-  class LowerSelect: public FunctionPass 
-  {
+  class LowerSelect: public FunctionPass  {
     // Lower the select instruction into three new blocks.
-    void processSelectInst(SelectInst *SI)
-    {
+    void processSelectInst(SelectInst *SI) {
       
       BasicBlock *curBlk = SI->getParent();
       Function   *F      = curBlk->getParent();
@@ -81,30 +79,23 @@ namespace crab_llvm
 
     LowerSelect(): FunctionPass(ID){ }    
 
-    virtual bool runOnFunction(Function &F)
-    {
+    virtual bool runOnFunction(Function &F) {
+      bool modified=false;
       
       std::vector<SelectInst *> worklist;
-      bool modified=false;
       // Initialization of the worklist with all select instructions from
       // the function
-      for (inst_iterator It = inst_begin(F), E = inst_end(F); It != E; ++It)
-      {
+      for (inst_iterator It = inst_begin(F), E = inst_end(F); It != E; ++It) {
         Instruction *inst = &*It;
-        if (SelectInst * SI = dyn_cast<SelectInst>(inst)) 
-        {
-          if (!(SI->getCondition()->getType()->isIntegerTy(1)))
-          {
-            dbgs () << "We only lower a select if the flag is Boolean.\n";
-            // note that the flag can be a vector of Boolean
-            assert(false);
-          }
-          worklist.push_back(SI);
+        if (SelectInst * SI = dyn_cast<SelectInst>(inst)) {
+          if (SI->getCondition()->getType()->isIntegerTy(1)) {
+	    // we ignore vector operations
+	    worklist.push_back(SI);
+	  }
         }
       } 
       
-      while (!worklist.empty()) 
-      {
+      while (!worklist.empty())  {
         modified=true;
         SelectInst * SI = worklist.back();
         worklist.pop_back();
@@ -114,8 +105,8 @@ namespace crab_llvm
       return modified;
     }
         
-    virtual const char * getPassName() const {
-      return "Lower select instructions";
+    virtual StringRef getPassName() const {
+      return "CrabLlvm: Lower select instructions";
     }
 
     virtual void getAnalysisUsage (AnalysisUsage &AU) const {

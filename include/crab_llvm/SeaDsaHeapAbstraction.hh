@@ -1,6 +1,9 @@
 #pragma once
 
 #include "crab_llvm/config.h"
+
+#ifdef HAVE_SEA_DSA
+
 #include "crab_llvm/HeapAbstraction.hh"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -17,6 +20,7 @@ namespace llvm {
   class DataLayout;
   class CallGraph;
   class TargetLibraryInfo;
+  class AllocWrapInfo;
 }
 
 namespace crab_llvm {
@@ -62,6 +66,7 @@ namespace crab_llvm {
     SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& cg,
 			  const llvm::DataLayout& dl,
 			  const llvm::TargetLibraryInfo& tli,
+			  const sea_dsa::AllocWrapInfo& alloc_wrap_info,
 			  bool is_context_sensitive,
 			  bool disambiguate_unknown  = false,
 			  bool disambiguate_ptr_cast = false,
@@ -111,3 +116,4 @@ namespace crab_llvm {
   };
 
 } // end namespace crab_llvm
+#endif  /*HAVE_SEA_DSA*/

@@ -91,8 +91,8 @@ namespace crab_llvm {
       //AU.setPreservesAll ();
     }
 
-    virtual const char * getPassName() const {
-      return "Lower constant expressions";
+    virtual StringRef getPassName() const {
+      return "CrabLlvm: Lower constant expressions";
     }
     
   };

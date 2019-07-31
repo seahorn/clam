@@ -1,5 +1,6 @@
-// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-dom=int --crab-widening-delay=2 --crab-check=assert --crab-sanity-checks "%s"  2>&1 | OutputCheck %s
-// CHECK: ^2  Number of total safe checks$
+// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-dom=int --crab-widening-delay=3 --crab-check=assert "%s"  2>&1 | OutputCheck %s
+
+// CHECK: ^3  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
 
@@ -10,7 +11,7 @@ extern void __CRAB_assert(int);
 int e=0;
 int s=2;  
 
-// we should get e=[0,2] and s=[2,5] with thresholds or without applying widening
+// we should get e=[0,2] and s=[2,5] with thresholds or widening delay  > 2
 // we should get e=[0,+oo] and s=[2,5] otherwise
 
 int main () {

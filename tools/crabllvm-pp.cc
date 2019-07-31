@@ -18,7 +18,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 
 #include "crab_llvm/config.h"
@@ -60,14 +60,29 @@ Devirtualize("crab-devirt",
               llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-LowerSelect("crab-lower-select",
-	     llvm::cl::desc("Lower all select instructions"),
-             llvm::cl::init(false));
-
-static llvm::cl::opt<bool>
 LowerGv("crab-lower-gv",
 	 llvm::cl::desc("Lower global initializers in main"),
 	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerInvoke("crab-lower-invoke",
+	 llvm::cl::desc("Lower invoke instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerCstExpr("crab-lower-constant-expr",
+	 llvm::cl::desc("Lower constant expressions to instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerSwitch("crab-lower-switch",
+	 llvm::cl::desc("Lower switch instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerSelect("crab-lower-select",
+	     llvm::cl::desc("Lower all select instructions"),
+             llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
 ExternalizeAddrTakenFuncs("crab-externalize-addr-taken-funcs", 
@@ -89,23 +104,6 @@ TurnUndefNondet("crab-turn-undef-nondet",
                  llvm::cl::desc("Turn undefined behaviour into non-determinism"),
                  llvm::cl::init(false));
 
-static llvm::cl::opt<int>
-SROA_Threshold("sroa-threshold",
-                llvm::cl::desc("Threshold for ScalarReplAggregates pass"),
-                llvm::cl::init(INT_MAX));
-static llvm::cl::opt<int>
-SROA_StructMemThreshold("sroa-struct",
-                llvm::cl::desc("Structure threshold for ScalarReplAggregates"),
-                llvm::cl::init(INT_MAX));
-static llvm::cl::opt<int>
-SROA_ArrayElementThreshold("sroa-array",
-                llvm::cl::desc("Array threshold for ScalarReplAggregates"),
-                llvm::cl::init(INT_MAX));
-static llvm::cl::opt<int>
-SROA_ScalarLoadThreshold("sroa-scalar-load",
-                llvm::cl::desc("Scalar load threshold for ScalarReplAggregates"),
-                llvm::cl::init(-1));
-
 // removes extension from filename if there is one
 std::string getFileName(const std::string &str) {
   std::string filename = str;
@@ -115,25 +113,20 @@ std::string getFileName(const std::string &str) {
   return filename;
 }
 
-void break_allocas(llvm::legacy::PassManager &pass_manager) {
-    #ifdef HAVE_LLVM_SEAHORN
-    // -- can remove bitcast from bitcast(alloca(...))
-    pass_manager.add(llvm_seahorn::createInstructionCombiningPass());
-    #endif     
-    pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
-    // -- break alloca's into scalars
-    pass_manager.add(llvm::createScalarReplAggregatesPass
-    		     (SROA_Threshold,
-    		       true,
-    		       SROA_StructMemThreshold,
-    		       SROA_ArrayElementThreshold,
-    		       SROA_ScalarLoadThreshold));
-    #ifdef HAVE_LLVM_SEAHORN
-    if (TurnUndefNondet) {
-      // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
-      pass_manager.add(llvm_seahorn::createNondetInitPass());
-    }
-    #endif
+void breakAllocas(llvm::legacy::PassManager &pass_manager) {
+  #ifdef HAVE_LLVM_SEAHORN
+  // -- can remove bitcast from bitcast(alloca(...))
+  pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
+  #endif     
+  pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
+  // -- break alloca's into scalars
+  pass_manager.add(llvm::createSROAPass());    
+  #ifdef HAVE_LLVM_SEAHORN
+  if (TurnUndefNondet) {
+    // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
+    pass_manager.add (llvm_seahorn::createNondetInitPass ());
+  }
+  #endif
 }
 
 int main(int argc, char **argv) {
@@ -141,13 +134,13 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv,
   "crabllvm-pp-- LLVM bitcode Pre-Processor for static analysis\n");
 
-  llvm::sys::PrintStackTraceOnErrorSignal();
+  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::PrettyStackTraceProgram PSTP(argc, argv);
   llvm::EnableDebugBuffering = true;
 
   std::error_code error_code;
   llvm::SMDiagnostic err;
-  llvm::LLVMContext &context = llvm::getGlobalContext();
+  static llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module;
   std::unique_ptr<llvm::tool_output_file> output;
   std::unique_ptr<llvm::tool_output_file> asmOutput;
@@ -198,16 +191,17 @@ int main(int argc, char **argv) {
   llvm::legacy::PassManager pass_manager;
   llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
   llvm::initializeAnalysis(Registry);
-  
+
   /// call graph and other IPA passes
-  //llvm::initializeIPA (Registry);
-  // XXX: porting to 3.8 
+  // llvm::initializeIPA (Registry);
+  // XXX: porting to 3.8
   llvm::initializeCallGraphWrapperPassPass(Registry);
-  llvm::initializeCallGraphPrinterPass(Registry);
+  // XXX: commented while porting to 5.0    
+  //llvm::initializeCallGraphPrinterPass(Registry);
   llvm::initializeCallGraphViewerPass(Registry);
   // XXX: not sure if needed anymore
-  llvm::initializeGlobalsAAWrapperPassPass(Registry);  
-    
+  llvm::initializeGlobalsAAWrapperPassPass(Registry);
+      
   // add an appropriate DataLayout instance for the module
   const llvm::DataLayout *dl = &module->getDataLayout();
   if (!dl && !DefaultDataLayout.empty())
@@ -223,12 +217,16 @@ int main(int argc, char **argv) {
 
   // -- turn all functions internal so that we can apply some global
   // -- optimizations inline them if requested
-  pass_manager.add(llvm::createInternalizePass(llvm::ArrayRef<const char*>("main")));
-
+  auto PreserveMain = [=](const llvm::GlobalValue &GV) {
+    return GV.getName() == "main";
+  };    
+  pass_manager.add(llvm::createInternalizePass(PreserveMain));
+  
   if (Devirtualize) {
-    // -- resolve indirect calls
+    // -- resolve indirect calls 
     pass_manager.add(crab_llvm::createDevirtualizeFunctionsPass());
   }
+  
   
  if (ExternalizeAddrTakenFuncs) {
     // -- externalize uses of address-taken functions
@@ -259,22 +257,8 @@ int main(int argc, char **argv) {
   #ifdef HAVE_LLVM_SEAHORN
   pass_manager.add(llvm_seahorn::createInstructionCombiningPass());
   #endif 
-  pass_manager.add(llvm::createCFGSimplificationPass());
-  break_allocas(pass_manager);
-  // // -- break aggregates
-  // pass_manager.add(llvm::createScalarReplAggregatesPass
-  // 		    (SROA_Threshold,
-  // 		     true,
-  // 		     SROA_StructMemThreshold,
-  // 		     SROA_ArrayElementThreshold,
-  // 		     SROA_ScalarLoadThreshold));
-  
-  // #ifdef HAVE_LLVM_SEAHORN
-  // if (TurnUndefNondet) {
-  //    // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
-  //    pass_manager.add(llvm_seahorn::createNondetInitPass());
-  // }
-  // #endif
+  pass_manager.add (llvm::createCFGSimplificationPass ());
+  breakAllocas(pass_manager);
 
   // -- global value numbering and redundant load elimination
   pass_manager.add(llvm::createGVNPass());
@@ -292,14 +276,16 @@ int main(int argc, char **argv) {
   }
   #endif 
 
-  // -- lower invoke's
-  pass_manager.add(llvm::createLowerInvokePass());
-  // cleanup after lowering invoke's
-  pass_manager.add(llvm::createCFGSimplificationPass());  
+  if (LowerInvoke) {
+    // -- lower invoke's
+    pass_manager.add(llvm::createLowerInvokePass());
+    // cleanup after lowering invoke's
+    pass_manager.add(llvm::createCFGSimplificationPass());
+  }
   
   if (InlineAll) {
-    pass_manager.add(crab_llvm::createMarkInternalInlinePass());   
-    pass_manager.add(llvm::createAlwaysInlinerPass());
+    pass_manager.add (crab_llvm::createMarkInternalInlinePass ());   
+    pass_manager.add (llvm::createAlwaysInlinerLegacyPass ());
     // // after inlining we promote malloc to alloca instructions
     // pass_manager.add(crab_llvm::createPromoteMallocPass());    
     // // kill unused internal global    
@@ -310,8 +296,8 @@ int main(int argc, char **argv) {
     pass_manager.add(llvm::createGlobalDCEPass()); // kill unused internal global
     // XXX: for svcomp ssh programs we need to run twice to break all
     // relevant allocas
-    break_allocas(pass_manager);
-    break_allocas(pass_manager);
+    breakAllocas(pass_manager);
+    breakAllocas(pass_manager);
   }
   
   pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
@@ -326,19 +312,18 @@ int main(int argc, char **argv) {
     pass_manager.add(llvm::createLCSSAPass());
     #ifdef HAVE_LLVM_SEAHORN
     // induction variable
-    pass_manager.add(llvm_seahorn::createIndVarSimplifyPass());
-    #endif 
+    pass_manager.add (llvm_seahorn::createIndVarSimplifyPass ());
+    #endif
+    // trivial invariants outside loops 
+    pass_manager.add (llvm::createBasicAAWrapperPass());
+    pass_manager.add (llvm::createLICMPass()); //LICM needs alias analysis
+    pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
+    // dead loop elimination
+    pass_manager.add (llvm::createLoopDeletionPass());
+    // cleanup unnecessary blocks   
+    pass_manager.add (llvm::createCFGSimplificationPass ()); 
   }
-
-  // trivial invariants outside loops 
-  pass_manager.add(llvm::createBasicAAWrapperPass());
-  pass_manager.add(llvm::createLICMPass()); //LICM needs alias analysis
-  pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
-  // dead loop elimination
-  pass_manager.add(llvm::createLoopDeletionPass());
-  // cleanup unnecessary blocks   
-  pass_manager.add(llvm::createCFGSimplificationPass()); 
-  
+    
   // -- ensure one single exit point per function
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
   pass_manager.add(llvm::createGlobalDCEPass()); 
@@ -346,15 +331,19 @@ int main(int argc, char **argv) {
   // -- remove unreachable blocks also dead cycles
   pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
 
-  // -- remove switch constructions
-  pass_manager.add(llvm::createLowerSwitchPass());
-  // cleanup unnecessary blocks     
-  pass_manager.add(llvm::createCFGSimplificationPass());  
-  
-  // -- lower constant expressions to instructions
-  pass_manager.add(crab_llvm::createLowerCstExprPass());   
-  pass_manager.add(llvm::createDeadCodeEliminationPass());
+  if (LowerSwitch) {
+    // -- remove switch constructions
+    pass_manager.add(llvm::createLowerSwitchPass());
+    // cleanup unnecessary blocks     
+    pass_manager.add(llvm::createCFGSimplificationPass());
+  }
 
+  if (LowerCstExpr) {
+    // -- lower constant expressions to instructions
+    pass_manager.add(crab_llvm::createLowerCstExprPass());   
+    pass_manager.add(llvm::createDeadCodeEliminationPass());
+  }
+  
   // -- lower ULT and ULE instructions  
   if(LowerUnsignedICmp) {
     pass_manager.add(crab_llvm::createLowerUnsignedICmpPass());   
@@ -364,8 +353,9 @@ int main(int argc, char **argv) {
   }
   
   // -- must be the last one to avoid llvm undoing it
-  if (LowerSelect)
-    pass_manager.add(crab_llvm::createLowerSelectPass());   
+  if (LowerSelect) {
+    pass_manager.add(crab_llvm::createLowerSelectPass());
+  }
 
   if(!AsmOutputFilename.empty()) 
     pass_manager.add(createPrintModulePass(asmOutput->os()));

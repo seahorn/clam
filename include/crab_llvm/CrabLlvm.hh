@@ -24,6 +24,9 @@ namespace crab_llvm {
   class InterCrabLlvm_Impl;
 }
 
+namespace sea_dsa {
+  class AllocWrapInfo;
+}
 
 namespace crab_llvm {
    ////
@@ -125,6 +128,8 @@ namespace crab_llvm {
     cfg_ref_t operator[](const llvm::Function &f) const;
     void add(const llvm::Function &f, cfg_t *cfg);
   };
+
+  using edges_set = std::set<std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>>;
   
   /**
    * Intra-procedural analysis of a function
@@ -158,6 +163,7 @@ namespace crab_llvm {
     variable_factory_t m_vfac;    
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
+    edges_set m_infeasible_edges;    
     checks_db_t m_checks_db;
     
   public:
@@ -195,7 +201,6 @@ namespace crab_llvm {
      *
      * post contains the post-conditions at each block.
      * If it returns false then:
-     *   - pre contains that necessary preconditions that imply false
      *   - core is a minimal subset of statements that implies false
      **/
     template<typename Statement>
@@ -203,8 +208,7 @@ namespace crab_llvm {
 		      const std::vector<const llvm::BasicBlock*>& path,
 		      /* use gradually more expensive domains until unsat is proven*/
 		      bool layered_solving,
-		      std::vector<Statement>& core,
-		      invariant_map_t& post, invariant_map_t& pre) const;
+		      std::vector<Statement>& core, invariant_map_t& post) const;
     
     template<typename Statement>
     bool path_analyze(const AnalysisParams& params,
@@ -223,6 +227,11 @@ namespace crab_llvm {
      **/
     wrapper_dom_ptr get_post(const llvm::BasicBlock *b, bool keep_shadows=false) const;
 
+    /**
+     * Return true if there might be a feasible edge between b1 and b2
+     **/
+    bool has_feasible_edge(const llvm::BasicBlock *b1, const llvm::BasicBlock* b2) const;
+    
     /**
      * Return a database with all checks.
      **/
@@ -248,6 +257,7 @@ namespace crab_llvm {
     variable_factory_t m_vfac;    
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
+    edges_set m_infeasible_edges;    
     checks_db_t m_checks_db;
     
   public:
@@ -284,6 +294,11 @@ namespace crab_llvm {
     wrapper_dom_ptr get_post(const llvm::BasicBlock *b, bool keep_shadows=false) const;
 
     /**
+     * Return true if there might be a feasible edge between b1 and b2
+     **/
+    bool has_feasible_edge(const llvm::BasicBlock *b1, const llvm::BasicBlock* b2) const;
+    
+    /**
      * Return a database with all checks.
      **/
     const checks_db_t& get_checks_db() const;
@@ -298,9 +313,9 @@ namespace crab_llvm {
     typedef typename IntraCrabLlvm::invariant_map_t invariant_map_t;
     typedef typename IntraCrabLlvm::checks_db_t checks_db_t;
     typedef typename IntraCrabLlvm::heap_abs_ptr heap_abs_ptr;
-    
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
+    edges_set m_infeasible_edges;
     heap_abs_ptr m_mem;    
     variable_factory_t m_vfac;
     CfgManager m_cfg_man;
@@ -323,7 +338,7 @@ namespace crab_llvm {
 
     virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const ;
 
-    virtual const char* getPassName() const {return "CrabLlvm";}
+    virtual llvm::StringRef getPassName() const {return "CrabLlvm";}
     /* end ModulePass API */
 
     variable_factory_t& get_var_factory() { return m_vfac; }
@@ -345,6 +360,11 @@ namespace crab_llvm {
      * return invariants that hold at the exit of BB
      **/
     wrapper_dom_ptr get_post(const llvm::BasicBlock *BB, bool KeepShadows=false) const;
+
+    /**
+     * Return true if there might be a feasible edge between b1 and b2
+     **/
+    bool has_feasible_edge(const llvm::BasicBlock *b1, const llvm::BasicBlock* b2) const;
     
     /**
      * To query and view the analysis results 

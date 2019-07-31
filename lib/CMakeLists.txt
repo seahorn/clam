@@ -1,5 +1,5 @@
 add_subdirectory (CrabLlvm)
-if (TopLevel)
-  add_subdirectory (Transforms)
+if (TopLevel OR CrabTransforms)
+  add_subdirectory(Transforms)
 endif ()
 

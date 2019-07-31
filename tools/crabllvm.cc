@@ -17,7 +17,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/IR/Verifier.h"
 #include "crab_llvm/config.h"
@@ -52,42 +52,61 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
 static llvm::cl::opt<bool>
-NoCrab ("no-crab", 
-        llvm::cl::desc ("Output preprocessed bitecode but disabling Crab analysis"),
-        llvm::cl::init (false),
+NoCrab("no-crab", 
+        llvm::cl::desc("Output preprocessed bitcode but disabling Crab analysis"),
+        llvm::cl::init(false),
         llvm::cl::Hidden);
 
 static llvm::cl::opt<bool>
-TurnUndefNondet ("crab-turn-undef-nondet", 
-                 llvm::cl::desc ("Turn undefined behaviour into non-determinism"),
-                 llvm::cl::init (false),
+TurnUndefNondet("crab-turn-undef-nondet", 
+                 llvm::cl::desc("Turn undefined behaviour into non-determinism"),
+                 llvm::cl::init(false),
                  llvm::cl::Hidden);
 
 static llvm::cl::opt<bool>
-LowerSelect ("crab-lower-select", 
-             llvm::cl::desc ("Lower all select instructions"),
-             llvm::cl::init (false));
+LowerUnsignedICmp("crab-lower-unsigned-icmp",
+	 llvm::cl::desc("Lower ULT and ULE instructions"),
+	 llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-PromoteAssume ("crab-promote-assume", 
-	       llvm::cl::desc ("Promote verifier.assume to llvm.assume intrinsics"),
-	       llvm::cl::init (false));
+LowerCstExpr("crab-lower-constant-expr",
+	 llvm::cl::desc("Lower constant expressions to instructions"),
+	 llvm::cl::init(true));
 
+static llvm::cl::opt<bool>
+LowerInvoke("crab-lower-invoke",
+	 llvm::cl::desc("Lower invoke instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerSwitch("crab-lower-switch",
+	 llvm::cl::desc("Lower switch instructions"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
+LowerSelect("crab-lower-select", 
+             llvm::cl::desc("Lower all select instructions"),
+             llvm::cl::init(false));
+
+static llvm::cl::opt<bool>
+PromoteAssume("crab-promote-assume", 
+	       llvm::cl::desc("Promote verifier.assume to llvm.assume intrinsics"),
+	       llvm::cl::init(false));
 
 /* logging and verbosity */
 
 struct LogOpt {
   void operator=(const std::string &tag) const 
-  { crab::CrabEnableLog (tag); } 
+  { crab::CrabEnableLog(tag); } 
 };
 
 LogOpt loc;
 
 static llvm::cl::opt<LogOpt, true, llvm::cl::parser<std::string> > 
-LogClOption ("log",
-             llvm::cl::desc ("Enable specified log level"),
-             llvm::cl::location (loc),
-             llvm::cl::value_desc ("string"),
+LogClOption("log",
+             llvm::cl::desc("Enable specified log level"),
+             llvm::cl::location(loc),
+             llvm::cl::value_desc("string"),
              llvm::cl::ValueRequired, llvm::cl::ZeroOrMore);
 
 struct VerboseOpt {
@@ -99,9 +118,9 @@ VerboseOpt verbose;
 
 static llvm::cl::opt<VerboseOpt, true, llvm::cl::parser<unsigned> > 
 CrabVerbose("crab-verbose",
-	    llvm::cl::desc ("Enable verbose messages"),
-	    llvm::cl::location (verbose),
-	    llvm::cl::value_desc ("uint"));
+	    llvm::cl::desc("Enable verbose messages"),
+	    llvm::cl::location(verbose),
+	    llvm::cl::value_desc("uint"));
 
 
 struct WarningOpt {
@@ -113,9 +132,9 @@ WarningOpt warning;
 
 static llvm::cl::opt<WarningOpt, true, llvm::cl::parser<bool> > 
 CrabEnableWarning("crab-enable-warnings",
-	    llvm::cl::desc ("Enable warning messages"),
-	    llvm::cl::location (warning),
-	    llvm::cl::value_desc ("bool"));
+	    llvm::cl::desc("Enable warning messages"),
+	    llvm::cl::location(warning),
+	    llvm::cl::value_desc("bool"));
 
 struct SanityChecksOpt {
   void operator=(bool val) const 
@@ -146,13 +165,13 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv,
   "CrabLlvm-- Abstract Interpretation-based Analyzer of LLVM bitcode\n");
 
-  llvm::sys::PrintStackTraceOnErrorSignal();
+  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::PrettyStackTraceProgram PSTP(argc, argv);
   llvm::EnableDebugBuffering = true;
 
   std::error_code error_code;
   llvm::SMDiagnostic err;
-  llvm::LLVMContext &context = llvm::getGlobalContext();
+  static llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module;
   std::unique_ptr<llvm::tool_output_file> output;
   std::unique_ptr<llvm::tool_output_file> asmOutput;
@@ -166,7 +185,7 @@ int main(int argc, char **argv) {
     return 3;
   }
 
-  if (!AsmOutputFilename.empty ())
+  if (!AsmOutputFilename.empty())
     asmOutput = 
       llvm::make_unique<llvm::tool_output_file>(AsmOutputFilename.c_str(), error_code, 
                                                 llvm::sys::fs::F_Text);
@@ -174,19 +193,19 @@ int main(int argc, char **argv) {
     if (llvm::errs().has_colors()) 
       llvm::errs().changeColor(llvm::raw_ostream::RED);
     llvm::errs() << "error: Could not open " << AsmOutputFilename << ": " 
-                 << error_code.message () << "\n";
+                 << error_code.message() << "\n";
     if (llvm::errs().has_colors()) llvm::errs().resetColor();
     return 3;
   }
 
-  if (!OutputFilename.empty ())
+  if (!OutputFilename.empty())
     output = llvm::make_unique<llvm::tool_output_file>
       (OutputFilename.c_str(), error_code, llvm::sys::fs::F_None);
       
   if (error_code) {
     if (llvm::errs().has_colors()) llvm::errs().changeColor(llvm::raw_ostream::RED);
     llvm::errs() << "error: Could not open " << OutputFilename << ": " 
-                 << error_code.message () << "\n";
+                 << error_code.message() << "\n";
     if (llvm::errs().has_colors()) llvm::errs().resetColor();
     return 3;
   }
@@ -198,104 +217,125 @@ int main(int argc, char **argv) {
   llvm::legacy::PassManager pass_manager;
   llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
   llvm::initializeAnalysis(Registry);
-  
+
   /// call graph and other IPA passes
   // llvm::initializeIPA (Registry);
-  // XXX: porting to 3.8 
+  // XXX: porting to 3.8
   llvm::initializeCallGraphWrapperPassPass(Registry);
-  llvm::initializeCallGraphPrinterPass(Registry);
+  // XXX: commented while porting to 5.0    
+  //llvm::initializeCallGraphPrinterPass(Registry);
   llvm::initializeCallGraphViewerPass(Registry);
   // XXX: not sure if needed anymore
-  llvm::initializeGlobalsAAWrapperPassPass(Registry);  
+  llvm::initializeGlobalsAAWrapperPassPass(Registry);
     
   // add an appropriate DataLayout instance for the module
-  const llvm::DataLayout *dl = &module->getDataLayout ();
-  if (!dl && !DefaultDataLayout.empty ())
+  const llvm::DataLayout *dl = &module->getDataLayout();
+  if (!dl && !DefaultDataLayout.empty())
   {
-    module->setDataLayout (DefaultDataLayout);
-    dl = &module->getDataLayout ();
+    module->setDataLayout(DefaultDataLayout);
+    dl = &module->getDataLayout();
   }
 
-  assert (dl && "Could not find Data Layout for the module");
+  assert(dl && "Could not find Data Layout for the module");
   
   /**
    * Here only passes that are strictly necessary to avoid crashes or
    * useless results. Passes that are only for improving precision
    * should be run in crabllvm-pp.
    **/
-
-  // -- turn all functions internal so that we can use DSA
-  pass_manager.add (llvm::createInternalizePass (llvm::ArrayRef<const char*>("main")));
+    
   // kill unused internal global    
-  pass_manager.add (llvm::createGlobalDCEPass ()); 
-  pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
+  pass_manager.add(llvm::createGlobalDCEPass()); 
+  pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
 
   // -- promote alloca's to registers
-  pass_manager.add (llvm::createPromoteMemoryToRegisterPass());
+  pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
   #ifdef HAVE_LLVM_SEAHORN
   if (TurnUndefNondet) {
     // -- Turn undef into nondet
-    pass_manager.add (llvm_seahorn::createNondetInitPass ());
+    pass_manager.add(llvm_seahorn::createNondetInitPass());
+  }
+  #endif
+  if (LowerInvoke) {
+    // -- lower invoke's
+    pass_manager.add(llvm::createLowerInvokePass());
+    // cleanup after lowering invoke's
+    pass_manager.add(llvm::createCFGSimplificationPass());
+  }
+  // -- ensure one single exit point per function
+  pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+  // -- remove unreachable blocks 
+  pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
+  if (LowerSwitch) {
+    // -- remove switch constructions
+    pass_manager.add(llvm::createLowerSwitchPass());
+    // cleanup after lowering switches
+    pass_manager.add(llvm::createCFGSimplificationPass());
+  }
+  // -- lower constant expressions to instructions
+  if (LowerCstExpr) {
+    pass_manager.add(crab_llvm::createLowerCstExprPass());
+    // cleanup after lowering constant expressions
+    pass_manager.add(llvm::createDeadCodeEliminationPass());
+  }
+  #ifdef HAVE_LLVM_SEAHORN
+  if (TurnUndefNondet) {
+    pass_manager.add(llvm_seahorn::createDeadNondetElimPass());
   }
   #endif 
-  // -- lower invoke's
-  pass_manager.add(llvm::createLowerInvokePass());
-  // cleanup after lowering invoke's
-  pass_manager.add (llvm::createCFGSimplificationPass ());  
-  // -- ensure one single exit point per function
-  pass_manager.add (llvm::createUnifyFunctionExitNodesPass ());
-  // -- remove unreachable blocks 
-  pass_manager.add (crab_llvm::createRemoveUnreachableBlocksPass ());
-  // -- remove switch constructions
-  pass_manager.add (llvm::createLowerSwitchPass());
-  // cleanup after lowering switches
-  pass_manager.add (llvm::createCFGSimplificationPass ());  
-  // -- lower constant expressions to instructions
-  pass_manager.add (crab_llvm::createLowerCstExprPass ());
-  // cleanup after lowering constant expressions
-  pass_manager.add (llvm::createDeadCodeEliminationPass());
-  #ifdef HAVE_LLVM_SEAHORN
-  if (TurnUndefNondet) 
-    pass_manager.add (llvm_seahorn::createDeadNondetElimPass ());
-  #endif 
 
+  // -- lower ULT and ULE instructions  
+  if(LowerUnsignedICmp) {
+    pass_manager.add(crab_llvm::createLowerUnsignedICmpPass());   
+    // cleanup unnecessary and unreachable blocks   
+    pass_manager.add(llvm::createCFGSimplificationPass());
+    pass_manager.add(crab_llvm::createRemoveUnreachableBlocksPass());
+  }
+  
   // -- must be the last ones before running crab.
-  if (LowerSelect)
-    pass_manager.add (crab_llvm::createLowerSelectPass ());   
+  if (LowerSelect) {
+    pass_manager.add(crab_llvm::createLowerSelectPass());
+  }
 
+  // -- ensure one single exit point per function
+  // LowerUnsignedIcmpPass and LowerSelect can add multiple returns.
+  pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+  
   if (!NoCrab) {
     /// -- run the crab analyzer
-    pass_manager.add (new crab_llvm::CrabLlvmPass ());
+    pass_manager.add(new crab_llvm::CrabLlvmPass());
   }
 
-  if (!AsmOutputFilename.empty ()) 
-    pass_manager.add (createPrintModulePass (asmOutput->os ()));
+  if(!AsmOutputFilename.empty()) 
+    pass_manager.add(createPrintModulePass(asmOutput->os()));
  
   if (!NoCrab) {
-    /// -- insert invariants as assume instructions
-    pass_manager.add (new crab_llvm::InsertInvariants ());
-    /// -- simplify invariants added in the bytecode.
+    // -- perform dead code elimination and insert invariants as
+    // -- assume instructions
+    pass_manager.add(new crab_llvm::InsertInvariants());
+    // -- simplify invariants added in the bytecode.
     #ifdef HAVE_LLVM_SEAHORN
-    pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());      
-    #endif 
-    pass_manager.add (crab_llvm::createSimplifyAssumePass ());
+    pass_manager.add(llvm_seahorn::createInstructionCombiningPass());
+    #else
+    pass_manager.add(llvm::createInstructionCombiningPass());
+    #endif
     if (PromoteAssume) {
       // -- promote verifier.assume to llvm.assume intrinsics
-      pass_manager.add (crab_llvm::createPromoteAssumePass());
+      pass_manager.add(crab_llvm::createPromoteAssumePass());
     }    
   }
       
-  if (!OutputFilename.empty ()) {
+  if (!OutputFilename.empty()) {
     if (OutputAssembly)
-      pass_manager.add (createPrintModulePass (output->os ()));
+      pass_manager.add(createPrintModulePass(output->os()));
     else 
-      pass_manager.add (createBitcodeWriterPass (output->os ()));
+      pass_manager.add(createBitcodeWriterPass(output->os()));
   }
   
   pass_manager.run(*module.get());
 
-  if (!AsmOutputFilename.empty ()) asmOutput->keep ();
-  if (!OutputFilename.empty ()) output->keep();
+  if (!AsmOutputFilename.empty()) asmOutput->keep();
+  if (!OutputFilename.empty()) output->keep();
 
   return 0;
 }

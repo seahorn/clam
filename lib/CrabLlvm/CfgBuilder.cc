@@ -128,6 +128,11 @@ CrabUnsoundArrayInit("crab-unsound-array-init",
 		     cl::Hidden);
 
 cl::opt<bool>
+CrabEnableBignums("crab-enable-bignums",
+     cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."), 
+     cl::init(false));
+
+cl::opt<bool>
 CrabDisableWarnings("crab-disable-warnings",
 	      cl::desc("Disable warning messages"), 
 	      cl::init(false),
@@ -135,19 +140,23 @@ CrabDisableWarnings("crab-disable-warnings",
 
 namespace crab_llvm {
 
-  static crab::crab_os& get_crab_os(bool show_time = true) {
-    crab::crab_os* result = &crab::outs();
-    if (show_time) {
-      time_t now = time(0);
-      struct tm tstruct;
-      char buf[80];
-      tstruct = *localtime(&now);
-      strftime(buf, sizeof(buf), "[%Y-%m-%d.%X] ", &tstruct);
-      *result << buf;
+  // Any integer that cannot be represented by 64 bits is considered a bignum.
+  static bool isSignedBigNum(const llvm::APInt& v) {
+    unsigned b = v.getBitWidth();
+    if (b <= 64) {
+      return false;
+    } else {
+      // if bitwidth > 64 then we check the actual value
+      llvm::APInt max(b,
+		      llvm::APInt::getSignedMaxValue(64).getSExtValue(),
+		      true);
+      llvm::APInt min(b,
+		      llvm::APInt::getSignedMinValue(64).getSExtValue(),
+		      true);
+      return (v.sgt(max) || v.slt(min));
     }
-    return *result;
   }
-  
+
   static void CRABLLVM_ERROR(std::string msg, const char *file, unsigned line) {
     llvm::errs() << "CRABLLVM ERROR: " << msg << "\n";
     llvm::errs() << "File: " << file << "\n";
@@ -185,29 +194,45 @@ namespace crab_llvm {
   }
 
   /** Converts v to mpz_class. Assumes that v is signed */
-  static mpz_class toMpz(const llvm::APInt &v) {
-    // Based on:
-    // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
-    llvm::APInt abs;
-    abs = v.isNegative() ? v.abs() : v;
-    const uint64_t *rawdata = abs.getRawData();
-    unsigned numWords = abs.getNumWords();
-    mpz_class res;
-    mpz_import(res.get_mpz_t(), numWords, 1,  sizeof(uint64_t), 0, 0, rawdata);
-    return v.isNegative() ? mpz_class(-res) : res;
-  }
+   static mpz_class toMpz(const llvm::APInt &v, bool& is_bignum) {
+     is_bignum = false;
+     if (!CrabEnableBignums) {
+       is_bignum = isSignedBigNum(v);
+       
+     }
+     // Convert to strings is not ideal but it shouldn't be a big
+     // bottleneck.
+     std::string val = v.toString(10,true /*is signed*/);
+     return mpz_class(val);
+     
+     // Based on:
+     // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
+     //
+     // This code seems buggy. For instance, it will make these conversions:
+     //    30903631872 --> 570071388090917616591046705152
+     //    453350497004842588831744 --> 61144488376177518244492741363942580224
+     //
+     //  llvm::APInt abs;
+     // abs = v.isNegative() ? v.abs() : v;
+     // const uint64_t *rawdata = abs.getRawData();
+     // unsigned numWords = abs.getNumWords();
+     // mpz_class res;
+     // mpz_import(res.get_mpz_t(), numWords, 1,  sizeof(uint64_t), 0, 0, rawdata);
+     // return v.isNegative() ? mpz_class(-res) : res;
+   }
 
   // The return value should be ikos::z_number and not number_t
-  static ikos::z_number getIntConstant(const ConstantInt* CI){
+  static ikos::z_number getIntConstant(const ConstantInt* CI, bool& is_bignum){
+    is_bignum = false;
     if (CI->getType()->isIntegerTy(1)) {
       return ikos::z_number((int64_t) CI->getZExtValue());
     } else {
-      return ikos::z_number(toMpz(CI->getValue()));
+      return ikos::z_number(toMpz(CI->getValue(), is_bignum));
     }
   }
     
   static bool isTracked(const llvm::Value &v,
-			 const crab::cfg::tracked_precision tracklev) {
+			const crab::cfg::tracked_precision tracklev) {
     // -- ignore any shadow variable created by seahorn
     if (v.getName().startswith("shadow.mem")) 
       return false;
@@ -219,7 +244,24 @@ namespace crab_llvm {
     // -- always track integer and boolean registers
     return v.getType()->isIntegerTy();
   }
-  
+
+  /*
+    We can have cases where the callsite has a return value but the
+    function actually does not return any value. Because of that, we
+    check first the noreturn attribute of the function. Note that if a
+    noreturn function actually returns it is undefined behavior.
+  */
+  static bool DoesCallSiteReturn(llvm::CallInst& I,
+				 const crab::cfg::tracked_precision tracklev) {
+    bool non_void_tracked_ret = (!I.getType()->isVoidTy() && isTracked(I, tracklev));
+    llvm::CallSite CS(&I);
+    if (llvm::Function* Callee = CS.getCalledFunction()) {
+      return (!(Callee->doesNotReturn()) && non_void_tracked_ret);
+    } else {
+      return non_void_tracked_ret;
+    }
+  }
+
   // Convenient wrapper for a LLVM variable or constant
   class crabLit {
   public:
@@ -467,7 +509,7 @@ namespace crab_llvm {
 	  boost::static_pointer_cast<crabLit>(boost::make_shared<crabIntLit>(*lit));
 	m_lit_cache.insert(binding_t(&v, ref));
 	return ref;
-	}
+      }
     } else if (t.isPointerTy()) {
       if (boost::optional<crabPtrLit> lit = getPtrLit(v)) {
 	crab_lit_ref_t ref =
@@ -505,6 +547,10 @@ namespace crab_llvm {
     if (const Value* v= mem_region.getSingleton()) {
       Type* ty = cast<PointerType>(v->getType())->getElementType();      
       bitwidth = ty->getIntegerBitWidth();
+      if (mem_region.get_type() == INT_REGION && bitwidth <= 1) {
+	CRABLLVM_ERROR("Integer region must have bitwidth > 1",
+		       __FILE__,__LINE__);
+      }
       // If the singleton contains a pointer then getIntegerBitWidth()
       // returns zero which means for us "unknown" bitwidth so we are
       // good.
@@ -531,7 +577,7 @@ namespace crab_llvm {
   {  return var_t(m_vfac.get(), ARR_PTR_TYPE); }     
   
   var_t crabLitFactoryImpl::mkIntVar(unsigned bitwidth)
-  { return var_t(m_vfac.get(), INT_TYPE, bitwidth); }     
+  { return var_t(m_vfac.get(), INT_TYPE, bitwidth);}     
   
   var_t crabLitFactoryImpl::mkBoolVar()
   { return var_t(m_vfac.get(), BOOL_TYPE, 1); }
@@ -578,12 +624,15 @@ namespace crab_llvm {
     if (isBool(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant boolean
-	ikos::z_number n = getIntConstant(c);
-	return crabBoolLit(n > 0 ? true : false);
+	bool is_bignum;
+	ikos::z_number n = getIntConstant(c, is_bignum);
+	if (!is_bignum) {
+	  return crabBoolLit(n > 0 ? true : false);
+	}
       } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
 	// -- boolean variable 
 	return crabBoolLit(var_t(m_vfac[&v], BOOL_TYPE, 1));
-	}
+      }
     }
     return boost::optional<crabBoolLit>();
   }
@@ -603,8 +652,11 @@ namespace crab_llvm {
     if (isInteger(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant integer
-	ikos::z_number n = getIntConstant(c);
-	return crabIntLit(n);
+	bool is_bignum;	
+	ikos::z_number n = getIntConstant(c, is_bignum);
+	if (!is_bignum) {
+	  return crabIntLit(n);
+	}
       } else if (!llvm::isa<llvm::ConstantExpr>(v)) {
 	// -- integer variable
 	unsigned bitwidth = v.getType()->getIntegerBitWidth();
@@ -698,8 +750,6 @@ namespace crab_llvm {
       return mem_region_t();
     }
   }
-
-  #define GET_REGION(I,V) get_region(m_mem, *(I.getParent()->getParent()), V)
 
   template<typename V>
   static inline mem_region_set_t get_read_only_regions(HeapAbstraction &mem, V& v) {
@@ -944,11 +994,11 @@ namespace crab_llvm {
     var_t lhs = ref->getVar();
 
     crab_lit_ref_t ref0 = lfac.getLit(v0);
-    if (!(ref0->isInt()))
+    if (!ref0 || !(ref0->isInt()))
     { havoc(lhs,bb); return;}
 
     crab_lit_ref_t ref1 = lfac.getLit(v1);
-    if (!(ref1->isInt()))
+    if (!ref1 || !(ref1->isInt()))
     { havoc(lhs,bb); return;}
     
     lin_exp_t op0 = lfac.getExp(ref0);
@@ -1007,7 +1057,7 @@ namespace crab_llvm {
 
     if (I.getPredicate() != CmpInst::ICMP_EQ &&
 	I.getPredicate() != CmpInst::ICMP_NE) {
-      CRABLLVM_WARNING("unexpected pointer comparison " << I);
+      //CRABLLVM_WARNING("unexpected pointer comparison " << I);
       return boost::optional<ptr_cst_t>();            
     }
     
@@ -1132,8 +1182,10 @@ namespace crab_llvm {
       }
     }
     // we should not reach this point since v is tracked.
-    CRABLLVM_ERROR("cannot normalize function parameter or return value", __FILE__, __LINE__);
-    abort(); /* to remove warning */
+    CRABLLVM_ERROR("cannot normalize function parameter or return value",
+		   __FILE__, __LINE__);
+    // clang complains otherwise
+    abort();
   }
   
   //! Translate PHI nodes
@@ -1242,7 +1294,9 @@ namespace crab_llvm {
 	      }
 	    } else { /* unreachable*/ }
 	  } else {
-	    CRABLLVM_ERROR("unexpected PHI node", __FILE__, __LINE__);
+	    // we can be here if the incoming value is a bignum and we
+	    // don't allow bignums.
+	    m_bb.havoc(lhs);
 	  }
 	}
       }
@@ -1281,17 +1335,20 @@ namespace crab_llvm {
       for (auto &U: V->uses()) {
         if (StoreInst *SI = dyn_cast<StoreInst>(U.getUser())) {
 	  if (Instruction *I = dyn_cast<Instruction>(V))  {
-	    if (GET_REGION((*I),SI->getPointerOperand()).isUnknown() &&
+	    Function& parent = *(I->getParent()->getParent());	    
+	    if (get_region(m_mem,parent,SI->getPointerOperand()).isUnknown() &&
 		(!SI->getValueOperand()->getType()->isPointerTy() ||
-		 GET_REGION((*I),SI->getValueOperand()).isUnknown()))
+		 get_region(m_mem,parent,SI->getValueOperand()).isUnknown()))
 	      continue;
 	  }
 	  return false;
         }
         else if (LoadInst *LI = dyn_cast<LoadInst>(U.getUser())) {
 	  if (Instruction *I = dyn_cast<Instruction>(V))  {
-	    if (GET_REGION((*I),LI->getPointerOperand()).isUnknown() &&
-		(!I->getType()->isPointerTy() || GET_REGION((*I),LI).isUnknown()))
+	    Function& parent = *(I->getParent()->getParent());	    
+	    if (get_region(m_mem,parent,LI->getPointerOperand()).isUnknown() &&
+		(!I->getType()->isPointerTy() ||
+		 get_region(m_mem, parent, LI).isUnknown()))
 	      continue;
 	  }
 	  return false;
@@ -1619,12 +1676,13 @@ namespace crab_llvm {
 	CRABLLVM_WARNING("Skipped memory intrinsics " << I);
 	return;
       }
-      
+
+      Function& parent = *(I.getParent()->getParent());      
       if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(&I)) {
 	Value* src = MCI->getSource();
 	Value* dst = MCI->getDest();
-	mem_region_t src_reg = GET_REGION(I,src);
-	mem_region_t dst_reg = GET_REGION(I,dst); 
+	mem_region_t src_reg = get_region(m_mem, parent, src);
+	mem_region_t dst_reg = get_region(m_mem, parent, dst); 
 	if (dst_reg.isUnknown() || src_reg.isUnknown()) return;
 	m_bb.havoc(m_lfac.mkArrayVar(dst_reg));
 	if (dst_reg.get_type() == src_reg.get_type()) {
@@ -1633,11 +1691,12 @@ namespace crab_llvm {
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
 	if (CrabUnsoundArrayInit && isInteger(*(MSI->getValue()))) {
 	  Value* dst = MSI->getDest();
-	  mem_region_t r = GET_REGION(I,dst);
+	  mem_region_t r = get_region(m_mem, parent, dst);
 	  if (r.isUnknown()) return;
 
 	  crab_lit_ref_t len_ref = m_lfac.getLit(*(MSI->getLength()));
 	  crab_lit_ref_t val_ref = m_lfac.getLit(*(MSI->getValue()));
+	  if (!len_ref || !val_ref) return;
 	  
 	  if (len_ref->isInt()) {
 	    lin_exp_t lb_idx(number_t(0));
@@ -1671,7 +1730,7 @@ namespace crab_llvm {
 	  if (!isInteger(*(MSI->getValue()))) {
 	    CRABLLVM_WARNING("Skipped memset instruction of non-integer type.");
 	  } else {
-	    CRABLLVM_WARNING("Skipped memset instruction of integer type." <<
+	    CRABLLVM_WARNING("Skipped memset instruction of integer type. " <<
 			     "You can enable --crab-unsound-array-init on your own risk.");
 	  }
 	}
@@ -1687,13 +1746,16 @@ namespace crab_llvm {
       // indexes an address inside the global variable.
       Value *v = CS.getArgument(0);
       Type* ty = cast<PointerType>(v->getType())->getElementType();
+      Function& parent = *(I.getParent()->getParent());
       
-      auto r = GET_REGION(I, v);
+      auto r = get_region(m_mem, parent, v);
       if (!r.isUnknown()) {
 	crab_lit_ref_t ref = nullptr;
 	if (CS.arg_size() == 2) {
 	  ref= m_lfac.getLit(*(CS.getArgument(1)));
-	  assert(ref);
+	  if (!ref) { // this can happen if k is bignum and bignums are not allowed
+	    return;
+	  }
 	}
 	if (isGlobalSingleton(r)) {
 	  // Promote the global to an integer/boolean scalar
@@ -1732,7 +1794,7 @@ namespace crab_llvm {
 	  if (isInteger(ty) || isBool(ty)) {
 	    if (m_init_regions.insert(r).second) {	      	    
 	      IntegerType* int_ty = cast<IntegerType>(ty);
-	      ub_idx = ikos::z_number((int_ty->getBitWidth() / 8) -1);
+	      ub_idx = (isBool(ty) ? 0 : ikos::z_number((int_ty->getBitWidth() / 8) -1));
 	      m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
 	    }
 	  } else if (isIntArray(*ty) || isBoolArray(*ty)) {
@@ -1785,22 +1847,25 @@ namespace crab_llvm {
       
       if (ConstantInt *CI = dyn_cast<ConstantInt>(cond)) {
         // -- cond is a constant
-	ikos::z_number cond_val = getIntConstant(CI);
-	if (cond_val > 0) {
-	  if (isAssertFn(callee) || isAssumeFn(callee)) {
-	    // do nothing
+	bool is_bignum;
+	ikos::z_number cond_val = getIntConstant(CI, is_bignum);
+	if (!is_bignum) {
+	  if (cond_val > 0) {
+	    if (isAssertFn(callee) || isAssumeFn(callee)) {
+	      // do nothing
+	    } else {
+	      assert(isNotAssumeFn(callee));
+	      m_bb.assume(lin_cst_t::get_false()); 	      
+	    }
 	  } else {
-	    assert(isNotAssumeFn(callee));
-	    m_bb.assume(lin_cst_t::get_false()); 	      
-	  }
-	} else {
-	  if (isNotAssumeFn(callee)) {
-	    // do nothing
-	  } else if (isAssumeFn(callee)) {
+	    if (isNotAssumeFn(callee)) {
+	      // do nothing
+	    } else if (isAssumeFn(callee)) {
 	      m_bb.assume(lin_cst_t::get_false());
-	  } else {
-	    assert(isAssertFn(callee));
-	    m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
+	    } else {
+	      assert(isAssertFn(callee));
+	      m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
+	    }
 	  }
 	}
       } else {
@@ -1877,6 +1942,9 @@ namespace crab_llvm {
 
     /// skip BranchInst (processed elsewhere)
     void visitBranchInst(BranchInst &I) {}
+
+    /// skip SwitchInst (processed elsewhere)
+    void visitSwitchInst(SwitchInst& I) {}
     
     /// I is already translated if it is the condition of a branch or
     /// a select's condition.  Here we cover cases where I is an
@@ -1927,7 +1995,7 @@ namespace crab_llvm {
 	}
       }
     }
-      
+    
     void visitBinaryOperator(BinaryOperator &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
       
@@ -1993,6 +2061,10 @@ namespace crab_llvm {
       crab_lit_ref_t dst = m_lfac.getLit(I);
       assert(dst && dst->isVar());
       crab_lit_ref_t src = m_lfac.getLit(*(I.getOperand(0)));
+      if (!src) {
+	havoc(dst->getVar(), m_bb);
+	return;
+      }
       
       // -- INTEGER OR BOOLEAN CAST
       if (isIntCast(I)) {
@@ -2047,9 +2119,9 @@ namespace crab_llvm {
       // -- POINTER CAST      
       if (isPointerCast(I)) {
 	if (isa<PtrToIntInst>(I)) {
-	  CRABLLVM_WARNING("translation skipped pointer to integer cast");
+	  //CRABLLVM_WARNING("translation skipped pointer to integer cast");
 	} else if (isa<IntToPtrInst>(I)) {
-	  CRABLLVM_WARNING("translation skipped integer to pointer cast");
+	  //CRABLLVM_WARNING("translation skipped integer to pointer cast");
 	} else if (isa<BitCastInst>(I) && isPointer(*I.getOperand(0), m_lfac.get_track())) {
 
 	  if (src->isPtr()) {
@@ -2208,7 +2280,8 @@ namespace crab_llvm {
       
       CRAB_LOG("cfg-gep", llvm::errs() << "Translating " << I << "\n");
 
-      mem_region_t r = GET_REGION(I, &I); 
+      Function& parent = *(I.getParent()->getParent());
+      mem_region_t r = get_region(m_mem, parent, &I); 
       if (isGlobalSingleton(r)) {
 	CRAB_LOG("cfg-gep", llvm::errs() << "Skipped singleton region\n");
 	return;
@@ -2231,42 +2304,30 @@ namespace crab_llvm {
       assert(ptr->isVar());
       
       // -- translation if the GEP offset is constant
-      unsigned BitWidth = m_dl->getPointerTypeSizeInBits(I.getType());
-      APInt Offset(BitWidth, 0);
-      if (I.accumulateConstantOffset(*m_dl, Offset)) {
-        lin_exp_t offset(toMpz(Offset).get_str());
-	m_bb.ptr_assign(lhs->getVar(), ptr->getVar(), offset);
-	CRAB_LOG("cfg-gep",
-		 crab::outs() << "-- " << *lhs << ":=" << *ptr  << "+" << offset << "\n");
+      unsigned bitwidth = m_dl->getPointerTypeSizeInBits(I.getType());
+      APInt offset(bitwidth, 0);
+      if (I.accumulateConstantOffset(*m_dl, offset)) {
+	bool is_bignum = false;
+	mpz_class o(toMpz(offset, is_bignum));
+	if (is_bignum) {
+	  m_bb.havoc(lhs->getVar());
+	} else {
+	  m_bb.ptr_assign(lhs->getVar(), ptr->getVar(), lin_exp_t(ikos::z_number(o)));
+	  CRAB_LOG("cfg-gep",
+	   	   crab::outs() << "-- " << *lhs << ":=" << *ptr  << "+"
+		                << ikos::z_number(o) << "\n");
+	}
         return;
       }
 
       // -- translation if symbolic GEP offset
-      // If here, we know that there is at least one non-zero,
-      // symbolic index.
-      SmallVector<const Value*, 4> ps;
-      SmallVector<const Type*, 4> ts;
-      gep_type_iterator typeIt = gep_type_begin(I);
-      for (unsigned i = 1; i < I.getNumOperands(); ++i, ++typeIt) {
-	// XXX we cannot strip zext/sext since we model now integer
-	// bitwidths.
-        // // strip zext/sext if there is one
-        // if (const ZExtInst *ze = dyn_cast<const ZExtInst>(I.getOperand(i)))
-        //   ps.push_back(ze->getOperand(0));
-        // else if(const SExtInst *se = dyn_cast<const SExtInst>(I.getOperand(i)))
-        //   ps.push_back(se->getOperand(0));
-        // else 
-        //   ps.push_back(I.getOperand(i));
-	ps.push_back(I.getOperand(i));
-        ts.push_back(*typeIt);
-      }
-
+      // If here, we know that there is at least one non-zero, symbolic index.
       bool already_assigned = false;
-      for (unsigned i = 0; i < ps.size(); ++i) {
-        if (const StructType *st = dyn_cast<const StructType>(ts [i])) {
-          if (const ConstantInt *ci = dyn_cast<const ConstantInt>(ps [i])) {
-            number_t offset(fieldOffset(st, ci->getZExtValue()));
-	    m_bb.ptr_assign(lhs->getVar(),(!already_assigned) ?
+      for(auto GTI = gep_type_begin(&I), GTE = gep_type_end(&I); GTI != GTE; ++GTI) {
+	if (const StructType *st = GTI.getStructTypeOrNull()) {
+	  if (const ConstantInt *ci = dyn_cast<const ConstantInt>(GTI.getOperand())) {
+            number_t offset (fieldOffset (st, ci->getZExtValue ()));
+	    m_bb.ptr_assign (lhs->getVar(), (!already_assigned) ?
 			     ptr->getVar() : lhs->getVar(), offset);
 	    CRAB_LOG("cfg-gep",
 		     if (!already_assigned) {
@@ -2275,21 +2336,22 @@ namespace crab_llvm {
 		       crab::outs() << *lhs << ":=" << *lhs << "+" << offset << "\n";
 		     }); 
 	    already_assigned = true;
-          } else {
-            CRABLLVM_ERROR("GEP index expected only to be an integer",__FILE__, __LINE__);
+	  } else {
+            CRABLLVM_ERROR("GEP index expected only to be an integer",__FILE__, __LINE__); 
 	  }
-        }
-        else if (const SequentialType *seqt = dyn_cast<const SequentialType>(ts[i])) {
-          if (const ConstantInt *ci = dyn_cast<const ConstantInt>(ps [i])) {
-            if (ci->isZero())
+	} else {
+	  // otherwise we have a sequential type like an array or vector.
+	  // Multiply the index by the size of the indexed type.
+          if (const ConstantInt *ci = dyn_cast<const ConstantInt> (GTI.getOperand())) {
+            if (ci->isZero ())
               continue;
           }
-	  crab_lit_ref_t idx = m_lfac.getLit(*ps[i]); 
+	  crab_lit_ref_t idx = m_lfac.getLit(*GTI.getOperand()); 
 	  if (!idx || !idx->isInt()){
 	    CRABLLVM_ERROR("unexpected GEP index",__FILE__, __LINE__);
 	  }
 	  lin_exp_t offset(m_lfac.getExp(idx) *
-			     number_t(storageSize(seqt->getElementType())));
+			   number_t(storageSize(GTI.getIndexedType())));
 	  m_bb.ptr_assign(lhs->getVar(), (!already_assigned) ?
 			  ptr->getVar() : lhs->getVar(), offset);
 	  CRAB_LOG("cfg-gep",
@@ -2299,12 +2361,12 @@ namespace crab_llvm {
 		     crab::outs() << *lhs << ":=" << *lhs << "+" << offset << "\n";
 		   }); 
 	  already_assigned = true;
-        }
+	}
       }
     }
 
     void visitStoreInst(StoreInst &I) {
-      /* The LLVM store instruction will interpreted as EITHER:
+      /* The LLVM store instruction will be translated to EITHER:
 
 	 a) crab array store, or
 	 b) crab pointer store
@@ -2315,15 +2377,23 @@ namespace crab_llvm {
 	 If the type of the stored value is a pointer then it will be
 	 interpreted as a pointer store.
 
-	 Otherwise, e.g., a store of a floating point, it will
+	 Otherwise, e.g., a store of a floating point or vector type, it will
 	 ignored.
       */
 
+      if (isa<ConstantExpr>(I.getPointerOperand()) ||
+	  isa<ConstantExpr>(I.getValueOperand())) {
+	// We don't handle constant expressions. 
+	return;
+      }
+
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
       crab_lit_ref_t val = m_lfac.getLit(*I.getValueOperand());
+      Function& parent = *(I.getParent()->getParent());
       
       if (!ptr || !ptr->isPtr()) {
-	CRABLLVM_ERROR("unexpected pointer operand of store instruction",__FILE__, __LINE__);
+	CRABLLVM_ERROR("unexpected pointer operand of store instruction",
+		       __FILE__, __LINE__);
       }
       
       if (m_lfac.isPtrNull(ptr)) {
@@ -2339,9 +2409,10 @@ namespace crab_llvm {
 	  // For simplicity, we don't deal with this case here and we
 	  // assume that the client must make sure that all constant
 	  // expressions are lowered. 
-	  CRABLLVM_ERROR("unexpected value operand of store instruction",__FILE__, __LINE__);
+	  CRABLLVM_ERROR("unexpected value operand of store instruction",
+			 __FILE__, __LINE__);
 	}
-	mem_region_t r = GET_REGION(I, I.getPointerOperand()); 
+	mem_region_t r = get_region(m_mem, parent, I.getPointerOperand()); 
 	if (!r.isUnknown()) {
 	  if (isGlobalSingleton(r)) {
 	    // Promote the global to an integer/boolean scalar
@@ -2379,15 +2450,18 @@ namespace crab_llvm {
 		m_bb.truncate(val->getVar(), t);
 	      } 
 	      m_bb.array_store(m_lfac.mkArrayVar(r), idx, t, 
-				m_dl->getTypeAllocSize(ty), r.getSingleton() != nullptr);
+				m_dl->getTypeAllocSize(ty),
+			       r.getSingleton() != nullptr);
 	    } else {
 	      if (val->isInt()) {
 		m_bb.array_store(m_lfac.mkArrayVar(r), idx, m_lfac.getIntCst(val),
-				  m_dl->getTypeAllocSize(ty), r.getSingleton() != nullptr);
+				  m_dl->getTypeAllocSize(ty),
+				 r.getSingleton() != nullptr);
 	      } else if (val->isBool()){
 		m_bb.array_store(m_lfac.mkArrayVar(r), idx, 
 				  m_lfac.isBoolTrue(val) ? number_t(1): number_t(0),
-				  m_dl->getTypeAllocSize(ty), r.getSingleton() != nullptr);
+				  m_dl->getTypeAllocSize(ty),
+				 r.getSingleton() != nullptr);
 	      } else { /* unreachable */}
 	    }
 	  }
@@ -2428,12 +2502,26 @@ namespace crab_llvm {
       /*
 	This case is symmetric to StoreInst.
        */
+
+      if (!isTracked(I, m_lfac.get_track())) {
+	return;
+      }
       
       crab_lit_ref_t lhs = m_lfac.getLit(I);
+      assert(lhs);
+      
+      if (isa<ConstantExpr>(I.getPointerOperand())) {
+	// We don't handle constant expressions.
+	havoc(lhs->getVar(), m_bb);
+	return;
+      }
+      
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
+      Function& parent = *(I.getParent()->getParent());
       
       if (!ptr || !ptr->isPtr()) {
-	CRABLLVM_ERROR("unexpected pointer operand of load instruction",__FILE__, __LINE__);
+	CRABLLVM_ERROR("unexpected pointer operand of load instruction",
+		       __FILE__, __LINE__);
       }
       
       if (m_lfac.isPtrNull(ptr)) {
@@ -2447,7 +2535,7 @@ namespace crab_llvm {
 	if (!lhs || !lhs->isVar()) {
 	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
 	} 	
-	mem_region_t r = GET_REGION(I, I.getPointerOperand()); 
+	mem_region_t r = get_region(m_mem, parent, I.getPointerOperand()); 
 	if (!(r.isUnknown())) {
 	  if (isGlobalSingleton(r)) {
 	    // Promote the global to an integer/boolean scalar
@@ -2492,21 +2580,24 @@ namespace crab_llvm {
 	return;
       } 
       
-      if (isTracked(I, m_lfac.get_track())) {
-	havoc(lhs->getVar(), m_bb);
-      }
+      havoc(lhs->getVar(), m_bb);
     }
     
     void visitAllocaInst(AllocaInst &I) {
 
+      if (!isTracked(I, m_lfac.get_track())) {
+	return;
+      }
+      
       if (isPointer(I, m_lfac.get_track())) {
 	crab_lit_ref_t lhs = m_lfac.getLit(I);
 	assert(lhs && lhs->isVar());
 	m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
       }
 
+      Function& parent = *(I.getParent()->getParent());
       if (m_lfac.get_track() == ARR && CrabArrayInit) {
-	mem_region_t r = GET_REGION(I,&I);
+	mem_region_t r = get_region(m_mem, parent, &I);
 	if (!r.isUnknown()) {
 	  
 	  // Nodes which do not have an explicit initialization are
@@ -2562,7 +2653,7 @@ namespace crab_llvm {
 	  // -- unresolved indirect call
 	  CRABLLVM_WARNING("skipped indirect call. Enabling --devirt-functions might help.");
 	  
-	  if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_lfac.get_track())) {
 	    // havoc return value
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
@@ -2596,7 +2687,7 @@ namespace crab_llvm {
         if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I)) {
           doMemIntrinsic(*MI);
         } else {
-	  if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_lfac.get_track())) {
 	    // -- havoc return value of the intrinsics
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
@@ -2615,7 +2706,7 @@ namespace crab_llvm {
 	 **/      
 	
         // -- havoc return value
-        if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+        if (DoesCallSiteReturn(I, m_lfac.get_track())) {
 	  crab_lit_ref_t lhs = m_lfac.getLit(I);
 	  assert(lhs && lhs->isVar());
 	  havoc(lhs->getVar(), m_bb);
@@ -2663,7 +2754,7 @@ namespace crab_llvm {
       }
       
       // -- add the return value of the llvm calliste: o
-      if (!I.getType()->isVoidTy() && isTracked(I, m_lfac.get_track())) {
+      if (DoesCallSiteReturn(I, m_lfac.get_track())) {
 	crab_lit_ref_t ret = m_lfac.getLit(I);
 	assert(ret && ret->isVar());
 	outputs.push_back(ret->getVar());
@@ -2730,8 +2821,9 @@ namespace crab_llvm {
     /// base case. if all else fails.
     void visitInstruction(Instruction &I) {
       if (!isTracked(I, m_lfac.get_track())) return;
+      CRABLLVM_WARNING("Skipped " << I); 
       crab_lit_ref_t lhs = m_lfac.getLit(I);
-      if (lhs->isVar()) {
+      if (lhs && lhs->isVar()) {
 	havoc(lhs->getVar(), m_bb);
       }
     }
@@ -2803,25 +2895,27 @@ namespace crab_llvm {
   
   //! return the new block inserted between src and dest if any
   CfgBuilder::opt_basic_block_t
-  CfgBuilder::exec_br(BasicBlock &src, const BasicBlock &dst) {
+  CfgBuilder::exec_edge(BasicBlock &src, const BasicBlock &dst) {
     
-    // -- the branch condition
     if (const BranchInst *br=dyn_cast<const BranchInst>(src.getTerminator())) {
       if (br->isConditional()) {
         opt_basic_block_t Src = lookup(src);
         opt_basic_block_t Dst = lookup(dst);
         assert(Src && Dst);
 
+	// Create a new crab block that represents the LLVM edge
 	llvm_basic_block_wrapper bb_wrapper(&src, &dst, create_bb_name(m_id));
 	m_edge_bb_map.insert(std::make_pair(std::make_pair(&src, &dst), bb_wrapper));
   	basic_block_t &bb = m_cfg->insert(bb_wrapper);
         add_block_in_between(*Src, *Dst, bb);
 
+	// Populate the new crab block with an assume
         const Value &c = *br->getCondition();
         if (const ConstantInt *ci = dyn_cast<const ConstantInt>(&c)) {
           if ((ci->isOne()  && br->getSuccessor(0) != &dst) ||
-              (ci->isZero() && br->getSuccessor(1) != &dst))
+              (ci->isZero() && br->getSuccessor(1) != &dst)) {
             bb.unreachable();
+	  }
         } else {
           bool isNegated = (br->getSuccessor(1) == &dst);
 	  bool lower_cond_as_bool = false;
@@ -2859,14 +2953,36 @@ namespace crab_llvm {
 	      bb.bool_assume(lhs->getVar());
 	  }
         }
+	
         return opt_basic_block_t(bb);
+      } else {
+	// br is unconditional
+	add_edge(src,dst);
       }
-      else add_edge(src,dst);
+    } else  if (SwitchInst *SI = dyn_cast<SwitchInst>(src.getTerminator())) {
+      // switch <value>, label <defaultdest> [ <val>, label <dest> ... ]
+      //
+      // TODO: we do not translate precisely switch instructions. We
+      // simply add an edge from src to dest.
+
+      // To be precise, we need to create a block between src and dest
+      // and add the statement "assume(value == val)" if dest is not
+      // the default block. For the default block, we need to add the
+      // sequence:
+      //      "assume(value != val1); ... ; assume(value != valk);"
+
+      add_edge(src,dst);
     }
     return opt_basic_block_t();    
   }
 
   static bool checkAllDefinitionsHaveNames(const Function& F) {
+    // for (auto &Arg : F.args()) {
+    //   if (!Arg.hasName()) {
+    // 	return false;
+    //   }
+    // }
+    
     for (const BasicBlock &BB: F) {
       if(!BB.hasName()) {
 	return false;
@@ -2912,17 +3028,19 @@ namespace crab_llvm {
       
       // -- process the exit block of the function and its returned value.
       if (ReturnInst *RI = dyn_cast<ReturnInst>(B.getTerminator())) {
-	if (ret_block)
-	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first",__FILE__, __LINE__);
+	if (ret_block) {
+	  //UnifyFunctionExitNodes ensures *at most* one return
+	  //instruction per function.
+	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first",
+			 __FILE__, __LINE__);
+	}
 	
         basic_block_t &bb = *BB;
         ret_block = &bb;
 	m_cfg->set_exit(ret_block->label());
-
 	if (has_seahorn_fail) {
 	  ret_block->assertion(lin_cst_t::get_false(), getDebugLoc(RI));	  
 	}
-	
 	if (m_is_inter_proc) {
 	  if (Value * RV = RI->getReturnValue()) {
 	    if (isTracked(*RV, m_lfac.get_track())) {
@@ -2931,12 +3049,17 @@ namespace crab_llvm {
 	    }
 	  }
 	}
-	
       } else {
-        for (const BasicBlock *dst : succs(B)) {
+	std::vector<const BasicBlock*> succs_vector(succs(B).begin(), succs(B).end());
+	// The default destination of a switch instruction does not
+	// count as a successor but we want to consider it as a such.
+	if (SwitchInst* SI = dyn_cast<SwitchInst>(B.getTerminator())) {
+	  succs_vector.push_back(SI->getDefaultDest());
+	}
+        for (const BasicBlock *dst : succs_vector) {
           // -- move branch condition in bb to a new block inserted
           //    between bb and dst
-          opt_basic_block_t mid_bb = exec_br(B, *dst);
+          opt_basic_block_t mid_bb = exec_edge(B, *dst);
 
           // -- phi nodes in dst are translated into assignments in
           //    the predecessor
@@ -3117,14 +3240,14 @@ namespace crab_llvm {
 			    sorted_outs.begin(), sorted_outs.end(),
 			    std::back_inserter(intersect));
       if (!intersect.empty()) {
-	llvm::errs() << "CRALLVM ERROR: function inputs and outputs should not intersect\n";
 	crab::errs() << "INPUTS: {";
 	for (auto i: inputs) { crab::outs() << i << ";"; }
 	crab::errs() << "}\n";
 	crab::errs() << "OUTPUTS: {";
 	for (auto o: outputs) { crab::outs() << o << ";"; }
 	crab::errs() << "}\n";
-	abort();
+	CRABLLVM_ERROR("function inputs and outputs should not intersect",
+		       __FILE__, __LINE__);
       }
 
       typedef function_decl<number_t, varname_t> function_decl_t;
@@ -3132,7 +3255,6 @@ namespace crab_llvm {
     }
 
     if (m_cfg->has_exit()) {
-      #if 1
       // -- Connect all sink blocks with an unreachable instruction to
       //    the exit block.  For a forward analysis this doesn't have
       //    any impact since unreachable becomes bottom anyway.
@@ -3155,18 +3277,53 @@ namespace crab_llvm {
 	  }
 	}
       }
-      #endif 
     } else {
-      // If there is no exit block so far, we search for the first
-      // block without successors.
-      // XXX: we won't have an exit block with programs like this:
+      // We did not find an exit block yet:
+
+      // (1) search for this pattern:
       //   entry: goto loop;
       //    loop: goto loop;
-      for (auto &B: m_func) {
-	if (opt_basic_block_t b = lookup(B)) {
-	  auto it_pair = (*b).next_blocks();
-	  if (it_pair.first == it_pair.second) {
-	    m_cfg->set_exit((*b).label());
+      BasicBlock& entry = m_func.getEntryBlock();
+      auto entry_next = succs(entry);
+      if (std::distance(entry_next.begin(), entry_next.end()) == 1) {
+	const BasicBlock* succ = *(entry_next.begin());
+	auto succ_next = succs(*succ);
+	if (std::distance(succ_next.begin(), succ_next.end()) == 1) {
+	  if ((*(succ_next.begin())) == succ) {
+	    if (opt_basic_block_t exit = lookup(*succ)) {
+	      m_cfg->set_exit((*exit).label());
+	    }
+	  }
+	}
+      }
+
+      if (!m_cfg->has_exit()) {
+	// (2) We check if there is a block with an unreachable
+	// instruction. The pass UnifyFunctionExitNodes ensures that
+	// there is at most one unreachable instruction.
+	for (auto &B: m_func) {
+	  for (auto &I: B) {
+	    if (isa<UnreachableInst>(I)) {
+	      if (opt_basic_block_t b = lookup(B)) {
+		m_cfg->set_exit((*b).label());
+		break;
+	      }
+	    }
+	  }
+	  if (m_cfg->has_exit()) {
+	    break;
+	  }
+	}
+      }
+
+      if (!m_cfg->has_exit()) {
+	// (3) Search for the first block without successors.
+	for (auto &B: m_func) {
+	  if (opt_basic_block_t b = lookup(B)) {
+	    auto it_pair = (*b).next_blocks();
+	    if (it_pair.first == it_pair.second) {
+	      m_cfg->set_exit((*b).label());
+	    }
 	  }
 	}
       }
@@ -3174,16 +3331,16 @@ namespace crab_llvm {
     
     if (CrabCFGSimplify) {
       // -- Remove dead statements generated by our translation
-      CRAB_VERBOSE_IF(1,get_crab_os() << "Started CFG dead code elimination\n";); 
+      CRAB_VERBOSE_IF(1,crab::get_msg_stream() << "Started CFG dead code elimination\n";); 
       cfg_ref_t cfg_ref(*m_cfg);
       crab::transforms::dead_code_elimination<cfg_ref_t> dce;      
       dce.run(cfg_ref);
-      CRAB_VERBOSE_IF(1,get_crab_os() << "Finished CFG dead code elimination\n";);
+      CRAB_VERBOSE_IF(1,crab::get_msg_stream() << "Finished CFG dead code elimination\n";);
 		      
       // -- Remove empty blocks after dce
-      CRAB_VERBOSE_IF(1, get_crab_os() << "Started CFG simplification\n";);
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started CFG simplification\n";);
       m_cfg->simplify();      
-      CRAB_VERBOSE_IF(1, get_crab_os() << "Finished CFG simplification\n";);
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished CFG simplification\n";);
     }
     
     if (CrabPrintCFG) crab::outs() << *m_cfg << "\n";

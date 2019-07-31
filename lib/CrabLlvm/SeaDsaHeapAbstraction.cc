@@ -1,5 +1,6 @@
 #include "crab_llvm/config.h"
 
+#ifdef HAVE_SEA_DSA
 /**
  * Heap abstraction based on sea-dsa (https://github.com/seahorn/sea-dsa).
  */
@@ -13,6 +14,7 @@
 
 #include "sea_dsa/Graph.hh"
 #include "sea_dsa/Global.hh"
+#include "sea_dsa/AllocWrapInfo.hh"
 
 #include "crab_llvm/SeaDsaHeapAbstraction.hh"
 #include "crab/common/debug.hpp"
@@ -149,9 +151,9 @@ namespace seadsa_heap_abs_impl {
 	  return false;
 	}
       }
+      return true;
     }
-    
-    return true;
+    return false;
   }
   
   // return true if the cell (n,o) points to an array of elements of
@@ -172,9 +174,9 @@ namespace seadsa_heap_abs_impl {
 	  return false;
 	}
       }
+      return true;
     }
-    
-    return true;
+    return false;    
   }
 
   // Given [lb_a,ub_a) and [lb_b,ub_b) return true if they intersect.
@@ -257,7 +259,7 @@ namespace seadsa_heap_abs_impl {
 	                   << " can be disambiguated ... \n" 
 	                   << "\t" << *n << "\n";);
 
-    if (n->isCollapsed()) {
+    if (n->isOffsetCollapsed()) {
       CRAB_LOG("heap-abs", 
 	       llvm::errs() << "\tCannot be disambiguated: node is already collapsed.\n";);
       return region_info(UNTYPED_REGION, 0);
@@ -282,13 +284,21 @@ namespace seadsa_heap_abs_impl {
     
     seadsa_heap_abs_impl::isInteger int_pred;
     if (isTypedCell(n, offset, int_pred) || isTypedArrayCell(n, offset, int_pred)) {
-      CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
+      CRAB_LOG("heap-abs",
+	       llvm::errs() << "\tDisambiguation succeed!\n"
+	                    << "Found INT_REGION at offset " << offset
+	                    << " with bitwidth=" << int_pred.m_bitwidth << "\n"
+	                    << "\t" << *n << "\n";);
       return region_info(INT_REGION, int_pred.m_bitwidth);
     } 
 
     seadsa_heap_abs_impl::isBool bool_pred;
     if (isTypedCell(n, offset, bool_pred) || isTypedArrayCell(n, offset, bool_pred)) {
-      CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
+      CRAB_LOG("heap-abs",
+	       llvm::errs() << "\tDisambiguation succeed!\n"
+	                    << "Found BOOL_REGION at offset " << offset
+	                    << " with bitwidth=1\n"
+	                    << "\t" << *n << "\n";);      
       return region_info(BOOL_REGION, 1);
     } 
 
@@ -367,7 +377,9 @@ namespace seadsa_heap_abs_impl {
     
     if (n->size() == 0) {
       // XXX: nodes can have zero size
-      assert (offset == 0);
+      if (offset != 0) {
+	return -1;
+      }
       m_max_id++;
       return id;
     }
@@ -521,6 +533,7 @@ namespace seadsa_heap_abs_impl {
   SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& cg,
 					       const llvm::DataLayout& dl,
 					       const llvm::TargetLibraryInfo& tli,
+					       const sea_dsa::AllocWrapInfo& alloc_info,
 					       bool is_context_sensitive,
 					       bool disambiguate_unknown,
 					       bool disambiguate_ptr_cast,
@@ -536,9 +549,10 @@ namespace seadsa_heap_abs_impl {
     
     // -- Run sea-dsa
     if (!is_context_sensitive) {
-      m_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(m_dl, tli, cg, *m_fac, false); 
+      m_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(m_dl, tli, alloc_info,
+							    cg, *m_fac, false); 
     } else {
-      m_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(m_dl, tli, cg, *m_fac);
+      m_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(m_dl, tli, alloc_info, cg, *m_fac);
     }
     
     m_dsa->runOnModule(m_m);
@@ -667,3 +681,4 @@ namespace seadsa_heap_abs_impl {
   }  
   
 } // end namespace
+#endif /*HAVE_SEA_DSA*/

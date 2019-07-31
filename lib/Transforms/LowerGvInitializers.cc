@@ -71,7 +71,7 @@ namespace crab_llvm {
 	res = m.getOrInsertFunction 
 	  (boost::str 
 	   (boost::format ("verifier.zero_initializer.%d") % m_initfn.size ()), 
-	   m_voidty, type, NULL);
+	   m_voidty, type);
 	m_initfn[type] = res;
 
 	Type *i8PTy = Type::getInt8PtrTy(m.getContext ());
@@ -111,7 +111,7 @@ namespace crab_llvm {
 	res = m.getOrInsertFunction 
 	  (boost::str 
 	   (boost::format ("verifier.int_initializer.%d") % m_initfn.size ()), 
-	   m_voidty, ty->getPointerTo(), ty, NULL);
+	   m_voidty, ty->getPointerTo(), ty);
 	m_initfn[ty] = res;
 	Type *i8PTy = Type::getInt8PtrTy(m.getContext ());
 	LLVMUsed.push_back(ConstantExpr::getBitCast(res, i8PTy));
@@ -368,8 +368,8 @@ namespace crab_llvm {
       AU.addRequired<llvm::CallGraphWrapperPass>();      
     }
 
-    virtual const char * getPassName() const {
-      return "LowerGvInitializers";
+    virtual StringRef getPassName() const {
+      return "CrabLlvm: Lower global initializers";
     }
     
   };

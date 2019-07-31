@@ -5,6 +5,7 @@
 #include "crab_llvm/config.h"
 #include "crab_llvm/Transforms/DevirtFunctions.hh"
 #include "llvm/Pass.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -12,13 +13,13 @@
 #include "dsa/CallTargets.h"
 #endif 
 
-cl::opt<crab_llvm::CallSiteResolverKind>
+llvm::cl::opt<crab_llvm::CallSiteResolverKind>
 DevirtResolver("devirt-resolver",
-      cl::desc ("Method used to select potential callees"),
-      cl::values 
+      llvm::cl::desc ("Method used to select potential callees"),
+      llvm::cl::values 
       (clEnumValN(crab_llvm::RESOLVER_TYPES, "types", "Callees with same type"),
-       clEnumValN(crab_llvm::RESOLVER_DSA  , "dsa"  , "DSA selects the potential callees"),
-       clEnumValEnd), cl::init(crab_llvm::RESOLVER_TYPES));
+       clEnumValN(crab_llvm::RESOLVER_DSA  , "dsa"  , "DSA selects the potential callees")),
+      llvm::cl::init(crab_llvm::RESOLVER_TYPES));
 		   
 static llvm::cl::opt<bool>
 AllowIndirectCalls("devirt-allow-indirect-calls",
@@ -95,8 +96,8 @@ namespace crab_llvm {
       // AU.addPreserved<CallGraphWrapperPass> ();
     }
     
-    const char* getPassName() const {
-      return "DevirtualizeFunctionsPass";
+    StringRef getPassName() const {
+      return "CrabLlvm: Devirtualize indirect calls";
     }
   };
 

@@ -307,7 +307,7 @@ namespace crab_llvm {
     }
     return nullptr;
   }
-  
+
   template<typename Dsa>
   Function* CallSiteResolverByDsa<Dsa>::getBounceFunction(CallSite&CS) {
     AliasSetId id = devirt_impl::typeAliasId(CS, false);
@@ -354,6 +354,12 @@ namespace crab_llvm {
   
   Function* DevirtualizeFunctions::mkBounceFn(CallSite &CS, CallSiteResolver* CSR) {
     assert (isIndirectCall (CS) && "Not an indirect call");
+
+    // We don't create a bounce function if the function has a
+    // variable number of arguments.
+    if (CS.getFunctionType()->isVarArg()) {
+      return nullptr;
+    }
 
     if (Function* bounce = CSR->getBounceFunction(CS)) {
       DEVIRT_LOG(errs() << "Reusing bounce function for " << *(CS.getInstruction()) 
