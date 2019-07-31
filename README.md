@@ -1,13 +1,14 @@
 # Crab-llvm #
 
-<a href="https://travis-ci.org/seahorn/crab-llvm"><img src="https://travis-ci.org/seahorn/crab-llvm.svg?branch=dev" title="Ubuntu 12.04 LTS 64bit, g++-5"/></a>
+<a href="https://travis-ci.org/seahorn/crab-llvm"><img src="https://travis-ci.org/seahorn/crab-llvm.svg?branch=master" title="Ubuntu 16.04 LTS 64bit, g++-5"/></a>
 
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /><img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
 Crab-llvm is a static analyzer that computes inductive invariants for
 LLVM-based languages based on
 the [Crab](https://github.com/seahorn/crab) library. It currently
-supports LLVM 3.8 but there is an experimental branch `dev-llvm-5.0` that works for LLVM 5.0.
+supports LLVM 5.0. There is an experimental branch `llvm-8.0` for LLVM
+8.0.
 
 # Requirements #
 
@@ -31,7 +32,7 @@ To run tests you need to install `lit` and `OutputCheck`. In Linux:
      pip install lit
      pip install OutputCheck
 
-# Installation # 
+# Installation from sources # 
 
 The basic compilation steps are:
 
@@ -91,12 +92,6 @@ installation of the libraries is optional.
 **Important:** Apron and Elina are currently not compatible so you
 cannot enable `-DUSE_APRON=ON` and `-DUSE_ELINA=ON` at the same time. 
 
-To use Elina on Linux, you will need to add `_INSTALL_DIR_/lib` in the
-environment variable `LD_LIBRARY_PATH` if Elina is installed in a
-non-standard directory:
-
-    export LD_LIBRARY_PATH=_INSTALL_DIR_/lib
-	
 For instance, to install `crab-llvm` with Boxes and Apron:
 
      mkdir build && cd build
@@ -108,15 +103,21 @@ For instance, to install `crab-llvm` with Boxes and Apron:
      cmake --build . --target llvm && cmake ..                
      cmake --build . --target install 
 
-## Tests ## 
+## Checking installation ## 
 
 To run some regression tests:
 
      cmake --build . --target test-simple
 
+# Running Crab-llvm without installation #
+
+You can get the latest binary from docker hub using the command:
+
+     docker pull seahorn/crabllvm_llvm_5.0:latest
+	 
 # Crab-llvm architecture #
 
-![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/dev/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
+![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
 
 # Example 1 #
 
@@ -153,7 +154,7 @@ command:
 
 **Important:** the first thing that `crabllvm.py` does is to compile
   the C program into LLVM bitcode by using Clang. Since Crab-llvm is
-  based on LLVM 3.8, the version of clang must be 3.8 as well. 
+  based on LLVM 5.0, the version of clang must be 5.0 as well. 
 
 
 If the above command succeeds, then the output should be something
@@ -430,10 +431,12 @@ Well, there are many. Most of these limitations are coming from
 Crab. Here some of them:
 
 - Most Crab numerical domains reason about linear arithmetic. The
-  `term-int` domain is an exception.
+  `term-int` domain is an exception. This domain can treat non-linear
+  arithmetic expressions as uninterpreted functions.
 
-- Most Crab numerical domains reason about infinite integers. The
-  `w-int` domain is an exception.
+- Most Crab numerical domains reason about mathematical integers. The
+  `w-int` domain is an exception. The `zones` domain can use machine
+  arithmetic but it is not enabled by default.
 
 - There are several Crab numerical domains that compute disjunctive
   invariants (e.g., `boxes` or `dis-int`) but they are still limited
@@ -442,23 +445,20 @@ Crab. Here some of them:
 - The interprocedural analysis is summary-based but it's
   context-insensitive. 
   
-- The backward analysis is too experimental. 
+- The backward analysis is too experimental and it requires more work.
   
 - The option `--crab-track=ptr` translates pointer operations to Crab
   pointer operations without losing precision. However, Crab does not
   provide currently any pointer or shape analysis, and thus, very
   little reasoning about pointer operations can be currently done.
  
-  To mitigate that, points-to information can be provided to Crab-llvm
-  by `llvm-dsa`/`sea-dsa` as a pre-analysis step.  Crab-llvm can
-  reason about pointer's contents if `--crab-track=arr` and whenever
-  `llvm-dsa`/`sea-dsa` can infer statically that a pointer points to a
-  memory region of consecutive bytes where elements must have
-  compatible types and accesses to the region have offsets multiple of
-  the element type size. Once a memory region of this kind has been
-  identified, Crab-llvm uses one of the Crab array domains to reason
-  about their contents. Currently, Crab-llvm only supports array
-  smashing but there are more precise array domains implemented in
-  Crab that just need to be integrated.
+  Alternatively, points-to information can be provided to Crab-llvm by
+  `llvm-dsa`/`sea-dsa` as a pre-analysis step if `--crab-track=arr`.
+  Crab-llvm uses this pre-analysis step to statically partition memory
+  into disjoint regions and then (under some conditions) translate
+  regions to Crab arrays. Then, Crab-llvm uses one of the Crab array
+  domains to reason about their contents. Currently, Crab-llvm only
+  supports array smashing but there are more precise array domains
+  implemented in Crab that just need to be integrated.
 	  
   

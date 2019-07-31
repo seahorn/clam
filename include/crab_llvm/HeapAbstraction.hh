@@ -22,13 +22,14 @@ namespace crab_llvm {
 		  INT_REGION = 2,
 		  PTR_REGION = 3} region_type_t;
 
-   struct region_info {
+   class region_info {
      region_type_t m_region_type;
      // if the region contains a basic type (bool or integer) then
      // m_bitwidth is the bitwidth of the basic type. Otherwise, it is
      // 0.
      unsigned m_bitwidth;
      
+   public:
      region_info(region_type_t t, unsigned b)
        : m_region_type(t)
        , m_bitwidth(b){}
@@ -49,8 +50,10 @@ namespace crab_llvm {
      friend struct DummyHeapAbstraction;
      #ifdef HAVE_DSA
      friend class LlvmDsaHeapAbstraction;
-     #endif 
+     #endif
+     #ifdef HAVE_SEA_DSA
      friend class SeaDsaHeapAbstraction;
+     #endif 
      
      Mem *m_mem;
      int m_id;

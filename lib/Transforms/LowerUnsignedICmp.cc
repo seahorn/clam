@@ -254,8 +254,8 @@ namespace crab_llvm {
       return change;
     }
         
-    virtual const char * getPassName() const {
-      return "Lower ULT and ULE instructions";
+    virtual StringRef getPassName() const {
+      return "CrabLlvm: Lower ULT and ULE instructions";
     }
     
     virtual void getAnalysisUsage (AnalysisUsage &AU) const {

@@ -11,6 +11,6 @@ and build CrabLlvm under `/crabllvm/build`.
 CrabLlvm's install directory is added to `PATH`.
 
 Build arguments (required):
-- UBUNTU: trusty, xenial
+- UBUNTU: trusty, xenial, bionic
 - BUILD_TYPE: Release, Debug
 

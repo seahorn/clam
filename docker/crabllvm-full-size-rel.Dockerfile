@@ -2,17 +2,21 @@
 # Dockerfile for CrabLlvm binary
 # produces package in /crabllvm/build
 # Arguments:
-#  - UBUNTU:     trusty, xenial
+#  - UBUNTU:     trusty, xenial, bionic
 #  - BUILD_TYPE: debug, release
 #
 
 ARG UBUNTU
 
 # Pull base image.
-FROM seahorn/seahorn-build:$UBUNTU
+FROM seahorn/seahorn-build-llvm5:$UBUNTU
+
+# Needed to run clang with -m32
+RUN apt-get update && \
+    apt-get install -yqq libc6-dev-i386 
 
 RUN cd / && rm -rf /crabllvm && \
-    git clone https://github.com/seahorn/crab-llvm -b dev crabllvm --depth=10 ; \
+    git clone https://github.com/seahorn/crab-llvm crabllvm --depth=10 ; \
     mkdir -p /crabllvm/build
 WORKDIR /crabllvm/build
 
@@ -21,7 +25,7 @@ ARG BUILD_TYPE
 RUN cmake -GNinja \
           -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
           -DBOOST_ROOT=/deps/boost \
-          -DLLVM_DIR=/deps/LLVM-3.8.1-Linux/share/llvm/cmake \
+          -DLLVM_DIR=/deps/LLVM-5.0.2-Linux/lib/cmake/llvm \
           -DCMAKE_INSTALL_PREFIX=run \
           -DCMAKE_CXX_COMPILER=g++-5 \
           -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
@@ -35,10 +39,10 @@ RUN cmake -GNinja \
     cmake --build . --target install
 
 # symlink clang (from base image)
-RUN ln -s /clang-3.8/bin/clang run/bin/clang
-RUN ln -s /clang-3.8/bin/clang++ run/bin/clang++
+RUN ln -s /clang-5.0/bin/clang run/bin/clang
+RUN ln -s /clang-5.0/bin/clang++ run/bin/clang++
 
-ENV PATH "/deps/LLVM-3.8.1-Linux/bin:$PATH"
+ENV PATH "/deps/LLVM-5.0.2-Linux/bin:$PATH"
 ENV PATH "/crabllvm/build/run/bin:$PATH"
 
 # run tests

@@ -21,7 +21,6 @@
 #include "crab/domains/wrapped_interval_domain.hpp"
 //#include "crab/domains/array_sparse_graph.hpp"
 //#include "crab/domains/nullity.hpp"
-//#include "crab/domains/diff_domain.hpp" /* only debugging */
 
 /*
    Definition of the abstract domains (no instantiation done here)

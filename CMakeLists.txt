@@ -1,6 +1,6 @@
 project(CrabLlvm)
 
-cmake_minimum_required(VERSION 2.8.11)
+cmake_minimum_required(VERSION 3.3)
 
 set (CrabLlvm_VERSION_MAJOR 0)
 set (CrabLlvm_VERSION_MINOR 1)
@@ -15,11 +15,22 @@ endif()
 enable_testing()
 include (CTest)
 
+# By default, we don't include crab-llvm transformations if we are an
+# embedded project, but user can change that.
+option(CrabTransforms OFF)
+
 # determine if this is top-level or embedded project
 if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
-  set (TopLevel TRUE)
+  set(TopLevel TRUE)
+  set(CrabTransforms ON)  
 else()
-  set (TopLevel FALSE)
+  set(TopLevel FALSE)
+endif()
+
+if (CrabTransforms)
+  message(STATUS "Including crab-llvm transformations.")
+else()
+  message(STATUS "Excluding crab-llvm transformations.")
 endif()
 
 # Default is release with debug info
@@ -120,12 +131,12 @@ if (GIT_FOUND)
       CACHE STRING "seahorn-llvm repo")
 
     add_custom_target (llvm-dsa-git
-      ${GIT_EXECUTABLE} clone ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
+      ${GIT_EXECUTABLE} clone -b llvm-5.0 ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
     add_custom_target (sea-dsa-git
-      ${GIT_EXECUTABLE} clone ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
+      ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
     add_custom_target (seahorn-llvm-git
-      ${GIT_EXECUTABLE} clone ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
-    
+      ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
+
     add_custom_target (extra DEPENDS llvm-dsa-git sea-dsa-git seahorn-llvm-git)
   endif ()
 
@@ -153,7 +164,7 @@ endif ()
 #### begin crab stuff ####
 if (IS_DIRECTORY ${CRAB_ROOT} AND EXISTS ${CRAB_ROOT}/CMakeLists.txt)
  add_subdirectory(${CRAB_ROOT})
- include_directories (${CRAB_INCLUDE_DIRS})
+ include_directories (BEFORE ${CRAB_INCLUDE_DIRS})
 else()
   message (WARNING "No crab found. Run \n\tcmake --build . --target crab && cmake ${CMAKE_SOURCE_DIR}")
   return ()
@@ -163,7 +174,7 @@ endif()
 if (TopLevel)
   # if top-level, offer to build llvm
   ExternalProject_Add (llvm
-    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_380/final/
+    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_500/final/      
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/llvm
     INSTALL_DIR ${CMAKE_BINARY_DIR}/run
     CMAKE_ARGS
@@ -183,11 +194,11 @@ if (TopLevel)
     LOG_BUILD 1
     LOG_INSTALL 1)
 
-  find_package (LLVM 3.8.0 CONFIG NO_DEFAULT_PATH)
+  find_package (LLVM 5.0 CONFIG NO_DEFAULT_PATH)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})
-    set (LLVM_DIR ${LLVM_ROOT}/share/llvm/cmake CACHE PATH
+    set (LLVM_DIR ${LLVM_ROOT}/lib/cmake/llvm CACHE PATH
       "Forced location of LLVM cmake config" FORCE)
     message (WARNING "No llvm found. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
     return()
@@ -237,43 +248,67 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
   endif ()
 endif ()
 
+if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-dsa AND
+    EXISTS ${CMAKE_SOURCE_DIR}/llvm-dsa/lib/DSA/Steensgaard.cpp)
+  set (HAVE_DSA TRUE)
+endif()
+
+if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
+    EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/src/DsaAnalysis.cc)
+  set (HAVE_SEA_DSA TRUE)    
+endif()
+
+if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND
+    EXISTS ${CMAKE_SOURCE_DIR}/llvm-seahorn/lib/CMakeLists.txt)
+  set (HAVE_LLVM_SEAHORN TRUE)
+endif()
+
 if (TopLevel)
-  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-dsa AND
-      EXISTS ${CMAKE_SOURCE_DIR}/llvm-dsa/lib/DSA/Steensgaard.cpp)
+  if (HAVE_DSA)
     include_directories (AFTER llvm-dsa/include)
     add_subdirectory (llvm-dsa/lib/AssistDS)
     add_subdirectory (llvm-dsa/lib/DSA)
     set (DSA_LIBS DSA AssistDS)
     set (HAVE_DSA TRUE)
   else()
-    message (WARNING "No DSA found in ${CMAKE_SOURCE_DIR}/llvm-dsa. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
     set (DSA_LIBS "")
   endif()
 
-  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
-      EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/src/DsaAnalysis.cc)
+  if (HAVE_SEA_DSA)
     include_directories (BEFORE sea-dsa/include)
     add_subdirectory (${CMAKE_SOURCE_DIR}/sea-dsa)
     set (SEA_DSA_LIBS SeaDsaAnalysis)
+    set (HAVE_SEA_DSA TRUE)    
   else()
-    message (WARNING "No SEA DSA found in ${CMAKE_SOURCE_DIR}/sea-dsa. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
     set (SEA_DSA_LIBS "")
   endif()
   
-  if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND
-      EXISTS ${CMAKE_SOURCE_DIR}/llvm-seahorn/lib/CMakeLists.txt)
+  if (HAVE_LLVM_SEAHORN)
     include_directories (BEFORE llvm-seahorn/include)
     add_subdirectory(llvm-seahorn/lib)
     add_subdirectory(llvm-seahorn/tools)
     set (HAVE_LLVM_SEAHORN TRUE)
     set (LLVM_SEAHORN_LIBS SeaInstCombine SeaLoops SeaInstNondet)
-  else()
-    message (WARNING "No LLVM-SEAHORN found in ${CMAKE_SOURCE_DIR}/llvm-seahorn. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
   endif()
+
+  if ((NOT HAVE_DSA) OR (NOT HAVE_SEA_DSA) OR (NOT HAVE_LLVM_SEAHORN))
+    set(EXTRA_MSG  "")
+    if (NOT HAVE_DSA)
+      set(EXTRA_MSG "${EXTRA_MSG}\n - No LLVM-DSA in ${CMAKE_SOURCE_DIR}/llvm-dsa.")
+    endif()
+    if (NOT HAVE_SEA_DSA)
+      set(EXTRA_MSG "${EXTRA_MSG}\n - No SEA-DSA in ${CMAKE_SOURCE_DIR}/sea-dsa.")
+    endif()
+    if (NOT HAVE_LLVM_SEAHORN)
+      set(EXTRA_MSG "${EXTRA_MSG}\n - No LLVM-SEAHORN in ${CMAKE_SOURCE_DIR}/llvm-seahorn.")
+    endif()
+    message(WARNING "The following packages cannot be found:${EXTRA_MSG}\nRun cmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
+  endif()  
+  
 endif ()
 
-include_directories(${CrabLlvm_SOURCE_DIR}/include)
-include_directories (${CMAKE_BINARY_DIR}/include)
+include_directories(BEFORE ${CrabLlvm_SOURCE_DIR}/include)
+include_directories (BEFORE ${CMAKE_BINARY_DIR}/include)
 add_subdirectory(lib)
 
 configure_file(include/crab_llvm/config.h.cmake
@@ -287,16 +322,22 @@ endif()
 
 # Propagate to the parent
 if (NOT TopLevel)
-   set (CRABLLVM_LIBS
-       CrabLlvmAnalysis CrabLlvmInstrumentation
+   set(XCRABLLVM_LIBS
+       CrabLlvmAnalysis CrabLlvmInstrumentation)
+   if (CrabTransforms)
+     set(XCRABLLVM_LIBS ${XCRABLLVM_LIBS} LlvmPasses)
+   endif()
+  
+   set(CRABLLVM_LIBS
+       ${XCRABLLVM_LIBS}
        ${CRAB_LIBS}
        PARENT_SCOPE)
-    
-   set (CRABLLVM_INCLUDE_DIRS
-        ${CrabLlvm_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/include 
-        ${CRAB_INCLUDE_DIRS}
-        PARENT_SCOPE)    
+     
+   set(CRABLLVM_INCLUDE_DIRS
+       ${CrabLlvm_SOURCE_DIR}/include
+       ${CMAKE_BINARY_DIR}/include 
+       ${CRAB_INCLUDE_DIRS}
+       PARENT_SCOPE)    
 endif ()  
 
 if (TopLevel)

@@ -16,8 +16,7 @@ using namespace llvm::PatternMatch;
 namespace crab_llvm {
 
   /// Returns true if v is used by assume
-  static bool hasAssumeUsers (Value &v)
-  {
+  static bool hasAssumeUsers (Value &v) {
     for (User *U : v.users ())
       if (CallInst *ci = dyn_cast<CallInst> (U))
         if (match (ci, m_Intrinsic<Intrinsic::assume>()))
@@ -46,8 +45,7 @@ namespace crab_llvm {
       for (auto &I : boost::make_iterator_range(inst_begin (F), inst_end (F))) {
         if (!isa<CallInst> (&I)) continue;
 	
-        Value *v = I.stripPointerCasts ();
-        CallSite CS (v);
+        CallSite CS (&I);
         const Function *fn = CS.getCalledFunction ();
         if (!fn && CS.getCalledValue ()) {
           fn = dyn_cast<const Function> (CS.getCalledValue ()->stripPointerCasts ());
@@ -80,7 +78,7 @@ namespace crab_llvm {
 	  
 	  /*
 	    enqueue verifier.assume to be removed
-	   */
+	  */
 	  to_remove.push_back(&I);
         }
       }
@@ -98,8 +96,8 @@ namespace crab_llvm {
       //AU.setPreservesAll();
     }
     
-    virtual const char *getPassName() const {
-      return "PromoteAssume";
+    virtual StringRef getPassName() const {
+      return "CrabLlvm: Convert verifier.assume to llvm.assume";
     }
     
   };

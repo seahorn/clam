@@ -5,10 +5,8 @@ add_library(LlvmPasses ${CRABLLVM_LIBS_TYPE}
   LowerUnsignedICmp.cc
   RemoveUnreachableBlocksPass.cc
   MarkInternalInline.cc
-  SimplifyAssume.cc
   DevirtFunctions.cc
   DevirtFunctionsPass.cc
-  DevirtFunctionsDsaPass.cc  
   ExternalizeAddressTakenFunctions.cc
   PromoteAssume.cc  
   PromoteMalloc.cc

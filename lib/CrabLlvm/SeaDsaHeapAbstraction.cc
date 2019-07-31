@@ -1,5 +1,6 @@
 #include "crab_llvm/config.h"
 
+#ifdef HAVE_SEA_DSA
 /**
  * Heap abstraction based on sea-dsa (https://github.com/seahorn/sea-dsa).
  */
@@ -13,6 +14,7 @@
 
 #include "sea_dsa/Graph.hh"
 #include "sea_dsa/Global.hh"
+#include "sea_dsa/AllocWrapInfo.hh"
 
 #include "crab_llvm/SeaDsaHeapAbstraction.hh"
 #include "crab/common/debug.hpp"
@@ -20,7 +22,8 @@
 #include <set>
 #include <boost/unordered_map.hpp>
 #include <boost/range/iterator_range.hpp>
-#include "boost/range/algorithm/set_algorithm.hpp"
+#include <boost/range/algorithm/set_algorithm.hpp>
+#include <boost/optional.hpp>
 
 namespace crab_llvm {
 
@@ -148,9 +151,9 @@ namespace seadsa_heap_abs_impl {
 	  return false;
 	}
       }
+      return true;
     }
-    
-    return true;
+    return false;
   }
   
   // return true if the cell (n,o) points to an array of elements of
@@ -171,11 +174,74 @@ namespace seadsa_heap_abs_impl {
 	  return false;
 	}
       }
+      return true;
     }
-    
-    return true;
+    return false;    
   }
 
+  // Given [lb_a,ub_a) and [lb_b,ub_b) return true if they intersect.
+  static bool intersect_interval(std::pair<uint64_t,uint64_t> a,
+				 std::pair<uint64_t, uint64_t> b) {
+    return (b.first >= a.first && b.first < a.second) ||
+           (a.first >= b.first && a.first < b.second);
+  }
+
+  static uint64_t storage_size(const Type *t, const DataLayout &dl) {
+    return dl.getTypeStoreSize(const_cast<Type*>(t));
+  }
+  
+  static boost::optional<uint64_t>
+  size_of(const Graph::Set& types, const DataLayout &dl) {
+    if (types.isEmpty()) {
+      return 0;
+    } else {
+      uint64_t sz = storage_size(*(types.begin()), dl);
+      if (types.isSingleton()) {
+	return sz;
+      } else {
+	auto it = types.begin();
+	++it;
+	if (std::all_of(it, types.end(),
+			[dl,sz](const Type *t) {
+			  return (storage_size(t, dl) == sz);
+			})) {
+	  return sz;
+	} else {
+	  return boost::none;
+	}
+      }
+    }
+  }
+
+  // Return true if there is another cell overlapping with c.
+  static bool is_overlapping_cell(const Cell& c, const DataLayout &dl) {
+    const Node* n1 = c.getNode();
+    unsigned o1 = c.getOffset();
+    if (!n1->hasAccessedType(o1)) {
+      // this might be unsound but assuming cell overlaps might be too
+      // pessimistic.
+      return false;
+    }
+    
+    if (auto c1_sz = size_of(n1->getAccessedType(o1), dl)) {
+      uint64_t s1 = *c1_sz;
+      for (auto& kv: n1->types()) {
+	unsigned o2 = kv.first;
+	if (o1 == o2) continue;
+	if (auto c2_sz =  size_of(kv.second, dl)) {
+	  uint64_t s2 = *c2_sz;
+	  if (intersect_interval({o1, o1+s1}, {o2, o2+s2})) {
+	    return true;
+	  }
+	} else {
+	  return false;
+	}
+      }
+      return false;
+    } 
+    return true;
+  }
+  
   // canBeDisambiguated succeeds if returned valued != UNTYPED_REGION
   static region_info canBeDisambiguated(const Cell& c,
 					bool disambiguate_unknown,
@@ -189,31 +255,15 @@ namespace seadsa_heap_abs_impl {
     unsigned offset = c.getOffset();
     
     CRAB_LOG("heap-abs", 
-	     llvm::errs () << "\t*** Checking whether node at offset " << offset
+	     llvm::errs () << "*** Checking whether node at offset " << offset
 	                   << " can be disambiguated ... \n" 
-	                   << *n << "\n";);
+	                   << "\t" << *n << "\n";);
 
-    if (n->isCollapsed()) {
+    if (n->isOffsetCollapsed()) {
       CRAB_LOG("heap-abs", 
 	       llvm::errs() << "\tCannot be disambiguated: node is already collapsed.\n";);
       return region_info(UNTYPED_REGION, 0);
     }
-
-    // if (n->isUnknown()) {
-    //   if (!disambiguate_unknown) {
-    // 	CRAB_LOG("heap-abs",
-    // 		 llvm::errs() << "\tCannot be disambiguated: node is unknown.\n";);
-    // 	return region_info(UNTYPED_REGION, 0);
-    //   }
-    // }
-
-    // if (n->isIncomplete()) {
-    //   if (!disambiguate_external) {
-    // 	CRAB_LOG("heap-abs", 
-    // 		 llvm::errs() << "\tCannot be disambiguated: node is incomplete.\n";);
-    // 	return region_info(UNTYPED_REGION, 0);
-    //   }
-    // }
     
     if (n->isIntToPtr() || n->isPtrToInt()) {
       if (!disambiguate_ptr_cast) {
@@ -234,13 +284,21 @@ namespace seadsa_heap_abs_impl {
     
     seadsa_heap_abs_impl::isInteger int_pred;
     if (isTypedCell(n, offset, int_pred) || isTypedArrayCell(n, offset, int_pred)) {
-      CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
+      CRAB_LOG("heap-abs",
+	       llvm::errs() << "\tDisambiguation succeed!\n"
+	                    << "Found INT_REGION at offset " << offset
+	                    << " with bitwidth=" << int_pred.m_bitwidth << "\n"
+	                    << "\t" << *n << "\n";);
       return region_info(INT_REGION, int_pred.m_bitwidth);
     } 
 
     seadsa_heap_abs_impl::isBool bool_pred;
     if (isTypedCell(n, offset, bool_pred) || isTypedArrayCell(n, offset, bool_pred)) {
-      CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
+      CRAB_LOG("heap-abs",
+	       llvm::errs() << "\tDisambiguation succeed!\n"
+	                    << "Found BOOL_REGION at offset " << offset
+	                    << " with bitwidth=1\n"
+	                    << "\t" << *n << "\n";);      
       return region_info(BOOL_REGION, 1);
     } 
 
@@ -254,10 +312,55 @@ namespace seadsa_heap_abs_impl {
   ///////
   // class methods
   ///////
-  
+
+  // Return -1 if it cannot assign an id to the cell.
   int SeaDsaHeapAbstraction::getId(const Cell& c) {
     const Node* n = c.getNode();
     unsigned offset = c.getOffset();
+    
+    /** 
+     * Begin extra conditions for array smashing-like abstractions 
+     * TODO: we can move these extra conditions to canBeDisambiguated.
+     **/
+    if (!n->isModified() && !n->isRead()) {
+      CRAB_LOG("heap-abs",
+	       llvm::errs() << "\tBut discarding it because it is never accessed.\n";);
+      return -1;      
+    }
+
+    // TODO: caching
+    if (is_overlapping_cell(c, m_dl)) {
+      // TOIMPROVE: we can assign same id to all overlapping cells but it
+      // wouldn't be sound for array domains that ignore pointer
+      // arithmetic. Maybe have a flag?
+      CRAB_LOG("heap-abs",
+	       llvm::errs() << "\tBut discarding it because overlaps with other cells.\n";);
+      return -1;
+    }
+    
+    if (n->isArray()) {
+      // TOIMPROVE: we can assign the same id to all node's cells but it
+      // would be unsound for array domains that ignore pointer
+      // arithmetic. Maybe have a flag?
+      // offset = 0;
+      
+      if (std::any_of(n->types().begin(), n->types().end(),
+		      [offset](const Node::accessed_types_type::value_type& kv) {
+			return (kv.first != offset);
+		      })) {
+	CRAB_LOG("heap-abs",
+		 llvm::errs() << "\tBut discarding it because cell's node is marked as array "
+		              << "and it can be accessed with different offsets.\n";);
+	return -1;
+      }
+    }
+
+    // FIXME: do we need to ignore recursive nodes?
+    
+    /** 
+     * End extra conditions for array smashing-like abstractions 
+     **/
+
     
     auto it = m_node_ids.find(n);
     if (it != m_node_ids.end()) {
@@ -274,7 +377,9 @@ namespace seadsa_heap_abs_impl {
     
     if (n->size() == 0) {
       // XXX: nodes can have zero size
-      assert (offset == 0);
+      if (offset != 0) {
+	return -1;
+      }
       m_max_id++;
       return id;
     }
@@ -321,6 +426,7 @@ namespace seadsa_heap_abs_impl {
 	
 	if (r_info.get_type() != UNTYPED_REGION) {
 	  int id = getId(c);
+	  if (id < 0) continue;	  
 	  if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
 	    reads.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	  }
@@ -400,8 +506,8 @@ namespace seadsa_heap_abs_impl {
 	  if (callerC.isNull()) {
 	    continue;
 	  }
-	  
 	  int id = getId(callerC);
+	  if (id < 0) continue;
 	  if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
 	    reads.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	  } 
@@ -419,20 +525,37 @@ namespace seadsa_heap_abs_impl {
     region_t ret = getRegion(*(I.getParent()->getParent()), &I);
     if (!ret.isUnknown()) mods.insert(ret); 
     
-    m_callsite_accessed [&I] = reads; 
-    m_callsite_mods [&I] = mods; 
-    m_callsite_news [&I] = news; 
+    m_callsite_accessed[&I] = reads; 
+    m_callsite_mods[&I] = mods; 
+    m_callsite_news[&I] = news; 
   }
 
-  SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M,
-					       sea_dsa::GlobalAnalysis* dsa,
+  SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& cg,
+					       const llvm::DataLayout& dl,
+					       const llvm::TargetLibraryInfo& tli,
+					       const sea_dsa::AllocWrapInfo& alloc_info,
+					       bool is_context_sensitive,
 					       bool disambiguate_unknown,
 					       bool disambiguate_ptr_cast,
 					       bool disambiguate_external)
-    : m_M(M), m_dsa(dsa), m_max_id(0),
+    : m_m(M), m_dl(dl), 
+      m_dsa(nullptr), m_fac(nullptr), m_max_id(0),
       m_disambiguate_unknown(disambiguate_unknown),
       m_disambiguate_ptr_cast(disambiguate_ptr_cast),
       m_disambiguate_external(disambiguate_external) {
+
+    // The factory must be alive while sea_dsa is in use    
+    m_fac = new SetFactory();
+    
+    // -- Run sea-dsa
+    if (!is_context_sensitive) {
+      m_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(m_dl, tli, alloc_info,
+							    cg, *m_fac, false); 
+    } else {
+      m_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(m_dl, tli, alloc_info, cg, *m_fac);
+    }
+    
+    m_dsa->runOnModule(m_m);
     
     // --- Pre-compute all the information per function and
     //     callsites
@@ -448,10 +571,10 @@ namespace seadsa_heap_abs_impl {
 			errs() << "\n";
 		      }
 		    });
-    
-    for (auto &F: boost::make_iterator_range(m_M)) {
+
+    // populate caches
+    for (auto &F: boost::make_iterator_range(m_m)) {    
       cacheReadModNewNodes(F);
-      
       llvm::inst_iterator InstIt = inst_begin(F), InstItEnd = inst_end(F);
       for (; InstIt != InstItEnd; ++InstIt) {
 	if (llvm::CallInst *Call = llvm::dyn_cast<llvm::CallInst>(&*InstIt)) {
@@ -461,6 +584,11 @@ namespace seadsa_heap_abs_impl {
     }
   }
 
+  SeaDsaHeapAbstraction::~SeaDsaHeapAbstraction() {
+    delete m_dsa;
+    delete m_fac;
+  }
+  
   // f is used to know in which Graph we should search for V
   SeaDsaHeapAbstraction::region_t
   SeaDsaHeapAbstraction::getRegion(const llvm::Function& fn, llvm::Value* V)  {
@@ -478,14 +606,23 @@ namespace seadsa_heap_abs_impl {
       return region_t();
     }
     
+    // -- A cell might not be translated to a memory region because
+    //    either canBeDisambiguated or getId fails.
     region_info r_info = canBeDisambiguated(c,
 					    m_disambiguate_unknown,
 					    m_disambiguate_ptr_cast,
 					    m_disambiguate_external);
     
-    return (r_info.get_type() == UNTYPED_REGION ?
-	    region_t() :
-	    region_t(static_cast<HeapAbstraction*>(this), getId(c), r_info)); 
+    if (r_info.get_type() == UNTYPED_REGION) {
+      return region_t();
+    } else {
+      int id = getId(c);
+      if (id < 0) {
+	return region_t();
+      } else {
+	return region_t(static_cast<HeapAbstraction*>(this), id, r_info);
+      }
+    }
   }
   
   const llvm::Value* SeaDsaHeapAbstraction::getSingleton(int region) const {
@@ -541,6 +678,7 @@ namespace seadsa_heap_abs_impl {
   SeaDsaHeapAbstraction::region_set_t
   SeaDsaHeapAbstraction::getNewRegions(llvm::CallInst& I)  {
     return m_callsite_news[&I];
-  }
+  }  
   
 } // end namespace
+#endif /*HAVE_SEA_DSA*/

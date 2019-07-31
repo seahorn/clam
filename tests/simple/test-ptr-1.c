@@ -1,27 +1,26 @@
-extern int nd ();
+extern int nd();
 
 int a[10];
 
-int main ()
-{
+/* 
+   Pointer arithmetic example. sea-dsa is fine because the array is
+   never accessed. 
+*/
+int main() {
   int* p;
-  //int* q;
-
-  if (nd ())
-  {
+  
+  if (nd()) {
     p = &a[0] + 2;
-    //q = &a[0] + 3;
   }
-  else
-  {
+  else {
     p = &a[0] + 3;
-    //q = &a[0] + 2;
   }
 
   int res;
-  if ( p == &a[0]+1)
+  if ( p == &a[0]+1) {
     res = 0;
-  else
+  }   else {
     res = 1;
+  }
   return res;
 }

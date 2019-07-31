@@ -1,33 +1,26 @@
-#ifndef _NAME_VALUES_HPP_
-#define _NAME_VALUES_HPP_
+#pragma once
 
 #include "llvm/Pass.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 
-using namespace llvm;
-
 namespace crab_llvm {
 
-  class NameValues : public ModulePass {
+  class NameValues : public llvm::ModulePass {
    public:
     
     static char ID;
 
-    NameValues () : ModulePass (ID) {}
+    NameValues () : llvm::ModulePass (ID) {}
     
-    bool runOnModule (Module &M);
+    virtual bool runOnModule (llvm::Module &M);
 
-    bool runOnFunction (Function &F);
+    bool runOnFunction (llvm::Function &F);
 
-    void getAnalysisUsage (AnalysisUsage &AU) const { 
-      AU.setPreservesAll (); 
-    }
-
-    virtual const char * getPassName() const {
-      return "Name values";
+    virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const;
+   
+    virtual llvm::StringRef getPassName() const {
+      return "CrabLlvm: Name values";
     }
   };
-
 } 
-#endif 
