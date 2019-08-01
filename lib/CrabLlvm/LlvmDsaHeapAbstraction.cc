@@ -51,7 +51,20 @@ namespace crab_llvm {
     boost::set_union(s1, s2, std::inserter(s3, s3.end()));
     std::swap(s3, s1);
   }
-  
+
+  // v1 is not sorted
+  template<typename Vector, typename Set>
+  inline void vector_difference(Vector& v1, Set& s2) {
+    Vector v3;
+    v3.reserve(v1.size());    
+    for(unsigned i=0,e=v1.size();i<e;++i) {
+      if (!s2.count(v1[i])) {
+	v3.push_back(v1[i]);
+      }
+    }
+    std::swap(v3,v1);
+  }
+
   struct isInteger: std::unary_function<const llvm::Type*, bool> {
     unsigned m_bitwidth;
     isInteger(): m_bitwidth(0) {}
@@ -307,7 +320,7 @@ namespace crab_llvm {
     
     //CRAB_LOG("heap-abs", llvm::errs() << f.getName() << "\n");
     
-    region_set_t reads, mods, news;
+    region_vector_t reads, mods, news;
     for (const llvm::DSNode* n : reach) {
       if (!n->isReadNode() && !n->isModifiedNode()) {
 	continue;
@@ -329,17 +342,17 @@ namespace crab_llvm {
 	  continue;
 	}
 	if ((n->isReadNode() || n->isModifiedNode()) && retReach.count(n) <= 0)
-	  reads.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  reads.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	if (n->isModifiedNode() && retReach.count(n) <= 0)
-	  mods.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  mods.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	if (n->isModifiedNode() && retReach.count(n)) 
-	  news.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  news.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 			       
       }
     }
-    m_func_accessed [&f] = reads;
-    m_func_mods [&f] = mods;
-    m_func_news [&f] = news;
+    m_func_accessed[&f] = reads;
+    m_func_mods[&f] = mods;
+    m_func_news[&f] = news;
   }
 
   // Compute and cache the set of read, mod and new nodes of a
@@ -385,7 +398,7 @@ namespace crab_llvm {
     //  llvm::DSGraph::NodeMapTy nodeMap;
     //  dsg->computeCalleeCallerMapping(CS, CF, *cdsg, nodeMap);
     
-    region_set_t reads, mods, news;
+    region_vector_t reads, mods, news;
     for (const llvm::DSNode* n : reach) {
       if (!n->isReadNode() && !n->isModifiedNode())
 	continue;
@@ -408,22 +421,22 @@ namespace crab_llvm {
 	}
 	
 	if ((n->isReadNode() || n->isModifiedNode()) && retReach.count(n) <= 0)
-	  reads.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  reads.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	if (n->isModifiedNode() && retReach.count(n) <= 0)
-	  mods.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  mods.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
 	if (n->isModifiedNode() && retReach.count(n))
-	  news.insert(region_t(static_cast<HeapAbstraction*>(this), id, r_info)); 
+	  news.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info)); 
 			       
       }
     }
     
     // -- add the region of the lhs of the call site
-    region_t ret = getRegion(*(I.getParent()->getParent()), &I);
-    if (!ret.isUnknown()) mods.insert(ret); 
+    //region_t ret = getRegion(*(I.getParent()->getParent()), &I);
+    //if (!ret.isUnknown()) mods.push_back(ret); 
     
-    m_callsite_accessed [&I] = reads; 
-    m_callsite_mods [&I] = mods; 
-    m_callsite_news [&I] = news; 
+    m_callsite_accessed[&I] = reads; 
+    m_callsite_mods[&I] = mods; 
+    m_callsite_news[&I] = news; 
   }
 
   LlvmDsaHeapAbstraction::LlvmDsaHeapAbstraction(llvm::Module& M,
@@ -502,50 +515,52 @@ namespace crab_llvm {
     return getTypedSingleton(it->second, pred);
   }
   
-  LlvmDsaHeapAbstraction::region_set_t
+  LlvmDsaHeapAbstraction::region_vector_t
   LlvmDsaHeapAbstraction::getAccessedRegions(const llvm::Function& F)  {
     return m_func_accessed [&F];
   }
 
-  LlvmDsaHeapAbstraction::region_set_t
+  LlvmDsaHeapAbstraction::region_vector_t
   LlvmDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function& F)  {
-    region_set_t s1 = m_func_accessed [&F];
-    region_set_t s2 = m_func_mods [&F];
-    set_difference(s1,s2);
-    return s1;
+    region_vector_t v1 = m_func_accessed[&F];
+    region_vector_t v2 = m_func_mods[&F];
+    std::set<LlvmDsaHeapAbstraction::region_t> s2(v2.begin(), v2.end());
+    vector_difference(v1,s2);
+    return v1;
   }
   
-  LlvmDsaHeapAbstraction::region_set_t
+  LlvmDsaHeapAbstraction::region_vector_t
   LlvmDsaHeapAbstraction::getModifiedRegions(const llvm::Function& F) {
-    return m_func_mods [&F];
+    return m_func_mods[&F];
   }
   
-  LlvmDsaHeapAbstraction::region_set_t
+  LlvmDsaHeapAbstraction::region_vector_t
   LlvmDsaHeapAbstraction::getNewRegions(const llvm::Function& F) {
-    return m_func_news [&F];
+    return m_func_news[&F];
   }
   
-  LlvmDsaHeapAbstraction::region_set_t
+  LlvmDsaHeapAbstraction::region_vector_t
   LlvmDsaHeapAbstraction::getAccessedRegions(llvm::CallInst& I) {
-    return m_callsite_accessed [&I];
+    return m_callsite_accessed[&I];
   }
   
-  LlvmDsaHeapAbstraction::region_set_t
+  LlvmDsaHeapAbstraction::region_vector_t
   LlvmDsaHeapAbstraction::getOnlyReadRegions(llvm::CallInst& I)  {
-    region_set_t s1 = m_callsite_accessed [&I];
-    region_set_t s2 = m_callsite_mods [&I];
-    set_difference(s1,s2);
-    return s1;
+    region_vector_t v1 = m_callsite_accessed[&I];
+    region_vector_t v2 = m_callsite_mods[&I];
+    std::set<LlvmDsaHeapAbstraction::region_t> s2(v2.begin(), v2.end());
+    vector_difference(v1,s2);
+    return v1;
   }
   
-  LlvmDsaHeapAbstraction::region_set_t
+  LlvmDsaHeapAbstraction::region_vector_t
   LlvmDsaHeapAbstraction::getModifiedRegions(llvm::CallInst& I) {
-    return m_callsite_mods [&I];
+    return m_callsite_mods[&I];
   }
   
-  LlvmDsaHeapAbstraction::region_set_t
+  LlvmDsaHeapAbstraction::region_vector_t
   LlvmDsaHeapAbstraction::getNewRegions(llvm::CallInst& I)  {
-    return m_callsite_news [&I];
+    return m_callsite_news[&I];
   }
 } // end namespace
 #endif 

@@ -170,7 +170,7 @@ namespace crab_llvm {
     }							    \
   
   typedef typename HeapAbstraction::region_t mem_region_t;
-  typedef typename HeapAbstraction::region_set_t mem_region_set_t;  
+  typedef typename HeapAbstraction::region_vector_t mem_region_vector_t;  
   
   static bool isBool(const llvm::Type *t){
     return (t->isIntegerTy(1));
@@ -548,6 +548,8 @@ namespace crab_llvm {
       Type* ty = cast<PointerType>(v->getType())->getElementType();      
       bitwidth = ty->getIntegerBitWidth();
       if (mem_region.get_type() == INT_REGION && bitwidth <= 1) {
+	llvm::errs() << *v << "\n";
+	assert(false);
 	CRABLLVM_ERROR("Integer region must have bitwidth > 1",
 		       __FILE__,__LINE__);
       }
@@ -752,10 +754,10 @@ namespace crab_llvm {
   }
 
   template<typename V>
-  static inline mem_region_set_t get_read_only_regions(HeapAbstraction &mem, V& v) {
-    mem_region_set_t res;
+  static inline mem_region_vector_t get_read_only_regions(HeapAbstraction &mem, V& v) {
+    mem_region_vector_t res;
     auto regions = mem.getOnlyReadRegions(v);
-    std::copy_if(regions.begin(), regions.end(), std::inserter(res, res.begin()),
+    std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
 		 [](mem_region_t r){
 		   return r.get_type() == INT_REGION || r.get_type() == BOOL_REGION;
 		 });
@@ -763,10 +765,10 @@ namespace crab_llvm {
   }
 
   template<typename V>
-  static inline mem_region_set_t get_modified_regions(HeapAbstraction &mem, V& v) {
-    mem_region_set_t res;
+  static inline mem_region_vector_t get_modified_regions(HeapAbstraction &mem, V& v) {
+    mem_region_vector_t res;
     auto regions = mem.getModifiedRegions(v);
-    std::copy_if(regions.begin(), regions.end(), std::inserter(res, res.begin()),
+    std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
 		 [](mem_region_t r){
 		   return r.get_type() == INT_REGION || r.get_type() == BOOL_REGION;
 		 });
@@ -774,10 +776,10 @@ namespace crab_llvm {
   }
 
   template<typename V>
-  static inline mem_region_set_t get_new_regions(HeapAbstraction &mem, V& v) {
-    mem_region_set_t res;
+  static inline mem_region_vector_t get_new_regions(HeapAbstraction &mem, V& v) {
+    mem_region_vector_t res;
     auto regions = mem.getNewRegions(v);
-    std::copy_if(regions.begin(), regions.end(), std::inserter(res, res.begin()),
+    std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
 		 [](mem_region_t r){
 		   return r.get_type() == INT_REGION || r.get_type() == BOOL_REGION;
 		 });
@@ -1314,8 +1316,7 @@ namespace crab_llvm {
     const bool m_is_inter_proc;
     unsigned int m_object_id;
     bool m_has_seahorn_fail;
-    mem_region_set_t& m_init_regions;
-
+    std::set<mem_region_t>& m_init_regions;
     
     unsigned fieldOffset(const StructType *t, unsigned field) {
       return m_dl->getStructLayout(const_cast<StructType*>(t))->
@@ -1922,7 +1923,7 @@ namespace crab_llvm {
 
     CrabInstVisitor(crabLitFactory &lfac, HeapAbstraction &mem,
 		    const DataLayout* dl, const TargetLibraryInfo* tli,
-		    basic_block_t &bb, bool isInterProc, mem_region_set_t& init_regions)
+		    basic_block_t &bb, bool isInterProc, std::set<mem_region_t>& init_regions)
       : m_lfac(lfac)
       , m_mem(mem)
       , m_dl(dl)
@@ -2713,7 +2714,7 @@ namespace crab_llvm {
 	}
         // -- havoc all modified regions by the callee
         if (m_lfac.get_track() == ARR) {
-	  mem_region_set_t mods = get_modified_regions(m_mem, I);
+	  mem_region_vector_t mods = get_modified_regions(m_mem, I);
           for (auto a : mods) {
 	    if (isGlobalSingleton(a))
 	      m_bb.havoc(m_lfac.mkArraySingletonVar(a));
@@ -2763,15 +2764,15 @@ namespace crab_llvm {
       if (m_lfac.get_track() == ARR) {
 	// -- add the input and output array parameters a_i1,...,a_in
 	// -- and a_o1,...,a_om.
-        mem_region_set_t onlyreads = get_read_only_regions(m_mem, I);
-        mem_region_set_t mods = get_modified_regions(m_mem, I);
-        mem_region_set_t news = get_new_regions(m_mem, I);
+        mem_region_vector_t onlyreads = get_read_only_regions(m_mem, I);
+        mem_region_vector_t mods = get_modified_regions(m_mem, I);
+        mem_region_vector_t news = get_new_regions(m_mem, I);
         
         CRAB_LOG("cfg-mem",
                  llvm::errs() << "Callsite " << I << "\n"
- 		              << "\tOnly-Read regions: " << onlyreads << "\n"
-		              << "\tModified regions: " << mods << "\n"
-		              << "\tNew regions:" << news << "\n");
+		 << "\tOnly-Read regions " << onlyreads.size() << ": " << onlyreads << "\n"
+		 << "\tModified regions " << mods.size() << ": " << mods << "\n"
+		 << "\tNew regions " << news.size() << ": " << news << "\n");
 
         // -- add only read regions as array input parameters
         for (auto a: onlyreads) {
@@ -2785,7 +2786,9 @@ namespace crab_llvm {
 	
         // -- add modified regions as both input and output parameters
         for (auto a: mods) {
-          if (news.find(a) != news.end()) continue;
+	  if (std::find(news.begin(), news.end(), a) != news.end()) {
+	    continue;
+	  }
 	  
           // input version
           if (isGlobalSingleton(a)) {
@@ -3014,7 +3017,7 @@ namespace crab_llvm {
     var_ref_t ret_val;    
     bool has_seahorn_fail = false;
     // keep track of initialized regions
-    mem_region_set_t init_regions;
+    std::set<mem_region_t> init_regions;
     
     for (auto &B : m_func) {     
       opt_basic_block_t BB = lookup(B);
@@ -3077,7 +3080,7 @@ namespace crab_llvm {
     //   // function (via malloc-like functions) except if the function
     //   // is main.
     //   // basic_block_t & entry = m_cfg->get_node(m_cfg->entry());
-    //   // mem_region_set_t news =  get_new_regions(m_mem, m_func);
+    //   // mem_region_vector_t news =  get_new_regions(m_mem, m_func);
     //   // for (auto n: news) {
     //   // 	entry.set_insert_point_front();
     //   // }
@@ -3150,15 +3153,15 @@ namespace crab_llvm {
 	
       if (m_lfac.get_track() == ARR && (!m_func.getName().equals("main"))) {
         // -- add the input and output array parameters 
-        mem_region_set_t onlyreads = get_read_only_regions(m_mem, m_func);
-        mem_region_set_t mods = get_modified_regions(m_mem, m_func);
-        mem_region_set_t news = get_new_regions(m_mem, m_func);
+        mem_region_vector_t onlyreads = get_read_only_regions(m_mem, m_func);
+        mem_region_vector_t mods = get_modified_regions(m_mem, m_func);
+        mem_region_vector_t news = get_new_regions(m_mem, m_func);
 
         CRAB_LOG("cfg-mem",
                  llvm::errs() << "Function " << m_func.getName() 
-                              << "\n\tOnly-Read regions: " << onlyreads
-                              << "\n\tModified regions: " << mods
-                              << "\n\tNew regions:" << news << "\n");
+		 << "\n\tOnly-Read regions " << onlyreads.size() << ": " << onlyreads
+		 << "\n\tModified regions " << mods.size() << ": " << mods
+		 << "\n\tNew regions " << news.size() << ": " << news << "\n");
 		 
         // -- add only read regions as input parameters
         for (auto a: onlyreads) {
@@ -3172,7 +3175,9 @@ namespace crab_llvm {
 
         // -- add input/output parameters
         for (auto a: mods) {
-          if (news.find(a) != news.end()) continue;
+	  if (std::find(news.begin(), news.end(), a) != news.end()) {
+	    continue;
+	  }
 	  var_ref_t a_in;
 	  
           // -- for each parameter `a` we create a fresh version

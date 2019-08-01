@@ -11,7 +11,7 @@ namespace crab_llvm {
 struct DummyHeapAbstraction: public HeapAbstraction {
 
   using typename HeapAbstraction::region_t;
-  using typename HeapAbstraction::region_set_t;
+  using typename HeapAbstraction::region_vector_t;
   
   DummyHeapAbstraction(): HeapAbstraction() { }
   
@@ -23,36 +23,36 @@ struct DummyHeapAbstraction: public HeapAbstraction {
     return region_t();
   }
   
-  region_set_t getAccessedRegions(const llvm::Function&) {
-    return region_set_t();
+  region_vector_t getAccessedRegions(const llvm::Function&) {
+    return region_vector_t();
   }
   
-  region_set_t getOnlyReadRegions(const llvm::Function&) {
-    return region_set_t();
+  region_vector_t getOnlyReadRegions(const llvm::Function&) {
+    return region_vector_t();
   }
   
-  region_set_t getModifiedRegions(const llvm::Function&) {
-    return region_set_t();
+  region_vector_t getModifiedRegions(const llvm::Function&) {
+    return region_vector_t();
   }
   
-  region_set_t getNewRegions(const llvm::Function&) {
-    return region_set_t();
+  region_vector_t getNewRegions(const llvm::Function&) {
+    return region_vector_t();
   }
   
-  region_set_t getAccessedRegions(llvm::CallInst&) {
-    return region_set_t();
+  region_vector_t getAccessedRegions(llvm::CallInst&) {
+    return region_vector_t();
   }
   
-  region_set_t getOnlyReadRegions(llvm::CallInst&) {
-    return region_set_t();
+  region_vector_t getOnlyReadRegions(llvm::CallInst&) {
+    return region_vector_t();
   }
   
-  region_set_t getModifiedRegions(llvm::CallInst&) {
-    return region_set_t();
+  region_vector_t getModifiedRegions(llvm::CallInst&) {
+    return region_vector_t();
   }
   
-  region_set_t getNewRegions(llvm::CallInst&) {
-    return region_set_t();
+  region_vector_t getNewRegions(llvm::CallInst&) {
+    return region_vector_t();
   }
   
   llvm::StringRef getName() const {
