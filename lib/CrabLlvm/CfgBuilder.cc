@@ -230,19 +230,24 @@ namespace crab_llvm {
       return ikos::z_number(toMpz(CI->getValue(), is_bignum));
     }
   }
+
+  static bool isTrackedType(const llvm::Type& ty,
+			    const crab::cfg::tracked_precision tracklev) {
+    // -- a pointer
+    if (ty.isPointerTy()) 
+      return (tracklev >= crab::cfg::PTR && !CrabDisablePointers); 
     
+    // -- always track integer and boolean registers
+    return ty.isIntegerTy();
+  }
+
   static bool isTracked(const llvm::Value &v,
 			const crab::cfg::tracked_precision tracklev) {
     // -- ignore any shadow variable created by seahorn
     if (v.getName().startswith("shadow.mem")) 
       return false;
-    
-    // -- a pointer
-    if (v.getType()->isPointerTy()) 
-      return (tracklev >= crab::cfg::PTR && !CrabDisablePointers); 
-    
-    // -- always track integer and boolean registers
-    return v.getType()->isIntegerTy();
+
+    return isTrackedType(*v.getType(), tracklev);
   }
 
   /*
@@ -3050,7 +3055,7 @@ namespace crab_llvm {
 	      ret_val = var_ref_t(normalizeFuncParamOrRet(*RV, *ret_block, m_lfac));
 	      bb.ret(ret_val.get());
 	    }
-	  }
+	  } 
 	}
       } else {
 	std::vector<const BasicBlock*> succs_vector(succs(B).begin(), succs(B).end());
@@ -3115,6 +3120,24 @@ namespace crab_llvm {
 
       basic_block_t & entry = m_cfg->get_node(m_cfg->entry());
       
+      if (ret_val.is_null()) {
+	// special case: function that do not return but in its
+	// signature it has a return type. E.g., "int foo() {
+	// unreachable; }"
+	const Type& RT = *m_func.getReturnType();
+	if (isTrackedType(RT, m_lfac.get_track())) {
+	  if (isBool(&RT)) {
+	    ret_val = var_ref_t(m_lfac.mkBoolVar());  
+	  } else if (isInteger(&RT)) {
+	    unsigned bitwidth = RT.getIntegerBitWidth();      
+	    ret_val = var_ref_t(m_lfac.mkIntVar(bitwidth));
+	  } else {
+	    assert(RT.isPointerTy());
+	    ret_val = var_ref_t(m_lfac.mkPtrVar());  
+	  }
+	}
+      }
+
       // -- add the returned value of the llvm function: o
       if (!ret_val.is_null()) {
 	outputs.push_back(ret_val.get());
