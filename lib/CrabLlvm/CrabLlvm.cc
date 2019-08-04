@@ -22,6 +22,7 @@
 #include "crab_llvm/wrapper_domain.hh"
 #include "crab_llvm/CrabLlvm.hh"
 #include "crab_llvm/CfgBuilder.hh"
+#include "crab_llvm/Support/Debug.hh"
 #include "crab_llvm/Support/NameValues.hh"
 /** Wrappers for pointer analyses **/
 #include "crab_llvm/DummyHeapAbstraction.hh"
@@ -1422,7 +1423,7 @@ namespace crab_llvm {
       #endif 
     }
     default:
-      errs() << "Warning: running crab-llvm without memory analysis\n";
+      CRABLLVM_WARNING("running crab-llvm without memory analysis");
     }
 
     m_params.dom = CrabLlvmDomain;

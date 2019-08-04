@@ -17,6 +17,7 @@
 #include "sea_dsa/AllocWrapInfo.hh"
 
 #include "crab_llvm/SeaDsaHeapAbstraction.hh"
+#include "crab_llvm/Support/Debug.hh"
 #include "crab/common/debug.hpp"
 
 #include <set>
@@ -390,14 +391,14 @@ SeaDsaHeapAbstraction::mkRegion(SeaDsaHeapAbstraction* heap_abs,
   //     case BOOL_REGION:
   // 	if (!gv->getType()->getElementType()->isIntegerTy(1)) {
   // 	  assert(false);	  
-  // 	  CRAB_ERROR("Type mismatch while creating a heap Boolean region");
+  // 	  CRABLLVM_ERROR("Type mismatch while creating a heap Boolean region");
   // 	}
   // 	break;
   //     case INT_REGION:
   // 	if (!(gv->getType()->getElementType()->isIntegerTy() &&
   // 	      !gv->getType()->getElementType()->isIntegerTy(1))) {
   // 	  assert(false);
-  // 	  CRAB_ERROR("Type mismatch while creating a heap integer region");	       
+  // 	  CRABLLVM_ERROR("Type mismatch while creating a heap integer region");	       
   // 	}
   // 	break;
   //     default:;
@@ -557,7 +558,7 @@ void  SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(llvm::CallInst& 
 	if (callerC.isNull()) {
 	  // This can cause an inconsistency between the number of
 	  // regions between a callsite and the callee's declaration.
-	  CRAB_ERROR("(SeaDsaHeapAbs) caller cell cannot be mapped to callee cell");
+	  CRABLLVM_ERROR("caller cell cannot be mapped to callee cell");
 	}
 
 	region_info callerRI = canBeDisambiguated(callerC, m_dl,
@@ -690,16 +691,16 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& c
       // Check that at the beginning caller and callee agree on the
       // number of memory regions, othewrwise there is nothing we can do.
       if (readsC.size() != readsF.size()) {
-	CRAB_ERROR("(SeaDsaHeapAbs) Different num of regions between callsite and ",
-		   " its callee ", F.getName());
+	CRABLLVM_ERROR("Different num of regions between callsite and its callee "
+		       << F.getName());
       }
       if (modsC.size() != modsF.size()) {
-	CRAB_ERROR("(SeaDsaHeapAbs) Different num of regions between callsite and ",
-		   " its callee ", F.getName());
+	CRABLLVM_ERROR("Different num of regions between callsite and its callee "
+		       << F.getName());
       }
       if (newsC.size() != newsF.size()) {
-	CRAB_ERROR("(SeaDsaHeapAbs) Different num of regions between callsite and ",
-		   " its callee ", F.getName());
+	CRABLLVM_ERROR("Different num of regions between callsite and its callee "
+		       << F.getName());
       }
 
       // Keep track of inconsistent memory regions (i.e., regions on

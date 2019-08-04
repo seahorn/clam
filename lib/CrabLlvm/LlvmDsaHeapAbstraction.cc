@@ -368,7 +368,7 @@ namespace crab_llvm {
     const llvm::Function* Called = llvm::CallSite(&I).getCalledFunction();
 
     if (!Called) {
-      //llvm::errs () << "CRABLLVM WARNING: DSA cannot resolve " << I << "\n";
+      // CRABLLVM_WARNING("DSA cannot resolve " << I);
       return;
     }
     
