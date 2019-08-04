@@ -267,8 +267,8 @@ namespace crab_llvm {
   ///////
   
 
-  // Return -1 if it cannot assign an id.
-  int LlvmDsaHeapAbstraction::getId(const llvm::DSNode *n, unsigned offset) {
+  LlvmDsaHeapAbstraction::region_id_t
+  LlvmDsaHeapAbstraction::getId(const llvm::DSNode *n, unsigned offset) {
     auto it = m_node_ids.find(n);
     if (it != m_node_ids.end()) {
       return it->second + offset;
@@ -281,7 +281,7 @@ namespace crab_llvm {
      **/
     
     
-    unsigned id = m_max_id;
+    region_id_t id = m_max_id;
     m_node_ids[n] = id;
 
     // XXX: we only have the reverse map for the offset 0.  That's
@@ -506,7 +506,7 @@ namespace crab_llvm {
     }
   }
   
-  const llvm::Value* LlvmDsaHeapAbstraction::getSingleton(int region) const {
+  const llvm::Value* LlvmDsaHeapAbstraction::getSingleton(region_id_t region) const {
     auto const it = m_rev_node_ids.find(region);
     if (it == m_rev_node_ids.end()) 
       return nullptr;

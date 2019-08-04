@@ -48,6 +48,12 @@ namespace crab_llvm {
    template<typename Mem>
    class Region {
 
+   public:
+     
+     using region_id_t = long unsigned int;
+
+   private:
+     
      // A region different from unknown should represent a consecutive
      // sequence of bytes in memory that have compatible types and are
      // accessed uniformly so the analysis can use it in a safe
@@ -60,42 +66,22 @@ namespace crab_llvm {
      #ifdef HAVE_SEA_DSA
      friend class SeaDsaHeapAbstraction;
      #endif 
+
      
      Mem *m_mem;
-     int m_id;
+     region_id_t m_id;
      region_info m_info;
      
-     Region(Mem *mem, int id, region_info info)
+     Region(Mem *mem, region_id_t id, region_info info)
        : m_mem(mem)
        , m_id(id)
-       , m_info(info) {
-
-       // sanity check
-       if (const llvm::Value* v = getSingleton()) {
-	 if (const llvm::GlobalVariable *gv = llvm::dyn_cast<const llvm::GlobalVariable>(v)) {
-	   switch(get_type()) {
-	   case BOOL_REGION:
-	     if (!gv->getType()->getElementType()->isIntegerTy(1)) {
-	       CRAB_ERROR("Type mismatch while creating a heap Boolean region");
-	     }
-	     break;
-	   case INT_REGION:
-	     if (!(gv->getType()->getElementType()->isIntegerTy() &&
-		   !gv->getType()->getElementType()->isIntegerTy(1))) {
-	       CRAB_ERROR("Type mismatch while creating a heap integer region");	       
-	     }
-	     break;
-	   default:;
-	   }
-	 }
-       }
-     }
-     
+       , m_info(info) {}
+         
     public:
 
      Region()
        : m_mem(nullptr)
-       , m_id(-1),
+       , m_id(0),
 	 m_info(region_info(UNTYPED_REGION,0)) { }
 
      Region(const Region<Mem>& other) = default;
@@ -105,7 +91,7 @@ namespace crab_llvm {
      Region<Mem>& operator=(const Region<Mem>& other) = default;
     
      bool isUnknown() const {
-       return(m_id < 0 || m_info.get_type() == UNTYPED_REGION);
+       return (m_info.get_type() == UNTYPED_REGION);
      }
           
      const llvm::Value* getSingleton() const {
@@ -127,7 +113,7 @@ namespace crab_llvm {
        return (m_id == o.m_id);
      }
 
-     int get_id() const {
+     region_id_t get_id() const {
        return m_id;
      }
 
@@ -171,18 +157,19 @@ namespace crab_llvm {
     
      template<typename Any>
      friend class Region;
-
-    protected:
-
-     // return a value if the region corresponds to a single-cell
-     // global memory cell, or nullptr otherwise.
-     virtual const llvm::Value* getSingleton(int region) const = 0;
      
     public:
 
      typedef Region<HeapAbstraction> region_t;
      typedef std::vector<region_t> region_vector_t;
+     typedef typename region_t::region_id_t region_id_t;
 
+    protected:
+
+     // return a value if the region corresponds to a single-cell
+     // global memory cell, or nullptr otherwise.
+     virtual const llvm::Value* getSingleton(region_id_t region) const = 0;
+     
     public:
 
      HeapAbstraction() { }

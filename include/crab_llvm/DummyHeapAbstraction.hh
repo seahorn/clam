@@ -12,10 +12,11 @@ struct DummyHeapAbstraction: public HeapAbstraction {
 
   using typename HeapAbstraction::region_t;
   using typename HeapAbstraction::region_vector_t;
+  using typename HeapAbstraction::region_id_t;  
   
   DummyHeapAbstraction(): HeapAbstraction() { }
   
-  const llvm::Value* getSingleton(int) const {
+  const llvm::Value* getSingleton(region_id_t) const {
     return nullptr;
   }
   

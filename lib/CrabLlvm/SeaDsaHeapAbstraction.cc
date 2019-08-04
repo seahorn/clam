@@ -378,7 +378,36 @@ static region_info canBeDisambiguated(const Cell& c, const llvm::DataLayout& dl,
 // class methods
 ///////
 
-unsigned int SeaDsaHeapAbstraction::getId(const Cell& c) {
+SeaDsaHeapAbstraction::region_t
+SeaDsaHeapAbstraction::mkRegion(SeaDsaHeapAbstraction* heap_abs,
+				const Cell& c, 
+				region_info ri) {
+  SeaDsaHeapAbstraction::region_t out(static_cast<HeapAbstraction*>(heap_abs), getId(c), ri);
+  // // sanity check
+  // if (const llvm::Value* v = out.getSingleton()) {
+  //   if (const llvm::GlobalVariable *gv = llvm::dyn_cast<const llvm::GlobalVariable>(v)) {
+  //     switch(out.get_type()) {
+  //     case BOOL_REGION:
+  // 	if (!gv->getType()->getElementType()->isIntegerTy(1)) {
+  // 	  assert(false);	  
+  // 	  CRAB_ERROR("Type mismatch while creating a heap Boolean region");
+  // 	}
+  // 	break;
+  //     case INT_REGION:
+  // 	if (!(gv->getType()->getElementType()->isIntegerTy() &&
+  // 	      !gv->getType()->getElementType()->isIntegerTy(1))) {
+  // 	  assert(false);
+  // 	  CRAB_ERROR("Type mismatch while creating a heap integer region");	       
+  // 	}
+  // 	break;
+  //     default:;
+  //     }
+  //   }
+  // }
+  return out;
+}
+
+SeaDsaHeapAbstraction::region_id_t SeaDsaHeapAbstraction::getId(const Cell& c) {
   const Node* n = c.getNode();
   unsigned offset = c.getOffset();
   
@@ -387,7 +416,7 @@ unsigned int SeaDsaHeapAbstraction::getId(const Cell& c) {
     return it->second + offset;
   }
     
-  unsigned id = m_max_id;
+  region_id_t id = m_max_id;
   m_node_ids[n] = id;
 
   // XXX: we only have the reverse map for the offset 0.  That's
@@ -443,7 +472,7 @@ void  SeaDsaHeapAbstraction::computeReadModNewNodes(const llvm::Function& f) {
 					      m_disambiguate_external);
 	
       if (r_info.get_type() != UNTYPED_REGION) {
-	region_t reg(static_cast<HeapAbstraction*>(this), getId(c), r_info);
+	region_t reg(mkRegion(this, c, r_info));
 	if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
 	  reads.push_back(reg);
 	}
@@ -530,25 +559,26 @@ void  SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(llvm::CallInst& 
 	  // regions between a callsite and the callee's declaration.
 	  CRAB_ERROR("(SeaDsaHeapAbs) caller cell cannot be mapped to callee cell");
 	}
-	
-	region_t reg(static_cast<HeapAbstraction*>(this), getId(callerC), calleeRI);
+
 	region_info callerRI = canBeDisambiguated(callerC, m_dl,
 						  m_disambiguate_unknown,
 						  m_disambiguate_ptr_cast,
-						  m_disambiguate_external);
-
+						  m_disambiguate_external);       
 	/**  
-	 * FIXME: Detect inconsistencies between caller and callee at
-	 * the callsite.  This shouldn't not happen but it does
-	 * sometimes. This is possibly a problem in sea-dsa. For
-	 * instance, we saw in the caller cells with offset 10 but
-	 * size=10 while callee is offset 10 and size=12. This means
-	 * that the caller is accessing out-of-bounds while the callee
-	 * is ok. We temporary solve the problem by having a boolean
-	 * that says whether caller and callee agree. Only consistent
+	 * FIXME: assert(calleeRI == callerRI) should always hold.
+	 * 
+	 * However, there are sometimes inconsistencies between caller
+	 * and callee at the callsite. This is possibly a problem in
+	 * sea-dsa. For instance, we saw in the caller cells with
+	 * offset 10 but size=10 while callee is offset 10 and
+	 * size=12. This means that the caller is accessing
+	 * out-of-bounds which shouldn't happen while the callee is
+	 * ok. We temporary solve the problem by having a boolean that
+	 * says whether caller and callee agree. Only consistent
 	 * regions are exposed to clients.
 	 **/
 	bool is_consistent_callsite = (calleeRI == callerRI);
+	region_t reg(mkRegion(this, callerC, calleeRI));
 	if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
 	  reads.push_back({reg, is_consistent_callsite});
 	} 
@@ -767,11 +797,11 @@ SeaDsaHeapAbstraction::getRegion(const llvm::Function& fn, llvm::Value* V)  {
   if (r_info.get_type() == UNTYPED_REGION) {
     return region_t();
   } else {
-    return region_t(static_cast<HeapAbstraction*>(this), getId(c), r_info);
+    return mkRegion(this, c, r_info);
   }
 }
   
-const llvm::Value* SeaDsaHeapAbstraction::getSingleton(int region) const {
+const llvm::Value* SeaDsaHeapAbstraction::getSingleton(region_id_t region) const {
   auto const it = m_rev_node_ids.find(region);
   if (it == m_rev_node_ids.end()) 
     return nullptr;

@@ -31,9 +31,10 @@ namespace crab_llvm {
 
    public:
 
-     using typename HeapAbstraction::region_t;
-     using typename HeapAbstraction::region_vector_t;
-
+    using typename HeapAbstraction::region_t;
+    using typename HeapAbstraction::region_vector_t;
+    using typename HeapAbstraction::region_id_t;
+    
    private:
 
     // XXX: We should use sea_dsa::Graph::SetFactory.
@@ -50,7 +51,8 @@ namespace crab_llvm {
     llvm::DenseMap<const llvm::CallInst*, std::vector<region_t>> m_callsite_mods;
     llvm::DenseMap<const llvm::CallInst*, std::vector<region_t>> m_callsite_news;
 
-    unsigned int getId(const sea_dsa::Cell& c);
+    region_t mkRegion(SeaDsaHeapAbstraction* heap_abs, const sea_dsa::Cell& c, region_info ri);
+    region_id_t getId(const sea_dsa::Cell& c);
 
     // compute and cache the set of read, mod and new nodes of a whole
     // function such that mod nodes are a subset of the read nodes and
@@ -81,7 +83,7 @@ namespace crab_llvm {
     
     virtual region_t getRegion(const llvm::Function &F, llvm::Value *V) override;
     
-    virtual const llvm::Value* getSingleton(int region) const override;
+    virtual const llvm::Value* getSingleton(region_id_t region) const override;
     
     virtual region_vector_t getAccessedRegions(const llvm::Function &F) override;
     
@@ -110,10 +112,10 @@ namespace crab_llvm {
     sea_dsa::GlobalAnalysis* m_dsa;
     SetFactory* m_fac;
     /// map from Node to id
-    llvm::DenseMap<const sea_dsa::Node*, unsigned> m_node_ids;
+    llvm::DenseMap<const sea_dsa::Node*, region_id_t> m_node_ids;
     /// reverse map
-    boost::unordered_map<unsigned, const sea_dsa::Node*> m_rev_node_ids;
-    unsigned m_max_id;
+    boost::unordered_map<region_id_t, const sea_dsa::Node*> m_rev_node_ids;
+    region_id_t m_max_id;
     bool m_disambiguate_unknown;
     bool m_disambiguate_ptr_cast;
     bool m_disambiguate_external;
