@@ -170,10 +170,15 @@ namespace crab_llvm {
   static bool isInteger(const llvm::Value&v) {
     return isInteger(v.getType());
   }
-  
+
+  static bool isPointer(const llvm::Type *t,
+			const crab::cfg::tracked_precision tracklev) {
+    return (t->isPointerTy() && tracklev >= PTR && !CrabDisablePointers);
+  }
+
   static bool isPointer(const llvm::Value&v,
 			const crab::cfg::tracked_precision tracklev) {
-    return (v.getType()->isPointerTy() && tracklev >= PTR && !CrabDisablePointers);
+    return isPointer(v.getType(), tracklev);
   }
 
   /** Converts v to mpz_class. Assumes that v is signed */
@@ -233,21 +238,25 @@ namespace crab_llvm {
     return isTrackedType(*v.getType(), tracklev);
   }
 
-  /*
-    We can have cases where the callsite has a return value but the
-    function actually does not return any value. Because of that, we
-    check first the noreturn attribute of the function. Note that if a
-    noreturn function actually returns it is undefined behavior.
-  */
-  static bool DoesCallSiteReturn(llvm::CallInst& I,
-				 const crab::cfg::tracked_precision tracklev) {
-    bool non_void_tracked_ret = (!I.getType()->isVoidTy() && isTracked(I, tracklev));
+  // A crab callsite should return a value if the I's callee has a
+  // tracked return type, regardless whether the LLVM callsite
+  // returns. In LLVM, a callsite does not need to fully match with
+  // the function signature but in Crab we require to do so. E.g.,
+  // LLVM can remove the return value of the callsite if it's dead.
+  static bool ShouldCallSiteReturn(llvm::CallInst& I,
+				   const crab::cfg::tracked_precision tracklev) {
     llvm::CallSite CS(&I);
     if (llvm::Function* Callee = CS.getCalledFunction()) {
-      return (!(Callee->doesNotReturn()) && non_void_tracked_ret);
-    } else {
-      return non_void_tracked_ret;
+      Type* RT = Callee->getReturnType();
+      return (!(RT->isVoidTy()) && isTrackedType(*RT, tracklev));
     }
+    return false;
+  }
+
+  // Whether the callsite returns a value.
+  static bool DoesCallSiteReturn(llvm::CallInst& I,
+				 const crab::cfg::tracked_precision tracklev) {
+    return (!I.getType()->isVoidTy() && isTracked(I, tracklev));
   }
 
   // Convenient wrapper for a LLVM variable or constant
@@ -2631,7 +2640,8 @@ namespace crab_llvm {
 	  // -- unresolved indirect call
 	  CRABLLVM_WARNING("skipped indirect call. Enabling --devirt-functions might help.");
 	  
-	  if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_lfac.get_track()) &&
+	      ShouldCallSiteReturn(I, m_lfac.get_track())) {
 	    // havoc return value
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
@@ -2665,7 +2675,8 @@ namespace crab_llvm {
         if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I)) {
           doMemIntrinsic(*MI);
         } else {
-	  if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_lfac.get_track()) &&
+	      ShouldCallSiteReturn(I, m_lfac.get_track())) {
 	    // -- havoc return value of the intrinsics
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
@@ -2684,7 +2695,8 @@ namespace crab_llvm {
 	 **/      
 	
         // -- havoc return value
-        if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+        if (DoesCallSiteReturn(I, m_lfac.get_track()) &&
+	    ShouldCallSiteReturn(I, m_lfac.get_track())) {
 	  crab_lit_ref_t lhs = m_lfac.getLit(I);
 	  assert(lhs && lhs->isVar());
 	  havoc(lhs->getVar(), m_bb);
@@ -2732,10 +2744,35 @@ namespace crab_llvm {
       }
       
       // -- add the return value of the llvm calliste: o
-      if (DoesCallSiteReturn(I, m_lfac.get_track())) {
-	crab_lit_ref_t ret = m_lfac.getLit(I);
-	assert(ret && ret->isVar());
-	outputs.push_back(ret->getVar());
+      if (ShouldCallSiteReturn(I, m_lfac.get_track())) {
+	if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+	  crab_lit_ref_t ret = m_lfac.getLit(I);
+	  assert(ret && ret->isVar());
+	  outputs.push_back(ret->getVar());
+	} else {
+	  // The callsite should return something to match with the
+	  // function signature but it doesn't: we create a fresh
+	  // return value.
+	  Type* RT = callee->getReturnType();
+	  if (isBool(RT)) {
+	    var_t fresh_ret = m_lfac.mkBoolVar();
+	    outputs.push_back(fresh_ret);	    	    
+	  } else if (isInteger(RT)) {
+	    unsigned bitwidth = RT->getIntegerBitWidth();      
+	    var_t fresh_ret = m_lfac.mkIntVar(bitwidth);	    
+	    outputs.push_back(fresh_ret);	    	    
+	  } else if (isPointer(RT, m_lfac.get_track())) {
+	    var_t fresh_ret = m_lfac.mkPtrVar();	    	    
+	    outputs.push_back(fresh_ret);	    
+	  } else {
+	    // do nothing
+	  }
+	}
+      } else {
+	if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+	  // LLVM shouldn't allow this.
+	  CRABLLVM_ERROR("Unexpected type mismatch between callsite and function signature");
+	}
       }
       
       if (m_lfac.get_track() == ARR) {
