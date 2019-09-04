@@ -256,12 +256,14 @@ namespace crab_llvm {
   typedef typename IntraCrabLlvm::invariant_map_t invariant_map_t;
   typedef typename IntraCrabLlvm::heap_abs_ptr heap_abs_ptr;
   /** End typedefs **/
-  
+
+  #if 0
   /** Begin global counters **/
   static unsigned num_invars; // some measure for the size of invariants
   static unsigned num_nontrivial_blocks;
   /** End global counters **/
-  
+  #endif
+
   static bool isRelationalDomain(CrabDomain dom) {
     return (dom == ZONES_SPLIT_DBM || dom == OCT ||
 	    dom == PK || dom == TERMS_ZONES);
@@ -660,6 +662,7 @@ namespace crab_llvm {
 	    // --- invariants that hold at the exit of the blocks
 	    auto post = analyzer.get_post(bl);
 	    update(results.postmap, *B,  mkGenericAbsDomWrapper(post));
+	    #if 0
 	    if (params.stats) {
 	      unsigned num_block_invars = 0;
 	      // XXX: for boxes it would be more useful to get a measure
@@ -669,6 +672,7 @@ namespace crab_llvm {
 	      num_invars += num_block_invars;
 	      if (num_block_invars > 0) num_nontrivial_blocks++;
 	    }
+	    #endif 
 	  } else {
 	    // this should be unreachable
 	    assert(false && "A Crab block should correspond to either an LLVM edge or block");
@@ -1086,7 +1090,8 @@ namespace crab_llvm {
 		// --- invariants that hold at the exit of the blocks
 		auto post = analyzer.get_post(cfg, B);
 		update(results.postmap, *B, mkGenericAbsDomWrapper(post));
-	      
+
+		#if 0
 		if (params.stats) {
 		  unsigned num_block_invars = 0;
 		  // TODO CRAB: for boxes we would like to use
@@ -1096,6 +1101,7 @@ namespace crab_llvm {
 		  num_invars += num_block_invars;
 		  if (num_block_invars > 0) num_nontrivial_blocks++;
 		}
+		#endif 
 	      } else {
 		// this should be unreachable
 	      assert(false && "A Crab block should correspond to either an LLVM edge or block");
@@ -1480,10 +1486,12 @@ namespace crab_llvm {
         } else {
   	  llvm::outs() << "BRUNCH_STAT Result INCONCLUSIVE\n";
         }
+	#if 0
         llvm::outs() << "BRUNCH_STAT NumOfBlocksWithInvariants "
  	 	     << num_nontrivial_blocks << "\n";
         llvm::outs() << "BRUNCH_STAT SizeOfInvariants "       
 		     << num_invars << "\n";
+	#endif 
         llvm::outs() << "************** BRUNCH STATS END *****************\n\n";
       }
     }
