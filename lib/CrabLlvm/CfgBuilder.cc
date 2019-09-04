@@ -58,6 +58,7 @@
 #include "crab_llvm/CfgBuilder.hh"
 #include "crab_llvm/HeapAbstraction.hh"
 #include "crab_llvm/Support/CFG.hh"
+#include "crab_llvm/Support/Debug.hh"
 
 #include <algorithm>
 
@@ -132,12 +133,6 @@ CrabEnableBignums("crab-enable-bignums",
      cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."), 
      cl::init(false));
 
-cl::opt<bool>
-CrabDisableWarnings("crab-disable-warnings",
-	      cl::desc("Disable warning messages"), 
-	      cl::init(false),
-	      cl::Hidden);
-
 namespace crab_llvm {
 
   // Any integer that cannot be represented by 64 bits is considered a bignum.
@@ -156,21 +151,9 @@ namespace crab_llvm {
       return (v.sgt(max) || v.slt(min));
     }
   }
-
-  static void CRABLLVM_ERROR(std::string msg, const char *file, unsigned line) {
-    llvm::errs() << "CRABLLVM ERROR: " << msg << "\n";
-    llvm::errs() << "File: " << file << "\n";
-    llvm::errs() << "Line: " << line << "\n";
-    std::exit(EXIT_FAILURE);           
-  }
-  
-  #define CRABLLVM_WARNING(MSG)				    \
-    if (!CrabDisableWarnings) {				    \
-      llvm::errs() << "CRABLLVM WARNING: " << MSG << "\n"; \
-    }							    \
   
   typedef typename HeapAbstraction::region_t mem_region_t;
-  typedef typename HeapAbstraction::region_set_t mem_region_set_t;  
+  typedef typename HeapAbstraction::region_vector_t mem_region_vector_t;  
   
   static bool isBool(const llvm::Type *t){
     return (t->isIntegerTy(1));
@@ -187,10 +170,15 @@ namespace crab_llvm {
   static bool isInteger(const llvm::Value&v) {
     return isInteger(v.getType());
   }
-  
+
+  static bool isPointer(const llvm::Type *t,
+			const crab::cfg::tracked_precision tracklev) {
+    return (t->isPointerTy() && tracklev >= PTR && !CrabDisablePointers);
+  }
+
   static bool isPointer(const llvm::Value&v,
 			const crab::cfg::tracked_precision tracklev) {
-    return (v.getType()->isPointerTy() && tracklev >= PTR && !CrabDisablePointers);
+    return isPointer(v.getType(), tracklev);
   }
 
   /** Converts v to mpz_class. Assumes that v is signed */
@@ -230,36 +218,45 @@ namespace crab_llvm {
       return ikos::z_number(toMpz(CI->getValue(), is_bignum));
     }
   }
+
+  static bool isTrackedType(const llvm::Type& ty,
+			    const crab::cfg::tracked_precision tracklev) {
+    // -- a pointer
+    if (ty.isPointerTy()) 
+      return (tracklev >= crab::cfg::PTR && !CrabDisablePointers); 
     
+    // -- always track integer and boolean registers
+    return ty.isIntegerTy();
+  }
+
   static bool isTracked(const llvm::Value &v,
 			const crab::cfg::tracked_precision tracklev) {
     // -- ignore any shadow variable created by seahorn
     if (v.getName().startswith("shadow.mem")) 
       return false;
-    
-    // -- a pointer
-    if (v.getType()->isPointerTy()) 
-      return (tracklev >= crab::cfg::PTR && !CrabDisablePointers); 
-    
-    // -- always track integer and boolean registers
-    return v.getType()->isIntegerTy();
+
+    return isTrackedType(*v.getType(), tracklev);
   }
 
-  /*
-    We can have cases where the callsite has a return value but the
-    function actually does not return any value. Because of that, we
-    check first the noreturn attribute of the function. Note that if a
-    noreturn function actually returns it is undefined behavior.
-  */
-  static bool DoesCallSiteReturn(llvm::CallInst& I,
-				 const crab::cfg::tracked_precision tracklev) {
-    bool non_void_tracked_ret = (!I.getType()->isVoidTy() && isTracked(I, tracklev));
+  // A crab callsite should return a value if the I's callee has a
+  // tracked return type, regardless whether the LLVM callsite
+  // returns. In LLVM, a callsite does not need to fully match with
+  // the function signature but in Crab we require to do so. E.g.,
+  // LLVM can remove the return value of the callsite if it's dead.
+  static bool ShouldCallSiteReturn(llvm::CallInst& I,
+				   const crab::cfg::tracked_precision tracklev) {
     llvm::CallSite CS(&I);
     if (llvm::Function* Callee = CS.getCalledFunction()) {
-      return (!(Callee->doesNotReturn()) && non_void_tracked_ret);
-    } else {
-      return non_void_tracked_ret;
+      Type* RT = Callee->getReturnType();
+      return (!(RT->isVoidTy()) && isTrackedType(*RT, tracklev));
     }
+    return false;
+  }
+
+  // Whether the callsite returns a value.
+  static bool DoesCallSiteReturn(llvm::CallInst& I,
+				 const crab::cfg::tracked_precision tracklev) {
+    return (!I.getType()->isVoidTy() && isTracked(I, tracklev));
   }
 
   // Convenient wrapper for a LLVM variable or constant
@@ -536,7 +533,7 @@ namespace crab_llvm {
     case PTR_REGION :
       type = ARR_PTR_TYPE;
       break;
-    default: CRABLLVM_ERROR("unsupported region type", __FILE__, __LINE__);
+    default: CRABLLVM_ERROR("unsupported region type");
     }
     return var_t(m_vfac.get(mem_region.get_id()), type, bitwidth);
   }
@@ -548,21 +545,19 @@ namespace crab_llvm {
       Type* ty = cast<PointerType>(v->getType())->getElementType();      
       bitwidth = ty->getIntegerBitWidth();
       if (mem_region.get_type() == INT_REGION && bitwidth <= 1) {
-	CRABLLVM_ERROR("Integer region must have bitwidth > 1",
-		       __FILE__,__LINE__);
+	CRABLLVM_ERROR("Integer region must have bitwidth > 1");
       }
       // If the singleton contains a pointer then getIntegerBitWidth()
       // returns zero which means for us "unknown" bitwidth so we are
       // good.
     } else {
-      CRABLLVM_ERROR("Memory region does not belong to a global singleton",
-		     __FILE__, __LINE__);
+      CRABLLVM_ERROR("Memory region does not belong to a global singleton");
     }
     switch  (mem_region.get_type()) {
     case INT_REGION : type = INT_TYPE; break;
     case BOOL_REGION: type = BOOL_TYPE; break;
     case PTR_REGION : type = PTR_TYPE; break;
-    default: CRABLLVM_ERROR("unsupported region type", __FILE__, __LINE__);
+    default: CRABLLVM_ERROR("unsupported region type");
     }
     return var_t(m_vfac.get(mem_region.get_id()), type, bitwidth);
   }
@@ -587,35 +582,35 @@ namespace crab_llvm {
   
   bool crabLitFactoryImpl::isBoolTrue(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isBool())
-      CRABLLVM_ERROR("Literal is not a Boolean", __FILE__, __LINE__);
+      CRABLLVM_ERROR("Literal is not a Boolean");
     auto lit = boost::static_pointer_cast<const crabBoolLit>(ref);
     return lit->isTrue();
   }
     
   bool crabLitFactoryImpl::isBoolFalse(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isBool())
-      CRABLLVM_ERROR("Literal is not a Boolean", __FILE__, __LINE__);    
+      CRABLLVM_ERROR("Literal is not a Boolean");    
     auto lit = boost::static_pointer_cast<const crabBoolLit>(ref);
     return lit->isFalse();
   }
   
   bool crabLitFactoryImpl::isPtrNull(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isPtr())
-      CRABLLVM_ERROR("Literal is not a pointer", __FILE__, __LINE__);        
+      CRABLLVM_ERROR("Literal is not a pointer");        
     auto lit = boost::static_pointer_cast<const crabPtrLit>(ref);
     return lit->isNull();
   }
   
   lin_exp_t crabLitFactoryImpl::getExp(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isInt())
-      CRABLLVM_ERROR("Literal is not an integer", __FILE__, __LINE__);            
+      CRABLLVM_ERROR("Literal is not an integer");            
     auto lit = boost::static_pointer_cast<const crabIntLit>(ref);
     return lit->getExp();
   }
 
   number_t crabLitFactoryImpl::getIntCst(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isInt())
-      CRABLLVM_ERROR("Literal is not an integer", __FILE__, __LINE__);                
+      CRABLLVM_ERROR("Literal is not an integer");                
     auto lit = boost::static_pointer_cast<const crabIntLit>(ref);
     return lit->getInt();
   }
@@ -752,10 +747,10 @@ namespace crab_llvm {
   }
 
   template<typename V>
-  static inline mem_region_set_t get_read_only_regions(HeapAbstraction &mem, V& v) {
-    mem_region_set_t res;
+  static inline mem_region_vector_t get_read_only_regions(HeapAbstraction &mem, V& v) {
+    mem_region_vector_t res;
     auto regions = mem.getOnlyReadRegions(v);
-    std::copy_if(regions.begin(), regions.end(), std::inserter(res, res.begin()),
+    std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
 		 [](mem_region_t r){
 		   return r.get_type() == INT_REGION || r.get_type() == BOOL_REGION;
 		 });
@@ -763,10 +758,10 @@ namespace crab_llvm {
   }
 
   template<typename V>
-  static inline mem_region_set_t get_modified_regions(HeapAbstraction &mem, V& v) {
-    mem_region_set_t res;
+  static inline mem_region_vector_t get_modified_regions(HeapAbstraction &mem, V& v) {
+    mem_region_vector_t res;
     auto regions = mem.getModifiedRegions(v);
-    std::copy_if(regions.begin(), regions.end(), std::inserter(res, res.begin()),
+    std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
 		 [](mem_region_t r){
 		   return r.get_type() == INT_REGION || r.get_type() == BOOL_REGION;
 		 });
@@ -774,10 +769,10 @@ namespace crab_llvm {
   }
 
   template<typename V>
-  static inline mem_region_set_t get_new_regions(HeapAbstraction &mem, V& v) {
-    mem_region_set_t res;
+  static inline mem_region_vector_t get_new_regions(HeapAbstraction &mem, V& v) {
+    mem_region_vector_t res;
     auto regions = mem.getNewRegions(v);
-    std::copy_if(regions.begin(), regions.end(), std::inserter(res, res.begin()),
+    std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
 		 [](mem_region_t r){
 		   return r.get_type() == INT_REGION || r.get_type() == BOOL_REGION;
 		 });
@@ -989,7 +984,7 @@ namespace crab_llvm {
     if (!ref || !(ref->isBool()) || !(ref->isVar())) {
       // It could be here if the type of I is a vector of booleans.
       // We prefer to raise an error.
-      CRABLLVM_ERROR("lhs of CmpInst should be a Boolean", __FILE__, __LINE__);
+      CRABLLVM_ERROR("lhs of CmpInst should be a Boolean");
     }
     var_t lhs = ref->getVar();
 
@@ -1035,7 +1030,7 @@ namespace crab_llvm {
       break;
     }	
     default:  
-      CRABLLVM_ERROR("unexpected problem while translating CmpInst", __FILE__, __LINE__);
+      CRABLLVM_ERROR("unexpected problem while translating CmpInst");
     }
   }
 
@@ -1182,8 +1177,7 @@ namespace crab_llvm {
       }
     }
     // we should not reach this point since v is tracked.
-    CRABLLVM_ERROR("cannot normalize function parameter or return value",
-		   __FILE__, __LINE__);
+    CRABLLVM_ERROR("cannot normalize function parameter or return value");
     // clang complains otherwise
     abort();
   }
@@ -1248,7 +1242,7 @@ namespace crab_llvm {
 	    	old_val_map.insert(std::make_pair(&v, lhs));		
 	      }
 	    } else {
-	      CRABLLVM_ERROR("unexpected PHI node", __FILE__, __LINE__);
+	      CRABLLVM_ERROR("unexpected PHI node");
 	    }
 	  }
 	}
@@ -1262,7 +1256,7 @@ namespace crab_llvm {
 
 	crab_lit_ref_t lhs_ref = m_lfac.getLit(phi);
 	if (!lhs_ref || !lhs_ref->isVar()) {
-	  CRABLLVM_ERROR("unexpected PHI instruction", __FILE__, __LINE__);
+	  CRABLLVM_ERROR("unexpected PHI instruction");
 	} 
 	var_t lhs = lhs_ref->getVar();
         auto it = old_val_map.find(&v);
@@ -1314,8 +1308,7 @@ namespace crab_llvm {
     const bool m_is_inter_proc;
     unsigned int m_object_id;
     bool m_has_seahorn_fail;
-    mem_region_set_t& m_init_regions;
-
+    std::set<mem_region_t>& m_init_regions;
     
     unsigned fieldOffset(const StructType *t, unsigned field) {
       return m_dl->getStructLayout(const_cast<StructType*>(t))->
@@ -1450,13 +1443,13 @@ namespace crab_llvm {
 	return;	  
       default:;;
       }
-      CRABLLVM_ERROR("unexpected problem with binary operator", __FILE__, __LINE__);
+      CRABLLVM_ERROR("unexpected problem with binary operator");
     }
 
     
     void doArithmetic(crab_lit_ref_t ref, BinaryOperator &i) {
       if (!ref || !ref->isVar() || !(ref->isInt())) {
-	CRABLLVM_ERROR("lhs of arithmetic operation must be an integer", __FILE__, __LINE__);
+	CRABLLVM_ERROR("lhs of arithmetic operation must be an integer");
       }
       var_t lhs = ref->getVar();
 
@@ -1497,7 +1490,7 @@ namespace crab_llvm {
 	  break;	  
 	default:
 	  // this should not happen
-	  CRABLLVM_ERROR("unexpected instruction", __FILE__, __LINE__);	  
+	  CRABLLVM_ERROR("unexpected instruction");	  
 	}
 	return;
       }
@@ -1525,7 +1518,7 @@ namespace crab_llvm {
 	break;
       default:
 	// this should not happen
-	CRABLLVM_ERROR("unexpected instruction", __FILE__, __LINE__);
+	CRABLLVM_ERROR("unexpected instruction");
       }
     }
     
@@ -1534,7 +1527,7 @@ namespace crab_llvm {
 			crab_lit_ref_t ref, const Value& v1, const Value& v2) {
       
       if (ref && !(ref->isBool())) {
-	CRABLLVM_ERROR("lhs of arithmetic operation must be an Boolean", __FILE__, __LINE__);
+	CRABLLVM_ERROR("lhs of arithmetic operation must be an Boolean");
       }
       
       var_t lhs = (ref ? ref->getVar() : m_lfac.mkBoolVar());
@@ -1561,7 +1554,7 @@ namespace crab_llvm {
 	} else if (m_lfac.isBoolTrue(b2)) {
 	  m_bb.bool_assign(lhs, b1->getVar());
 	} else {
-	  CRABLLVM_ERROR("unexpected uncovered case in doBoolLogicOp And", __FILE__, __LINE__);
+	  CRABLLVM_ERROR("unexpected uncovered case in doBoolLogicOp And");
 	}
 	break;
       case BinaryOperator::Or:
@@ -1577,7 +1570,7 @@ namespace crab_llvm {
 	} else if (m_lfac.isBoolFalse(b2)) {
 	  m_bb.bool_assign(lhs, b1->getVar());
 	} else {
-	  CRABLLVM_ERROR("unexpected uncovered case in doBoolLogicOp Or", __FILE__, __LINE__);
+	  CRABLLVM_ERROR("unexpected uncovered case in doBoolLogicOp Or");
 	}
 	break;
       case BinaryOperator::Xor:
@@ -1596,7 +1589,7 @@ namespace crab_llvm {
 	} else if (m_lfac.isBoolFalse(b2)) {
 	  m_bb.bool_assign(lhs, b1->getVar());	    
 	} else {
-	  CRABLLVM_ERROR("unexpected uncovered case in doBoolLogicOp Xor", __FILE__, __LINE__);
+	  CRABLLVM_ERROR("unexpected uncovered case in doBoolLogicOp Xor");
 	}
 	break;
       default:
@@ -1610,7 +1603,7 @@ namespace crab_llvm {
       assert(ref && ref->isVar());
 
       if (!(ref->isInt())) {
-	CRABLLVM_ERROR("lhs of bitwise operation must be an integer", __FILE__, __LINE__);
+	CRABLLVM_ERROR("lhs of bitwise operation must be an integer");
       }
       var_t lhs = ref->getVar();
 
@@ -1785,8 +1778,7 @@ namespace crab_llvm {
 	      if (m_lfac.isBoolTrue(ref)) init_val = number_t(1);
 	    } else {
 	      // unreachable
-	      CRABLLVM_ERROR("second argument of verifier.int_initializer must be int or bool",
-			     __FILE__, __LINE__);
+	      CRABLLVM_ERROR("second argument of verifier.int_initializer must be int or bool");
 	    }
 	  }
 
@@ -1922,7 +1914,7 @@ namespace crab_llvm {
 
     CrabInstVisitor(crabLitFactory &lfac, HeapAbstraction &mem,
 		    const DataLayout* dl, const TargetLibraryInfo* tli,
-		    basic_block_t &bb, bool isInterProc, mem_region_set_t& init_regions)
+		    basic_block_t &bb, bool isInterProc, std::set<mem_region_t>& init_regions)
       : m_lfac(lfac)
       , m_mem(mem)
       , m_dl(dl)
@@ -2001,7 +1993,7 @@ namespace crab_llvm {
       
       crab_lit_ref_t ref = m_lfac.getLit(I);
       if (!ref || !(ref->isVar())) {
-	CRABLLVM_ERROR("unexpected lhs of binary operator",__FILE__, __LINE__);
+	CRABLLVM_ERROR("unexpected lhs of binary operator");
       }
       
       switch (I.getOpcode()) {
@@ -2084,7 +2076,7 @@ namespace crab_llvm {
 	      } else if (isa<ZExtInst>(I)) {
 		m_bb.zext(tmp, dst->getVar());
 	      } else {
-		CRABLLVM_ERROR("unexpected cast operation on Booleans",__FILE__, __LINE__); 
+		CRABLLVM_ERROR("unexpected cast operation on Booleans"); 
 	      }
 	    } else if (src->isInt()) {
 	      var_t tmp = m_lfac.mkIntVar(I.getOperand(0)->getType()->getIntegerBitWidth());
@@ -2096,10 +2088,10 @@ namespace crab_llvm {
 	      } else if (isa<TruncInst>(I)) {
 		m_bb.truncate(tmp, dst->getVar());
 	      } else {
-		CRABLLVM_ERROR("unexpected cast operation",__FILE__, __LINE__);
+		CRABLLVM_ERROR("unexpected cast operation");
 	      }
 	    } else {
-	      CRABLLVM_ERROR("unexpected cast operand type",__FILE__, __LINE__); 
+	      CRABLLVM_ERROR("unexpected cast operand type"); 
 	    }
 	  } else {
 	    if (isa<SExtInst>(I)) {
@@ -2109,7 +2101,7 @@ namespace crab_llvm {
 	    } else if (isa<TruncInst>(I)) {
 	      m_bb.truncate(src->getVar(), dst->getVar());
 	    } else {
-	      CRABLLVM_ERROR("unexpected cast operation",__FILE__, __LINE__);
+	      CRABLLVM_ERROR("unexpected cast operation");
 	    }
 	  }
 	}
@@ -2188,7 +2180,7 @@ namespace crab_llvm {
 	    }
 	  } else {
 	    if (!ci->isZero())
-	      CRABLLVM_ERROR("unexpected select condition",__FILE__, __LINE__);
+	      CRABLLVM_ERROR("unexpected select condition");
 	    if (!op2->isVar()) {
 	      m_bb.bool_assign(lhs->getVar(),(m_lfac.isBoolTrue(op2) ?
 					       lin_cst_t::get_true(): lin_cst_t::get_false()));
@@ -2238,7 +2230,7 @@ namespace crab_llvm {
 	    m_bb.assign(lhs->getVar(), e1);
 	  } else { 
 	    if (!ci->isZero())
-	      CRABLLVM_ERROR("Unexpected select condition",__FILE__, __LINE__);
+	      CRABLLVM_ERROR("Unexpected select condition");
 	    m_bb.assign(lhs->getVar(), e2);
 	  }
 	  return;
@@ -2337,7 +2329,7 @@ namespace crab_llvm {
 		     }); 
 	    already_assigned = true;
 	  } else {
-            CRABLLVM_ERROR("GEP index expected only to be an integer",__FILE__, __LINE__); 
+            CRABLLVM_ERROR("GEP index expected only to be an integer"); 
 	  }
 	} else {
 	  // otherwise we have a sequential type like an array or vector.
@@ -2348,7 +2340,7 @@ namespace crab_llvm {
           }
 	  crab_lit_ref_t idx = m_lfac.getLit(*GTI.getOperand()); 
 	  if (!idx || !idx->isInt()){
-	    CRABLLVM_ERROR("unexpected GEP index",__FILE__, __LINE__);
+	    CRABLLVM_ERROR("unexpected GEP index");
 	  }
 	  lin_exp_t offset(m_lfac.getExp(idx) *
 			   number_t(storageSize(GTI.getIndexedType())));
@@ -2392,8 +2384,7 @@ namespace crab_llvm {
       Function& parent = *(I.getParent()->getParent());
       
       if (!ptr || !ptr->isPtr()) {
-	CRABLLVM_ERROR("unexpected pointer operand of store instruction",
-		       __FILE__, __LINE__);
+	CRABLLVM_ERROR("unexpected pointer operand of store instruction");
       }
       
       if (m_lfac.isPtrNull(ptr)) {
@@ -2409,8 +2400,7 @@ namespace crab_llvm {
 	  // For simplicity, we don't deal with this case here and we
 	  // assume that the client must make sure that all constant
 	  // expressions are lowered. 
-	  CRABLLVM_ERROR("unexpected value operand of store instruction",
-			 __FILE__, __LINE__);
+	  CRABLLVM_ERROR("unexpected value operand of store instruction");
 	}
 	mem_region_t r = get_region(m_mem, parent, I.getPointerOperand()); 
 	if (!r.isUnknown()) {
@@ -2471,8 +2461,7 @@ namespace crab_llvm {
 	//   // this can happen e.g., with store double %_10, double* %_11
 	//   // do nothing since we ignore floating point operations.
 	// } else if (!val->isPtr()) {
-	//   CRABLLVM_ERROR("expecting a value operand of pointer type in store instruction",
-	// 		 __FILE__, __LINE__);
+	//   CRABLLVM_ERROR("expecting a value operand of pointer type in store instruction");
 	// } else {
 	//   if (!m_lfac.isPtrNull(val)) {
 	//     // XXX: we ignore the case if we store a null pointer. In
@@ -2484,8 +2473,7 @@ namespace crab_llvm {
 	// }
       else if (isPointer(*I.getValueOperand(), m_lfac.get_track())) {
 	if (!val || !val->isPtr()) {
-	  CRABLLVM_ERROR("expecting a value operand of pointer type in store instruction",
-			 __FILE__, __LINE__);
+	  CRABLLVM_ERROR("expecting a value operand of pointer type in store instruction");
 	}
 	
 	if (!m_lfac.isPtrNull(val)) {
@@ -2520,8 +2508,7 @@ namespace crab_llvm {
       Function& parent = *(I.getParent()->getParent());
       
       if (!ptr || !ptr->isPtr()) {
-	CRABLLVM_ERROR("unexpected pointer operand of load instruction",
-		       __FILE__, __LINE__);
+	CRABLLVM_ERROR("unexpected pointer operand of load instruction");
       }
       
       if (m_lfac.isPtrNull(ptr)) {
@@ -2533,7 +2520,7 @@ namespace crab_llvm {
       if (m_lfac.get_track() == ARR &&(isInteger(I) || isBool(I))) {
 	// -- lhs is an integer/bool -> add array statement
 	if (!lhs || !lhs->isVar()) {
-	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
+	  CRABLLVM_ERROR("unexpected lhs of load instruction");
 	} 	
 	mem_region_t r = get_region(m_mem, parent, I.getPointerOperand()); 
 	if (!(r.isUnknown())) {
@@ -2573,7 +2560,7 @@ namespace crab_llvm {
 	}
       } else if (isPointer(I, m_lfac.get_track())) {
 	if (!lhs || !lhs->isVar()) {
-	  CRABLLVM_ERROR("unexpected lhs of load instruction",__FILE__, __LINE__);
+	  CRABLLVM_ERROR("unexpected lhs of load instruction");
 	}
 	
 	m_bb.ptr_load(lhs->getVar(), ptr->getVar());
@@ -2653,7 +2640,8 @@ namespace crab_llvm {
 	  // -- unresolved indirect call
 	  CRABLLVM_WARNING("skipped indirect call. Enabling --devirt-functions might help.");
 	  
-	  if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_lfac.get_track()) &&
+	      ShouldCallSiteReturn(I, m_lfac.get_track())) {
 	    // havoc return value
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
@@ -2687,7 +2675,8 @@ namespace crab_llvm {
         if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I)) {
           doMemIntrinsic(*MI);
         } else {
-	  if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_lfac.get_track()) &&
+	      ShouldCallSiteReturn(I, m_lfac.get_track())) {
 	    // -- havoc return value of the intrinsics
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
@@ -2706,14 +2695,15 @@ namespace crab_llvm {
 	 **/      
 	
         // -- havoc return value
-        if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+        if (DoesCallSiteReturn(I, m_lfac.get_track()) &&
+	    ShouldCallSiteReturn(I, m_lfac.get_track())) {
 	  crab_lit_ref_t lhs = m_lfac.getLit(I);
 	  assert(lhs && lhs->isVar());
 	  havoc(lhs->getVar(), m_bb);
 	}
         // -- havoc all modified regions by the callee
         if (m_lfac.get_track() == ARR) {
-	  mem_region_set_t mods = get_modified_regions(m_mem, I);
+	  mem_region_vector_t mods = get_modified_regions(m_mem, I);
           for (auto a : mods) {
 	    if (isGlobalSingleton(a))
 	      m_bb.havoc(m_lfac.mkArraySingletonVar(a));
@@ -2754,24 +2744,49 @@ namespace crab_llvm {
       }
       
       // -- add the return value of the llvm calliste: o
-      if (DoesCallSiteReturn(I, m_lfac.get_track())) {
-	crab_lit_ref_t ret = m_lfac.getLit(I);
-	assert(ret && ret->isVar());
-	outputs.push_back(ret->getVar());
+      if (ShouldCallSiteReturn(I, m_lfac.get_track())) {
+	if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+	  crab_lit_ref_t ret = m_lfac.getLit(I);
+	  assert(ret && ret->isVar());
+	  outputs.push_back(ret->getVar());
+	} else {
+	  // The callsite should return something to match with the
+	  // function signature but it doesn't: we create a fresh
+	  // return value.
+	  Type* RT = callee->getReturnType();
+	  if (isBool(RT)) {
+	    var_t fresh_ret = m_lfac.mkBoolVar();
+	    outputs.push_back(fresh_ret);	    	    
+	  } else if (isInteger(RT)) {
+	    unsigned bitwidth = RT->getIntegerBitWidth();      
+	    var_t fresh_ret = m_lfac.mkIntVar(bitwidth);	    
+	    outputs.push_back(fresh_ret);	    	    
+	  } else if (isPointer(RT, m_lfac.get_track())) {
+	    var_t fresh_ret = m_lfac.mkPtrVar();	    	    
+	    outputs.push_back(fresh_ret);	    
+	  } else {
+	    // do nothing
+	  }
+	}
+      } else {
+	if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+	  // LLVM shouldn't allow this.
+	  CRABLLVM_ERROR("Unexpected type mismatch between callsite and function signature");
+	}
       }
       
       if (m_lfac.get_track() == ARR) {
 	// -- add the input and output array parameters a_i1,...,a_in
 	// -- and a_o1,...,a_om.
-        mem_region_set_t onlyreads = get_read_only_regions(m_mem, I);
-        mem_region_set_t mods = get_modified_regions(m_mem, I);
-        mem_region_set_t news = get_new_regions(m_mem, I);
+        mem_region_vector_t onlyreads = get_read_only_regions(m_mem, I);
+        mem_region_vector_t mods = get_modified_regions(m_mem, I);
+        mem_region_vector_t news = get_new_regions(m_mem, I);
         
         CRAB_LOG("cfg-mem",
                  llvm::errs() << "Callsite " << I << "\n"
- 		              << "\tOnly-Read regions: " << onlyreads << "\n"
-		              << "\tModified regions: " << mods << "\n"
-		              << "\tNew regions:" << news << "\n");
+		 << "\tOnly-Read regions " << onlyreads.size() << ": " << onlyreads << "\n"
+		 << "\tModified regions " << mods.size() << ": " << mods << "\n"
+		 << "\tNew regions " << news.size() << ": " << news << "\n");
 
         // -- add only read regions as array input parameters
         for (auto a: onlyreads) {
@@ -2785,7 +2800,9 @@ namespace crab_llvm {
 	
         // -- add modified regions as both input and output parameters
         for (auto a: mods) {
-          if (news.find(a) != news.end()) continue;
+	  if (std::find(news.begin(), news.end(), a) != news.end()) {
+	    continue;
+	  }
 	  
           // input version
           if (isGlobalSingleton(a)) {
@@ -3003,7 +3020,7 @@ namespace crab_llvm {
     // Sanity check: pass NameValues must have been executed before
     bool res = checkAllDefinitionsHaveNames(m_func);
     if (!res) {
-      CRABLLVM_ERROR("All blocks and definitions must have a name",__FILE__,__LINE__);
+      CRABLLVM_ERROR("All blocks and definitions must have a name");
     }
 
     for (auto &B : m_func) { 
@@ -3014,7 +3031,7 @@ namespace crab_llvm {
     var_ref_t ret_val;    
     bool has_seahorn_fail = false;
     // keep track of initialized regions
-    mem_region_set_t init_regions;
+    std::set<mem_region_t> init_regions;
     
     for (auto &B : m_func) {     
       opt_basic_block_t BB = lookup(B);
@@ -3031,8 +3048,7 @@ namespace crab_llvm {
 	if (ret_block) {
 	  //UnifyFunctionExitNodes ensures *at most* one return
 	  //instruction per function.
-	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first",
-			 __FILE__, __LINE__);
+	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first");
 	}
 	
         basic_block_t &bb = *BB;
@@ -3047,7 +3063,7 @@ namespace crab_llvm {
 	      ret_val = var_ref_t(normalizeFuncParamOrRet(*RV, *ret_block, m_lfac));
 	      bb.ret(ret_val.get());
 	    }
-	  }
+	  } 
 	}
       } else {
 	std::vector<const BasicBlock*> succs_vector(succs(B).begin(), succs(B).end());
@@ -3077,7 +3093,7 @@ namespace crab_llvm {
     //   // function (via malloc-like functions) except if the function
     //   // is main.
     //   // basic_block_t & entry = m_cfg->get_node(m_cfg->entry());
-    //   // mem_region_set_t news =  get_new_regions(m_mem, m_func);
+    //   // mem_region_vector_t news =  get_new_regions(m_mem, m_func);
     //   // for (auto n: news) {
     //   // 	entry.set_insert_point_front();
     //   // }
@@ -3112,6 +3128,24 @@ namespace crab_llvm {
 
       basic_block_t & entry = m_cfg->get_node(m_cfg->entry());
       
+      if (ret_val.is_null()) {
+	// special case: function that do not return but in its
+	// signature it has a return type. E.g., "int foo() {
+	// unreachable; }"
+	const Type& RT = *m_func.getReturnType();
+	if (isTrackedType(RT, m_lfac.get_track())) {
+	  if (isBool(&RT)) {
+	    ret_val = var_ref_t(m_lfac.mkBoolVar());  
+	  } else if (isInteger(&RT)) {
+	    unsigned bitwidth = RT.getIntegerBitWidth();      
+	    ret_val = var_ref_t(m_lfac.mkIntVar(bitwidth));
+	  } else {
+	    assert(RT.isPointerTy());
+	    ret_val = var_ref_t(m_lfac.mkPtrVar());  
+	  }
+	}
+      }
+
       // -- add the returned value of the llvm function: o
       if (!ret_val.is_null()) {
 	outputs.push_back(ret_val.get());
@@ -3140,7 +3174,7 @@ namespace crab_llvm {
 	    entry.ptr_assign(fresh_i, i->getVar(), number_t(0));
 	    inputs.push_back(fresh_i);	    
 	  } else {
-	    CRABLLVM_ERROR("unexpected function parameter type",__FILE__, __LINE__);
+	    CRABLLVM_ERROR("unexpected function parameter type");
 	  }
 	} else {
 	  inputs.push_back(i->getVar());
@@ -3150,15 +3184,15 @@ namespace crab_llvm {
 	
       if (m_lfac.get_track() == ARR && (!m_func.getName().equals("main"))) {
         // -- add the input and output array parameters 
-        mem_region_set_t onlyreads = get_read_only_regions(m_mem, m_func);
-        mem_region_set_t mods = get_modified_regions(m_mem, m_func);
-        mem_region_set_t news = get_new_regions(m_mem, m_func);
+        mem_region_vector_t onlyreads = get_read_only_regions(m_mem, m_func);
+        mem_region_vector_t mods = get_modified_regions(m_mem, m_func);
+        mem_region_vector_t news = get_new_regions(m_mem, m_func);
 
         CRAB_LOG("cfg-mem",
                  llvm::errs() << "Function " << m_func.getName() 
-                              << "\n\tOnly-Read regions: " << onlyreads
-                              << "\n\tModified regions: " << mods
-                              << "\n\tNew regions:" << news << "\n");
+		 << "\n\tOnly-Read regions " << onlyreads.size() << ": " << onlyreads
+		 << "\n\tModified regions " << mods.size() << ": " << mods
+		 << "\n\tNew regions " << news.size() << ": " << news << "\n");
 		 
         // -- add only read regions as input parameters
         for (auto a: onlyreads) {
@@ -3172,7 +3206,9 @@ namespace crab_llvm {
 
         // -- add input/output parameters
         for (auto a: mods) {
-          if (news.find(a) != news.end()) continue;
+	  if (std::find(news.begin(), news.end(), a) != news.end()) {
+	    continue;
+	  }
 	  var_ref_t a_in;
 	  
           // -- for each parameter `a` we create a fresh version
@@ -3246,8 +3282,7 @@ namespace crab_llvm {
 	crab::errs() << "OUTPUTS: {";
 	for (auto o: outputs) { crab::outs() << o << ";"; }
 	crab::errs() << "}\n";
-	CRABLLVM_ERROR("function inputs and outputs should not intersect",
-		       __FILE__, __LINE__);
+	CRABLLVM_ERROR("function inputs and outputs should not intersect");
       }
 
       typedef function_decl<number_t, varname_t> function_decl_t;

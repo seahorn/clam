@@ -731,9 +731,6 @@ def crabllvm(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.print_stats: crabllvm_args.append('--crab-stats')
     if args.print_assumptions: crabllvm_args.append('--crab-print-unjustified-assumptions')
     if args.crab_disable_warnings:
-        ## crab-llvm warning messages
-        crabllvm_args.append('--crab-disable-warnings')
-        ## crab warning messages
         crabllvm_args.append('--crab-enable-warnings=false')
     if args.crab_sanity_checks: crabllvm_args.append('--crab-sanity-checks')
     if args.crab_cfg_simplify: crabllvm_args.append('--crab-cfg-simplify')
