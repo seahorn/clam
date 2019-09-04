@@ -5,6 +5,8 @@
  * Heap abstraction based on sea-dsa (https://github.com/seahorn/sea-dsa).
  */
 
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
@@ -21,10 +23,7 @@
 #include "crab/common/debug.hpp"
 
 #include <set>
-#include <boost/unordered_map.hpp>
-#include <boost/range/iterator_range.hpp>
 #include <boost/range/algorithm/set_algorithm.hpp>
-#include <boost/optional.hpp>
 
 namespace crab_llvm {
 
@@ -110,8 +109,7 @@ void reachableNodes (const Function &fn, Graph &g, Set &inputReach, Set& retReac
   }
     
   // globals
-  for (auto &kv : boost::make_iterator_range (g.globals_begin (),
-					      g.globals_end ())) {
+  for (auto &kv : llvm::make_range(g.globals_begin(), g.globals_end())) {
     markReachableNodes (kv.second->getNode (), inputReach);
   }
     
@@ -204,7 +202,7 @@ static uint64_t storageSize(const Type *t, const DataLayout &dl) {
   return dl.getTypeStoreSize(const_cast<Type*>(t));
 }
   
-static boost::optional<uint64_t>
+static llvm::Optional<uint64_t>
 sizeOf(const Graph::Set& types, const DataLayout &dl) {
   if (types.isEmpty()) {
     return 0;
@@ -221,7 +219,7 @@ sizeOf(const Graph::Set& types, const DataLayout &dl) {
 		      })) {
 	return sz;
       } else {
-	return boost::none;
+	return None;
       }
     }
   }
@@ -236,14 +234,16 @@ static bool isOverlappingCell(const Cell& c, const DataLayout &dl) {
     // pessimistic.
     return false;
   }
-    
-  if (auto c1_sz = sizeOf(n1->getAccessedType(o1), dl)) {
-    uint64_t s1 = *c1_sz;
+
+  auto c1_sz = sizeOf(n1->getAccessedType(o1), dl);
+  if (c1_sz.hasValue()) {
+    uint64_t s1 = c1_sz.getValue();
     for (auto& kv: n1->types()) {
       unsigned o2 = kv.first;
       if (o1 == o2) continue;
-      if (auto c2_sz =  sizeOf(kv.second, dl)) {
-	uint64_t s2 = *c2_sz;
+      auto c2_sz =  sizeOf(kv.second, dl);
+      if (c2_sz.hasValue()) {
+	uint64_t s2 = c2_sz.getValue();
 	if (intersectInterval({o1, o1+s1}, {o2, o2+s2})) {
 	  return true;
 	}
@@ -649,7 +649,7 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& c
 		  });
 
   callsite_map_t cs_accessed, cs_mods, cs_news;
-  for (auto &F: boost::make_iterator_range(m_m)) {    
+  for (auto &F: m_m) {    
     computeReadModNewNodes(F);
     llvm::inst_iterator InstIt = inst_begin(F), InstItEnd = inst_end(F);
     for (; InstIt != InstItEnd; ++InstIt) {
@@ -659,7 +659,7 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& c
     }
   }
 
-  for (auto &F: boost::make_iterator_range(m_m)) {
+  for (auto &F: m_m) {
     std::vector<region_t>& readsF = m_func_accessed[&F];
     std::vector<region_t>& modsF  = m_func_mods[&F];
     std::vector<region_t>& newsF  = m_func_news[&F];

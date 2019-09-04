@@ -9,6 +9,8 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ImmutableSet.h"
 
+#include <unordered_map>
+
 // forward declarations
 namespace sea_dsa {
   class GlobalAnalysis;
@@ -114,7 +116,7 @@ namespace crab_llvm {
     /// map from Node to id
     llvm::DenseMap<const sea_dsa::Node*, region_id_t> m_node_ids;
     /// reverse map
-    boost::unordered_map<region_id_t, const sea_dsa::Node*> m_rev_node_ids;
+    std::unordered_map<region_id_t, const sea_dsa::Node*> m_rev_node_ids;
     region_id_t m_max_id;
     bool m_disambiguate_unknown;
     bool m_disambiguate_ptr_cast;
