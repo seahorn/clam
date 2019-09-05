@@ -35,6 +35,8 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/DenseMap.h"
 
+//#include "crab_llvm/Support/Debug.hh"
+
 #include "boost/range.hpp"
 #include "boost/format.hpp"
 
@@ -180,7 +182,7 @@ namespace crab_llvm {
 	  CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);	  
 	  change = true;
 	} else {
-	  //llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *ATy << "\n";
+	  // CRABLLVM_WARNING("skipped initialization of " << *ATy);
 	}
       } else if (isa<PointerType> (T)) {
         #ifdef DEBUG_LOWER_GV
@@ -197,7 +199,7 @@ namespace crab_llvm {
 	CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);
 	change = true;
       } else {
-	//llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *T << "\n";
+	// CRABLLVM_WARNING("skipped initialization of " << *T);
       }
 
       stack.pop_back();	      

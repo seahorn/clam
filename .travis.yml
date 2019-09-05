@@ -1,9 +1,11 @@
 language: cpp
 cache: apt
+branches:
+  except:
+  - mdd
+  - soct
 env:
   matrix:
-     ## - UBUNTU_DIST=trusty
-     ##   BUILD_TYPE=MinSizeRel
      - UBUNTU_DIST=xenial
        BUILD_TYPE=MinSizeRel
        

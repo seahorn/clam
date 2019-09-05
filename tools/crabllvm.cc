@@ -297,6 +297,10 @@ int main(int argc, char **argv) {
     pass_manager.add(crab_llvm::createLowerSelectPass());
   }
 
+  // -- ensure one single exit point per function
+  // LowerUnsignedIcmpPass and LowerSelect can add multiple returns.
+  pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+  
   if (!NoCrab) {
     /// -- run the crab analyzer
     pass_manager.add(new crab_llvm::CrabLlvmPass());

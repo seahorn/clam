@@ -26,32 +26,33 @@ namespace crab_llvm {
 
    public:
 
-     using typename HeapAbstraction::region_t;
-     using typename HeapAbstraction::region_set_t;
-
+    using typename HeapAbstraction::region_t;
+    using typename HeapAbstraction::region_vector_t;
+    using typename HeapAbstraction::region_id_t;
+    
    private:
-
+    
     llvm::Module &m_M;
     llvm::DataStructures *m_dsa;
     
     /// map from DSNode to id
-    llvm::DenseMap<const llvm::DSNode*, unsigned> m_node_ids;
-    boost::unordered_map<unsigned, const llvm::DSNode*> m_rev_node_ids;
-    unsigned m_max_id;
+    llvm::DenseMap<const llvm::DSNode*, region_id_t> m_node_ids;
+    boost::unordered_map<region_id_t, const llvm::DSNode*> m_rev_node_ids;
+    region_id_t m_max_id;
 
     bool m_disambiguate_unknown;
     bool m_disambiguate_ptr_cast;
     bool m_disambiguate_external;
     
-    llvm::DenseMap<const llvm::Function*, region_set_t> m_func_accessed;
-    llvm::DenseMap<const llvm::Function*, region_set_t> m_func_mods;
-    llvm::DenseMap<const llvm::Function*, region_set_t> m_func_news;
+    llvm::DenseMap<const llvm::Function*, region_vector_t> m_func_accessed;
+    llvm::DenseMap<const llvm::Function*, region_vector_t> m_func_mods;
+    llvm::DenseMap<const llvm::Function*, region_vector_t> m_func_news;
 
-    llvm::DenseMap<const llvm::CallInst*, region_set_t> m_callsite_accessed;
-    llvm::DenseMap<const llvm::CallInst*, region_set_t> m_callsite_mods;
-    llvm::DenseMap<const llvm::CallInst*, region_set_t> m_callsite_news;
+    llvm::DenseMap<const llvm::CallInst*, region_vector_t> m_callsite_accessed;
+    llvm::DenseMap<const llvm::CallInst*, region_vector_t> m_callsite_mods;
+    llvm::DenseMap<const llvm::CallInst*, region_vector_t> m_callsite_news;
 
-    int getId(const llvm::DSNode* n, unsigned offset);
+    region_id_t getId(const llvm::DSNode* n, unsigned offset);
             
     // compute and cache the set of read, mod and new nodes of a whole
     // function such that mod nodes are a subset of the read nodes and
@@ -72,23 +73,23 @@ namespace crab_llvm {
     
     virtual region_t getRegion(const llvm::Function &F, llvm::Value *V) override;
     
-    virtual const llvm::Value* getSingleton(int region) const override;
+    virtual const llvm::Value* getSingleton(region_id_t region) const override;
     
-    virtual region_set_t getAccessedRegions(const llvm::Function &F) override;
+    virtual region_vector_t getAccessedRegions(const llvm::Function &F) override;
     
-    virtual region_set_t getOnlyReadRegions(const llvm::Function &F) override;
+    virtual region_vector_t getOnlyReadRegions(const llvm::Function &F) override;
     
-    virtual region_set_t getModifiedRegions(const llvm::Function &F) override;
+    virtual region_vector_t getModifiedRegions(const llvm::Function &F) override;
     
-    virtual region_set_t getNewRegions(const llvm::Function &F) override;
+    virtual region_vector_t getNewRegions(const llvm::Function &F) override;
     
-    virtual region_set_t getAccessedRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getAccessedRegions(llvm::CallInst &I) override;
     
-    virtual region_set_t getOnlyReadRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getOnlyReadRegions(llvm::CallInst &I) override;
     
-    virtual region_set_t getModifiedRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getModifiedRegions(llvm::CallInst &I) override;
     
-    virtual region_set_t getNewRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getNewRegions(llvm::CallInst &I) override;
     
     virtual llvm::StringRef getName() const override {
       return "LlvmDsaHeapAbstraction";
