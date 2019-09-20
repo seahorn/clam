@@ -8,7 +8,9 @@ env:
   matrix:
      - UBUNTU_DIST=xenial
        BUILD_TYPE=MinSizeRel
-       
+     - UBUNTU_DIST=bionic
+       BUILD_TYPE=MinSizeRel
+              
 services:
   - docker
 
@@ -17,11 +19,11 @@ install: true
 script:
   ### build and run tests with docker
   ##- docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t crabllvm_${UBUNTU_DIST} -f docker/crabllvm-full-size-rel.Dockerfile .
-  - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t seahorn/crabllvm_llvm_5.0 -f docker/crabllvm-full-size-rel.Dockerfile .
+  - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t seahorn/crabllvm_llvm_5.0:${UBUNTU_DIST} -f docker/crabllvm-full-size-rel.Dockerfile .
   
   - 'if [ "$TRAVIS_EVENT_TYPE" = "cron" ] ;
         then echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          && docker push seahorn/crabllvm_llvm_5.0:latest ;
+          && docker push seahorn/crabllvm_llvm_5.0:${UBUNTU_DIST};
      fi '
 
 notifications:
