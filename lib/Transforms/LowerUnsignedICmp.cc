@@ -34,8 +34,8 @@ namespace crab_llvm {
   }
   
   static bool isNonNegIntCst (Value *V) {
-    if (ConstantInt *K = dyn_cast<ConstantInt> (V)) 
-      return (K->getSExtValue() >= 0);
+    if (ConstantInt *K = dyn_cast<ConstantInt> (V))
+      return (K->getValue().isNonNegative() >= 0);      
     return false;
   }
 

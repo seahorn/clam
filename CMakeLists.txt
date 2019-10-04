@@ -19,6 +19,9 @@ include (CTest)
 # embedded project, but user can change that.
 option(CrabTransforms OFF)
 
+# Save old CMAKE_FIND_LIBRARY_SUFFIXES
+set(_CRABLLVM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
+
 # determine if this is top-level or embedded project
 if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
   set(TopLevel TRUE)
@@ -52,9 +55,8 @@ endif ()
 
 #### crab-llvm options ######
 option (USE_COTIRE "Use cotire to speed up compilation time" OFF)
-option (BUILD_CRABLLVM_LIBS_SHARED "Build all CrabLlvm libraries shared." OFF)
-
-option (COMPILE_ALL_DOMAINS "Compile all abstract domains." ON)
+option (BUILD_CRABLLVM_LIBS_SHARED "Build all CrabLlvm libraries dynamically" OFF)
+option (COMPILE_ALL_DOMAINS "Compile all abstract domains" ON)
 if (COMPILE_ALL_DOMAINS)
   set (HAVE_ALL_DOMAINS TRUE)
 else ()
@@ -66,12 +68,20 @@ endif ()
 # Add path for custom modules
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+# Support preference of static libs by adjusting CMAKE_FIND_LIBRARY_SUFFIXES
+if (NOT BUILD_CRABLLVM_LIBS_SHARED)
+   set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
+endif ()   
+
 if (BUILD_CRABLLVM_LIBS_SHARED)
-  message (STATUS "All crabllvm libraries will be built as shared libraries")
+  message (STATUS "Crabllvm libraries are built dynamically but not llvm, sea-dsa, llvm-dsa, and llvm-seahorn")
   set(CRABLLVM_LIBS_TYPE SHARED)
+  ## To build crab dynamically
+  set(BUILD_CRAB_LIBS_SHARED ON)
 else()
-  message (STATUS "All crabllvm libraries will be built statically")
+  message (STATUS "Crabllvm libraries are built statically")
   set(CRABLLVM_LIBS_TYPE STATIC)
+  set(BUILD_CRAB_LIBS_SHARED OFF)  
 endif ()
 
 # so that executables outside the build tree can find later shared
@@ -97,17 +107,11 @@ if (TopLevel)
   
   if (NOT BUILD_CRABLLVM_LIBS_SHARED)  
     set (Boost_USE_STATIC_LIBS ON)
-  endif ()
-  
+  endif ()  
   find_package (Boost 1.55)
   if (Boost_FOUND)
     include_directories (${Boost_INCLUDE_DIRS})
   endif ()
-
-  # put static libraries first unless we want shared libraries
-  if (NOT BUILD_CRABLLVM_LIBS_SHARED)
-     set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-  endif ()   
 endif ()
 
 if (USE_COTIRE)
@@ -225,17 +229,10 @@ if (TopLevel)
   include_directories(${LLVM_INCLUDE_DIRS})
   link_directories(${LLVM_LIBRARY_DIRS})
   add_definitions(${LLVM_DEFINITIONS})
-
-  #find_library(RT_LIB NAMES rt)
-  #if (NOT RT_LIB)
-  #  set(RT_LIB "")
-  #endif()
-  #mark_as_advanced(RT_LIB)
-  #find_package(Curses)
 endif()
 
 add_definitions(-std=c++11)
-#add_definitions(-Wall)
+add_definitions(-Wall)
 add_definitions(-Wno-redeclared-class-member)
 add_definitions(-Wno-sometimes-uninitialized)
 add_definitions(-Wno-deprecated-declarations)
@@ -319,6 +316,9 @@ if (TopLevel)
   add_subdirectory(py)
   add_subdirectory(tests)
 endif()
+
+# restore old CMAKE_FIND_LIBRARY_SUFFIXES
+set(CMAKE_FIND_LIBRARY_SUFFIXES ${_CRABLLVM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})     
 
 # Propagate to the parent
 if (NOT TopLevel)
