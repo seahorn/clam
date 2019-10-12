@@ -5,9 +5,11 @@
  * Translate a LLVM function to a Crab control-flow graph.
  */
 
-#include <boost/optional.hpp>
-#include <boost/noncopyable.hpp>
 #include "crab_llvm/crab_cfg.hh"
+
+#include <memory>
+#include <unordered_map>
+#include <boost/functional/hash_fwd.hpp> // for hash_combine
 
 // forward declarations
 namespace llvm {
@@ -28,7 +30,7 @@ namespace crab_llvm {
   class crabLit;
   class crabLitFactoryImpl;
   
-  typedef boost::shared_ptr<crabLit> crab_lit_ref_t;
+  typedef std::shared_ptr<crabLit> crab_lit_ref_t;
   
   /** 
       Factory to create crab literals: typed variable or number.
@@ -92,7 +94,7 @@ namespace crab_llvm {
   /** 
      Build a Crab CFG from LLVM Function
   **/
-  class CfgBuilder: public boost::noncopyable {
+  class CfgBuilder {
    public:
     
     CfgBuilder(llvm::Function& func, 
@@ -102,26 +104,27 @@ namespace crab_llvm {
     
     ~CfgBuilder();
 
+    CfgBuilder(const CfgBuilder& o) = delete;
+    CfgBuilder& operator=(const CfgBuilder& o) = delete;
+    
     // The caller owns the pointer and it will be in charge of freeing it.
     cfg_t* get_cfg();
 
     // expose internal details
-    typedef boost::unordered_map<std::pair<const llvm::BasicBlock*,
-					   const llvm::BasicBlock*>,
+    typedef std::unordered_map<std::pair<const llvm::BasicBlock*,
+					 const llvm::BasicBlock*>,
 			       basic_block_label_t, pair_hash> edge_to_bb_map_t;
 
     // expose internal details.
     // return by value because it is intended to survive CfgBuilder.
-    edge_to_bb_map_t getEdgeToBBMap() const
+    edge_to_bb_map_t get_edge_to_basic_block_map() const
     { return m_edge_bb_map; }
     
    private:
 
-    typedef boost::unordered_map<basic_block_label_t, 
-				 basic_block_t&> llvm_bb_map_t;
+    typedef std::unordered_map<basic_block_label_t, 
+			       basic_block_t&> llvm_bb_map_t;
 
-    typedef boost::optional<basic_block_t&> opt_basic_block_t;
-    
     bool m_is_cfg_built;
     llvm::Function &m_func;
     crabLitFactory m_lfac; 
@@ -138,14 +141,14 @@ namespace crab_llvm {
     
     void build_cfg();
 
-    void add_block(llvm::BasicBlock &BB);
+    void add_block(llvm::BasicBlock &bb);
 
-    opt_basic_block_t lookup(const llvm::BasicBlock &);
+    basic_block_t* lookup(const llvm::BasicBlock &bb);
     
-    void add_edge(llvm::BasicBlock &Src, const llvm::BasicBlock &Target);
+    void add_edge(llvm::BasicBlock &src, const llvm::BasicBlock &target);
 
-    opt_basic_block_t exec_edge(llvm::BasicBlock &Src,
-				const llvm::BasicBlock &Target); 
+    basic_block_t* exec_edge(llvm::BasicBlock &src,
+			     const llvm::BasicBlock &target); 
 
     void add_block_in_between(basic_block_t &src, basic_block_t &dst,
 			      basic_block_t &between);

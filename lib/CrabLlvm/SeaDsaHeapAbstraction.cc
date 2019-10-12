@@ -23,7 +23,7 @@
 #include "crab/common/debug.hpp"
 
 #include <set>
-#include <boost/range/algorithm/set_algorithm.hpp>
+#include <algorithm>
 
 namespace crab_llvm {
 
@@ -35,14 +35,16 @@ namespace seadsa_heap_abs_impl {
 template <typename Set>
 void set_difference(Set &s1, Set &s2) {
   Set s3;
-  boost::set_difference(s1, s2, std::inserter(s3, s3.end()));
+  std::set_difference(s1.begin(), s1.end(), s2.begin(), s2.end(),
+		      std::inserter(s3, s3.end()));
   std::swap(s3, s1);
 }
   
 template <typename Set>
 void set_union(Set &s1, Set &s2) {
   Set s3;
-  boost::set_union(s1, s2, std::inserter(s3, s3.end()));
+  std::set_union(s1.begin(), s1.end(), s2.begin(), s2.end(),
+		 std::inserter(s3, s3.end()));
   std::swap(s3, s1);
 }
 

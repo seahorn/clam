@@ -5,11 +5,12 @@
  * Infer invariants using Crab.
  */
 
-#include "llvm/Pass.h"
-#include "llvm/ADT/DenseMap.h"
 #include "crab_llvm/crab_cfg.hh"
 #include "crab/checkers/base_property.hpp"
-#include <boost/shared_ptr.hpp>
+#include "llvm/Pass.h"
+#include "llvm/ADT/DenseMap.h"
+
+#include <memory>
 
 // forward declarations
 
@@ -149,11 +150,11 @@ namespace crab_llvm {
     
   public:
     
-    typedef boost::shared_ptr<GenericAbsDomWrapper> wrapper_dom_ptr;
+    typedef std::shared_ptr<GenericAbsDomWrapper> wrapper_dom_ptr;
     typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
     typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
     typedef crab::checker::checks_db checks_db_t;
-    typedef boost::shared_ptr<HeapAbstraction> heap_abs_ptr;
+    typedef std::shared_ptr<HeapAbstraction> heap_abs_ptr;
     
   private:
 
@@ -244,11 +245,11 @@ namespace crab_llvm {
     
   public:
     
-    typedef boost::shared_ptr<GenericAbsDomWrapper> wrapper_dom_ptr;
+    typedef std::shared_ptr<GenericAbsDomWrapper> wrapper_dom_ptr;
     typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
     typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
     typedef crab::checker::checks_db checks_db_t;
-    typedef boost::shared_ptr<HeapAbstraction> heap_abs_ptr;
+    typedef std::shared_ptr<HeapAbstraction> heap_abs_ptr;
     
   private:
 
