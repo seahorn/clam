@@ -7,14 +7,15 @@
  */
 
 
+#include "crab/cfg/cfg.hpp"
+#include "crab/cfg/var_factory.hpp"
+
 #include "llvm/IR/Value.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "crab/cfg/cfg.hpp"
-#include "crab/cfg/var_factory.hpp"
-
-#include <boost/functional/hash.hpp>
+#include <memory>
+#include <functional>
 
 namespace crab_llvm {
 
@@ -31,7 +32,8 @@ namespace crab_llvm {
     }
 
     // the new block represents that the control goes from src to dst
-    llvm_basic_block_wrapper(const llvm::BasicBlock *src, const llvm::BasicBlock *dst, std::string name)
+    llvm_basic_block_wrapper(const llvm::BasicBlock *src, const llvm::BasicBlock *dst,
+			     std::string name)
       : m_bb(nullptr), m_edge(src, dst), m_name(name){}
 
     llvm_basic_block_wrapper()
@@ -47,7 +49,8 @@ namespace crab_llvm {
       return m_bb;
     }
     
-    const std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>& get_edge() const {
+    const std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>&
+    get_edge() const {
       return m_edge;
     }
 
@@ -60,9 +63,13 @@ namespace crab_llvm {
     bool operator<(const llvm_basic_block_wrapper &other) const
     { return m_name < other.m_name; }
 
+    std::size_t hash() const {
+      return std::hash<std::string>{}(m_name);
+    }
+
+    // used by some crab datastructures
     std::size_t index() const {
-      boost::hash<std::string> hasher;
-      return hasher(m_name);
+      return hash();
     }
 
   private:
@@ -83,9 +90,15 @@ namespace crab_llvm {
     o << b.get_name();
     return o;
   }
-  
-  inline std::size_t hash_value (const llvm_basic_block_wrapper &b)
-  { return b.index(); }
+}
+
+namespace std {
+template<>
+struct hash<crab_llvm::llvm_basic_block_wrapper> {
+  size_t operator()(const crab_llvm::llvm_basic_block_wrapper& bb) const {
+    return bb.hash();
+  }
+};
 }
 
 namespace crab {
@@ -131,7 +144,7 @@ namespace crab_llvm {
      typedef ikos::variable_ref<number_t, varname_t> var_ref_t;  
      typedef llvm_basic_block_wrapper basic_block_label_t;
      typedef crab::cfg::cfg<basic_block_label_t,varname_t,number_t> cfg_t;
-     typedef boost::shared_ptr<cfg_t> cfg_ptr_t;
+     typedef std::shared_ptr<cfg_t> cfg_ptr_t;
      typedef crab::cfg::cfg_ref<cfg_t> cfg_ref_t;
      typedef cfg_t::basic_block_t basic_block_t;
      typedef typename cfg_t::basic_block_t::lin_exp_t lin_exp_t;

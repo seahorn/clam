@@ -2,9 +2,8 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
 
-#include "boost/range.hpp"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/raw_ostream.h"
-
 
 namespace crab_llvm {
 
@@ -28,7 +27,7 @@ namespace crab_llvm {
 
       SmallVector<Instruction*, 16> kill;
       
-      for (auto &I : boost::make_iterator_range (inst_begin (F), inst_end (F)))
+      for (auto &I : llvm::make_range(inst_begin (F), inst_end (F)))
       {
         if (!isa<CallInst> (&I)) continue;
 
