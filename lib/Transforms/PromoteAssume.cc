@@ -7,8 +7,8 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/PatternMatch.h"
 
-#include "boost/range.hpp"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/iterator_range.h"
 
 using namespace llvm;
 using namespace llvm::PatternMatch;
@@ -42,7 +42,7 @@ namespace crab_llvm {
 
       std::vector<Instruction*> to_remove;
       
-      for (auto &I : boost::make_iterator_range(inst_begin (F), inst_end (F))) {
+      for (auto &I : llvm::make_range(inst_begin (F), inst_end (F))) {
         if (!isa<CallInst> (&I)) continue;
 	
         CallSite CS (&I);

@@ -17,6 +17,8 @@
  *   type but if only an integer field is used in the program then
  *   it's considered as an array of integers.
  */
+
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
@@ -32,23 +34,24 @@
 #include "crab/common/debug.hpp"
 
 #include <set>
-#include <boost/unordered_map.hpp>
-#include <boost/range/iterator_range.hpp>
-#include "boost/range/algorithm/set_algorithm.hpp"
+#include <unordered_map>
+#include <algorithm>
 
 namespace crab_llvm {
 
   template <typename Set>
   inline void set_difference(Set &s1, Set &s2) {
     Set s3;
-    boost::set_difference(s1, s2, std::inserter(s3, s3.end()));
+    std::set_difference(s1.begin(), s1.end(), s2.begin(), s2.end(),
+			std::inserter(s3, s3.end()));
     std::swap(s3, s1);
   }
   
   template <typename Set>
   inline void set_union(Set &s1, Set &s2) {
     Set s3;
-    boost::set_union(s1, s2, std::inserter(s3, s3.end()));
+    std::set_union(s1.begin(), s1.end(), s2.begin(), s2.end(),
+		   std::inserter(s3, s3.end()));
     std::swap(s3, s1);
   }
 
@@ -110,7 +113,7 @@ namespace crab_llvm {
     if (!n) return false;
 
     // We need to traverse all types of the node
-    for (auto &kv: boost::make_iterator_range(n->type_begin(), n->type_end())){
+    for (auto &kv: llvm::make_range(n->type_begin(), n->type_end())){
       if (kv.first == o) {
 	// Check that all types of field are satisfied by is_typed.
 	for (auto ty: *(kv.second))
@@ -218,8 +221,7 @@ namespace crab_llvm {
     if (!n) return;
     assert(!n->isForwarding() && "Cannot mark a forwarded node");
     if (set.insert(n).second)
-      for (auto &edg : boost::make_iterator_range(n->edge_begin(),
-						  n->edge_end()))
+      for (auto &edg : llvm::make_range(n->edge_begin(), n->edge_end()))
 	markReachableNodes(edg.second.getNode(), set);
   }
     
@@ -233,7 +235,7 @@ namespace crab_llvm {
     
     // globals
     llvm::DSScalarMap &sm = dsg.getScalarMap();
-    for (auto &gv : boost::make_iterator_range(sm.global_begin(), sm.global_end()))
+    for (auto &gv : llvm::make_range(sm.global_begin(), sm.global_end()))
       markReachableNodes(sm[gv].getNode(), set);
   }
   
@@ -327,7 +329,7 @@ namespace crab_llvm {
       }
       
       // Iterate over each node field and extract regions from there
-      for (auto &kv: boost::make_iterator_range(n->type_begin(), n->type_end())) {
+      for (auto &kv: llvm::make_range(n->type_begin(), n->type_end())) {
 	unsigned o = kv.first;
 	region_info r_info = canBeDisambiguated(n, o,
 						m_disambiguate_unknown,
@@ -405,7 +407,7 @@ namespace crab_llvm {
       
       // Iterate over all node's fields and extract regions from
       // there.
-      for (auto &kv: boost::make_iterator_range(n->type_begin(), n->type_end())) {
+      for (auto &kv: llvm::make_range(n->type_begin(), n->type_end())) {
 	unsigned o = kv.first;
 	region_info r_info = canBeDisambiguated(n,o,
 						m_disambiguate_unknown,
@@ -455,7 +457,7 @@ namespace crab_llvm {
     CRAB_LOG("heap-abs", 
 	     llvm::errs() << "========= HeapAbstraction using llvm-dsa =========\n");
     
-    for (auto &F: boost::make_iterator_range(m_M)) {
+    for (auto &F: m_M) {
       cacheReadModNewNodes(F);
       
       llvm::inst_iterator InstIt = inst_begin(F), InstItEnd = inst_end(F);

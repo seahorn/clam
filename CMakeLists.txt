@@ -176,6 +176,9 @@ endif()
 #### end crab stuff ####
 
 if (TopLevel)
+  option(CRABLLVM_REQUIRES_RTTI "Enable RTTI support" ON)
+  option(CRABLLVM_REQUIRES_EH "Enable Exceptions" ON)
+
   # if top-level, offer to build llvm
   ExternalProject_Add (llvm
     SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_800/final/
@@ -187,7 +190,7 @@ if (TopLevel)
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
     -DLLVM_TARGETS_TO_BUILD:STRING=X86 -DWITH_POLY:BOOL=OFF
     -DLLVM_ENABLE_PEDANTIC=OFF 
-    -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=TRUE
+    -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=${CRABLLVM_REQUIRES_RTTI}
     -DLLVM_BUILD_LLVM_DYLIB:BOOL=${BUILD_CRABLLVM_LIBS_SHARED}
     -DLLVM_INCLUDE_TESTS:BOOL=OFF
     -DLLVM_INCLUDE_GO_TESTS=OFF
@@ -223,21 +226,21 @@ if (TopLevel)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
 
-  set(LLVM_REQUIRES_RTTI TRUE)
-  set(LLVM_REQUIRES_EH TRUE)
+  set(LLVM_REQUIRES_RTTI ${CRABLLVM_REQUIRES_RTTI})
+  set(LLVM_REQUIRES_EH ${CRABLLVM_REQUIRES_EH})
   
   include_directories(${LLVM_INCLUDE_DIRS})
   link_directories(${LLVM_LIBRARY_DIRS})
   add_definitions(${LLVM_DEFINITIONS})
 endif()
 
-add_definitions(-std=c++11)
-add_definitions(-Wall)
-add_definitions(-Wno-redeclared-class-member)
-add_definitions(-Wno-sometimes-uninitialized)
-add_definitions(-Wno-deprecated-declarations)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-redeclared-class-member")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sometimes-uninitialized")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-  add_definitions( -Wno-unused-local-typedefs)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedefs")  
   else ()
   if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedef")

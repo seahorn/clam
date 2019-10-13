@@ -3,6 +3,8 @@
 #include <crab_llvm/crab_cfg.hh>
 #include <crab/analysis/abs_transformer.hpp>
 
+#include <unordered_map>
+
 namespace crab {
 namespace analyzer {
 
@@ -12,18 +14,21 @@ namespace analyzer {
    ** an ordered sequence of connected basic blocks.
    **/
   template<typename CFG, typename AbsDom>
-  class path_analyzer: public boost::noncopyable {
+  class path_analyzer {
   private:
     typedef typename CFG::statement_t stmt_t;
     typedef typename CFG::basic_block_label_t basic_block_label_t;
     typedef AbsDom abs_dom_t;
-    typedef boost::unordered_map<stmt_t*, AbsDom> stmt_to_dom_map_t;
-    typedef boost::unordered_map<basic_block_label_t, abs_dom_t> bb_to_dom_map_t;
+    typedef std::unordered_map<stmt_t*, AbsDom> stmt_to_dom_map_t;
+    typedef std::unordered_map<basic_block_label_t, abs_dom_t> bb_to_dom_map_t;
     typedef intra_abs_transformer<AbsDom> fwd_abs_tr_t;
     
   public:
     // precondition: cfg is well typed.      
     path_analyzer (CFG cfg, AbsDom init);
+    
+    path_analyzer(const path_analyzer<CFG,AbsDom>& o) = delete;
+    path_analyzer<CFG,AbsDom>& operator=(const path_analyzer<CFG,AbsDom>& o) = delete;
     
     /* Return true iff the forward analysis of path is not bottom. 
      * 

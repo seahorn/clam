@@ -4,11 +4,11 @@
 
 #ifdef HAVE_DSA
 
-#include "llvm/ADT/StringRef.h"
 #include "crab_llvm/HeapAbstraction.hh"
-#include <boost/unordered_map.hpp>
-
 #include "dsa/DSNode.h" // not enough forward declaration
+#include "llvm/ADT/StringRef.h"
+
+#include <unordered_map>
 
 // forward declarations
 namespace llvm {
@@ -37,7 +37,7 @@ namespace crab_llvm {
     
     /// map from DSNode to id
     llvm::DenseMap<const llvm::DSNode*, region_id_t> m_node_ids;
-    boost::unordered_map<region_id_t, const llvm::DSNode*> m_rev_node_ids;
+    std::unordered_map<region_id_t, const llvm::DSNode*> m_rev_node_ids;
     region_id_t m_max_id;
 
     bool m_disambiguate_unknown;

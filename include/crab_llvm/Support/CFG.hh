@@ -1,31 +1,26 @@
 #pragma once
 
 /// Extra support for llvm CFG
-#include "boost/range/iterator_range.hpp"
-#include "boost/iterator/indirect_iterator.hpp"
 
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/CFG.h"
 
-namespace crab_llvm
-{
-  using namespace llvm;
-  using namespace boost;
-  
-  inline boost::iterator_range<llvm::succ_iterator>
+namespace crab_llvm {
+  inline llvm::iterator_range<llvm::succ_iterator>
   succs (llvm::BasicBlock &bb) 
-  {return boost::make_iterator_range (succ_begin (&bb), succ_end (&bb));}
+  {return llvm::make_range(succ_begin (&bb), succ_end (&bb));}
   
 
-  inline boost::iterator_range<llvm::succ_const_iterator> 
+  inline llvm::iterator_range<llvm::succ_const_iterator> 
   succs (const llvm::BasicBlock &bb) 
-  {return boost::make_iterator_range (succ_begin (&bb), succ_end (&bb));}
+  {return llvm::make_range (succ_begin (&bb), succ_end (&bb));}
 
-  inline boost::iterator_range<llvm::pred_iterator> 
+  inline llvm::iterator_range<llvm::pred_iterator> 
   preds (llvm::BasicBlock &bb) 
-  {return boost::make_iterator_range (pred_begin (&bb), pred_end (&bb));}
+  {return llvm::make_range (pred_begin (&bb), pred_end (&bb));}
   
 
-  inline boost::iterator_range<llvm::const_pred_iterator> 
+  inline llvm::iterator_range<llvm::const_pred_iterator> 
   preds (const llvm::BasicBlock &bb) 
-  {return boost::make_iterator_range (pred_begin (&bb), pred_end (&bb));}
+  {return llvm::make_range (pred_begin (&bb), pred_end (&bb));}
 }

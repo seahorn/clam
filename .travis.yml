@@ -8,7 +8,9 @@ env:
   matrix:
      - UBUNTU_DIST=xenial
        BUILD_TYPE=MinSizeRel
-       
+     #- UBUNTU_DIST=bionic
+     #  BUILD_TYPE=MinSizeRel
+              
 services:
   - docker
 

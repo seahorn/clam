@@ -1,4 +1,6 @@
 #include "llvm/Pass.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/CFG.h"
@@ -11,7 +13,6 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/CallGraph.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -49,13 +50,12 @@
 #include "crab/cg/cg_bgl.hpp"
 #include "./crab/path_analyzer.hpp"
 
-#include <boost/shared_ptr.hpp>
-#include <boost/unordered_map.hpp>
-#include <boost/unordered_set.hpp>
-#include <boost/range/iterator_range.hpp>
 #include <memory>
 #include <functional>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
+
 
 using namespace llvm;
 using namespace crab_llvm;
@@ -249,7 +249,7 @@ namespace crab_llvm {
   typedef crab::analyzer::liveness<cfg_ref_t> liveness_t;
   typedef crab::cg::call_graph<cfg_ref_t> call_graph_t; 
   typedef crab::cg::call_graph_ref<call_graph_t> call_graph_ref_t;
-  typedef boost::unordered_map<cfg_ref_t, const liveness_t*> liveness_map_t;
+  typedef std::unordered_map<cfg_ref_t, const liveness_t*> liveness_map_t;
   typedef DenseMap<const BasicBlock*, lin_cst_sys_t> assumption_map_t;
   typedef typename IntraCrabLlvm::wrapper_dom_ptr wrapper_dom_ptr;    
   typedef typename IntraCrabLlvm::checks_db_t checks_db_t;
@@ -513,14 +513,14 @@ namespace crab_llvm {
       }
     };
 
-    typedef boost::unordered_set<basic_block_label_t> visited_t;
+    typedef std::unordered_set<basic_block_label_t> visited_t;
     template<typename T>
     void dfs_rec(cfg_ref_t cfg, basic_block_label_t curId, visited_t &visited, T f) {
       if (visited.find(curId) != visited.end()) return;
       visited.insert(curId);
       const basic_block_t &cur = cfg.get_node(curId);
       f(curId);
-      for (auto const n : boost::make_iterator_range(cur.next_blocks())) {
+      for (auto const n : llvm::make_range(cur.next_blocks())) {
     	dfs_rec(cfg, n, visited, f);
       }
     }
@@ -644,8 +644,8 @@ namespace crab_llvm {
       // -- store invariants
       if (params.store_invariants || params.print_invars) {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing invariants.\n");       
-	for (basic_block_label_t bl: boost::make_iterator_range(m_cfg->label_begin(),
-								m_cfg->label_end())) {
+	for (basic_block_label_t bl: llvm::make_range(m_cfg->label_begin(),
+						      m_cfg->label_end())) {
 	  if (bl.is_edge()) {
 	    // Note that we use get_post instead of get_pre:
 	    //   the crab block (bl) has an assume statement corresponding
@@ -833,7 +833,7 @@ namespace crab_llvm {
 	// -- build a crab cfg for func
 	CfgBuilder builder(m_fun, m_vfac, *mem, cfg_precision, true, &tli);
 	m_cfg = builder.get_cfg();
-	m_edge_bb_map = builder.getEdgeToBBMap();
+	m_edge_bb_map = builder.get_edge_to_basic_block_map();
 	cfg_man.add(fun, m_cfg);
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished Crab CFG construction for "
 			                 << fun.getName() << "\n");	
@@ -953,7 +953,7 @@ namespace crab_llvm {
 			       heap_abs_ptr heap_abs)
     : m_impl(nullptr), m_fun(&fun) {
     if (!heap_abs)
-      heap_abs = boost::make_shared<DummyHeapAbstraction>();
+      heap_abs = std::make_shared<DummyHeapAbstraction>();
     
     m_impl = make_unique<IntraCrabLlvm_Impl>(fun, cfg_precision,
 					     heap_abs, m_vfac, cfg_man, tli);
@@ -1068,12 +1068,12 @@ namespace crab_llvm {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing invariants.\n");
       }
       
-      for (auto &n: boost::make_iterator_range(vertices(*m_cg))) {
+      for (auto &n: llvm::make_range(vertices(*m_cg))) {
 	cfg_ref_t cfg = n.get_cfg();
 	if (const Function *F = m_M.getFunction(n.name())) {
 	  if (params.store_invariants || params.print_invars) {
 	    for (basic_block_label_t bl:
-		   boost::make_iterator_range(cfg.label_begin(),cfg.label_end())) {
+		   llvm::make_range(cfg.label_begin(),cfg.label_end())) {
 	      if (bl.is_edge()) {
 		// Note that we use get_post instead of get_pre:
 		//   the crab block (bl) has an assume statement corresponding
@@ -1237,7 +1237,7 @@ namespace crab_llvm {
 	 abstract domain */
       if (params.run_liveness || isRelationalDomain(absdom)) {
 	unsigned max_live_per_blk = 0;
-	for (auto cg_node: boost::make_iterator_range(vertices(*m_cg))) {
+	for (auto cg_node: llvm::make_range(vertices(*m_cg))) {
 	  auto cfg_ref = cg_node.get_cfg();
           CRAB_VERBOSE_IF(1,
 			  auto fdecl = cfg_ref.get_func_decl();            
@@ -1314,7 +1314,7 @@ namespace crab_llvm {
 			       heap_abs_ptr heap_abs)
     : m_impl(nullptr) {
     if (!heap_abs)
-      heap_abs = boost::make_shared<DummyHeapAbstraction>();
+      heap_abs = std::make_shared<DummyHeapAbstraction>();
 
     m_impl = make_unique<InterCrabLlvm_Impl>(module, cfg_precision,
 					     heap_abs, m_vfac, cfg_man, tli);
@@ -1368,7 +1368,7 @@ namespace crab_llvm {
    **/
   CrabLlvmPass::CrabLlvmPass()
     : llvm::ModulePass(ID), 
-      m_mem(boost::make_shared<DummyHeapAbstraction>()),
+      m_mem(std::make_shared<DummyHeapAbstraction>()),
       m_tli(nullptr) { }
 
   void CrabLlvmPass::releaseMemory() {

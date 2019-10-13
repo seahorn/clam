@@ -41,16 +41,13 @@
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
-
-#include "boost/unordered_map.hpp"
-#include "boost/range/iterator_range.hpp"
-#include "boost/range/algorithm/set_algorithm.hpp"
-#include "boost/optional.hpp"
 
 #include "crab/common/debug.hpp"
 #include "crab/common/stats.hpp"
@@ -61,9 +58,9 @@
 #include "crab_llvm/Support/Debug.hh"
 
 #include <algorithm>
+#include <unordered_map>
 
 using namespace llvm;
-using namespace boost;
 using namespace crab;
 using namespace crab::cfg;
 using namespace ikos;
@@ -468,16 +465,16 @@ namespace crab_llvm {
         
   private:
 
-    typedef boost::unordered_map<const Value*, crab_lit_ref_t> lit_cache_t;
+    typedef std::unordered_map<const Value*, crab_lit_ref_t> lit_cache_t;
     typedef typename lit_cache_t::value_type binding_t;
     
     llvm_variable_factory &m_vfac;
     crab::cfg::tracked_precision m_tracklev;
     lit_cache_t m_lit_cache;
 
-    boost::optional<crabBoolLit> getBoolLit(const llvm::Value &v);
-    boost::optional<crabIntLit> getIntLit(const llvm::Value &v);
-    boost::optional<crabPtrLit> getPtrLit(const llvm::Value &v);    
+    Optional<crabBoolLit> getBoolLit(const llvm::Value &v);
+    Optional<crabIntLit> getIntLit(const llvm::Value &v);
+    Optional<crabPtrLit> getPtrLit(const llvm::Value &v);    
   };
   
   crabLitFactoryImpl::crabLitFactoryImpl(llvm_variable_factory &vfac,
@@ -494,23 +491,26 @@ namespace crab_llvm {
     // which types are tracked or not. They only use type information
     // and not the track level.
     if (isBool(&t)) {
-      if (boost::optional<crabBoolLit> lit = getBoolLit(v)) {
+      Optional<crabBoolLit> lit = getBoolLit(v);
+      if (lit.hasValue()) {
 	crab_lit_ref_t ref =
-	  boost::static_pointer_cast<crabLit>(boost::make_shared<crabBoolLit>(*lit));
+	  std::static_pointer_cast<crabLit>(std::make_shared<crabBoolLit>(lit.getValue()));
 	m_lit_cache.insert(binding_t(&v, ref));
 	return ref;	  
       }
     } else if (isInteger(&t)) {
-      if (boost::optional<crabIntLit> lit = getIntLit(v)) {
+      Optional<crabIntLit> lit = getIntLit(v);
+      if (lit.hasValue()) {
 	crab_lit_ref_t ref =
-	  boost::static_pointer_cast<crabLit>(boost::make_shared<crabIntLit>(*lit));
+	  std::static_pointer_cast<crabLit>(std::make_shared<crabIntLit>(lit.getValue()));
 	m_lit_cache.insert(binding_t(&v, ref));
 	return ref;
       }
     } else if (t.isPointerTy()) {
-      if (boost::optional<crabPtrLit> lit = getPtrLit(v)) {
+      Optional<crabPtrLit> lit = getPtrLit(v);
+      if (lit.hasValue()) {
 	crab_lit_ref_t ref =
-	  boost::static_pointer_cast<crabLit>(boost::make_shared<crabPtrLit>(*lit));
+	  std::static_pointer_cast<crabLit>(std::make_shared<crabPtrLit>(lit.getValue()));
 	m_lit_cache.insert(binding_t(&v, ref));
 	return ref;
       }
@@ -583,39 +583,39 @@ namespace crab_llvm {
   bool crabLitFactoryImpl::isBoolTrue(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isBool())
       CRABLLVM_ERROR("Literal is not a Boolean");
-    auto lit = boost::static_pointer_cast<const crabBoolLit>(ref);
+    auto lit = std::static_pointer_cast<const crabBoolLit>(ref);
     return lit->isTrue();
   }
     
   bool crabLitFactoryImpl::isBoolFalse(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isBool())
       CRABLLVM_ERROR("Literal is not a Boolean");    
-    auto lit = boost::static_pointer_cast<const crabBoolLit>(ref);
+    auto lit = std::static_pointer_cast<const crabBoolLit>(ref);
     return lit->isFalse();
   }
   
   bool crabLitFactoryImpl::isPtrNull(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isPtr())
       CRABLLVM_ERROR("Literal is not a pointer");        
-    auto lit = boost::static_pointer_cast<const crabPtrLit>(ref);
+    auto lit = std::static_pointer_cast<const crabPtrLit>(ref);
     return lit->isNull();
   }
   
   lin_exp_t crabLitFactoryImpl::getExp(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isInt())
       CRABLLVM_ERROR("Literal is not an integer");            
-    auto lit = boost::static_pointer_cast<const crabIntLit>(ref);
+    auto lit = std::static_pointer_cast<const crabIntLit>(ref);
     return lit->getExp();
   }
 
   number_t crabLitFactoryImpl::getIntCst(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isInt())
       CRABLLVM_ERROR("Literal is not an integer");                
-    auto lit = boost::static_pointer_cast<const crabIntLit>(ref);
+    auto lit = std::static_pointer_cast<const crabIntLit>(ref);
     return lit->getInt();
   }
   
-  boost::optional<crabBoolLit> crabLitFactoryImpl::getBoolLit(const llvm::Value &v){
+  Optional<crabBoolLit> crabLitFactoryImpl::getBoolLit(const llvm::Value &v){
     if (isBool(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant boolean
@@ -629,10 +629,10 @@ namespace crab_llvm {
 	return crabBoolLit(var_t(m_vfac[&v], BOOL_TYPE, 1));
       }
     }
-    return boost::optional<crabBoolLit>();
+    return llvm::None;
   }
   
-  boost::optional<crabPtrLit> crabLitFactoryImpl::getPtrLit(const llvm::Value &v){
+  Optional<crabPtrLit> crabLitFactoryImpl::getPtrLit(const llvm::Value &v){
     if (llvm::isa<llvm::ConstantPointerNull>(&v)) {
       // -- constant null
       return crabPtrLit();
@@ -640,10 +640,10 @@ namespace crab_llvm {
       // -- pointer variable 
       return crabPtrLit(var_t(m_vfac[&v], PTR_TYPE));
     }
-    return boost::optional<crabPtrLit>();
+    return llvm::None;
   }
   
-  boost::optional<crabIntLit> crabLitFactoryImpl::getIntLit(const llvm::Value &v){
+  Optional<crabIntLit> crabLitFactoryImpl::getIntLit(const llvm::Value &v){
     if (isInteger(v)) {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant integer
@@ -658,7 +658,7 @@ namespace crab_llvm {
 	return crabIntLit(var_t(m_vfac[&v], INT_TYPE, bitwidth));
       }
     }
-    return boost::optional<crabIntLit>();
+    return llvm::None;
   }
 
   crabLitFactory::crabLitFactory(llvm_variable_factory &vfac,
@@ -1035,7 +1035,7 @@ namespace crab_llvm {
   }
 
   /* If possible, return a pointer constraint from CmpInst */  
-  static boost::optional<ptr_cst_t>
+  static Optional<ptr_cst_t>
   cmpInstToCrabPtr(CmpInst &I, crabLitFactory &lfac, const bool isNegated) {
     normalizeCmpInst(I);
     
@@ -1044,16 +1044,16 @@ namespace crab_llvm {
 
     crab_lit_ref_t ref0 = lfac.getLit(v0);
     if (!ref0 || !(ref0->isPtr()))
-      return boost::optional<ptr_cst_t>();
+      return llvm::None;
 
     crab_lit_ref_t ref1 = lfac.getLit(v1);
     if (!ref1 || !(ref1->isPtr()))
-      return boost::optional<ptr_cst_t>();
+      return llvm::None;
 
     if (I.getPredicate() != CmpInst::ICMP_EQ &&
 	I.getPredicate() != CmpInst::ICMP_NE) {
       //CRABLLVM_WARNING("unexpected pointer comparison " << I);
-      return boost::optional<ptr_cst_t>();            
+      return llvm::None;            
     }
     
     bool is_eq;
@@ -1088,7 +1088,7 @@ namespace crab_llvm {
   }
 
   /* If possible, return a linear constraint from CmpInst */
-  static boost::optional<lin_cst_t>
+  static Optional<lin_cst_t>
   cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac, const bool isNegated = false) {
     normalizeCmpInst(I);
     
@@ -1097,11 +1097,11 @@ namespace crab_llvm {
 
     crab_lit_ref_t ref0 = lfac.getLit(v0);
     if (!ref0 || !(ref0->isInt()))
-      return boost::optional<lin_cst_t>();
+      return llvm::None; 
 
     crab_lit_ref_t ref1 = lfac.getLit(v1);
     if (!ref1 || !(ref1->isInt()))
-      return boost::optional<lin_cst_t>();
+      return llvm::None; 
     
     lin_exp_t op0 = lfac.getExp(ref0);
     lin_exp_t op1 = lfac.getExp(ref1);
@@ -1147,7 +1147,7 @@ namespace crab_llvm {
     }
     default: ;;  
     }
-    return boost::optional<lin_cst_t>();
+    return llvm::None; 
   }
 
   // This function makes sure that all actual parameters and function
@@ -2737,7 +2737,7 @@ namespace crab_llvm {
       std::vector<var_t> inputs, outputs;
       
       // -- add the actual parameters of the llvm callsite: i1,...in.
-      for (auto &a : boost::make_iterator_range(CS.arg_begin(), CS.arg_end())) {
+      for (auto &a : llvm::make_range(CS.arg_begin(), CS.arg_end())) {
         Value *v = a.get();
         if (!isTracked(*v, m_lfac.get_track())) continue;
         inputs.push_back(normalizeFuncParamOrRet(*v, m_bb, m_lfac));
@@ -2872,17 +2872,18 @@ namespace crab_llvm {
     return m_cfg;
   }
 
-  CfgBuilder::opt_basic_block_t CfgBuilder::lookup(const BasicBlock &B) {  
+   basic_block_t* CfgBuilder::lookup(const BasicBlock &B) {  
     BasicBlock* BB = const_cast<BasicBlock*>(&B);
     llvm_bb_map_t::iterator it = m_bb_map.find(BB);
     if (it == m_bb_map.end())
-      return CfgBuilder::opt_basic_block_t();
-    else
-      return CfgBuilder::opt_basic_block_t(it->second);
+      return nullptr;
+    else {
+      return &it->second;
+    }
   }
 
   void CfgBuilder::add_block(BasicBlock &B) {
-    assert(!lookup(B));
+    assert(lookup(B));
     BasicBlock *BB = &B;
     basic_block_t &bb = m_cfg->insert(llvm_basic_block_wrapper(BB));
     m_bb_map.insert(llvm_bb_map_t::value_type(BB, bb));
@@ -2897,8 +2898,8 @@ namespace crab_llvm {
 
 
   void CfgBuilder::add_edge(BasicBlock &S, const BasicBlock &D) {
-    opt_basic_block_t SS = lookup(S);
-    opt_basic_block_t DD = lookup(D);
+    basic_block_t* SS = lookup(S);
+    basic_block_t* DD = lookup(D);
     assert(SS && DD);
     *SS >> *DD;
   }  
@@ -2911,13 +2912,11 @@ namespace crab_llvm {
   }
   
   //! return the new block inserted between src and dest if any
-  CfgBuilder::opt_basic_block_t
-  CfgBuilder::exec_edge(BasicBlock &src, const BasicBlock &dst) {
-    
+  basic_block_t* CfgBuilder::exec_edge(BasicBlock &src, const BasicBlock &dst) {
     if (const BranchInst *br=dyn_cast<const BranchInst>(src.getTerminator())) {
       if (br->isConditional()) {
-        opt_basic_block_t Src = lookup(src);
-        opt_basic_block_t Dst = lookup(dst);
+        basic_block_t* Src = lookup(src);
+        basic_block_t* Dst = lookup(dst);
         assert(Src && Dst);
 
 	// Create a new crab block that represents the LLVM edge
@@ -2940,13 +2939,15 @@ namespace crab_llvm {
 	    if (isBool(*(CI->getOperand(0))) && isBool(*(CI->getOperand(1)))) {
 	      lower_cond_as_bool = true;
 	    } else if (isInteger(*(CI->getOperand(0))) && isInteger(*(CI->getOperand(1)))) {
-	      if (auto cst_opt = cmpInstToCrabInt(*CI, m_lfac, isNegated)) {
-		bb.assume(*cst_opt); 
+	      auto cst_opt = cmpInstToCrabInt(*CI, m_lfac, isNegated);
+	      if (cst_opt.hasValue()) {
+		bb.assume(cst_opt.getValue()); 
 	      }
 	    } else if (isPointer(*(CI->getOperand(0)), m_lfac.get_track()) &&
 		       isPointer(*(CI->getOperand(1)), m_lfac.get_track())) {
-	      if (auto cst_opt = cmpInstToCrabPtr(*CI, m_lfac, isNegated)) {
-		bb.ptr_assume(*cst_opt); 
+	      auto cst_opt = cmpInstToCrabPtr(*CI, m_lfac, isNegated);
+	      if (cst_opt.hasValue()) {
+		bb.ptr_assume(cst_opt.getValue()); 
 	      }
 	    }
 	    if (c.hasNUsesOrMore(2)) {
@@ -2970,8 +2971,7 @@ namespace crab_llvm {
 	      bb.bool_assume(lhs->getVar());
 	  }
         }
-	
-        return opt_basic_block_t(bb);
+        return &bb;
       } else {
 	// br is unconditional
 	add_edge(src,dst);
@@ -2990,7 +2990,7 @@ namespace crab_llvm {
 
       add_edge(src,dst);
     }
-    return opt_basic_block_t();    
+    return nullptr;    
   }
 
   static bool checkAllDefinitionsHaveNames(const Function& F) {
@@ -3033,12 +3033,14 @@ namespace crab_llvm {
     // keep track of initialized regions
     std::set<mem_region_t> init_regions;
     
-    for (auto &B : m_func) {     
-      opt_basic_block_t BB = lookup(B);
-      if (!BB) continue;
+    for (auto &B : m_func) {
+      basic_block_t* bb = lookup(B);
+      if (!bb) continue;
 
+      
       // -- build a CFG block ignoring branches, phi-nodes, and return
-      CrabInstVisitor v(m_lfac, m_mem, m_dl, m_tli, *BB, m_is_inter_proc, init_regions);
+      CrabInstVisitor v(m_lfac, m_mem, m_dl, m_tli, *bb,
+			m_is_inter_proc, init_regions);
       v.visit(B);
       // hook for seahorn
       has_seahorn_fail |= (v.has_seahorn_fail() && m_func.getName().equals("main"));
@@ -3051,8 +3053,7 @@ namespace crab_llvm {
 	  CRABLLVM_ERROR("UnifyFunctionExitNodes pass should be run first");
 	}
 	
-        basic_block_t &bb = *BB;
-        ret_block = &bb;
+        ret_block = bb;
 	m_cfg->set_exit(ret_block->label());
 	if (has_seahorn_fail) {
 	  ret_block->assertion(lin_cst_t::get_false(), getDebugLoc(RI));	  
@@ -3061,7 +3062,7 @@ namespace crab_llvm {
 	  if (Value * RV = RI->getReturnValue()) {
 	    if (isTracked(*RV, m_lfac.get_track())) {
 	      ret_val = var_ref_t(normalizeFuncParamOrRet(*RV, *ret_block, m_lfac));
-	      bb.ret(ret_val.get());
+	      bb->ret(ret_val.get());
 	    }
 	  } 
 	}
@@ -3075,11 +3076,11 @@ namespace crab_llvm {
         for (const BasicBlock *dst : succs_vector) {
           // -- move branch condition in bb to a new block inserted
           //    between bb and dst
-          opt_basic_block_t mid_bb = exec_edge(B, *dst);
+          basic_block_t* mid_bb = exec_edge(B, *dst);
 
           // -- phi nodes in dst are translated into assignments in
           //    the predecessor
-          CrabPhiVisitor v(m_lfac, m_mem,(mid_bb ? *mid_bb : *BB), B);
+          CrabPhiVisitor v(m_lfac, m_mem,(mid_bb ? *mid_bb : *bb), B);
           v.visit(const_cast<BasicBlock &>(*dst));
         }
       }
@@ -3152,8 +3153,7 @@ namespace crab_llvm {
       }
       
       // -- add input parameters i1,...,in
-      for (Value &arg : boost::make_iterator_range(m_func.arg_begin(),
-						    m_func.arg_end())) {
+      for (Value &arg : llvm::make_range(m_func.arg_begin(), m_func.arg_end())) {
         if (!isTracked(arg, m_lfac.get_track())) continue;
 
 	crab_lit_ref_t i = m_lfac.getLit(arg);
@@ -3299,16 +3299,16 @@ namespace crab_llvm {
       //    never propagates backwards from these special sink blocks.      
       basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
       for (auto &B: m_func) {
-	if (opt_basic_block_t b = lookup(B)) {
-	  if ((*b).label() == m_cfg->exit())
+	if (basic_block_t* b = lookup(B)) {
+	  if (b->label() == m_cfg->exit())
 	    continue;
 	  
-	  auto it_pair = (*b).next_blocks();
+	  auto it_pair = b->next_blocks();
 	  if (it_pair.first == it_pair.second) {
 	    // block has no successors and it is not the exit block
 	    for (auto &I: B) 
 	      if (isa<UnreachableInst>(I))
-		(*b) >> exit;
+		*b >> exit;
 	  }
 	}
       }
@@ -3325,8 +3325,8 @@ namespace crab_llvm {
 	auto succ_next = succs(*succ);
 	if (std::distance(succ_next.begin(), succ_next.end()) == 1) {
 	  if ((*(succ_next.begin())) == succ) {
-	    if (opt_basic_block_t exit = lookup(*succ)) {
-	      m_cfg->set_exit((*exit).label());
+	    if (basic_block_t* exit = lookup(*succ)) {
+	      m_cfg->set_exit(exit->label());
 	    }
 	  }
 	}
@@ -3339,8 +3339,8 @@ namespace crab_llvm {
 	for (auto &B: m_func) {
 	  for (auto &I: B) {
 	    if (isa<UnreachableInst>(I)) {
-	      if (opt_basic_block_t b = lookup(B)) {
-		m_cfg->set_exit((*b).label());
+	      if (basic_block_t* b = lookup(B)) {
+		m_cfg->set_exit(b->label());
 		break;
 	      }
 	    }
@@ -3354,10 +3354,10 @@ namespace crab_llvm {
       if (!m_cfg->has_exit()) {
 	// (3) Search for the first block without successors.
 	for (auto &B: m_func) {
-	  if (opt_basic_block_t b = lookup(B)) {
-	    auto it_pair = (*b).next_blocks();
+	  if (basic_block_t* b = lookup(B)) {
+	    auto it_pair = b->next_blocks();
 	    if (it_pair.first == it_pair.second) {
-	      m_cfg->set_exit((*b).label());
+	      m_cfg->set_exit(b->label());
 	    }
 	  }
 	}
