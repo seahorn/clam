@@ -130,7 +130,11 @@ CrabLlvmDomain("crab-dom",
 		   "Reduced product of term-dis-int and zones."),
        clEnumValN(WRAPPED_INTERVALS, "w-int",
 		  "Wrapped interval domain")),
+#ifdef HAVE_ALL_DOMAINS
        cl::init(INTERVALS));
+#else
+       cl::init(ZONES_SPLIT_DBM));
+#endif 
 
 cl::opt<bool>
 CrabBackward("crab-backward", 
@@ -885,10 +889,12 @@ namespace crab_llvm {
 		                 << max_live_per_blk << "\n"
 		                 << "Threshold: "
 		                 << params.relational_threshold << "\n");
+#ifdef HAVE_ALL_DOMAINS	  
 	  if (max_live_per_blk > params.relational_threshold) {
 	    // default domain
 	    params.dom = INTERVALS;
 	  }
+#endif 	  
 	}
       }
 
@@ -1275,10 +1281,12 @@ namespace crab_llvm {
 		                   << max_live_per_blk << "\n"
 		                   << "Threshold: "
 		                   << params.relational_threshold << "\n");
+#ifdef HAVE_ALL_DOMAINS	  	    
 	    if (max_live_per_blk > params.relational_threshold) {
 	      // default domain
 	      absdom = INTERVALS;
 	    }
+#endif 	    
 	  }
 	  
 	  if (params.run_liveness) {
