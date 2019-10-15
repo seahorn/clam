@@ -54,14 +54,22 @@ if (TopLevel)
 endif ()
 
 #### crab-llvm options ######
-option (USE_COTIRE "Use cotire to speed up compilation time" OFF)
+option (USE_COTIRE "Use cotire to reduce compilation time" OFF)
 option (BUILD_CRABLLVM_LIBS_SHARED "Build all CrabLlvm libraries dynamically" OFF)
-option (COMPILE_ALL_DOMAINS "Compile all abstract domains" ON)
-if (COMPILE_ALL_DOMAINS)
+option (ALL_DOMAINS "Include all abstract domains" ON)
+if (ALL_DOMAINS)
   set (HAVE_ALL_DOMAINS TRUE)
 else ()
-  message(STATUS "Some abstract domains are disabled to speed up compilation time.")
+  message(STATUS "Some abstract domains are disabled to reduce compilation time")
   set (HAVE_ALL_DOMAINS FALSE)
+endif ()
+
+option (ENABLE_INTER "Include inter-procedural analysis" ON)
+if (ENABLE_INTER)
+  set (HAVE_INTER TRUE)
+else ()
+  message(STATUS "Inter-procedural analysis is disabled to reduce compilation time")
+  set (HAVE_INTER FALSE)
 endif ()
 #### end crab-llvm options ######
 
