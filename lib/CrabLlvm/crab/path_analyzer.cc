@@ -3,8 +3,7 @@
 // flat_killgen_domain
 #include <crab/iterators/killgen_fixpoint_iterator.hpp>
 
-#include <boost/unordered_set.hpp>
-#include <boost/range/iterator_range.hpp>
+#include <unordered_set>
 
 namespace crab {
 namespace analyzer {
@@ -104,7 +103,7 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
   }
   
   if (path.size() > 1) {
-    boost::unordered_set<basic_block_label_t> visited;
+    std::unordered_set<basic_block_label_t> visited;
     for (unsigned i=0;i < path.size(); ++i) {
       if (!visited.insert(path[i]).second) {
 	CRAB_ERROR("The path is not acyclic");
@@ -203,7 +202,8 @@ remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core,
   }
 
   // if there is an "assume(false)" then we are done
-  for(auto& s: boost::make_iterator_range(parent_bb.rbegin(), parent_bb.rend())) {
+  for(auto it = parent_bb.rbegin(), et = parent_bb.rend(); it!=et; ++it) {
+    auto &s = *it;
     if (s.is_assume()) {
       auto assume = static_cast<assume_t*>(&s);
       if (assume->constraint().is_contradiction()) {
@@ -218,7 +218,8 @@ remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core,
   // to look at the last block.  
   stmt_t* last_stmt = nullptr;
   unsigned i = 0;
-  for(auto& s: boost::make_iterator_range(parent_bb.begin(), parent_bb.end())) {
+  for(auto it = parent_bb.begin(), et = parent_bb.end(); it!=et; ++it) {
+    auto &s = *it;
     if (i == bottom_stmt) {
       last_stmt = &s;
     } 
@@ -269,11 +270,12 @@ remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper>& core,
     stmt_t& s = *(core[i].m_s);
     var_dom_t uses, defs;
     const typename stmt_t::live_t& ls = s.get_live();
-    for (auto v: boost::make_iterator_range(ls.uses_begin(), ls.uses_end()))
-    { uses += v; }
-    for (auto v: boost::make_iterator_range(ls.defs_begin(), ls.defs_end()))
-    { defs += v; }
-
+    for (auto it = ls.uses_begin(), et = ls.uses_end(); it!=et; ++it) {
+      uses += *it;
+    }
+    for (auto it = ls.defs_begin(), et = ls.defs_end(); it!=et; ++it) {
+      defs += *it;
+    }
     
     if (defs.is_bottom() && !uses.is_bottom()) {
       // control and data dependencies
@@ -436,14 +438,14 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
 namespace crab {
 namespace analyzer {
 // explicit instantiations
-template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::num_domain_t>;
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::split_dbm_domain_t>;
-template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::boxes_domain_t>;
-#ifdef HAVE_ALL_DOMAINS  
-template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::term_int_domain_t>;
-#endif   
+#ifdef HAVE_ALL_DOMAINS
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::interval_domain_t>;
+template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::term_int_domain_t>;
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::wrapped_interval_domain_t>;      
+template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::num_domain_t>;
+template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::boxes_domain_t>;
+#endif   
 } 
 } 
 

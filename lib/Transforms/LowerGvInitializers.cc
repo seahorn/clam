@@ -25,18 +25,18 @@
  */
 
 #include "llvm/Pass.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/DenseMap.h"
 
-//#include "crab_llvm/Support/Debug.hh"
-
+#include "crab_llvm/Support/Boost.hh"
 #include "boost/range.hpp"
 #include "boost/format.hpp"
 
@@ -292,8 +292,7 @@ namespace crab_llvm {
       if (!f) return false;
 
       std::vector<GlobalVariable*> gvs;
-      for (GlobalVariable &gv : boost::make_iterator_range(M.global_begin(),
-							   M.global_end())) {
+      for (GlobalVariable &gv: llvm::make_range(M.global_begin(), M.global_end())) {
         if (gv.hasInitializer () && gv.getName() != "llvm.used")
 	  gvs.push_back(&gv);
       }

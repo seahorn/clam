@@ -281,16 +281,16 @@ static bool instrument_loads(AbsDomain inv, basic_block_t& bb,
     lin_cst_t::variable_set_t load_vs;
     if (s.is_arr_read()) { 
       const array_load_stmt_t* load_stmt = static_cast<const array_load_stmt_t*>(&s);
-      if (boost::optional<const Value *> v = load_stmt->lhs().name().get()) {
+      if (auto v = load_stmt->lhs().name().get()) {
 	I = dyn_cast<const LoadInst>(*v);
 	load_vs += load_stmt->lhs();
       }
     }
     else if (s.is_ptr_read()) { 
-      const ptr_load_stmt_t* load_stmt = static_cast<const ptr_load_stmt_t*>(&s); 
-      if (boost::optional<const Value *> v = load_stmt->lhs().name().get()) {
+      const ptr_load_stmt_t* load_stmt = static_cast<const ptr_load_stmt_t*>(&s);
+      if (auto v = load_stmt->lhs().name().get()) {
+	I = dyn_cast<const LoadInst>(*v);	
 	load_vs += load_stmt->lhs();
-	I = dyn_cast<const LoadInst>(*v);
       }
     }
       
@@ -494,7 +494,13 @@ bool InsertInvariants::runOnFunction(Function &F) {
 	
 	// --- Figure out the type of the wrappee
 	switch(pre->getId()) {
-        #ifdef HAVE_ALL_DOMAINS  
+        #ifdef HAVE_ALL_DOMAINS
+	case GenericAbsDomWrapper::intv:{
+	  interval_domain_t inv;
+	  getAbsDomWrappee(pre, inv);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
+	  break;
+	}	  
 	case GenericAbsDomWrapper::ric: {
 	  ric_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
@@ -506,22 +512,22 @@ bool InsertInvariants::runOnFunction(Function &F) {
 	  getAbsDomWrappee(pre, inv);
 	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
-	}	      
-        #endif 	    
-	case GenericAbsDomWrapper::intv:{
-	  interval_domain_t inv;
-	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
-	  break;
-	}
-	case GenericAbsDomWrapper::split_dbm: {
-	  split_dbm_domain_t inv;
-	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
-	  break;
 	}
 	case GenericAbsDomWrapper::term_dis_intv: {
 	  term_dis_int_domain_t inv;
+	  getAbsDomWrappee(pre, inv);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
+	  break;
+	}
+	  
+	case GenericAbsDomWrapper::oct: {
+	  oct_domain_t inv;
+	  getAbsDomWrappee(pre, inv);
+	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
+	  break;
+	}
+	case GenericAbsDomWrapper::num: {
+	  num_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
 	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
@@ -532,20 +538,15 @@ bool InsertInvariants::runOnFunction(Function &F) {
 	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
-	case GenericAbsDomWrapper::oct: {
-	  oct_domain_t inv;
-	  getAbsDomWrappee(pre, inv);
-	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
-	  break;
-	}
 	case GenericAbsDomWrapper::pk: {
 	  pk_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
 	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;
 	}
-	case GenericAbsDomWrapper::num: {
-	  num_domain_t inv;
+        #endif 	    
+	case GenericAbsDomWrapper::split_dbm: {
+	  split_dbm_domain_t inv;
 	  getAbsDomWrappee(pre, inv);
 	  change |= instrument_loads(inv, cfg.get_node(&B), F.getContext(), cg, m_assumeFn);
 	  break;

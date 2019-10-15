@@ -5,6 +5,8 @@
 #include "crab/config.h"
 #include "crab_llvm/crab_domains.hh"
 
+#include <memory>
+
 /**
  *  Definition of a generic wrapper class (for crab-llvm clients) to
  *  contain an arbitrary abstract domain.
@@ -101,7 +103,7 @@ namespace crab_llvm {
       GenericAbsDomWrapper(), m_id (ID), m_abs (abs) { }	     \
     								     \
     GenericAbsDomWrapperPtr clone() const {			     \
-      auto res = boost::make_shared<WRAPPER>(m_abs, m_id); 	     \
+      auto res = std::make_shared<WRAPPER>(m_abs, m_id); 	     \
       return res;						     \
     }								     \
     								     \
@@ -141,11 +143,7 @@ namespace crab_llvm {
    template <>                                                       \
    inline void getAbsDomWrappee (GenericAbsDomWrapperPtr wrapper,    \
                                  ABS_DOM &abs_dom) {                 \
-     auto wrappee = boost::dynamic_pointer_cast<WRAPPER> (wrapper);  \
-     if (!wrappee) {                                                 \
-       CRAB_ERROR("Could not cast wrapper to an instance of ",       \
-                  ABS_DOM::getDomainName ());                        \
-     }                                                               \
+     auto wrappee = std::static_pointer_cast<WRAPPER> (wrapper);     \
      abs_dom = wrappee->get ();                                      \
    }                                                 
 
@@ -155,7 +153,7 @@ namespace crab_llvm {
 
   struct GenericAbsDomWrapper {
 
-    typedef boost::shared_ptr<GenericAbsDomWrapper> GenericAbsDomWrapperPtr;
+    typedef std::shared_ptr<GenericAbsDomWrapper> GenericAbsDomWrapperPtr;
     
     typedef enum { intv, split_dbm, split_oct,
 		   term_intv, term_dis_intv, 

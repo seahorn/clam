@@ -5,8 +5,8 @@
  * crab. The invariants are inserted as verifier.assume instructions.
  */
 
-#include "llvm/Pass.h"
 #include "crab_llvm/crab_cfg.hh"
+#include "llvm/Pass.h"
 
 namespace llvm {
   class Function;

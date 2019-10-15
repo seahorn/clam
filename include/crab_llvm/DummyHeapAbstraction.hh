@@ -1,9 +1,8 @@
 #pragma once
 
-#include "llvm/ADT/StringRef.h"
-
 #include "crab_llvm/config.h"
 #include "crab_llvm/HeapAbstraction.hh"
+#include "llvm/ADT/StringRef.h"
 
 namespace crab_llvm {
 

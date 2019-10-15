@@ -7,6 +7,7 @@
 
 #include <boost/tokenizer.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include "crab_llvm/Support/Boost.hh"
 
 using namespace llvm;
 
