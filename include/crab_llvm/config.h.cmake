@@ -1,5 +1,4 @@
-#ifndef _CRAB_LLVM_CONFIG_H_
-#define _CRAB_LLVM_CONFIG_H_
+#pragma once
 
 /** Define whether llvm-dsa library is available */
 #cmakedefine HAVE_DSA ${HAVE_DSA}
@@ -13,4 +12,6 @@
 /** Include all abstract domains */
 #cmakedefine HAVE_ALL_DOMAINS ${HAVE_ALL_DOMAINS}
 
-#endif
+/** Include inter-procedural analysis */
+#cmakedefine HAVE_INTER ${HAVE_INTER}
+

@@ -62,8 +62,8 @@
 
 using namespace llvm;
 using namespace crab;
-using namespace crab::cfg;
 using namespace ikos;
+using namespace crab::cfg;
 
 cl::opt<bool>
 CrabCFGSimplify("crab-cfg-simplify",
@@ -178,41 +178,39 @@ namespace crab_llvm {
     return isPointer(v.getType(), tracklev);
   }
 
-  /** Converts v to mpz_class. Assumes that v is signed */
-   static mpz_class toMpz(const llvm::APInt &v, bool& is_bignum) {
-     is_bignum = false;
-     if (!CrabEnableBignums) {
-       is_bignum = isSignedBigNum(v);
-       
-     }
-     // Convert to strings is not ideal but it shouldn't be a big
-     // bottleneck.
-     std::string val = v.toString(10,true /*is signed*/);
-     return mpz_class(val);
-     
-     // Based on:
-     // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
-     //
-     // This code seems buggy. For instance, it will make these conversions:
-     //    30903631872 --> 570071388090917616591046705152
-     //    453350497004842588831744 --> 61144488376177518244492741363942580224
-     //
-     //  llvm::APInt abs;
-     // abs = v.isNegative() ? v.abs() : v;
-     // const uint64_t *rawdata = abs.getRawData();
-     // unsigned numWords = abs.getNumWords();
-     // mpz_class res;
-     // mpz_import(res.get_mpz_t(), numWords, 1,  sizeof(uint64_t), 0, 0, rawdata);
-     // return v.isNegative() ? mpz_class(-res) : res;
-   }
+  /** Converts v to z_number. Assumes that v is signed */
+  static z_number toZNumber(const llvm::APInt &v, bool& is_bignum) {
+    is_bignum = false;
+    if (!CrabEnableBignums) {
+      is_bignum = isSignedBigNum(v);
+      
+    }
+    #if 0
+    // Convert to strings is not ideal but it shouldn't be a big
+    // bottleneck.
+    std::string val = v.toString(10,true /*is signed*/);
+    return z_number(val);
+    #else
+    // Based on:
+    // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
+    llvm::APInt abs;
+    abs = v.isNegative() ? v.abs() : v;
+    const uint64_t *rawdata = abs.getRawData();
+    unsigned numWords = abs.getNumWords();
+    
+    ikos::z_number res;
+    mpz_import(res.get_mpz_t(), numWords, -1,  sizeof(uint64_t), 0, 0, rawdata);
+    return v.isNegative() ? -res : res;
+    #endif 
+  }
 
-  // The return value should be ikos::z_number and not number_t
-  static ikos::z_number getIntConstant(const ConstantInt* CI, bool& is_bignum){
+  // The return value should be z_number and not number_t
+  static z_number getIntConstant(const ConstantInt* CI, bool& is_bignum){
     is_bignum = false;
     if (CI->getType()->isIntegerTy(1)) {
-      return ikos::z_number((int64_t) CI->getZExtValue());
+      return z_number((int64_t) CI->getZExtValue());
     } else {
-      return ikos::z_number(toMpz(CI->getValue(), is_bignum));
+      return toZNumber(CI->getValue(), is_bignum);
     }
   }
 
@@ -377,7 +375,7 @@ namespace crab_llvm {
 
     // If z_number != number_t we assume that number_t has a
     // constructor for z_number.
-    explicit crabIntLit(ikos::z_number n): crabLit(CRAB_LITERAL_INT), m_num(n) {}
+    explicit crabIntLit(z_number n): crabLit(CRAB_LITERAL_INT), m_num(n) {}
     
     explicit crabIntLit(var_t v): crabLit(CRAB_LITERAL_INT), m_var(v) {}
     
@@ -620,7 +618,7 @@ namespace crab_llvm {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant boolean
 	bool is_bignum;
-	ikos::z_number n = getIntConstant(c, is_bignum);
+	z_number n = getIntConstant(c, is_bignum);
 	if (!is_bignum) {
 	  return crabBoolLit(n > 0 ? true : false);
 	}
@@ -648,7 +646,7 @@ namespace crab_llvm {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant integer
 	bool is_bignum;	
-	ikos::z_number n = getIntConstant(c, is_bignum);
+	z_number n = getIntConstant(c, is_bignum);
 	if (!is_bignum) {
 	  return crabIntLit(n);
 	}
@@ -1786,7 +1784,7 @@ namespace crab_llvm {
 	  if (isInteger(ty) || isBool(ty)) {
 	    if (m_init_regions.insert(r).second) {	      	    
 	      IntegerType* int_ty = cast<IntegerType>(ty);
-	      ub_idx = (isBool(ty) ? 0 : ikos::z_number((int_ty->getBitWidth() / 8) -1));
+	      ub_idx = (isBool(ty) ? 0 : z_number((int_ty->getBitWidth() / 8) -1));
 	      m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
 	    }
 	  } else if (isIntArray(*ty) || isBoolArray(*ty)) {
@@ -1840,7 +1838,7 @@ namespace crab_llvm {
       if (ConstantInt *CI = dyn_cast<ConstantInt>(cond)) {
         // -- cond is a constant
 	bool is_bignum;
-	ikos::z_number cond_val = getIntConstant(CI, is_bignum);
+	z_number cond_val = getIntConstant(CI, is_bignum);
 	if (!is_bignum) {
 	  if (cond_val > 0) {
 	    if (isAssertFn(callee) || isAssumeFn(callee)) {
@@ -2300,14 +2298,14 @@ namespace crab_llvm {
       APInt offset(bitwidth, 0);
       if (I.accumulateConstantOffset(*m_dl, offset)) {
 	bool is_bignum = false;
-	mpz_class o(toMpz(offset, is_bignum));
+	z_number o(toZNumber(offset, is_bignum));
 	if (is_bignum) {
 	  m_bb.havoc(lhs->getVar());
 	} else {
-	  m_bb.ptr_assign(lhs->getVar(), ptr->getVar(), lin_exp_t(ikos::z_number(o)));
+	  m_bb.ptr_assign(lhs->getVar(), ptr->getVar(), lin_exp_t(o));
 	  CRAB_LOG("cfg-gep",
 	   	   crab::outs() << "-- " << *lhs << ":=" << *ptr  << "+"
-		                << ikos::z_number(o) << "\n");
+		                << o << "\n");
 	}
         return;
       }

@@ -438,14 +438,14 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
 namespace crab {
 namespace analyzer {
 // explicit instantiations
-template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::num_domain_t>;
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::split_dbm_domain_t>;
-template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::boxes_domain_t>;
-#ifdef HAVE_ALL_DOMAINS  
-template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::term_int_domain_t>;
-#endif   
+#ifdef HAVE_ALL_DOMAINS
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::interval_domain_t>;
+template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::term_int_domain_t>;
 template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::wrapped_interval_domain_t>;      
+template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::num_domain_t>;
+template class path_analyzer<crab_llvm::cfg_ref_t, crab_llvm::boxes_domain_t>;
+#endif   
 } 
 } 
 

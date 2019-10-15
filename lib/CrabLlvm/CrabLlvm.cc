@@ -786,32 +786,35 @@ namespace crab_llvm {
     
     // Domains used for intra-procedural analysis
     const std::map<CrabDomain, intra_analysis> intra_analyses {
-      { INTERVALS               , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<interval_domain_t>), "classical intervals" } } 
+      {
+	ZONES_SPLIT_DBM         , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<split_dbm_domain_t>), "zones" }}	
       #ifdef HAVE_ALL_DOMAINS	
       , { INTERVALS_CONGRUENCES , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<ric_domain_t>), "reduced product of intervals and congruences" }}
       , { DIS_INTERVALS         , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<dis_interval_domain_t>), "disjunctive intervals" }}
       , { TERMS_INTERVALS       , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<term_int_domain_t>), "terms with intervals" }}
-      #endif 	
       , { WRAPPED_INTERVALS     , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<wrapped_interval_domain_t>), "wrapped intervals" }}
-      , { ZONES_SPLIT_DBM       , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<split_dbm_domain_t>), "zones" }}
-      , { BOXES                 , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<boxes_domain_t>), "boxes" }}
-      , { OCT                   , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<oct_domain_t>), "octagons" }}
-      , { PK                    , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<pk_domain_t>), "polyhedra" }}
       , { TERMS_ZONES           , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<num_domain_t>), "terms with zones" }}
       , { TERMS_DIS_INTERVALS   , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<term_dis_int_domain_t>), "terms with disjunctive intervals" }}
+      , { OCT                   , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<oct_domain_t>), "octagons" }}
+      , { BOXES                 , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<boxes_domain_t>), "boxes" }}
+      , { PK                    , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<pk_domain_t>), "polyhedra" }}
+      , { INTERVALS             , { bind_this(this, &IntraCrabLlvm_Impl::analyzeCfg<interval_domain_t>), "classical intervals" }} 	
+      #endif 	
+      
     };
 
 
     // Domains used for path-based analysis
     const std::map<CrabDomain, path_analysis> path_analyses {
-      { INTERVALS               , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<interval_domain_t>), "classical intervals" } } 
-      #ifdef HAVE_ALL_DOMAINS	
+      {
+	ZONES_SPLIT_DBM       , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<split_dbm_domain_t>), "zones" }}
+      #ifdef HAVE_ALL_DOMAINS
+      , { INTERVALS             , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<interval_domain_t>), "classical intervals" }} 	
       , { TERMS_INTERVALS       , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<term_int_domain_t>), "terms with intervals" }}
-      #endif 	
       , { WRAPPED_INTERVALS     , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<wrapped_interval_domain_t>), "wrapped intervals" }}
-      , { ZONES_SPLIT_DBM       , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<split_dbm_domain_t>), "zones" }}
-      , { BOXES                 , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<boxes_domain_t>), "boxes" }}      
       , { TERMS_ZONES           , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<num_domain_t>), "terms with zones" }}
+      , { BOXES                 , { bind_this(this, &IntraCrabLlvm_Impl::wrapperPathAnalyze<boxes_domain_t>), "boxes" }}            
+      #endif 	
       /* 
 	 To add new domains here make sure you add an explicit
 	 instantiation in crab/path_analyzer.cc 
@@ -899,10 +902,11 @@ namespace crab_llvm {
 					     results);
       } else {
       	crab::outs() << "Warning: abstract domain not found or enabled.\n"
-      		     << "Running " << intra_analyses.at(INTERVALS).name << " ...\n"; 
-      	intra_analyses.at(INTERVALS).analyze(params, entry, assumptions,
-					   (params.run_liveness)? &live : nullptr,
-					    results);
+		     << "Compile with -DALL_DOMAINS=ON.\n";
+	// crab::outs() << "Running " << intra_analyses.at(INTERVALS).name << " ...\n"; 
+      	// intra_analyses.at(INTERVALS).analyze(params, entry, assumptions,
+	// 				   (params.run_liveness)? &live : nullptr,
+	// 				    results);
       }
     }
     
@@ -934,10 +938,10 @@ namespace crab_llvm {
 					     post, res);
       } else {
       	crab::outs() << "Warning: abstract domain not found or enabled.\n"
-      		     << "Running " << path_analyses.at(INTERVALS).name << " ...\n";
-      	path_analyses.at(INTERVALS).analyze(path, core, layered_solving, populate_inv_map,
-					    post, res);
-	
+		     << "Compile with -DALL_DOMAINS=ON.\n";
+	// crab::outs() << "Running " << path_analyses.at(INTERVALS).name << " ...\n";
+      	// path_analyses.at(INTERVALS).analyze(path, core, layered_solving, populate_inv_map,
+	// 				    post, res);
       }
       return res;
     }
@@ -1160,23 +1164,24 @@ namespace crab_llvm {
 
     // Domains used for intra-procedural analysis
     const std::map<std::pair<CrabDomain,CrabDomain>, inter_analysis> inter_analyses {
-        {{ZONES_SPLIT_DBM, INTERVALS},
-	 { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, interval_domain_t>), "bottom-up:zones, top-down:intervals" }}
+      #ifdef HAVE_INTER
+      {{ZONES_SPLIT_DBM, ZONES_SPLIT_DBM},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, split_dbm_domain_t>), "bottom-up:zones, top-down:zones" }}
+      #ifdef HAVE_ALL_DOMAINS
+      , {{ZONES_SPLIT_DBM, INTERVALS},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, interval_domain_t>), "bottom-up:zones, top-down:intervals" }}
       , {{ZONES_SPLIT_DBM, WRAPPED_INTERVALS},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, wrapped_interval_domain_t>), "bottom-up:zones, top-down:wrapped intervals" }}
-      , {{ZONES_SPLIT_DBM, ZONES_SPLIT_DBM},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, split_dbm_domain_t>), "bottom-up:zones, top-down:zones" }}
-      , {{ZONES_SPLIT_DBM, BOXES},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, boxes_domain_t>), "bottom-up:zones, top-down:boxes" }}
       , {{ZONES_SPLIT_DBM, OCT},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, oct_domain_t>), "bottom-up:zones, top-down:oct" }}
-      , {{ZONES_SPLIT_DBM, PK},
-	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, pk_domain_t>), "bottom-up:zones, top-down:pk" }}
       , {{ZONES_SPLIT_DBM, TERMS_ZONES},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, num_domain_t>), "bottom-up:zones, top-down:terms+zones" }}
       , {{ZONES_SPLIT_DBM, TERMS_DIS_INTERVALS},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, term_dis_int_domain_t>), "bottom-up:zones, top-down:terms+dis_intervals" }}
-      #ifdef HAVE_ALL_DOMAINS		
+      , {{ZONES_SPLIT_DBM, BOXES},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, boxes_domain_t>), "bottom-up:zones, top-down:boxes" }}
+      , {{ZONES_SPLIT_DBM, PK},
+	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<split_dbm_domain_t, pk_domain_t>), "bottom-up:zones, top-down:pk" }}	
       , {{OCT, INTERVALS},
 	 { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, interval_domain_t>), "bottom-up:oct, top-down:intervals" }}
       , {{OCT, WRAPPED_INTERVALS},
@@ -1193,6 +1198,7 @@ namespace crab_llvm {
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, num_domain_t>), "bottom-up:oct, top-down:terms+zones" }}
       , {{OCT, TERMS_DIS_INTERVALS},
 	  { bind_this(this, &InterCrabLlvm_Impl::analyzeCg<oct_domain_t, term_dis_int_domain_t>), "bottom-up:oct, top-down:terms+dis_intervals" }}
+      #endif
       #endif 	
     };
     
@@ -1288,10 +1294,16 @@ namespace crab_llvm {
 	if (inter_analyses.count({params.sum_dom, params.dom})) {
 	  inter_analyses.at({params.sum_dom, params.dom}).analyze(params, results);
 	} else {
-	  crab::outs() << "Warning: abstract domains not found or enabled.\n"
-		       << "Running " << inter_analyses.at({ZONES_SPLIT_DBM, INTERVALS}).name
-		       << "\n";
-	  inter_analyses.at({ZONES_SPLIT_DBM, INTERVALS}).analyze(params, results);	
+	  if (inter_analyses.count({ZONES_SPLIT_DBM, ZONES_SPLIT_DBM})) {
+	    crab::outs() << "Warning: abstract domains not found or enabled.\n"
+			 << "Compile with -DALL_DOMAINS=ON.\n";	    
+	    // crab::outs() << "Running " << inter_analyses.at({ZONES_SPLIT_DBM, INTERVALS}).name
+	    // 		    << "\n";
+	    // inter_analyses.at({ZONES_SPLIT_DBM, INTERVALS}).analyze(params, results);	
+	  } else {
+	    crab::outs() << "Warning: inter-procedural analysis is not enabled.\n"
+			 << "Compile with -DENABLE_INTER=ON or do not use --crab-inter\n";
+	  }
 	}
       }
       
