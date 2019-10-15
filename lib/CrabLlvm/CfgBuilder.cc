@@ -179,32 +179,30 @@ namespace crab_llvm {
   }
 
   /** Converts v to z_number. Assumes that v is signed */
-   static z_number toZNumber(const llvm::APInt &v, bool& is_bignum) {
-     is_bignum = false;
-     if (!CrabEnableBignums) {
-       is_bignum = isSignedBigNum(v);
-       
-     }
-     // Convert to strings is not ideal but it shouldn't be a big
-     // bottleneck.
-     std::string val = v.toString(10,true /*is signed*/);
-     return z_number(val);
-     
-     // Based on:
-     // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
-     //
-     // This code seems buggy. For instance, it will make these conversions:
-     //    30903631872 --> 570071388090917616591046705152
-     //    453350497004842588831744 --> 61144488376177518244492741363942580224
-     //
-     //  llvm::APInt abs;
-     // abs = v.isNegative() ? v.abs() : v;
-     // const uint64_t *rawdata = abs.getRawData();
-     // unsigned numWords = abs.getNumWords();
-     // mpz_class res;
-     // mpz_import(res.get_mpz_t(), numWords, 1,  sizeof(uint64_t), 0, 0, rawdata);
-     // return v.isNegative() ? mpz_class(-res) : res;
-   }
+  static z_number toZNumber(const llvm::APInt &v, bool& is_bignum) {
+    is_bignum = false;
+    if (!CrabEnableBignums) {
+      is_bignum = isSignedBigNum(v);
+      
+    }
+    #if 0
+    // Convert to strings is not ideal but it shouldn't be a big
+    // bottleneck.
+    std::string val = v.toString(10,true /*is signed*/);
+    return z_number(val);
+    #else
+    // Based on:
+    // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
+    llvm::APInt abs;
+    abs = v.isNegative() ? v.abs() : v;
+    const uint64_t *rawdata = abs.getRawData();
+    unsigned numWords = abs.getNumWords();
+    
+    ikos::z_number res;
+    mpz_import(res.get_mpz_t(), numWords, -1,  sizeof(uint64_t), 0, 0, rawdata);
+    return v.isNegative() ? -res : res;
+    #endif 
+  }
 
   // The return value should be z_number and not number_t
   static z_number getIntConstant(const ConstantInt* CI, bool& is_bignum){
