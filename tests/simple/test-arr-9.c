@@ -1,6 +1,6 @@
-// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-inter --crab-dom=zones --crab-track=arr --crab-heap-analysis=llvm-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
-// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-inter --crab-dom=zones --crab-track=arr --crab-heap-analysis=ci-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
-// RUN: %crabllvm -O0 --lower-unsigned-icmp --crab-inter --crab-dom=zones --crab-track=arr --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=zones --crab-track=arr --crab-heap-analysis=llvm-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=zones --crab-track=arr --crab-heap-analysis=ci-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=zones --crab-track=arr --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total safe checks
 // CHECK: ^1  Number of total warning checks$
 

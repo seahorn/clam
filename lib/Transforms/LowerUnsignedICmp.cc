@@ -15,7 +15,7 @@
 
 #define DEBUG_TYPE "lower-unsigned-icmp"
 
-namespace crab_llvm {
+namespace clam {
   
   using namespace llvm;
   
@@ -255,7 +255,7 @@ namespace crab_llvm {
     }
         
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Lower ULT and ULE instructions";
+      return "Clam: Lower ULT and ULE instructions";
     }
     
     virtual void getAnalysisUsage (AnalysisUsage &AU) const {

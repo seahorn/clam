@@ -6,14 +6,14 @@ add_lit_testsuite(test-simple "Run simple tests"
   ${CMAKE_CURRENT_SOURCE_DIR}/simple  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/simple
-  DEPENDS crabllvm)
+  DEPENDS clam)
 
 add_lit_testsuite(test-readme "Run README.md tests"
   -v
   ${CMAKE_CURRENT_SOURCE_DIR}/demo  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/demo
-  DEPENDS crabllvm)
+  DEPENDS clam)
 
 if (USE_LDD)
   add_lit_testsuite(test-ssh "Run SVCOMP ssh benchmarks"
@@ -21,20 +21,20 @@ if (USE_LDD)
     ${CMAKE_CURRENT_SOURCE_DIR}/ssh  ## where .cfg file is located
     PARAMS
     test_dir=${CMAKE_CURRENT_BINARY_DIR}/ssh
-    DEPENDS crabllvm)
+    DEPENDS clam)
   
   add_lit_testsuite(test-ssh-simplified "Run SVCOMP ssh-simplified benchmarks"
     -v 
     ${CMAKE_CURRENT_SOURCE_DIR}/ssh-simplified  ## where .cfg file is located
     PARAMS
     test_dir=${CMAKE_CURRENT_BINARY_DIR}/ssh-simplified
-    DEPENDS crabllvm)
+    DEPENDS clam)
 
   add_lit_testsuite(test-ntdrivers-simplified "Run SVCOMP ntdrivers-simplified benchmarks"
     -v 
     ${CMAKE_CURRENT_SOURCE_DIR}/ntdrivers-simplified  ## where .cfg file is located
     PARAMS
     test_dir=${CMAKE_CURRENT_BINARY_DIR}/ntdrivers-simplified
-    DEPENDS crabllvm)
+    DEPENDS clam)
   
 endif()

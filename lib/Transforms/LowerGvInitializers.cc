@@ -36,7 +36,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
 
-#include "crab_llvm/Support/Boost.hh"
+#include "clam/Support/Boost.hh"
 #include "boost/range.hpp"
 #include "boost/format.hpp"
 
@@ -46,7 +46,7 @@ using namespace llvm;
 
 #define DEBUG_TYPE "lower-gv"
 
-namespace crab_llvm {
+namespace clam {
 
   class LowerGvInitializers : public ModulePass {
     
@@ -182,7 +182,7 @@ namespace crab_llvm {
 	  CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);	  
 	  change = true;
 	} else {
-	  // CRABLLVM_WARNING("skipped initialization of " << *ATy);
+	  // CLAM_WARNING("skipped initialization of " << *ATy);
 	}
       } else if (isa<PointerType> (T)) {
         #ifdef DEBUG_LOWER_GV
@@ -199,7 +199,7 @@ namespace crab_llvm {
 	CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);
 	change = true;
       } else {
-	// CRABLLVM_WARNING("skipped initialization of " << *T);
+	// CLAM_WARNING("skipped initialization of " << *T);
       }
 
       stack.pop_back();	      
@@ -370,7 +370,7 @@ namespace crab_llvm {
     }
 
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Lower global initializers";
+      return "Clam: Lower global initializers";
     }
     
   };

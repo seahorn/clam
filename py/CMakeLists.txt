@@ -3,7 +3,7 @@ find_program(PYTHON "python")
 option(USE_PY_SETUP "Use python distutils to install python modules" OFF)
 
 if (PYTHON AND NOT USE_PY_SETUP)
-  install(PROGRAMS crabllvm.py  DESTINATION bin)
+  install(PROGRAMS clam.py  DESTINATION bin)
   install(FILES stats.py    DESTINATION bin)
 endif()
 
@@ -14,7 +14,7 @@ if (PYTHON AND USE_PY_SETUP)
 
   set(DEPS
     stats.py
-    crabllvm.py
+    clam.py
     ${SETUP_PY_IN})
 
   configure_file(${SETUP_PY_IN} ${SETUP_PY})
