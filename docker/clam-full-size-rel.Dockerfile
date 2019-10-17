@@ -9,7 +9,8 @@
 ARG UBUNTU
 
 # Pull base image.
-FROM seahorn/clam-build-llvm8:$UBUNTU
+#FROM seahorn/clam-build-llvm8:$UBUNTU
+FROM seahorn/crabllvm-build-llvm8:$UBUNTU
 
 # Needed to run clang with -m32
 RUN apt-get update && \
