@@ -15,7 +15,7 @@ add_lit_testsuite(test-readme "Run README.md tests"
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/demo
   DEPENDS clam)
 
-if (USE_LDD)
+if (CRAB_USE_LDD)
   add_lit_testsuite(test-ssh "Run SVCOMP ssh benchmarks"
     -v 
     ${CMAKE_CURRENT_SOURCE_DIR}/ssh  ## where .cfg file is located
