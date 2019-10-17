@@ -2865,18 +2865,17 @@ namespace clam {
 
   CfgBuilder::~CfgBuilder() {}
 
-  cfg_t& CfgBuilder::get_cfg() { 
-    if (!m_is_cfg_built) {
-      build_cfg();
-      m_is_cfg_built = true;
-    }
+  cfg_t& CfgBuilder::get_cfg() {
+    // it won't build if already built
+    build_cfg();
     return *m_cfg;
   }
 
   basic_block_label_t CfgBuilder::get_crab_basic_block(const BasicBlock *bb) const {
     auto it = m_node_to_crab_map.find(bb);
     if (it == m_node_to_crab_map.end()) {
-      CLAM_ERROR("cannot map llvm basic block to crab basic block label");
+      CLAM_ERROR("cannot map llvm basic block ", bb->getName(),
+		 " to crab basic block label");
     }
     return it->second;
     
@@ -2903,8 +2902,11 @@ namespace clam {
   }
 
   void CfgBuilder::add_block(BasicBlock &bb) {
-    auto bb_label = make_crab_basic_block_label(&bb);
-    m_cfg->insert(bb_label);
+    auto it = m_node_to_crab_map.find(&bb);
+    if (it == m_node_to_crab_map.end()) {
+      auto bb_label = make_crab_basic_block_label(&bb);
+      m_cfg->insert(bb_label);
+    }
   }  
 
   void CfgBuilder::add_edge(BasicBlock &S, const BasicBlock &D) {
@@ -3045,7 +3047,10 @@ namespace clam {
   }
 
   void CfgBuilder::build_cfg() {
-
+    if (m_is_cfg_built) {
+      return;
+    }
+    m_is_cfg_built = true;
     crab::ScopedCrabStats __st__("CFG Construction");
 
     // Sanity check: pass NameValues must have been executed before

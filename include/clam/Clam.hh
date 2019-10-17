@@ -136,7 +136,7 @@ namespace clam {
     
     void add(const llvm::Function &f, CfgBuilderPtr cfg_builder);
     
-    cfg_ref_t get_cfg(const llvm::Function &f) const;
+    cfg_t& get_cfg(const llvm::Function &f) const;
     
     const CfgBuilderPtr get_cfg_builder(const llvm::Function &f) const;    
     

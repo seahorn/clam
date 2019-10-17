@@ -581,17 +581,12 @@ namespace clam {
     }
   }
 
-  cfg_ref_t CrabBuilderManager::get_cfg(const Function &f) const {
-    auto it = m_cfg_builder_map.find(&f);
-    if (it == m_cfg_builder_map.end()) {
-      CLAM_ERROR("Cannot find crab cfg for ", f.getName());
-    }
-    cfg_t& cfg = it->second->get_cfg();
-    return cfg_ref_t(cfg);
+  cfg_t& CrabBuilderManager::get_cfg(const Function &f) const {
+    return get_cfg_builder(f)->get_cfg();
   }
 
   const CrabBuilderManager::CfgBuilderPtr
-  CrabBuilderManager::get_cfg_builder(const llvm::Function &f) const {
+  CrabBuilderManager::get_cfg_builder(const Function &f) const {
     auto it = m_cfg_builder_map.find(&f);
     if (it == m_cfg_builder_map.end()) {
       CLAM_ERROR("Cannot find crab cfg for ", f.getName());
@@ -607,18 +602,21 @@ namespace clam {
     IntraClam_Impl(Function &fun,
 		       crab::cfg::tracked_precision cfg_precision,
 		       heap_abs_ptr mem, llvm_variable_factory &vfac,
-		       CrabBuilderManager &man, const TargetLibraryInfo &tli)
-		       
+		       CrabBuilderManager &man, const TargetLibraryInfo &tli)		       
       : m_cfg_builder(nullptr), m_fun(fun), m_vfac(vfac) {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started Crab CFG construction for "
 		                       << fun.getName() << "\n");
       if (isTrackable(m_fun)) {
-	// -- build a crab cfg for func
-	m_cfg_builder.reset(new CfgBuilder(m_fun, m_vfac, *mem, cfg_precision, &tli));
-	man.add(fun, m_cfg_builder);
+	if (!man.has_cfg(m_fun)) {
+	  // -- build a crab cfg for func
+	  m_cfg_builder.reset(new CfgBuilder(m_fun, m_vfac, *mem, cfg_precision, &tli));
+	  m_cfg_builder->build_cfg();
+	  man.add(fun, m_cfg_builder);
+	} else {
+	  m_cfg_builder = man.get_cfg_builder(m_fun);
+	}
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished Crab CFG construction for "
 			                          << fun.getName() << "\n");	
-	  
       } else {
 	CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
 			                << fun.getName() << "\n");
@@ -1057,12 +1055,18 @@ namespace clam {
       std::vector<cfg_ref_t> cfg_ref_vector;
       for (auto &F : m_M) {
         if (isTrackable(F)) {
-	  // -- build cfg's 
-	  CrabBuilderManager::CfgBuilderPtr B
-	    (std::make_shared<CfgBuilder>(F, m_vfac, *mem, cfg_precision, &tli));
-	  cfg_t& cfg = B->get_cfg();
-	  m_crab_builder_man.add(F, B);
-	  cfg_ref_vector.push_back(cfg);
+	  // -- build cfg's
+	  cfg_t* cfg = nullptr;
+	  if (!man.has_cfg(F)) {
+	    CrabBuilderManager::CfgBuilderPtr Builder
+	      (std::make_shared<CfgBuilder>(F, m_vfac, *mem, cfg_precision, &tli));
+	    Builder->build_cfg();
+	    m_crab_builder_man.add(F, Builder);
+	    cfg = &(Builder->get_cfg());	    
+	  } else {
+	    cfg = &(man.get_cfg(F));
+	  }
+	  cfg_ref_vector.push_back(*cfg);
 	  CRAB_VERBOSE_IF(1, llvm::outs() << "Built Crab CFG for "
 			                  << F.getName() << "\n");
 	} else {
