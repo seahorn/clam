@@ -4,6 +4,7 @@
  */
 
 #include "clam/crab/crab_cfg.hh"
+#include "llvm/ADT/DenseMap.h"
 
 #include <memory>
 #include <unordered_map>
@@ -174,4 +175,33 @@ namespace clam {
 
   }; // end class CfgBuilder
 
+  /**
+   * A manager that keeps all the crab CFG builders.
+   * A builder contains the crab CFG plus some extra information about
+   * the translation.
+   **/
+  class CrabBuilderManager {
+  public:
+    using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
+    
+    CrabBuilderManager();
+    
+    ~CrabBuilderManager();
+    
+    CrabBuilderManager(const CrabBuilderManager& o) = delete;
+    
+    CrabBuilderManager& operator=(const CrabBuilderManager& o) = delete;
+    
+    bool has_cfg(const llvm::Function &f) const;
+    
+    void add(const llvm::Function &f, CfgBuilderPtr cfg_builder);
+    
+    cfg_t& get_cfg(const llvm::Function &f) const;
+    
+    const CfgBuilderPtr get_cfg_builder(const llvm::Function &f) const;    
+    
+  private:
+    llvm::DenseMap<const llvm::Function*, CfgBuilderPtr> m_cfg_builder_map;
+  };
+  
 } // end namespace clam

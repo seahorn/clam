@@ -22,7 +22,7 @@ namespace clam {
   struct GenericAbsDomWrapper;
   class IntraClam_Impl;
   class InterClam_Impl;
-  class CfgBuilder;
+  class CrabBuilderManager;
 }
 
 namespace sea_dsa {
@@ -115,34 +115,6 @@ namespace clam {
     std::string sum_abs_dom_to_str() const;
   };
 
-  /**
-   * A manager that keeps all the crab CFG builders.
-   * A builder contains the crab CFG plus some extra information about
-   * the translation.
-   **/
-  class CrabBuilderManager {
-  public:
-    using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
-    
-    CrabBuilderManager();
-    
-    ~CrabBuilderManager();
-    
-    CrabBuilderManager(const CrabBuilderManager& o) = delete;
-    
-    CrabBuilderManager& operator=(const CrabBuilderManager& o) = delete;
-    
-    bool has_cfg(const llvm::Function &f) const;
-    
-    void add(const llvm::Function &f, CfgBuilderPtr cfg_builder);
-    
-    cfg_t& get_cfg(const llvm::Function &f) const;
-    
-    const CfgBuilderPtr get_cfg_builder(const llvm::Function &f) const;    
-    
-  private:
-    llvm::DenseMap<const llvm::Function*, CfgBuilderPtr> m_cfg_builder_map;
-  };
 
   using edges_set = std::set<std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>>;
   
@@ -333,7 +305,7 @@ namespace clam {
     edges_set m_infeasible_edges;
     heap_abs_ptr m_mem;    
     variable_factory_t m_vfac;
-    CrabBuilderManager m_cfg_builder_man;
+    std::unique_ptr<CrabBuilderManager> m_cfg_builder_man;
     checks_db_t m_checks_db; 
     AnalysisParams m_params;
     const llvm::TargetLibraryInfo *m_tli;
@@ -362,7 +334,7 @@ namespace clam {
 
     const AnalysisParams& get_analysis_params() { return m_params;}
 
-    const CrabBuilderManager& getCfgBuilderMan() const { return m_cfg_builder_man;}
+    const CrabBuilderManager& getCfgBuilderMan() const;
 
     bool has_cfg(llvm::Function &F);
     

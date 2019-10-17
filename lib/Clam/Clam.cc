@@ -1410,6 +1410,7 @@ namespace clam {
   ClamPass::ClamPass()
     : llvm::ModulePass(ID), 
       m_mem(std::make_shared<DummyHeapAbstraction>()),
+      m_cfg_builder_man(new CrabBuilderManager()),
       m_tli(nullptr) { }
 
   void ClamPass::releaseMemory() {
@@ -1419,7 +1420,7 @@ namespace clam {
   }
 
   bool ClamPass::runOnFunction(Function &F) {
-    IntraClam_Impl crab(F, CrabTrackLev, m_mem, m_vfac, m_cfg_builder_man, *m_tli);
+    IntraClam_Impl crab(F, CrabTrackLev, m_mem, m_vfac, *m_cfg_builder_man, *m_tli);
     AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
     return false;
@@ -1491,7 +1492,7 @@ namespace clam {
     m_params.check_verbose = CrabCheckVerbose;
         
     if (CrabInter){
-      InterClam_Impl inter_crab(M, CrabTrackLev, m_mem, m_vfac, m_cfg_builder_man, *m_tli);
+      InterClam_Impl inter_crab(M, CrabTrackLev, m_mem, m_vfac, *m_cfg_builder_man, *m_tli);
       AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
       inter_crab.Analyze(m_params, assumption_map_t(), results);
     } else {
@@ -1560,14 +1561,17 @@ namespace clam {
    **/
 
   bool ClamPass::has_cfg(llvm::Function &F) {
-    return m_cfg_builder_man.has_cfg(F);
+    return m_cfg_builder_man->has_cfg(F);
   }
   
   cfg_ref_t ClamPass::get_cfg(llvm::Function &F) {
-    assert(m_cfg_builder_man.has_cfg(F));
-    return m_cfg_builder_man.get_cfg(F);
+    assert(m_cfg_builder_man->has_cfg(F));
+    return m_cfg_builder_man->get_cfg(F);
   }
-  
+
+  const CrabBuilderManager& ClamPass::getCfgBuilderMan() const {
+    return *m_cfg_builder_man;
+  }
   // return invariants that hold at the entry of block
   wrapper_dom_ptr
   ClamPass::get_pre(const llvm::BasicBlock *block, bool keep_shadows) const {
