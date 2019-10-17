@@ -1,30 +1,31 @@
-# Building CrabLlvm with Docker and running tests
+# Building Clam with Docker and running tests
 
-## crabllvm-build.Dockerfile (downloading build dependencies):
+## clam-build.Dockerfile (downloading build dependencies):
+
 ```shell
-docker build --build-arg UBUNTU=xenial --build-arg BUILD_TYPE=Release -t seahorn/crabllvm-build-llvm8:xenial -f docker/crabllvm-build.Dockerfile .
+docker build --build-arg UBUNTU=xenial --build-arg BUILD_TYPE=Release -t seahorn/clam-build-llvm8:xenial -f docker/clam-build.Dockerfile .
 ```
 The above generates a container with all dependencies required to
-build CrabLlvm, other than CrabLlvm itself.
+build Clam, other than Clam itself.
 
 Build arguments (required):
 - UBUNTU: trusty, xenial
 - BUILD_TYPE: Release, Debug
 
 Depends on: `buildpack-deps`
-Dockerhub: `docker pull seahorn/crabllvm-build-llvm8`
+Dockerhub: `docker pull seahorn/clam-build-llvm8`
 
-## crabllvm-full-size-rel.Dockerfile (building CrabLlvm with Docker):
+## clam-full-size-rel.Dockerfile (building Clam with Docker):
 
 ```shell
-docker build --build-arg UBUNTU=xenial --build-arg BUILD_TYPE=Release -t seahorn/crabllvm_xenial_rel -f docker/crabllvm-full-size-rel.Dockerfile .
-docker run -v `pwd`:/host -it seahorn/crabllvm_xenial_rel"
+docker build --build-arg UBUNTU=xenial --build-arg BUILD_TYPE=Release -t seahorn/clam-8.0:xenial -f docker/clam-full-size-rel.Dockerfile .
+docker run -v `pwd`:/host -it seahorn/clam-8.0:xenial"
 ```
 
 This will automatically download all dependencies from a base image
-and build CrabLlvm under `/crabllvm/build`.
+and build Clam under `/clam/build`.
 
-CrabLlvm's install directory is added to `PATH`.
+Clam install directory is added to `PATH`.
 
 Build arguments (required):
 - UBUNTU: trusty, xenial, bionic

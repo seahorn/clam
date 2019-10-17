@@ -6,7 +6,7 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/ADT/SmallPtrSet.h"
 
-namespace crab_llvm {
+namespace clam {
   
   using namespace llvm;
 
@@ -92,7 +92,7 @@ namespace crab_llvm {
     }
 
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Lower constant expressions";
+      return "Clam: Lower constant expressions";
     }
     
   };

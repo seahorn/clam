@@ -14,7 +14,7 @@
 
 using namespace llvm;
 
-namespace crab_llvm {
+namespace clam {
 
   class ExternalizeAddressTakenFunctions : public ModulePass {
    public:
@@ -112,7 +112,7 @@ namespace crab_llvm {
     }
 
     StringRef getPassName () const {
-      return "CrabLlvm: Externalize uses of address-taken functions";
+      return "Clam: Externalize uses of address-taken functions";
     }
   };
 

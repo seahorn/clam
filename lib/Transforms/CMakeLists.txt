@@ -1,4 +1,4 @@
-add_llvm_library(LlvmPasses ${CRABLLVM_LIBS_TYPE}
+add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE}
   LowerCstExpr.cc
   LowerGvInitializers.cc
   LowerSelect.cc

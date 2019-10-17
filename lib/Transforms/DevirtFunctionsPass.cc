@@ -2,8 +2,8 @@
  * LLVM transformation passes to resolve indirect calls 
  **/
 
-#include "crab_llvm/config.h"
-#include "crab_llvm/Transforms/DevirtFunctions.hh"
+#include "clam/config.h"
+#include "clam/Transforms/DevirtFunctions.hh"
 #include "llvm/Pass.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
@@ -13,13 +13,13 @@
 #include "dsa/CallTargets.h"
 #endif 
 
-llvm::cl::opt<crab_llvm::CallSiteResolverKind>
+llvm::cl::opt<clam::CallSiteResolverKind>
 DevirtResolver("devirt-resolver",
       llvm::cl::desc ("Method used to select potential callees"),
       llvm::cl::values 
-      (clEnumValN(crab_llvm::RESOLVER_TYPES, "types", "Callees with same type"),
-       clEnumValN(crab_llvm::RESOLVER_DSA  , "dsa"  , "DSA selects the potential callees")),
-      llvm::cl::init(crab_llvm::RESOLVER_TYPES));
+      (clEnumValN(clam::RESOLVER_TYPES, "types", "Callees with same type"),
+       clEnumValN(clam::RESOLVER_DSA  , "dsa"  , "DSA selects the potential callees")),
+      llvm::cl::init(clam::RESOLVER_TYPES));
 		   
 static llvm::cl::opt<bool>
 AllowIndirectCalls("devirt-allow-indirect-calls",
@@ -43,7 +43,7 @@ MaxNumTargets("devirt-max-num-targets",
 
 using namespace llvm;
 
-namespace crab_llvm {
+namespace clam {
 
   class DevirtualizeFunctionsPass:  public ModulePass {
    public:
@@ -97,7 +97,7 @@ namespace crab_llvm {
     }
     
     StringRef getPassName() const {
-      return "CrabLlvm: Devirtualize indirect calls";
+      return "Clam: Devirtualize indirect calls";
     }
   };
 
