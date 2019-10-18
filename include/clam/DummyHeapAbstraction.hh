@@ -19,7 +19,7 @@ struct DummyHeapAbstraction: public HeapAbstraction {
     return nullptr;
   }
   
-  region_t getRegion(const llvm::Function&, llvm::Value*) {
+  region_t getRegion(const llvm::Function&, const llvm::Value*) {
     return region_t();
   }
   
@@ -39,19 +39,19 @@ struct DummyHeapAbstraction: public HeapAbstraction {
     return region_vector_t();
   }
   
-  region_vector_t getAccessedRegions(llvm::CallInst&) {
+  region_vector_t getAccessedRegions(const llvm::CallInst&) {
     return region_vector_t();
   }
   
-  region_vector_t getOnlyReadRegions(llvm::CallInst&) {
+  region_vector_t getOnlyReadRegions(const llvm::CallInst&) {
     return region_vector_t();
   }
   
-  region_vector_t getModifiedRegions(llvm::CallInst&) {
+  region_vector_t getModifiedRegions(const llvm::CallInst&) {
     return region_vector_t();
   }
   
-  region_vector_t getNewRegions(llvm::CallInst&) {
+  region_vector_t getNewRegions(const llvm::CallInst&) {
     return region_vector_t();
   }
   

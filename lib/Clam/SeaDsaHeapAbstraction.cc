@@ -496,7 +496,7 @@ void  SeaDsaHeapAbstraction::computeReadModNewNodes(const llvm::Function& f) {
 // Compute and cache the set of read, mod and new nodes of a
 // callsite such that mod nodes are a subset of the read nodes and
 // the new nodes are disjoint from mod nodes.
-void  SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(llvm::CallInst& I,
+void  SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(const llvm::CallInst& I,
 								callsite_map_t& accessed_map,
 								callsite_map_t& mods_map,
 								callsite_map_t& news_map) {
@@ -608,7 +608,7 @@ void  SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(llvm::CallInst& 
   news_map[&I] = news;
 }
 
-SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& cg,
+SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(const llvm::Module& M, llvm::CallGraph& cg,
 					     const llvm::DataLayout& dl,
 					     const llvm::TargetLibraryInfo& tli,
 					     const sea_dsa::AllocWrapInfo& alloc_info,
@@ -633,7 +633,7 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& c
     m_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(m_dl, tli, alloc_info, cg, *m_fac);
   }
     
-  m_dsa->runOnModule(m_m);
+  m_dsa->runOnModule(const_cast<Module&>(m_m));
     
   // --- Pre-compute all the information per function and
   //     callsites
@@ -651,17 +651,17 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& c
 		  });
 
   callsite_map_t cs_accessed, cs_mods, cs_news;
-  for (auto &F: m_m) {    
+  for (auto const &F: m_m) {    
     computeReadModNewNodes(F);
-    llvm::inst_iterator InstIt = inst_begin(F), InstItEnd = inst_end(F);
+    auto InstIt = inst_begin(F), InstItEnd = inst_end(F);
     for (; InstIt != InstItEnd; ++InstIt) {
-      if (llvm::CallInst *Call = llvm::dyn_cast<llvm::CallInst>(&*InstIt)) {
+      if (const llvm::CallInst *Call = llvm::dyn_cast<llvm::CallInst>(&*InstIt)) {
 	computeReadModNewNodesFromCallSite(*Call, cs_accessed, cs_mods, cs_news);
       }
     }
   }
 
-  for (auto &F: m_m) {
+  for (auto const &F: m_m) {
     std::vector<region_t>& readsF = m_func_accessed[&F];
     std::vector<region_t>& modsF  = m_func_mods[&F];
     std::vector<region_t>& newsF  = m_func_news[&F];
@@ -674,7 +674,7 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& c
     std::vector<CallInst*> worklist;
     /// First pass: for each memory region we check whether caller and
     /// callee agree on it.
-    for (Use &U : F.uses()) {
+    for (const Use &U : F.uses()) {
       CallSite CS(U.getUser());
       // Must be a direct call instruction
       if (CS.getInstruction() == nullptr || !CS.isCallee(&U)) {
@@ -777,7 +777,7 @@ SeaDsaHeapAbstraction::~SeaDsaHeapAbstraction() {
   
 // f is used to know in which Graph we should search for V
 SeaDsaHeapAbstraction::region_t
-SeaDsaHeapAbstraction::getRegion(const llvm::Function& fn, llvm::Value* V)  {
+SeaDsaHeapAbstraction::getRegion(const llvm::Function& fn, const llvm::Value* V)  {
   if (!m_dsa || !m_dsa->hasGraph(fn)) {
     return region_t();
   }
@@ -838,12 +838,12 @@ SeaDsaHeapAbstraction::getNewRegions(const llvm::Function& fn) {
 }
   
 SeaDsaHeapAbstraction::region_vector_t
-SeaDsaHeapAbstraction::getAccessedRegions(llvm::CallInst& I) {
+SeaDsaHeapAbstraction::getAccessedRegions(const llvm::CallInst& I) {
   return m_callsite_accessed[&I];
 }
   
 SeaDsaHeapAbstraction::region_vector_t
-SeaDsaHeapAbstraction::getOnlyReadRegions(llvm::CallInst& I)  {
+SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst& I)  {
   region_vector_t v1 = m_callsite_accessed[&I]; 
   region_vector_t v2 = m_callsite_mods[&I]; 
   std::set<SeaDsaHeapAbstraction::region_t> s2(v2.begin(), v2.end());
@@ -852,12 +852,12 @@ SeaDsaHeapAbstraction::getOnlyReadRegions(llvm::CallInst& I)  {
 }
   
 SeaDsaHeapAbstraction::region_vector_t
-SeaDsaHeapAbstraction::getModifiedRegions(llvm::CallInst& I) {
+SeaDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst& I) {
   return m_callsite_mods[&I];
 }
   
 SeaDsaHeapAbstraction::region_vector_t
-SeaDsaHeapAbstraction::getNewRegions(llvm::CallInst& I)  {
+SeaDsaHeapAbstraction::getNewRegions(const llvm::CallInst& I)  {
   return m_callsite_news[&I];
 }  
   

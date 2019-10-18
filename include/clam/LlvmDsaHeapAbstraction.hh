@@ -32,7 +32,7 @@ namespace clam {
     
    private:
     
-    llvm::Module &m_M;
+    const llvm::Module &m_M;
     llvm::DataStructures *m_dsa;
     
     /// map from DSNode to id
@@ -62,16 +62,16 @@ namespace clam {
     // Compute and cache the set of read, mod and new nodes of a
     // callsite such that mod nodes are a subset of the read nodes and
     // the new nodes are disjoint from mod nodes.
-    void cacheReadModNewNodesFromCallSite(llvm::CallInst &I);
+    void cacheReadModNewNodesFromCallSite(const llvm::CallInst &I);
 
    public:
     
-    LlvmDsaHeapAbstraction(llvm::Module &M, llvm::DataStructures *dsa,
+    LlvmDsaHeapAbstraction(const llvm::Module &M, llvm::DataStructures *dsa,
 			   bool disambiguate_unknown  = false,
 			   bool disambiguate_ptr_cast = false,
 			   bool disambiguate_external = false);
     
-    virtual region_t getRegion(const llvm::Function &F, llvm::Value *V) override;
+    virtual region_t getRegion(const llvm::Function &F, const llvm::Value *V) override;
     
     virtual const llvm::Value* getSingleton(region_id_t region) const override;
     
@@ -83,13 +83,13 @@ namespace clam {
     
     virtual region_vector_t getNewRegions(const llvm::Function &F) override;
     
-    virtual region_vector_t getAccessedRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getAccessedRegions(const llvm::CallInst &I) override;
     
-    virtual region_vector_t getOnlyReadRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getOnlyReadRegions(const llvm::CallInst &I) override;
     
-    virtual region_vector_t getModifiedRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getModifiedRegions(const llvm::CallInst &I) override;
     
-    virtual region_vector_t getNewRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getNewRegions(const llvm::CallInst &I) override;
     
     virtual llvm::StringRef getName() const override {
       return "LlvmDsaHeapAbstraction";
