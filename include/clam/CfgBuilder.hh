@@ -211,10 +211,15 @@ namespace clam {
     
     cfg_t& get_cfg(const llvm::Function &f) const;
     
-    const CfgBuilderPtr get_cfg_builder(const llvm::Function &f) const;    
+    const CfgBuilderPtr get_cfg_builder(const llvm::Function &f) const;
+    
+    variable_factory_t& get_var_factory();
     
   private:
     llvm::DenseMap<const llvm::Function*, CfgBuilderPtr> m_cfg_builder_map;
+    // All cfgs supervised by this manager are created using the same
+    // variable factory.
+    variable_factory_t m_vfac;
   };
   
 } // end namespace clam

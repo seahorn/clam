@@ -361,9 +361,9 @@ namespace clam {
       
     public:
       invariant_annotation(const llvm_variable_factory &vfac,
-			    const invariant_map_t &premap,
-			    const invariant_map_t &postmap,
-			    const bool keep_shadows)
+			   const invariant_map_t &premap,
+			   const invariant_map_t &postmap,
+			   const bool keep_shadows)
 	: block_annotation(), m_premap(premap), m_postmap(postmap) {
 	if (keep_shadows) {
 	  m_shadow_vars.reserve(std::distance(vfac.get_shadow_vars().begin(),
@@ -564,45 +564,17 @@ namespace clam {
   std::string AnalysisParams::sum_abs_dom_to_str() const {
     return dom_to_str(sum_dom);
   }
-  
-  /* CFG Manager class */
-  CrabBuilderManager::CrabBuilderManager(){}
-  
-  CrabBuilderManager::~CrabBuilderManager(){}
-  
-  bool CrabBuilderManager::has_cfg(const Function &f) const {
-    return m_cfg_builder_map.find(&f) != m_cfg_builder_map.end();
-  }
     
-  void CrabBuilderManager::add(const Function &f, CfgBuilderPtr builder) {
-    if (!has_cfg(f)) {
-      m_cfg_builder_map.insert({&f, builder});
-    }
-  }
-
-  cfg_t& CrabBuilderManager::get_cfg(const Function &f) const {
-    return get_cfg_builder(f)->get_cfg();
-  }
-
-  const CrabBuilderManager::CfgBuilderPtr
-  CrabBuilderManager::get_cfg_builder(const Function &f) const {
-    auto it = m_cfg_builder_map.find(&f);
-    if (it == m_cfg_builder_map.end()) {
-      CLAM_ERROR("Cannot find crab cfg for ", f.getName());
-    }
-    return it->second;
-  }  
-  
   /**
    * Internal implementation of the intra-procedural analysis
    **/
   class IntraClam_Impl {
   public:
-    IntraClam_Impl(const Function &fun,
-		   crab::cfg::tracked_precision cfg_precision,
-		   HeapAbstraction &mem, llvm_variable_factory &vfac,
-		   CrabBuilderManager &man, const TargetLibraryInfo &tli)		       
-      : m_cfg_builder(nullptr), m_fun(fun), m_vfac(vfac) {
+    IntraClam_Impl(const Function &fun, crab::cfg::tracked_precision cfg_precision,
+		   HeapAbstraction &mem, CrabBuilderManager &man,
+		   const TargetLibraryInfo &tli)
+      : m_cfg_builder(nullptr), m_fun(fun), m_vfac(man.get_var_factory()) {
+      
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started Crab CFG construction for "
 		                       << fun.getName() << "\n");
       if (isTrackable(m_fun)) {
@@ -963,8 +935,9 @@ namespace clam {
 		       HeapAbstraction &mem,
 		       CrabBuilderManager &man,
 		       crab::cfg::tracked_precision cfg_precision)
-    : m_impl(nullptr), m_fun(fun), m_mem(mem) {
-    m_impl = make_unique<IntraClam_Impl>(m_fun, cfg_precision, m_mem, m_vfac, man, tli);
+    : m_impl(nullptr), m_fun(fun), m_mem(mem), m_builder_man(man) {
+    m_impl = make_unique<IntraClam_Impl>
+      (m_fun, cfg_precision, m_mem,  m_builder_man, tli);
   }
 
   IntraClam::~IntraClam() {}
@@ -1010,18 +983,20 @@ namespace clam {
   wrapper_dom_ptr IntraClam::get_pre(const llvm::BasicBlock *block,
 				     bool keep_shadows) const {
     std::vector<varname_t> shadows;
+    auto &vfac = m_builder_man.get_var_factory();    
     if (!keep_shadows)
-      shadows = std::vector<varname_t>(m_vfac.get_shadow_vars().begin(),
-				       m_vfac.get_shadow_vars().end());    
+      shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
+				       vfac.get_shadow_vars().end());
     return lookup(m_pre_map, *block, shadows);
   }   
 
   wrapper_dom_ptr IntraClam::get_post(const llvm::BasicBlock *block,
 				      bool keep_shadows) const {
     std::vector<varname_t> shadows;
+    auto &vfac = m_builder_man.get_var_factory();        
     if (!keep_shadows)
-      shadows = std::vector<varname_t>(m_vfac.get_shadow_vars().begin(),
-				       m_vfac.get_shadow_vars().end());    
+      shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
+				       vfac.get_shadow_vars().end());
     return lookup(m_post_map, *block, shadows);
   }
 
@@ -1041,11 +1016,10 @@ namespace clam {
    **/
   class InterClam_Impl {
   public:
-    InterClam_Impl(const Module& M,
-		   crab::cfg::tracked_precision cfg_precision,
-		   HeapAbstraction &mem, llvm_variable_factory &vfac,
-		   CrabBuilderManager &man, const TargetLibraryInfo &tli)
-      : m_cg(nullptr), m_crab_builder_man(man), m_M(M), m_vfac(vfac) {
+    InterClam_Impl(const Module& M, crab::cfg::tracked_precision cfg_precision,
+		   HeapAbstraction &mem, CrabBuilderManager &man, 
+		   const TargetLibraryInfo &tli)
+      : m_cg(nullptr), m_crab_builder_man(man), m_M(M)  {
 
       std::vector<cfg_ref_t> cfg_ref_vector;
       for (auto const &F : m_M) {
@@ -1054,7 +1028,8 @@ namespace clam {
 	  cfg_t* cfg = nullptr;
 	  if (!man.has_cfg(F)) {
 	    CrabBuilderManager::CfgBuilderPtr Builder
-	      (std::make_shared<CfgBuilder>(F, m_vfac, mem, cfg_precision, &tli));
+	      (std::make_shared<CfgBuilder>(F, m_crab_builder_man.get_var_factory(),
+					    mem, cfg_precision, &tli));
 	    Builder->build_cfg();
 	    m_crab_builder_man.add(F, Builder);
 	    cfg = &(Builder->get_cfg());	    
@@ -1166,9 +1141,7 @@ namespace clam {
     // crab cfg builder manager
     CrabBuilderManager& m_crab_builder_man;
     // the LLVM module
-    const Module& m_M;
-    // variable factory
-    llvm_variable_factory &m_vfac;
+    const Module& m_M;    
     // live symbols
     liveness_map_t m_live_map;
 
@@ -1259,7 +1232,8 @@ namespace clam {
 	      }
 	      std::vector<std::unique_ptr<pretty_printer_impl::block_annotation>> annotations;
 	      annotations.emplace_back(make_unique<pretty_printer_impl::invariant_annotation>
-				       (m_vfac, results.premap, results.postmap,
+				       (m_crab_builder_man.get_var_factory(),
+					results.premap, results.postmap,
 					params.keep_shadow_vars));
 	      pretty_printer_impl::print_annotations(cfg, annotations);	    
 	    }
@@ -1348,8 +1322,9 @@ namespace clam {
 		       HeapAbstraction &mem,		       
 		       CrabBuilderManager &man,
 		       crab::cfg::tracked_precision cfg_precision)
-    : m_impl(nullptr), m_mem(mem) {
-    m_impl = make_unique<InterClam_Impl>(module, cfg_precision, m_mem, m_vfac, man, tli);
+    : m_impl(nullptr), m_mem(mem), m_builder_man(man) {
+    m_impl = make_unique<InterClam_Impl>
+      (module, cfg_precision, m_mem, m_builder_man, tli);
   }
 
   InterClam::~InterClam() {}
@@ -1370,8 +1345,10 @@ namespace clam {
 					 bool keep_shadows) const {
     std::vector<varname_t> shadows;
     if (!keep_shadows)
-      shadows = std::vector<varname_t>(m_vfac.get_shadow_vars().begin(),
-				       m_vfac.get_shadow_vars().end());    
+      shadows = std::vector<varname_t>(m_builder_man.get_var_factory().
+				       get_shadow_vars().begin(),
+				       m_builder_man.get_var_factory().
+				       get_shadow_vars().end());    
     return lookup(m_pre_map, *block, shadows);
   }   
 
@@ -1379,8 +1356,10 @@ namespace clam {
 					  bool keep_shadows) const {
     std::vector<varname_t> shadows;
     if (!keep_shadows)
-      shadows = std::vector<varname_t>(m_vfac.get_shadow_vars().begin(),
-				       m_vfac.get_shadow_vars().end());    
+      shadows = std::vector<varname_t>(m_builder_man.get_var_factory().
+				       get_shadow_vars().begin(),
+				       m_builder_man.get_var_factory().
+				       get_shadow_vars().end());    
     return lookup(m_post_map, *block, shadows);
   }
 
@@ -1411,7 +1390,7 @@ namespace clam {
   }
 
   bool ClamPass::runOnFunction(Function &F) {
-    IntraClam_Impl crab(F, CrabTrackLev, *m_mem, m_vfac, *m_cfg_builder_man, *m_tli);
+    IntraClam_Impl crab(F, CrabTrackLev, *m_mem, *m_cfg_builder_man, *m_tli);
     AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
     return false;
@@ -1483,7 +1462,7 @@ namespace clam {
     m_params.check_verbose = CrabCheckVerbose;
         
     if (CrabInter){
-      InterClam_Impl inter_crab(M, CrabTrackLev, *m_mem, m_vfac, *m_cfg_builder_man, *m_tli);
+      InterClam_Impl inter_crab(M, CrabTrackLev, *m_mem, *m_cfg_builder_man, *m_tli);
       AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
       inter_crab.Analyze(m_params, assumption_map_t(), results);
     } else {
@@ -1560,6 +1539,10 @@ namespace clam {
     return m_cfg_builder_man->get_cfg(F);
   }
 
+  variable_factory_t& ClamPass::get_var_factory() {
+    return m_cfg_builder_man->get_var_factory();
+  }
+  
   const CrabBuilderManager& ClamPass::getCfgBuilderMan() const {
     return *m_cfg_builder_man;
   }
@@ -1567,9 +1550,10 @@ namespace clam {
   wrapper_dom_ptr
   ClamPass::get_pre(const llvm::BasicBlock *block, bool keep_shadows) const {
     std::vector<varname_t> shadows;
+    auto &vfac = m_cfg_builder_man->get_var_factory();
     if (!keep_shadows)
-      shadows = std::vector<varname_t>(m_vfac.get_shadow_vars().begin(),
-				       m_vfac.get_shadow_vars().end());    
+      shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
+				       vfac.get_shadow_vars().end());
     return lookup(m_pre_map, *block, shadows);
   }   
 
@@ -1577,9 +1561,10 @@ namespace clam {
   wrapper_dom_ptr
   ClamPass::get_post(const llvm::BasicBlock *block, bool keep_shadows) const {
     std::vector<varname_t> shadows;
+    auto &vfac = m_cfg_builder_man->get_var_factory();    
     if (!keep_shadows)
-      shadows = std::vector<varname_t>(m_vfac.get_shadow_vars().begin(),
-				       m_vfac.get_shadow_vars().end());    
+      shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
+				       vfac.get_shadow_vars().end());
     return lookup(m_post_map, *block, shadows);
   }
 

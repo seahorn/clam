@@ -146,8 +146,8 @@ namespace clam {
 
     std::unique_ptr<IntraClam_Impl> m_impl;
     HeapAbstraction &m_mem;
+    CrabBuilderManager &m_builder_man;
     const llvm::Function &m_fun;
-    variable_factory_t m_vfac;    
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
     edges_set m_infeasible_edges;    
@@ -245,8 +245,8 @@ namespace clam {
   private:
 
     std::unique_ptr<InterClam_Impl> m_impl;
-    HeapAbstraction &m_mem;    
-    variable_factory_t m_vfac;    
+    HeapAbstraction &m_mem;
+    CrabBuilderManager &m_builder_man;
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
     edges_set m_infeasible_edges;    
@@ -314,7 +314,6 @@ namespace clam {
     invariant_map_t m_post_map;
     edges_set m_infeasible_edges;
     std::unique_ptr<HeapAbstraction> m_mem;    
-    variable_factory_t m_vfac;
     std::unique_ptr<CrabBuilderManager> m_cfg_builder_man;
     checks_db_t m_checks_db; 
     AnalysisParams m_params;
@@ -338,7 +337,7 @@ namespace clam {
     virtual llvm::StringRef getPassName() const {return "Clam";}
     /* end ModulePass API */
 
-    variable_factory_t& get_var_factory() { return m_vfac; }
+    variable_factory_t& get_var_factory();
 
     HeapAbstraction& get_heap_abstraction() { return *m_mem;}
 

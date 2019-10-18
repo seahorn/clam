@@ -3420,4 +3420,37 @@ namespace clam {
     return ;
   }
 
+
+  /* CFG Manager class */
+  CrabBuilderManager::CrabBuilderManager(){}
+  
+  CrabBuilderManager::~CrabBuilderManager(){}
+  
+  bool CrabBuilderManager::has_cfg(const Function &f) const {
+    return m_cfg_builder_map.find(&f) != m_cfg_builder_map.end();
+  }
+    
+  void CrabBuilderManager::add(const Function &f, CfgBuilderPtr builder) {
+    if (!has_cfg(f)) {
+      m_cfg_builder_map.insert({&f, builder});
+    }
+  }
+
+  cfg_t& CrabBuilderManager::get_cfg(const Function &f) const {
+    return get_cfg_builder(f)->get_cfg();
+  }
+
+  const CrabBuilderManager::CfgBuilderPtr
+  CrabBuilderManager::get_cfg_builder(const Function &f) const {
+    auto it = m_cfg_builder_map.find(&f);
+    if (it == m_cfg_builder_map.end()) {
+      CLAM_ERROR("Cannot find crab cfg for ", f.getName());
+    }
+    return it->second;
+  }
+
+  variable_factory_t& CrabBuilderManager::get_var_factory() {
+    return m_vfac;
+  }
+  
 } // end namespace clam
