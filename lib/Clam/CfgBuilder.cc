@@ -37,7 +37,6 @@
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/ADT/APInt.h"
@@ -2845,14 +2844,16 @@ namespace clam {
     
   }; // end class
 
-  CfgBuilder::CfgBuilder(Function& func, 
+  CfgBuilder::CfgBuilder(const Function& func, 
 			 llvm_variable_factory &vfac,
 			 HeapAbstraction &mem, 
 			 tracked_precision tracklev,			 
 			 const TargetLibraryInfo* tli,
 			 bool isInterProc)
-    : m_is_cfg_built(false),                          
-      m_func(func),
+    : m_is_cfg_built(false),
+      // HACK: it's safe to remove constness because we know that the
+      // Builder never modifies the bitcode.
+      m_func(const_cast<Function&>(func)),
       m_lfac(vfac, tracklev),
       m_mem(mem),
       m_cfg(nullptr),
@@ -2901,7 +2902,7 @@ namespace clam {
     return &(m_cfg->get_node(it->second));
   }
 
-  void CfgBuilder::add_block(BasicBlock &bb) {
+  void CfgBuilder::add_block(const BasicBlock &bb) {
     auto it = m_node_to_crab_map.find(&bb);
     if (it == m_node_to_crab_map.end()) {
       auto bb_label = make_crab_basic_block_label(&bb);
@@ -2909,11 +2910,11 @@ namespace clam {
     }
   }  
 
-  void CfgBuilder::add_edge(BasicBlock &S, const BasicBlock &D) {
-    basic_block_t* SS = lookup(S);
-    basic_block_t* DD = lookup(D);
-    assert(SS && DD);
-    *SS >> *DD;
+  void CfgBuilder::add_edge(const BasicBlock &src, const BasicBlock &dst) {
+    basic_block_t* crab_src = lookup(src);
+    basic_block_t* crab_dst = lookup(dst);
+    assert(crab_src && crab_dst);
+    *crab_src >> *crab_dst;
   }  
 
   void CfgBuilder::add_block_in_between(basic_block_t &src, basic_block_t &dst,
@@ -2946,17 +2947,17 @@ namespace clam {
   }
 
   //! return the new block inserted between src and dest if any
-  basic_block_t* CfgBuilder::exec_edge(BasicBlock &src, const BasicBlock &dst) {
+  basic_block_t* CfgBuilder::exec_edge(const BasicBlock &src, const BasicBlock &dst) {
     if (const BranchInst *br=dyn_cast<const BranchInst>(src.getTerminator())) {
       if (br->isConditional()) {
-        basic_block_t* Src = lookup(src);
-        basic_block_t* Dst = lookup(dst);
-        assert(Src && Dst);
+        basic_block_t* crab_src = lookup(src);
+        basic_block_t* crab_dst = lookup(dst);
+        assert(crab_src && crab_dst);
 
 	// Create a new crab block that represents the LLVM edge
 	auto bb_label = make_crab_basic_block_label(&src, &dst);	
   	basic_block_t &bb = m_cfg->insert(bb_label);
-        add_block_in_between(*Src, *Dst, bb);
+        add_block_in_between(*crab_src, *crab_dst, bb);
 
 	// Populate the new crab block with an assume
         const Value &c = *br->getCondition();
@@ -3009,7 +3010,7 @@ namespace clam {
 	// br is unconditional
 	add_edge(src,dst);
       }
-    } else  if (SwitchInst *SI = dyn_cast<SwitchInst>(src.getTerminator())) {
+    } else  if (const SwitchInst *SI = dyn_cast<SwitchInst>(src.getTerminator())) {
       // switch <value>, label <defaultdest> [ <val>, label <dest> ... ]
       //
       // TODO: we do not translate precisely switch instructions. We

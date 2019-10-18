@@ -598,7 +598,7 @@ namespace clam {
    **/
   class IntraClam_Impl {
   public:
-    IntraClam_Impl(Function &fun,
+    IntraClam_Impl(const Function &fun,
 		   crab::cfg::tracked_precision cfg_precision,
 		   HeapAbstraction &mem, llvm_variable_factory &vfac,
 		   CrabBuilderManager &man, const TargetLibraryInfo &tli)		       
@@ -726,7 +726,7 @@ namespace clam {
   private:
     
     CrabBuilderManager::CfgBuilderPtr m_cfg_builder;
-    Function &m_fun;
+    const Function &m_fun;
     llvm_variable_factory &m_vfac;
 
     // helper to get a reference to a crab cfg from the builder
@@ -959,12 +959,12 @@ namespace clam {
   /**
    *   Begin IntraClam methods
    **/
-  IntraClam::IntraClam(Function &fun, const TargetLibraryInfo &tli,
+  IntraClam::IntraClam(const Function &fun, const TargetLibraryInfo &tli,
 		       HeapAbstraction &mem,
 		       CrabBuilderManager &man,
 		       crab::cfg::tracked_precision cfg_precision)
-    : m_impl(nullptr), m_fun(&fun), m_mem(mem) {
-    m_impl = make_unique<IntraClam_Impl>(fun, cfg_precision, m_mem, m_vfac, man, tli);
+    : m_impl(nullptr), m_fun(fun), m_mem(mem) {
+    m_impl = make_unique<IntraClam_Impl>(m_fun, cfg_precision, m_mem, m_vfac, man, tli);
   }
 
   IntraClam::~IntraClam() {}
@@ -978,7 +978,7 @@ namespace clam {
   void IntraClam::analyze(AnalysisParams &params,
 			  const assumption_map_t &assumptions) {    
     AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
-    m_impl->Analyze(params, &(m_fun->getEntryBlock()), assumptions, results);
+    m_impl->Analyze(params, &(m_fun.getEntryBlock()), assumptions, results);
   }
 
   void IntraClam::analyze(AnalysisParams &params,
@@ -1041,14 +1041,14 @@ namespace clam {
    **/
   class InterClam_Impl {
   public:
-    InterClam_Impl(Module& M,
+    InterClam_Impl(const Module& M,
 		   crab::cfg::tracked_precision cfg_precision,
 		   HeapAbstraction &mem, llvm_variable_factory &vfac,
 		   CrabBuilderManager &man, const TargetLibraryInfo &tli)
       : m_cg(nullptr), m_crab_builder_man(man), m_M(M), m_vfac(vfac) {
 
       std::vector<cfg_ref_t> cfg_ref_vector;
-      for (auto &F : m_M) {
+      for (auto const &F : m_M) {
         if (isTrackable(F)) {
 	  // -- build cfg's
 	  cfg_t* cfg = nullptr;
@@ -1166,7 +1166,7 @@ namespace clam {
     // crab cfg builder manager
     CrabBuilderManager& m_crab_builder_man;
     // the LLVM module
-    Module& m_M;
+    const Module& m_M;
     // variable factory
     llvm_variable_factory &m_vfac;
     // live symbols
@@ -1344,7 +1344,7 @@ namespace clam {
   /**
    *   Begin InterClam methods
    **/
-  InterClam::InterClam(Module &module,  const TargetLibraryInfo &tli,
+  InterClam::InterClam(const Module &module,  const TargetLibraryInfo &tli,
 		       HeapAbstraction &mem,		       
 		       CrabBuilderManager &man,
 		       crab::cfg::tracked_precision cfg_precision)

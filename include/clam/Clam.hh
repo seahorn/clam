@@ -146,7 +146,7 @@ namespace clam {
 
     std::unique_ptr<IntraClam_Impl> m_impl;
     HeapAbstraction &m_mem;
-    llvm::Function *m_fun;
+    const llvm::Function &m_fun;
     variable_factory_t m_vfac;    
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
@@ -158,7 +158,7 @@ namespace clam {
     /**
      * Constructor that builds a crab CFG
      **/
-    IntraClam(llvm::Function &fun,	      
+    IntraClam(const llvm::Function &fun,	      
 	      const llvm::TargetLibraryInfo &tli,
 	      HeapAbstraction &mem,
 	      CrabBuilderManager &man,
@@ -257,7 +257,7 @@ namespace clam {
     /**
      * Constructor that builds a crab call graph.
      **/
-    InterClam(llvm::Module &module,
+    InterClam(const llvm::Module &module,
 	      const llvm::TargetLibraryInfo &tli,
 	      HeapAbstraction &mem,
 	      CrabBuilderManager &man,

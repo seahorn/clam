@@ -96,7 +96,7 @@ namespace clam {
   class CfgBuilder {
    public:
     
-    CfgBuilder(llvm::Function& func, 
+    CfgBuilder(const llvm::Function& func, 
 	       llvm_variable_factory &vfac, HeapAbstraction &mem, 
 	       crab::cfg::tracked_precision tracklev, 
 	       const llvm::TargetLibraryInfo *tli,
@@ -148,6 +148,7 @@ namespace clam {
     
     // keep track whether the crab CFG has been built
     bool m_is_cfg_built;
+    // The function should be const because it's never modified.
     llvm::Function &m_func;
     crabLitFactory m_lfac; 
     HeapAbstraction &m_mem;
@@ -170,11 +171,11 @@ namespace clam {
     // Given a llvm basic block return its corresponding crab basic block    
     basic_block_t* lookup(const llvm::BasicBlock &bb) const;
 
-    void add_block(llvm::BasicBlock &bb);
+    void add_block(const llvm::BasicBlock &bb);
     
-    void add_edge(llvm::BasicBlock &src, const llvm::BasicBlock &target);
+    void add_edge(const llvm::BasicBlock &src, const llvm::BasicBlock &target);
 
-    basic_block_t* exec_edge(llvm::BasicBlock &src,
+    basic_block_t* exec_edge(const llvm::BasicBlock &src,
 			     const llvm::BasicBlock &target); 
 
     void add_block_in_between(basic_block_t &src, basic_block_t &dst,
