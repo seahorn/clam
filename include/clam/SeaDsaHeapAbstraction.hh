@@ -65,14 +65,14 @@ namespace clam {
     // callsite such that mod nodes are a subset of the read nodes and
     // the new nodes are disjoint from mod nodes.
     typedef llvm::DenseMap<const llvm::CallInst*, std::vector<region_bool_t>> callsite_map_t;   
-    void computeReadModNewNodesFromCallSite(llvm::CallInst &I,
+    void computeReadModNewNodesFromCallSite(const llvm::CallInst &I,
 					    callsite_map_t& accessed,
 					    callsite_map_t& mods,
 					    callsite_map_t& news);
 
    public:
 
-    SeaDsaHeapAbstraction(llvm::Module& M, llvm::CallGraph& cg,
+    SeaDsaHeapAbstraction(const llvm::Module& M, llvm::CallGraph& cg,
 			  const llvm::DataLayout& dl,
 			  const llvm::TargetLibraryInfo& tli,
 			  const sea_dsa::AllocWrapInfo& alloc_wrap_info,
@@ -83,7 +83,7 @@ namespace clam {
 
     ~SeaDsaHeapAbstraction();
     
-    virtual region_t getRegion(const llvm::Function &F, llvm::Value *V) override;
+    virtual region_t getRegion(const llvm::Function &F, const llvm::Value *V) override;
     
     virtual const llvm::Value* getSingleton(region_id_t region) const override;
     
@@ -95,13 +95,13 @@ namespace clam {
     
     virtual region_vector_t getNewRegions(const llvm::Function &F) override;
     
-    virtual region_vector_t getAccessedRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getAccessedRegions(const llvm::CallInst &I) override;
     
-    virtual region_vector_t getOnlyReadRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getOnlyReadRegions(const llvm::CallInst &I) override;
     
-    virtual region_vector_t getModifiedRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getModifiedRegions(const llvm::CallInst &I) override;
     
-    virtual region_vector_t getNewRegions(llvm::CallInst &I) override;
+    virtual region_vector_t getNewRegions(const llvm::CallInst &I) override;
     
     virtual llvm::StringRef getName() const override {
       return "SeaDsaHeapAbstraction";
@@ -109,7 +109,7 @@ namespace clam {
 
   private:
     
-    llvm::Module &m_m;
+    const llvm::Module &m_m;
     const llvm::DataLayout& m_dl;
     sea_dsa::GlobalAnalysis* m_dsa;
     SetFactory* m_fac;

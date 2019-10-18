@@ -22,6 +22,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/Support/raw_ostream.h"
@@ -360,14 +361,14 @@ namespace clam {
   // Compute and cache the set of read, mod and new nodes of a
   // callsite such that mod nodes are a subset of the read nodes and
   // the new nodes are disjoint from mod nodes.
-  void  LlvmDsaHeapAbstraction::cacheReadModNewNodesFromCallSite(llvm::CallInst& I) {
+  void  LlvmDsaHeapAbstraction::cacheReadModNewNodesFromCallSite(const llvm::CallInst& I) {
     
     if (!m_dsa) return;
     
     /// ignore inline assembly
     if (I.isInlineAsm()) return;
 
-    const llvm::Function* Called = llvm::CallSite(&I).getCalledFunction();
+    const llvm::Function* Called = llvm::ImmutableCallSite(&I).getCalledFunction();
 
     if (!Called) {
       // CLAM_WARNING("DSA cannot resolve " << I);
@@ -380,7 +381,8 @@ namespace clam {
       return;
     
     llvm::DSGraph *dsg = m_dsa->getDSGraph(*(I.getParent()->getParent()));
-    llvm::DSCallSite CS = dsg->getDSCallSiteForCallSite(llvm::CallSite(&I));
+    llvm::DSCallSite CS = dsg->getDSCallSiteForCallSite(
+			  llvm::CallSite(const_cast<llvm::CallInst*>(&I)));
     
     assert(CS.isDirectCall());
           
@@ -441,7 +443,7 @@ namespace clam {
     m_callsite_news[&I] = news; 
   }
 
-  LlvmDsaHeapAbstraction::LlvmDsaHeapAbstraction(llvm::Module& M,
+  LlvmDsaHeapAbstraction::LlvmDsaHeapAbstraction(const llvm::Module& M,
 						 llvm::DataStructures* dsa,
 						 bool disambiguate_unknown,
 						 bool disambiguate_ptr_cast,
@@ -457,12 +459,12 @@ namespace clam {
     CRAB_LOG("heap-abs", 
 	     llvm::errs() << "========= HeapAbstraction using llvm-dsa =========\n");
     
-    for (auto &F: m_M) {
+    for (auto const &F: m_M) {
       cacheReadModNewNodes(F);
       
-      llvm::inst_iterator InstIt = inst_begin(F), InstItEnd = inst_end(F);
+      auto InstIt = inst_begin(F), InstItEnd = inst_end(F);
       for (; InstIt != InstItEnd; ++InstIt) {
-	if (llvm::CallInst *Call =
+	if (const llvm::CallInst *Call =
 	    llvm::dyn_cast<llvm::CallInst>(&*InstIt)) {
 	  cacheReadModNewNodesFromCallSite(*Call);
 	}
@@ -472,7 +474,7 @@ namespace clam {
 
   // f is used to know in which DSGraph we should search for V
   LlvmDsaHeapAbstraction::region_t
-  LlvmDsaHeapAbstraction::getRegion(const llvm::Function& F, llvm::Value* V)  {
+  LlvmDsaHeapAbstraction::getRegion(const llvm::Function& F, const llvm::Value* V)  {
     // Note each function has its own graph and a copy of the global
     // graph. Nodes in both graphs are merged.  However, m_dsa has
     // its own global graph which seems not to be merged with
@@ -542,12 +544,12 @@ namespace clam {
   }
   
   LlvmDsaHeapAbstraction::region_vector_t
-  LlvmDsaHeapAbstraction::getAccessedRegions(llvm::CallInst& I) {
+  LlvmDsaHeapAbstraction::getAccessedRegions(const llvm::CallInst& I) {
     return m_callsite_accessed[&I];
   }
   
   LlvmDsaHeapAbstraction::region_vector_t
-  LlvmDsaHeapAbstraction::getOnlyReadRegions(llvm::CallInst& I)  {
+  LlvmDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst& I)  {
     region_vector_t v1 = m_callsite_accessed[&I];
     region_vector_t v2 = m_callsite_mods[&I];
     std::set<LlvmDsaHeapAbstraction::region_t> s2(v2.begin(), v2.end());
@@ -556,12 +558,12 @@ namespace clam {
   }
   
   LlvmDsaHeapAbstraction::region_vector_t
-  LlvmDsaHeapAbstraction::getModifiedRegions(llvm::CallInst& I) {
+  LlvmDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst& I) {
     return m_callsite_mods[&I];
   }
   
   LlvmDsaHeapAbstraction::region_vector_t
-  LlvmDsaHeapAbstraction::getNewRegions(llvm::CallInst& I)  {
+  LlvmDsaHeapAbstraction::getNewRegions(const llvm::CallInst& I)  {
     return m_callsite_news[&I];
   }
 } // end namespace

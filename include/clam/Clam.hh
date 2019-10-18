@@ -22,7 +22,7 @@ namespace clam {
   struct GenericAbsDomWrapper;
   class IntraClam_Impl;
   class InterClam_Impl;
-  class CfgBuilder;
+  class CrabBuilderManager;
 }
 
 namespace sea_dsa {
@@ -115,34 +115,6 @@ namespace clam {
     std::string sum_abs_dom_to_str() const;
   };
 
-  /**
-   * A manager that keeps all the crab CFG builders.
-   * A builder contains the crab CFG plus some extra information about
-   * the translation.
-   **/
-  class CrabBuilderManager {
-  public:
-    using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
-    
-    CrabBuilderManager();
-    
-    ~CrabBuilderManager();
-    
-    CrabBuilderManager(const CrabBuilderManager& o) = delete;
-    
-    CrabBuilderManager& operator=(const CrabBuilderManager& o) = delete;
-    
-    bool has_cfg(const llvm::Function &f) const;
-    
-    void add(const llvm::Function &f, CfgBuilderPtr cfg_builder);
-    
-    cfg_ref_t get_cfg(const llvm::Function &f) const;
-    
-    const CfgBuilderPtr get_cfg_builder(const llvm::Function &f) const;    
-    
-  private:
-    llvm::DenseMap<const llvm::Function*, CfgBuilderPtr> m_cfg_builder_map;
-  };
 
   using edges_set = std::set<std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>>;
   
@@ -169,13 +141,13 @@ namespace clam {
     typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
     typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
     typedef crab::checker::checks_db checks_db_t;
-    typedef std::shared_ptr<HeapAbstraction> heap_abs_ptr;
     
   private:
 
     std::unique_ptr<IntraClam_Impl> m_impl;
-    llvm::Function *m_fun;
-    variable_factory_t m_vfac;    
+    HeapAbstraction &m_mem;
+    CrabBuilderManager &m_builder_man;
+    const llvm::Function &m_fun;
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
     edges_set m_infeasible_edges;    
@@ -186,11 +158,11 @@ namespace clam {
     /**
      * Constructor that builds a crab CFG
      **/
-    IntraClam(llvm::Function &fun,
-		  const llvm::TargetLibraryInfo &tli,
-		  CrabBuilderManager &man,
-		  const crab::cfg::tracked_precision cfg_precision = crab::cfg::NUM,
-		  heap_abs_ptr heap_abs = nullptr);
+    IntraClam(const llvm::Function &fun,	      
+	      const llvm::TargetLibraryInfo &tli,
+	      HeapAbstraction &mem,
+	      CrabBuilderManager &man,
+	      const crab::cfg::tracked_precision cfg_precision = crab::cfg::NUM);
 
     ~IntraClam();    
 
@@ -232,6 +204,11 @@ namespace clam {
 		      bool layered_solving,
 		      std::vector<Statement>& core) const;
 
+    /** 
+     * Return memory abstraction used by crab 
+     **/ 
+    HeapAbstraction& get_heap_abstraction() { return m_mem;}
+    
     /**
      * Return invariants that hold at the entry of b
      **/
@@ -264,12 +241,12 @@ namespace clam {
     typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
     typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
     typedef crab::checker::checks_db checks_db_t;
-    typedef std::shared_ptr<HeapAbstraction> heap_abs_ptr;
     
   private:
 
     std::unique_ptr<InterClam_Impl> m_impl;
-    variable_factory_t m_vfac;    
+    HeapAbstraction &m_mem;
+    CrabBuilderManager &m_builder_man;
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
     edges_set m_infeasible_edges;    
@@ -280,11 +257,11 @@ namespace clam {
     /**
      * Constructor that builds a crab call graph.
      **/
-    InterClam(llvm::Module &module,
-		  const llvm::TargetLibraryInfo &tli,
-		  CrabBuilderManager &man,
-		  const crab::cfg::tracked_precision cfg_precision = crab::cfg::NUM,
-		  heap_abs_ptr heap_abs = nullptr);
+    InterClam(const llvm::Module &module,
+	      const llvm::TargetLibraryInfo &tli,
+	      HeapAbstraction &mem,
+	      CrabBuilderManager &man,
+	      const crab::cfg::tracked_precision cfg_precision = crab::cfg::NUM);
 
     ~InterClam();    
 
@@ -298,6 +275,11 @@ namespace clam {
      **/    
     void analyze(AnalysisParams &params, const assumption_map_t &assumptions);
 
+    /** 
+     * Return memory abstraction used by crab 
+     **/ 
+    HeapAbstraction& get_heap_abstraction() { return m_mem;}
+    
     /**
      * Return invariants that hold at the entry of b
      **/
@@ -327,13 +309,12 @@ namespace clam {
     typedef typename IntraClam::wrapper_dom_ptr wrapper_dom_ptr;
     typedef typename IntraClam::invariant_map_t invariant_map_t;
     typedef typename IntraClam::checks_db_t checks_db_t;
-    typedef typename IntraClam::heap_abs_ptr heap_abs_ptr;
+
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
     edges_set m_infeasible_edges;
-    heap_abs_ptr m_mem;    
-    variable_factory_t m_vfac;
-    CrabBuilderManager m_cfg_builder_man;
+    std::unique_ptr<HeapAbstraction> m_mem;    
+    std::unique_ptr<CrabBuilderManager> m_cfg_builder_man;
     checks_db_t m_checks_db; 
     AnalysisParams m_params;
     const llvm::TargetLibraryInfo *m_tli;
@@ -356,13 +337,13 @@ namespace clam {
     virtual llvm::StringRef getPassName() const {return "Clam";}
     /* end ModulePass API */
 
-    variable_factory_t& get_var_factory() { return m_vfac; }
+    variable_factory_t& get_var_factory();
 
-    heap_abs_ptr get_heap_abstraction() { return m_mem; }
+    HeapAbstraction& get_heap_abstraction() { return *m_mem;}
 
     const AnalysisParams& get_analysis_params() { return m_params;}
 
-    const CrabBuilderManager& getCfgBuilderMan() const { return m_cfg_builder_man;}
+    const CrabBuilderManager& getCfgBuilderMan() const;
 
     bool has_cfg(llvm::Function &F);
     

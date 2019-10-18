@@ -4,6 +4,7 @@
  */
 
 #include "clam/crab/crab_cfg.hh"
+#include "llvm/ADT/DenseMap.h"
 
 #include <memory>
 #include <unordered_map>
@@ -95,7 +96,7 @@ namespace clam {
   class CfgBuilder {
    public:
     
-    CfgBuilder(llvm::Function& func, 
+    CfgBuilder(const llvm::Function& func, 
 	       llvm_variable_factory &vfac, HeapAbstraction &mem, 
 	       crab::cfg::tracked_precision tracklev, 
 	       const llvm::TargetLibraryInfo *tli,
@@ -121,7 +122,19 @@ namespace clam {
     const basic_block_label_t*
     get_crab_basic_block(const llvm::BasicBlock *src,
 			 const llvm::BasicBlock *dst) const;
-    
+
+    HeapAbstraction& get_heap_abstraction() {
+      return m_mem;
+    }
+
+    const llvm::TargetLibraryInfo& get_tli() const {
+      return *m_tli;
+    }
+
+    const llvm::DataLayout& get_dl() const {
+      return *m_dl;
+    }
+
    private:
 
     // map from a llvm basic block to a crab basic block id
@@ -135,6 +148,7 @@ namespace clam {
     
     // keep track whether the crab CFG has been built
     bool m_is_cfg_built;
+    // The function should be const because it's never modified.
     llvm::Function &m_func;
     crabLitFactory m_lfac; 
     HeapAbstraction &m_mem;
@@ -157,11 +171,11 @@ namespace clam {
     // Given a llvm basic block return its corresponding crab basic block    
     basic_block_t* lookup(const llvm::BasicBlock &bb) const;
 
-    void add_block(llvm::BasicBlock &bb);
+    void add_block(const llvm::BasicBlock &bb);
     
-    void add_edge(llvm::BasicBlock &src, const llvm::BasicBlock &target);
+    void add_edge(const llvm::BasicBlock &src, const llvm::BasicBlock &target);
 
-    basic_block_t* exec_edge(llvm::BasicBlock &src,
+    basic_block_t* exec_edge(const llvm::BasicBlock &src,
 			     const llvm::BasicBlock &target); 
 
     void add_block_in_between(basic_block_t &src, basic_block_t &dst,
@@ -174,4 +188,38 @@ namespace clam {
 
   }; // end class CfgBuilder
 
+  /**
+   * A manager that keeps all the crab CFG builders.
+   * A builder contains the crab CFG plus some extra information about
+   * the translation.
+   **/
+  class CrabBuilderManager {
+  public:
+    using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
+    
+    CrabBuilderManager();
+    
+    ~CrabBuilderManager();
+    
+    CrabBuilderManager(const CrabBuilderManager& o) = delete;
+    
+    CrabBuilderManager& operator=(const CrabBuilderManager& o) = delete;
+    
+    bool has_cfg(const llvm::Function &f) const;
+    
+    void add(const llvm::Function &f, CfgBuilderPtr cfg_builder);
+    
+    cfg_t& get_cfg(const llvm::Function &f) const;
+    
+    const CfgBuilderPtr get_cfg_builder(const llvm::Function &f) const;
+    
+    variable_factory_t& get_var_factory();
+    
+  private:
+    llvm::DenseMap<const llvm::Function*, CfgBuilderPtr> m_cfg_builder_map;
+    // All cfgs supervised by this manager are created using the same
+    // variable factory.
+    variable_factory_t m_vfac;
+  };
+  
 } // end namespace clam

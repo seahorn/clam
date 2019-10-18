@@ -176,33 +176,36 @@ namespace clam {
      HeapAbstraction() { }
 
      virtual ~HeapAbstraction() { }
+
+     // XXX: ideally all these methods should be marked as const but
+     // neither sea-dsa nor llvm-dsa provide APIs to allow that.
      
-    // Function is used to know in which function the Value lives
-     virtual region_t getRegion(const llvm::Function&, llvm::Value*) = 0;
+     // Function is used to know in which function the Value lives
+     virtual region_t getRegion(const llvm::Function&, const llvm::Value*) = 0;
 
      // read and written regions by the function
-     virtual region_vector_t getAccessedRegions(const llvm::Function& ) = 0;
+     virtual region_vector_t getAccessedRegions(const llvm::Function&) = 0;
 
      // only read regions by the function
-     virtual region_vector_t getOnlyReadRegions(const llvm::Function& ) = 0;
+     virtual region_vector_t getOnlyReadRegions(const llvm::Function&) = 0;
 
      // written regions by the function     
-     virtual region_vector_t getModifiedRegions(const llvm::Function& ) = 0;
+     virtual region_vector_t getModifiedRegions(const llvm::Function&) = 0;
 
      // regions that are reachable only from the return of the function     
-     virtual region_vector_t getNewRegions(const llvm::Function& ) = 0;
+     virtual region_vector_t getNewRegions(const llvm::Function&) = 0;
 
     // read and written regions by the callee     
-     virtual region_vector_t getAccessedRegions(llvm::CallInst& ) = 0;
+     virtual region_vector_t getAccessedRegions(const llvm::CallInst&) = 0;
 
      // only read regions by the function     
-     virtual region_vector_t getOnlyReadRegions(llvm::CallInst& ) = 0;
+     virtual region_vector_t getOnlyReadRegions(const llvm::CallInst&) = 0;
 
      // written regions by the callee
-     virtual region_vector_t getModifiedRegions(llvm::CallInst& ) = 0;
+     virtual region_vector_t getModifiedRegions(const llvm::CallInst&) = 0;
 
      // regions that are reachable only from the return of the callee     
-     virtual region_vector_t getNewRegions(llvm::CallInst& ) = 0;
+     virtual region_vector_t getNewRegions(const llvm::CallInst&) = 0;
 
      virtual llvm::StringRef getName() const = 0;
    }; 

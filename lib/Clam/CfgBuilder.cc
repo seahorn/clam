@@ -37,7 +37,6 @@
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/ADT/APInt.h"
@@ -2845,14 +2844,16 @@ namespace clam {
     
   }; // end class
 
-  CfgBuilder::CfgBuilder(Function& func, 
+  CfgBuilder::CfgBuilder(const Function& func, 
 			 llvm_variable_factory &vfac,
 			 HeapAbstraction &mem, 
 			 tracked_precision tracklev,			 
 			 const TargetLibraryInfo* tli,
 			 bool isInterProc)
-    : m_is_cfg_built(false),                          
-      m_func(func),
+    : m_is_cfg_built(false),
+      // HACK: it's safe to remove constness because we know that the
+      // Builder never modifies the bitcode.
+      m_func(const_cast<Function&>(func)),
       m_lfac(vfac, tracklev),
       m_mem(mem),
       m_cfg(nullptr),
@@ -2865,18 +2866,17 @@ namespace clam {
 
   CfgBuilder::~CfgBuilder() {}
 
-  cfg_t& CfgBuilder::get_cfg() { 
-    if (!m_is_cfg_built) {
-      build_cfg();
-      m_is_cfg_built = true;
-    }
+  cfg_t& CfgBuilder::get_cfg() {
+    // it won't build if already built
+    build_cfg();
     return *m_cfg;
   }
 
   basic_block_label_t CfgBuilder::get_crab_basic_block(const BasicBlock *bb) const {
     auto it = m_node_to_crab_map.find(bb);
     if (it == m_node_to_crab_map.end()) {
-      CLAM_ERROR("cannot map llvm basic block to crab basic block label");
+      CLAM_ERROR("cannot map llvm basic block ", bb->getName(),
+		 " to crab basic block label");
     }
     return it->second;
     
@@ -2902,16 +2902,19 @@ namespace clam {
     return &(m_cfg->get_node(it->second));
   }
 
-  void CfgBuilder::add_block(BasicBlock &bb) {
-    auto bb_label = make_crab_basic_block_label(&bb);
-    m_cfg->insert(bb_label);
+  void CfgBuilder::add_block(const BasicBlock &bb) {
+    auto it = m_node_to_crab_map.find(&bb);
+    if (it == m_node_to_crab_map.end()) {
+      auto bb_label = make_crab_basic_block_label(&bb);
+      m_cfg->insert(bb_label);
+    }
   }  
 
-  void CfgBuilder::add_edge(BasicBlock &S, const BasicBlock &D) {
-    basic_block_t* SS = lookup(S);
-    basic_block_t* DD = lookup(D);
-    assert(SS && DD);
-    *SS >> *DD;
+  void CfgBuilder::add_edge(const BasicBlock &src, const BasicBlock &dst) {
+    basic_block_t* crab_src = lookup(src);
+    basic_block_t* crab_dst = lookup(dst);
+    assert(crab_src && crab_dst);
+    *crab_src >> *crab_dst;
   }  
 
   void CfgBuilder::add_block_in_between(basic_block_t &src, basic_block_t &dst,
@@ -2944,17 +2947,17 @@ namespace clam {
   }
 
   //! return the new block inserted between src and dest if any
-  basic_block_t* CfgBuilder::exec_edge(BasicBlock &src, const BasicBlock &dst) {
+  basic_block_t* CfgBuilder::exec_edge(const BasicBlock &src, const BasicBlock &dst) {
     if (const BranchInst *br=dyn_cast<const BranchInst>(src.getTerminator())) {
       if (br->isConditional()) {
-        basic_block_t* Src = lookup(src);
-        basic_block_t* Dst = lookup(dst);
-        assert(Src && Dst);
+        basic_block_t* crab_src = lookup(src);
+        basic_block_t* crab_dst = lookup(dst);
+        assert(crab_src && crab_dst);
 
 	// Create a new crab block that represents the LLVM edge
 	auto bb_label = make_crab_basic_block_label(&src, &dst);	
   	basic_block_t &bb = m_cfg->insert(bb_label);
-        add_block_in_between(*Src, *Dst, bb);
+        add_block_in_between(*crab_src, *crab_dst, bb);
 
 	// Populate the new crab block with an assume
         const Value &c = *br->getCondition();
@@ -3007,7 +3010,7 @@ namespace clam {
 	// br is unconditional
 	add_edge(src,dst);
       }
-    } else  if (SwitchInst *SI = dyn_cast<SwitchInst>(src.getTerminator())) {
+    } else  if (const SwitchInst *SI = dyn_cast<SwitchInst>(src.getTerminator())) {
       // switch <value>, label <defaultdest> [ <val>, label <dest> ... ]
       //
       // TODO: we do not translate precisely switch instructions. We
@@ -3045,7 +3048,10 @@ namespace clam {
   }
 
   void CfgBuilder::build_cfg() {
-
+    if (m_is_cfg_built) {
+      return;
+    }
+    m_is_cfg_built = true;
     crab::ScopedCrabStats __st__("CFG Construction");
 
     // Sanity check: pass NameValues must have been executed before
@@ -3414,4 +3420,37 @@ namespace clam {
     return ;
   }
 
+
+  /* CFG Manager class */
+  CrabBuilderManager::CrabBuilderManager(){}
+  
+  CrabBuilderManager::~CrabBuilderManager(){}
+  
+  bool CrabBuilderManager::has_cfg(const Function &f) const {
+    return m_cfg_builder_map.find(&f) != m_cfg_builder_map.end();
+  }
+    
+  void CrabBuilderManager::add(const Function &f, CfgBuilderPtr builder) {
+    if (!has_cfg(f)) {
+      m_cfg_builder_map.insert({&f, builder});
+    }
+  }
+
+  cfg_t& CrabBuilderManager::get_cfg(const Function &f) const {
+    return get_cfg_builder(f)->get_cfg();
+  }
+
+  const CrabBuilderManager::CfgBuilderPtr
+  CrabBuilderManager::get_cfg_builder(const Function &f) const {
+    auto it = m_cfg_builder_map.find(&f);
+    if (it == m_cfg_builder_map.end()) {
+      CLAM_ERROR("Cannot find crab cfg for ", f.getName());
+    }
+    return it->second;
+  }
+
+  variable_factory_t& CrabBuilderManager::get_var_factory() {
+    return m_vfac;
+  }
+  
 } // end namespace clam
