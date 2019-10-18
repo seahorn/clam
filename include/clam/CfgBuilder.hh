@@ -122,7 +122,19 @@ namespace clam {
     const basic_block_label_t*
     get_crab_basic_block(const llvm::BasicBlock *src,
 			 const llvm::BasicBlock *dst) const;
-    
+
+    HeapAbstraction& get_heap_abstraction() {
+      return m_mem;
+    }
+
+    const llvm::TargetLibraryInfo& get_tli() const {
+      return *m_tli;
+    }
+
+    const llvm::DataLayout& get_dl() const {
+      return *m_dl;
+    }
+
    private:
 
     // map from a llvm basic block to a crab basic block id
