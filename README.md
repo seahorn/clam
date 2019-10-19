@@ -1,10 +1,10 @@
-# Crab-llvm #
+# Clam: Crab for Llvm Abstraction Manager #
 
 <a href="https://travis-ci.org/seahorn/crab-llvm"><img src="https://travis-ci.org/seahorn/crab-llvm.svg?branch=master" title="Ubuntu 16.04 LTS 64bit, g++-5"/></a>
 
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /><img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
-Crab-llvm is a static analyzer that computes inductive invariants for
+Clam is a static analyzer that computes inductive invariants for
 LLVM-based languages based on
 the [Crab](https://github.com/seahorn/crab) library. It currently
 supports LLVM 5.0. There is an experimental branch `llvm-8.0` for LLVM
@@ -12,13 +12,13 @@ supports LLVM 5.0. There is an experimental branch `llvm-8.0` for LLVM
 
 # Requirements #
 
-Crab-llvm is written in C++ and uses heavily the Boost library. The
+Clam is written in C++ and uses heavily the Boost library. The
 main requirements are:
 
 - C++ compiler supporting c++11
 - Boost
 - GMP 
-- MPFR (if `-DUSE_APRON=ON` or `-DUSE_ELINA=ON`)
+- MPFR (if `-DCRAB_USE_APRON=ON` or `-DCRAB_USE_ELINA=ON`)
 
 In linux, you can install requirements typing the commands:
 
@@ -43,9 +43,9 @@ The basic compilation steps are:
      cmake --build . --target install 
 
 
-Crab-llvm provides several components that are installed via the
-`extra` target. These components can be used by other projects outside
-of Crab-llvm.
+Clam provides several components that are installed via the `extra`
+target. These components can be used by other projects outside of
+Clam.
 
 
 * [llvm-dsa](https://github.com/seahorn/llvm-dsa): ``` git clone https://github.com/seahorn/llvm-dsa.git ```
@@ -55,7 +55,7 @@ of Crab-llvm.
   (Data Structure Analysis) is a heap analysis
   described
   [here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps)
-  and it is used by Crab-llvm to disambiguate the heap.
+  and it is used by Clam to disambiguate the heap.
   
 * [sea-dsa](https://github.com/seahorn/sea-dsa): ```git clone https://github.com/seahorn/sea-dsa.git```
 
@@ -81,21 +81,21 @@ The Boxes/Apron/Elina domains require third-party libraries. To avoid
 the burden to users who are not interested in those domains, the
 installation of the libraries is optional.
 
-- If you want to use the Boxes domain then add `-DUSE_LDD=ON` option.
+- If you want to use the Boxes domain then add `-DCRAB_USE_LDD=ON` option.
 
 - If you want to use the Apron library domains then add
-  `-DUSE_APRON=ON` option.
+  `-DCRAB_USE_APRON=ON` option.
 
 - If you want to use the Elina library domains then add
-  `-DUSE_ELINA=ON` option.
+  `-DCRAB_USE_ELINA=ON` option.
 
 **Important:** Apron and Elina are currently not compatible so you
-cannot enable `-DUSE_APRON=ON` and `-DUSE_ELINA=ON` at the same time. 
+cannot enable `-DCRAB_USE_APRON=ON` and `-DCRAB_USE_ELINA=ON` at the same time. 
 
-For instance, to install `crab-llvm` with Boxes and Apron:
+For instance, to install Clam with Boxes and Apron:
 
      mkdir build && cd build
-     cmake -DCMAKE_INSTALL_PREFIX=_DIR_ -DUSE_LDD=ON -DUSE_APRON=ON ../
+     cmake -DCMAKE_INSTALL_PREFIX=_DIR_ -DCRAB_USE_LDD=ON -DCRAB_USE_APRON=ON ../
      cmake --build . --target extra                 
      cmake --build . --target crab && cmake ..
      cmake --build . --target ldd && cmake ..
@@ -109,15 +109,15 @@ To run some regression tests:
 
      cmake --build . --target test-simple
 
-# Running Crab-llvm without installation #
+# Running Clam without installation #
 
 You can get the latest binary from docker hub using the command:
 
-     docker pull seahorn/crabllvm_llvm_5.0:latest
+     docker pull seahorn/clam_5.0:latest
 	 
-# Crab-llvm architecture #
+# Clam architecture #
 
-![Crab-Llvm Architecture](https://github.com/seahorn/crab-llvm/blob/master/CrabLlvm_arch.jpg?raw=true "Crab-Llvm Architecture")
+![Clam Architecture](https://github.com/seahorn/crab-llvm/blob/master/clam_arch.jpg?raw=true "Clam Architecture")
 
 # Example 1 #
 
@@ -147,13 +147,12 @@ int main() {
 
 ```
 
-Crab-llvm provides a Python script called `crabllvm.py`. Type the
-command:
+Clam provides a Python script called `clam.py`. Type the command:
 
-    crabllvm.py test.c
+    clam.py test.c
 
-**Important:** the first thing that `crabllvm.py` does is to compile
-  the C program into LLVM bitcode by using Clang. Since Crab-llvm is
+**Important:** the first thing that `clam.py` does is to compile
+  the C program into LLVM bitcode by using Clang. Since Clam is
   based on LLVM 5.0, the version of clang must be 5.0 as well. 
 
 
@@ -220,18 +219,20 @@ _y.0.lcssa:
 **/
 ```
 
-It shows the Control-Flow Graph analyzed by Crab together with the invariants inferred for function `main` that hold at the entry and and the exit of each basic block. 
+It shows the Control-Flow Graph analyzed by Crab together with the
+invariants inferred for function `main` that hold at the entry and and
+the exit of each basic block.
 
-Note that Crab-llvm does not provide a translation from the basic
+Note that Clam does not provide a translation from the basic
 block identifiers and variable names to the original C program. The
-reason is that Crab-llvm does not analyze C but instead the
+reason is that Clam does not analyze C but instead the
 corresponding [LLVM](http://llvm.org/) bitcode generated after
 compiling the C program with [Clang](http://clang.llvm.org/). To help
-users understanding the invariants Crab-llvm provides an option to
+users understanding the invariants Clam provides an option to
 visualize the CFG of the function described in terms of the LLVM
 bitcode:
 
-    crabllvm.py test.c --llvm-view-cfg
+    clam.py test.c --llvm-view-cfg
 
 and you should see a screen with a similar CFG to this one:
 
@@ -250,10 +251,10 @@ our tool and see the linear constraints:
 that implies the desired invariant `x.0.lcssa` = `y.0.lcssa`.
 
 
-# Crab Options #
+# Clam Options #
 
 
-Crab-llvm analyzes programs with the `zones` domain as the default
+Clam analyzes programs with the `zones` domain as the default
 abstract domain. Users can choose the abstract domain by typing the
 option `--crab-dom=VAL`. The possible values of `VAL` are:
 
@@ -298,18 +299,18 @@ abstraction of the translation. The possible values of `VAL` are:
 - `arr`: `num` + translates all operations over pointers using pointer
   arithmetic and Crab arrays.
 
-   If the level is `arr` then Crab-llvm's frontend will partition the
+   If the level is `arr` then Clam's frontend will partition the
    heap into disjoint regions using a pointer analysis. Each region is
    mapped to a Crab array, and each LLVM load and store is translated
    to an array read and write operation, respectively. Then, it will
    use an array domain provided by Crab whose base domain is the one
    selected by option `--crab-domain`. If option
-   `--crab-singleton-aliases` is enabled then Crab-llvm translates
+   `--crab-singleton-aliases` is enabled then Clam translates
    global singleton regions to scalar variables.
 
 By default, all the analyses are run in an intra-procedural
 manner. Enable the option `--crab-inter` to run the inter-procedural
-version. Crab-llvm implements a standard two-phase algorithm in which
+version. Clam implements a standard two-phase algorithm in which
 the call graph is first traversed from the leaves to the root while
 computing summaries and then from the root the leaves reusing
 summaries. Each function is executed only once. The analysis is sound
@@ -318,14 +319,14 @@ with recursive functions but imprecise. The option
 inter-procedural analysis is specially important if reasoning about
 memory contents is desired.
 
-Crab-llvm provides the **very experimental** option `--crab-backward`
+Clam provides the **very experimental** option `--crab-backward`
 to enable an iterative forward-backward analysis that might produce
 more precise results. The backward analysis computes *necessary
 preconditions* of the error states (if program is annotated with
 assertions) which are used to refine the set of initial states so that
 the forward analysis can refine its results.
 
-Note that apart from inferring invariants or preconditions, Crab-llvm
+Note that apart from inferring invariants or preconditions, Clam
 allows checking for assertions. To do that, programs must be annotated
 with `__CRAB_assert(c)` where `c` is any expression that evaluates to
 a boolean. Note that `__CRAB_assert` must be defined as an `extern`
@@ -335,7 +336,7 @@ function so that Clang does not complain:
 
 Then, you can type:
 
-    crabllvm.py test.c --crab-check=assert
+    clam.py test.c --crab-check=assert
 
 and you should see something like this:
 
@@ -345,7 +346,7 @@ and you should see something like this:
     0  Number of total warning checks
 
 Finally, to make easier the communication with other LLVM-based tools,
-Crab-llvm can output the invariants by inserting them into the LLVM
+Clam can output the invariants by inserting them into the LLVM
 bitcode via `verifier.assume` instructions. The option
 `--crab-add-invariants=block-entry` injects the invariants that hold
 at each basic block entry while option
@@ -376,7 +377,7 @@ Consider the next program:
 
 and type
 
-    crabllvm.py test.c --crab-track=arr --crab-add-invariants=all -o test.crab.bc
+    clam.py test.c --crab-track=arr --crab-add-invariants=all -o test.crab.bc
     llvm-dis test.crab.bc
 
 The content of `test.crab.bc` should be similar to:
@@ -452,12 +453,12 @@ Crab. Here some of them:
   provide currently any pointer or shape analysis, and thus, very
   little reasoning about pointer operations can be currently done.
  
-  Alternatively, points-to information can be provided to Crab-llvm by
+  Alternatively, points-to information can be provided to Clam by
   `llvm-dsa`/`sea-dsa` as a pre-analysis step if `--crab-track=arr`.
-  Crab-llvm uses this pre-analysis step to statically partition memory
+  Clam uses this pre-analysis step to statically partition memory
   into disjoint regions and then (under some conditions) translate
-  regions to Crab arrays. Then, Crab-llvm uses one of the Crab array
-  domains to reason about their contents. Currently, Crab-llvm only
+  regions to Crab arrays. Then, Clam uses one of the Crab array
+  domains to reason about their contents. Currently, Clam only
   supports array smashing but there are more precise array domains
   implemented in Crab that just need to be integrated.
 	  

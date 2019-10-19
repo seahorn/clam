@@ -13,7 +13,7 @@
 using namespace llvm;
 using namespace llvm::PatternMatch;
 
-namespace crab_llvm {
+namespace clam {
 
   /// Returns true if v is used by assume
   static bool hasAssumeUsers (Value &v) {
@@ -97,7 +97,7 @@ namespace crab_llvm {
     }
     
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Convert verifier.assume to llvm.assume";
+      return "Clam: Convert verifier.assume to llvm.assume";
     }
     
   };
@@ -110,6 +110,6 @@ namespace crab_llvm {
   
 }
 
-static llvm::RegisterPass<crab_llvm::PromoteAssume>
+static llvm::RegisterPass<clam::PromoteAssume>
 X ("promote-assume",
-   "Promote crab-llvm assume to llvm assume intrinsic");
+   "Promote crab assume to llvm assume intrinsic");

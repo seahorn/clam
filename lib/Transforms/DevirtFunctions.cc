@@ -1,5 +1,5 @@
-#include "crab_llvm/config.h"
-#include "crab_llvm/Transforms/DevirtFunctions.hh"
+#include "clam/config.h"
+#include "clam/Transforms/DevirtFunctions.hh"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/CallGraph.h"
@@ -15,7 +15,7 @@ using namespace llvm;
 #define DEVIRT_LOG(...)
 #define DEVIRT_WARNING(...)
 
-namespace crab_llvm {
+namespace clam {
   
   static bool isIndirectCall(CallSite &CS) {
     Value *v = CS.getCalledValue ();
@@ -611,7 +611,7 @@ namespace crab_llvm {
 /* Template instantiation */
 // llvm-dsa 
 #include "dsa/CallTargets.h"
-namespace crab_llvm {  
+namespace clam {  
 template class CallSiteResolverByDsa<dsa::CallTargetFinder<EQTDDataStructures>>;
 } // end namespace
 #endif   

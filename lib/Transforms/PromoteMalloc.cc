@@ -5,7 +5,7 @@
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/raw_ostream.h"
 
-namespace crab_llvm {
+namespace clam {
 
   using namespace llvm;
   
@@ -61,7 +61,7 @@ namespace crab_llvm {
     }
     
     virtual StringRef getPassName () const {
-      return "CrabLlvm: Promote malloc to alloca instructions";
+      return "Clam: Promote malloc to alloca instructions";
     }
     
   };
@@ -69,10 +69,10 @@ namespace crab_llvm {
   char PromoteMalloc::ID = 0;
 }
 
-namespace crab_llvm
+namespace clam
 {
   Pass *createPromoteMallocPass () {return new PromoteMalloc ();} 
 }
 
-static llvm::RegisterPass<crab_llvm::PromoteMalloc> 
+static llvm::RegisterPass<clam::PromoteMalloc> 
 X ("promote-malloc", "Promote top-level malloc calls to alloca");

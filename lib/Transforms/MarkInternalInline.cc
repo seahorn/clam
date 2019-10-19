@@ -3,7 +3,7 @@
 
 using namespace llvm;
 
-namespace crab_llvm {
+namespace clam {
 
   /// marks all internal functions with AlwaysInline attribute
   struct MarkInternalInline : public ModulePass
@@ -23,7 +23,7 @@ namespace crab_llvm {
     }
 
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Mark internal functions with AlwaysInline attribute";
+      return "Clam: Mark internal functions with AlwaysInline attribute";
     }
     
   };

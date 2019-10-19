@@ -1,11 +1,11 @@
-project(CrabLlvm)
+project(Clam)
 
 cmake_minimum_required(VERSION 3.3)
 
-set (CrabLlvm_VERSION_MAJOR 0)
-set (CrabLlvm_VERSION_MINOR 1)
-set (CrabLlvm_VERSION_PATCH 0)
-#set (CrabLlvm_VERSION_TWEAK "rc1")
+set (Clam_VERSION_MAJOR 0)
+set (Clam_VERSION_MINOR 1)
+set (Clam_VERSION_PATCH 0)
+#set (Clam_VERSION_TWEAK "rc1")
 
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
   message (FATAL_ERROR
@@ -15,12 +15,12 @@ endif()
 enable_testing()
 include (CTest)
 
-# By default, we don't include crab-llvm transformations if we are an
+# By default, we don't include clam transformations if we are an
 # embedded project, but user can change that.
 option(CrabTransforms OFF)
 
 # Save old CMAKE_FIND_LIBRARY_SUFFIXES
-set(_CRABLLVM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
+set(_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
 # determine if this is top-level or embedded project
 if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
@@ -31,9 +31,9 @@ else()
 endif()
 
 if (CrabTransforms)
-  message(STATUS "Including crab-llvm transformations.")
+  message(STATUS "Including clam transformations.")
 else()
-  message(STATUS "Excluding crab-llvm transformations.")
+  message(STATUS "Excluding clam transformations.")
 endif()
 
 # Default is release with debug info
@@ -45,56 +45,56 @@ endif()
 if (TopLevel)
   if (NOT PACKAGE_VERSION)
      set(PACKAGE_VERSION
-       "${CrabLlvm_VERSION_MAJOR}.${CrabLlvm_VERSION_MINOR}.${CrabLlvm_VERSION_PATCH}")
-     if (DEFINED CrabLlvm_VERSION_TWEAK)
-       set (PACKAGE_VERSION "${PACKAGE_VERSION}-${CrabLlvm_VERSION_TWEAK}")
+       "${Clam_VERSION_MAJOR}.${Clam_VERSION_MINOR}.${Clam_VERSION_PATCH}")
+     if (DEFINED Clam_VERSION_TWEAK)
+       set (PACKAGE_VERSION "${PACKAGE_VERSION}-${Clam_VERSION_TWEAK}")
      endif()
-     set (CrabLlvm_VERSION_INFO ${PACKAGE_VERSION})
+     set (Clam_VERSION_INFO ${PACKAGE_VERSION})
   endif()
 endif ()
 
-#### crab-llvm options ######
-option (USE_COTIRE "Use cotire to reduce compilation time" OFF)
-option (BUILD_CRABLLVM_LIBS_SHARED "Build all CrabLlvm libraries dynamically" OFF)
-option (ALL_CRAB_DOMAINS "Include all crab abstract domains" ON)
-if (ALL_CRAB_DOMAINS)
+#### clam options ######
+option (CLAM_USE_COTIRE "Use cotire to reduce compilation time" OFF)
+option (CLAM_BUILD_LIBS_SHARED "Build all Clam libraries dynamically" OFF)
+option (CLAM_ALL_DOMAINS "Include all crab abstract domains" ON)
+if (CLAM_ALL_DOMAINS)
   set (HAVE_ALL_DOMAINS TRUE)
 else ()
   message(STATUS "Some abstract domains are disabled to reduce compilation time")
   set (HAVE_ALL_DOMAINS FALSE)
 endif ()
 
-option (ENABLE_CRAB_INTER "Include crab inter-procedural analysis" ON)
-if (ENABLE_CRAB_INTER)
+option (CLAM_ENABLE_INTER "Include crab inter-procedural analysis" ON)
+if (CLAM_ENABLE_INTER)
   set (HAVE_INTER TRUE)
 else ()
   message(STATUS "Inter-procedural analysis is disabled to reduce compilation time")
   set (HAVE_INTER FALSE)
 endif ()
-#### end crab-llvm options ######
+#### end clam options ######
 
 # Add path for custom modules
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # Support preference of static libs by adjusting CMAKE_FIND_LIBRARY_SUFFIXES
-if (NOT BUILD_CRABLLVM_LIBS_SHARED)
+if (NOT CLAM_BUILD_LIBS_SHARED)
    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 endif ()   
 
-if (BUILD_CRABLLVM_LIBS_SHARED)
-  message (STATUS "Crabllvm libraries are built dynamically but not llvm, sea-dsa, llvm-dsa, and llvm-seahorn")
-  set(CRABLLVM_LIBS_TYPE SHARED)
+if (CLAM_BUILD_LIBS_SHARED)
+  message (STATUS "Clam libraries are built dynamically but not llvm, sea-dsa, llvm-dsa, and llvm-seahorn")
+  set(CLAM_LIBS_TYPE SHARED)
   ## To build crab dynamically
-  set(BUILD_CRAB_LIBS_SHARED ON)
+  set(CRAB_BUILD_LIBS_SHARED ON)
 else()
-  message (STATUS "Crabllvm libraries are built statically")
-  set(CRABLLVM_LIBS_TYPE STATIC)
-  set(BUILD_CRAB_LIBS_SHARED OFF)  
+  message (STATUS "Clam libraries are built statically")
+  set(CLAM_LIBS_TYPE STATIC)
+  set(CRAB_BUILD_LIBS_SHARED OFF)  
 endif ()
 
 # so that executables outside the build tree can find later shared
 # libraries
-# Even if CRABLLVM_LIBS_TYPE=STATIC we could have a mix of shared and
+# Even if CLAM_LIBS_TYPE=STATIC we could have a mix of shared and
 # static libraries
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -111,9 +111,9 @@ if (TopLevel)
     set (Boost_NO_SYSTEM_PATHS "ON")
   endif()
 
-  option (CRABLLVM_STATIC_EXE "Static executable." OFF)
+  option (CLAM_STATIC_EXE "Static executable." OFF)
   
-  if (NOT BUILD_CRABLLVM_LIBS_SHARED)  
+  if (NOT CLAM_BUILD_LIBS_SHARED)  
     set (Boost_USE_STATIC_LIBS ON)
   endif ()  
   find_package (Boost 1.55)
@@ -122,7 +122,7 @@ if (TopLevel)
   endif ()
 endif ()
 
-if (USE_COTIRE)
+if (CLAM_USE_COTIRE)
   # Required by cotire
   set (ENV{CCACHE_SLOPPINESS} "pch_defines,time_macros")
   include(cotire)
@@ -157,7 +157,7 @@ if (GIT_FOUND)
   if (TopLevel)
     set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/crab" CACHE STRING "crab root directory")
   else ()
-    set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/crab-llvm/crab" CACHE STRING "crab root directory")
+    set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/clam/crab" CACHE STRING "crab root directory")
   endif ()
   
   add_custom_target (crab-git
@@ -184,8 +184,8 @@ endif()
 #### end crab stuff ####
 
 if (TopLevel)
-  option(CRABLLVM_REQUIRES_RTTI "Enable RTTI support" ON)
-  option(CRABLLVM_REQUIRES_EH "Enable Exceptions" ON)
+  option(CLAM_REQUIRES_RTTI "Enable RTTI support" ON)
+  option(CLAM_REQUIRES_EH "Enable Exceptions" ON)
 
   # if top-level, offer to build llvm
   ExternalProject_Add (llvm
@@ -198,8 +198,8 @@ if (TopLevel)
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
     -DLLVM_TARGETS_TO_BUILD:STRING=X86 -DWITH_POLY:BOOL=OFF
     -DLLVM_ENABLE_PEDANTIC=OFF 
-    -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=${CRABLLVM_REQUIRES_RTTI}
-    -DLLVM_BUILD_LLVM_DYLIB:BOOL=${BUILD_CRABLLVM_LIBS_SHARED}
+    -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=${CLAM_REQUIRES_RTTI}
+    -DLLVM_BUILD_LLVM_DYLIB:BOOL=${CLAM_BUILD_LIBS_SHARED}
     -DLLVM_INCLUDE_TESTS:BOOL=OFF
     -DLLVM_INCLUDE_GO_TESTS=OFF
     -DLLVM_INCLUDE_EXAMPLES=OFF
@@ -234,8 +234,8 @@ if (TopLevel)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
 
-  set(LLVM_REQUIRES_RTTI ${CRABLLVM_REQUIRES_RTTI})
-  set(LLVM_REQUIRES_EH ${CRABLLVM_REQUIRES_EH})
+  set(LLVM_REQUIRES_RTTI ${CLAM_REQUIRES_RTTI})
+  set(LLVM_REQUIRES_EH ${CLAM_REQUIRES_EH})
   
   include_directories(${LLVM_INCLUDE_DIRS})
   link_directories(${LLVM_LIBRARY_DIRS})
@@ -315,12 +315,12 @@ if (TopLevel)
   
 endif ()
 
-include_directories(BEFORE ${CrabLlvm_SOURCE_DIR}/include)
+include_directories(BEFORE ${Clam_SOURCE_DIR}/include)
 include_directories (BEFORE ${CMAKE_BINARY_DIR}/include)
 add_subdirectory(lib)
 
-configure_file(include/crab_llvm/config.h.cmake
-               ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h) 
+configure_file(include/clam/config.h.cmake
+               ${CMAKE_BINARY_DIR}/include/clam/config.h) 
 
 if (TopLevel)
   add_subdirectory(tools)
@@ -329,41 +329,41 @@ if (TopLevel)
 endif()
 
 # restore old CMAKE_FIND_LIBRARY_SUFFIXES
-set(CMAKE_FIND_LIBRARY_SUFFIXES ${_CRABLLVM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})     
+set(CMAKE_FIND_LIBRARY_SUFFIXES ${_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})     
 
 # Propagate to the parent
 if (NOT TopLevel)
-   set(XCRABLLVM_LIBS
-       CrabLlvmAnalysis CrabLlvmInstrumentation)
+   set(XCLAM_LIBS
+       ClamAnalysis ClamInstrumentation)
    if (CrabTransforms)
-     set(XCRABLLVM_LIBS ${XCRABLLVM_LIBS} LlvmPasses)
+     set(XCLAM_LIBS ${XCLAM_LIBS} LlvmPasses)
    endif()
   
-   set(CRABLLVM_LIBS
-       ${XCRABLLVM_LIBS}
+   set(CLAM_LIBS
+       ${XCLAM_LIBS}
        ${CRAB_LIBS}
        PARENT_SCOPE)
      
-   set(CRABLLVM_INCLUDE_DIRS
-       ${CrabLlvm_SOURCE_DIR}/include
+   set(CLAM_INCLUDE_DIRS
+       ${Clam_SOURCE_DIR}/include
        ${CMAKE_BINARY_DIR}/include 
        ${CRAB_INCLUDE_DIRS}
        PARENT_SCOPE)    
 endif ()  
 
 if (TopLevel)
-   set (PACKAGE_NAME CrabLlvm)
+   set (PACKAGE_NAME Clam)
    set (PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 
    # Configure CPack.
    include(TargetArch)
    target_architecture(CMAKE_TARGET_ARCH)
    message ("-- arch: ${CMAKE_TARGET_ARCH}")
-   set(CPACK_PACKAGE_INSTALL_DIRECTORY "CrabLlvm")
-   set(CPACK_PACKAGE_VENDOR "CrabLlvm")
-   set(CPACK_PACKAGE_VERSION_MAJOR ${CrabLlvm_VERSION_MAJOR})
-   set(CPACK_PACKAGE_VERSION_MINOR ${CrabLlvm_VERSION_MINOR})
-   set(CPACK_PACKAGE_VERSION_PATCH ${CrabLlvm_VERSION_PATCH})
+   set(CPACK_PACKAGE_INSTALL_DIRECTORY "Clam")
+   set(CPACK_PACKAGE_VENDOR "Clam")
+   set(CPACK_PACKAGE_VERSION_MAJOR ${Clam_VERSION_MAJOR})
+   set(CPACK_PACKAGE_VERSION_MINOR ${Clam_VERSION_MINOR})
+   set(CPACK_PACKAGE_VERSION_PATCH ${Clam_VERSION_PATCH})
    set(CPACK_PACKAGE_VERSION ${PACKAGE_VERSION})
    #set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.txt")
    set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
@@ -391,7 +391,7 @@ endif ()
 
 install(DIRECTORY include/ DESTINATION include
         PATTERN "config.h.cmake" EXCLUDE)
-install(FILES ${CMAKE_BINARY_DIR}/include/crab_llvm/config.h DESTINATION include/crab_llvm)
+install(FILES ${CMAKE_BINARY_DIR}/include/clam/config.h DESTINATION include/clam)
 
 if (TopLevel)
 
