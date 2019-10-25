@@ -165,6 +165,15 @@ namespace clam {
      typedef ikos::disjunctive_linear_constraint_system<number_t, varname_t> disj_lin_cst_sys_t;
      typedef crab::pointer_constraint<var_t> ptr_cst_t;
 
+     using lin_exp_unordered_set = ikos::linear_expression_unordered_set<number_t, varname_t>;
+     using lin_cst_unordered_set = ikos::linear_constraint_unordered_set<number_t, varname_t>;
+     template<typename Value>     
+     using lin_exp_unordered_map =
+       ikos::linear_expression_unordered_map<number_t, varname_t, Value>;
+     template<typename Value>     
+     using lin_cst_unordered_map =
+       ikos::linear_constraint_unordered_map<number_t, varname_t, Value>;
+
 } // end namespace clam
 
 namespace crab {
