@@ -159,6 +159,7 @@ namespace clam {
      typedef std::shared_ptr<cfg_t> cfg_ptr_t;
      typedef crab::cfg::cfg_ref<cfg_t> cfg_ref_t;
      typedef cfg_t::basic_block_t basic_block_t;
+     typedef typename cfg_t::basic_block_t::statement_t statement_t;
      typedef typename cfg_t::basic_block_t::lin_exp_t lin_exp_t;
      typedef typename cfg_t::basic_block_t::lin_cst_t lin_cst_t;
      typedef ikos::linear_constraint_system<number_t, varname_t> lin_cst_sys_t;
