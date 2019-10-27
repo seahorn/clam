@@ -1245,15 +1245,7 @@ namespace clam {
     DenseMap<const statement_t*,const Instruction*> &m_rev_map;
     std::set<mem_region_t> &m_init_regions;     
     const CrabBuilderParams &m_params;
-
-    void insert_rev_map(const statement_t* s, Instruction& inst) {
-      // If the Crab cfg is going to be simplified we don't bother
-      // keeping a reverse map.
-      if (!m_params.simplify) {
-	m_rev_map.insert({s, &inst});
-      }
-    }
-    
+        
     unsigned fieldOffset(const StructType *t, unsigned field) const {
       return m_dl->getStructLayout(const_cast<StructType*>(t))->
           getElementOffset(field);
@@ -1261,6 +1253,28 @@ namespace clam {
 
     uint64_t storageSize(const Type *t) const {
       return clam::storageSize(t, *m_dl);
+    }
+
+    /* 
+     *  Special function to return an unconstrained array index
+     *  variable. This is used when we cannot statically know the integeroffset
+     *  of a pointer with respect to its memory object.
+     */
+    var_t get_unconstrained_array_index_variable(llvm_variable_factory &vfac) {
+      // use static to return always the same variable to save id's
+      static var_t v(vfac.get(), crab::INT_TYPE, 32);
+      m_bb.havoc(v);
+      return v;
+    }
+
+    /* 
+     *  Insert key-value in the reverse map but only if no CFG
+     *  simplifications enabled 
+     */
+    void insert_rev_map(const statement_t* s, Instruction& inst) {
+      if (!m_params.simplify) {
+	m_rev_map.insert({s, &inst});
+      }
     }
         
     // Return true if all uses of V are non-trackable memory accesses.
@@ -1602,7 +1616,11 @@ namespace clam {
 	}
       }
 
-      // TODO: add an array_init statement.
+      /**
+       * TODO: add an array_init statement for the allocation function.
+       * This would be unsound in general so we need to be careful.
+       **/
+      
       // if (m_params.do_aggressive_initialize_arrays()) {
       //   mem_region_t r = GET_REGION(I,&I);
       //   bool isMainCaller = I.getParent()->getParent()->getName().equals("main");
@@ -1888,8 +1906,6 @@ namespace clam {
 
     bool has_seahorn_fail() const { return m_has_seahorn_fail;}
 
-  public:
-    
     /// skip PHI nodes (processed elsewhere)
     void visitPHINode(PHINode &I) {}
 
@@ -2394,13 +2410,14 @@ namespace clam {
 	    } else { /* unreachable */ }
 	  } else {
 	    Type* ty = I.getOperand(0)->getType();
-	    var_t idx = ptr->getVar();
-	    
-	    // We havoc the array index if we are not tracking it.
-	    if (!isPointer(*I.getPointerOperand(), m_params)) {
-	      m_bb.havoc(idx);
-	    }	    
-
+	    /** 
+	     * TODO: We completely forget the array index. This is ok
+	     * for array smashing but it will be too imprecise for
+	     * other array domains. We need to perform static analysis
+	     * to identify for a given pointer its offset wrt to its
+	     * allocation site.
+	     **/
+	    var_t idx = get_unconstrained_array_index_variable(m_lfac.get_vfac()); 
 	    if (val->isVar()) {
 	      var_t t = val->getVar();
 	      // Due to heap abstraction imprecisions, it can happen
@@ -2511,10 +2528,6 @@ namespace clam {
 	      m_bb.bool_assign(lhs->getVar(), s, false);
 	    } else { /* unreachable */ }
 	  } else {
-	    // We havoc the array index if we are not tracking it.
-	    if (!isPointer(*I.getPointerOperand(), m_params)) {
-	      m_bb.havoc(ptr->getVar());
-	    }
 	    var_t t = lhs->getVar();
 	    // Due to heap abstraction imprecisions, it can happen
 	    // that the region's bitwidth is smaller than lhs'
@@ -2522,7 +2535,14 @@ namespace clam {
 	    if (r.get_bitwidth() < lhs->getVar().get_bitwidth()) {
 	      t = m_lfac.mkIntVar(r.get_bitwidth());
 	    }
-	    var_t idx = ptr->getVar();
+	    /** 
+	     * TODO: We completely forget the array index. This is ok
+	     * for array smashing but it will be too imprecise for
+	     * other array domains. We need to perform static analysis
+	     * to identify for a given pointer its offset wrt to its
+	     * allocation site.
+	     **/
+	    var_t idx = get_unconstrained_array_index_variable(m_lfac.get_vfac()); 
 	    auto const* crab_stmt =
 	      m_bb.array_load(t, m_lfac.mkArrayVar(r), idx,
 			      m_dl->getTypeAllocSize(I.getType()));
@@ -3119,7 +3139,10 @@ namespace clam {
     }
 
 
-    /// TODO: add an array init statement
+    /**
+     ** TODO: add an array init statement for each new region.
+     ** This is not sound in general so we need to be careful.
+     **/
     /// Allocate arrays with initial values 
     // if (m_params.do_aggressive_initialize_arrays()) {
     //   // getNewRegions returns all the new nodes created by the
