@@ -2857,6 +2857,15 @@ namespace clam {
     return *m_cfg;
   }
 
+  const llvm::Instruction* CfgBuilder::get_instruction(const statement_t& s) const {
+    auto it = m_rev_map.find(&s);
+    if (it != m_rev_map.end()){
+      return it->second;
+    } else {
+      return nullptr;
+    }
+  }
+  
   basic_block_label_t CfgBuilder::get_crab_basic_block(const BasicBlock *bb) const {
     auto it = m_node_to_crab_map.find(bb);
     if (it == m_node_to_crab_map.end()) {
