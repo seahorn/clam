@@ -1,0 +1,244 @@
+/*** Translation LLVM to Crab Parameters ***/
+
+cl::opt<enum tracked_precision>
+CrabTrackLev("crab-track",
+   cl::desc("Track abstraction level of the Crab Cfg"),
+   cl::values
+    (clEnumValN(NUM, "num", "Integer and Boolean registers only"),
+     clEnumValN(PTR, "ptr", "num + pointer offsets"),
+     clEnumValN(ARR, "arr", "ptr + memory contents via array abstraction")),
+   cl::init(tracked_precision::NUM));
+
+cl::opt<bool>
+CrabCFGSimplify("crab-cfg-simplify",
+	 cl::desc("Simplify Crab CFG"), 
+	 cl::init(false),
+	 cl::Hidden);
+
+cl::opt<bool>
+CrabPrintCFG("crab-print-cfg",
+	 cl::desc("Print Crab CFG"), 
+	 cl::init(false));
+
+cl::opt<bool>
+CrabEnableUniqueScalars("crab-singleton-aliases",
+	 cl::desc("Treat singleton alias sets as scalar values"), 
+	 cl::init(false));
+
+/** 
+ * Do not translate memory instructions to crab pointer
+ * instructions. However, memory instructions will be translated to
+ * crab array instructions if tracked precision >= ARR.
+ */
+cl::opt<bool>
+CrabDisablePointers("crab-disable-ptr",
+		    cl::desc("Disable translation of pointer instructions"), 
+		    cl::init(false),
+		    cl::Hidden);
+/**
+ * Since LLVM IR is in SSA form many of the havoc statements are
+ * redundant since variables can be defined only once.
+ */
+cl::opt<bool>
+CrabIncludeHavoc("crab-include-useless-havoc",
+		 cl::desc("Include all havoc statements."), 
+		 cl::init(true),
+		 cl::Hidden);
+
+/**
+ * Initialization of contents of allocation sites(e.g. alloca's and
+ * global variables).
+ **/
+cl::opt<bool>
+CrabArrayInit("crab-arr-init",
+	cl::desc("Initialization of arrays for weak array domains (e.g., smashing)."), 
+	cl::init(true),
+	cl::Hidden);
+
+/**
+ * Enable initialization of arrays that correspond to objects that may
+ * contain an infinite number of memory locations.
+ *
+ * Initialization of allocation sites originated from calloc or memset
+ * instructions may be unsound if it can be executed by more than one
+ * execution.
+*/
+cl::opt<bool>
+CrabUnsoundArrayInit("crab-unsound-array-init",
+		     cl::desc("Potentially unsound initialization of arrays."), 
+		     cl::init(false),
+		     cl::Hidden);
+
+cl::opt<bool>
+CrabEnableBignums("crab-enable-bignums",
+     cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."), 
+     cl::init(false));
+
+
+/*** Crab Analysis Options ***/
+
+cl::opt<bool>
+CrabPrintAns("crab-print-invariants", 
+              cl::desc("Print Crab invariants"),
+              cl::init(false));
+
+cl::opt<bool>
+CrabPrintSumm("crab-print-summaries", 
+               cl::desc("Print Crab function summaries"),
+               cl::init(false));
+
+cl::opt<bool>
+CrabStoreInvariants("crab-store-invariants", 
+               cl::desc("Store invariants"),
+               cl::init(true));
+
+cl::opt<bool>
+CrabStats("crab-stats", 
+           cl::desc("Show Crab statistics and analysis results"),
+           cl::init(false));
+
+cl::opt<bool>
+CrabBuildOnlyCFG("crab-only-cfg", 
+           cl::desc("Build Crab CFG without running the analysis"),
+           cl::init(false));
+
+cl::opt<bool>
+CrabPrintUnjustifiedAssumptions("crab-print-unjustified-assumptions", 
+cl::desc("Print unjustified assumptions done by Crab (experimental: only integer overflow)"),
+cl::init(false));
+
+cl::opt<unsigned int>
+CrabWideningDelay("crab-widening-delay", 
+   cl::desc("Max number of fixpoint iterations until widening is applied"),
+   cl::init(1));
+
+cl::opt<unsigned int>
+CrabNarrowingIters("crab-narrowing-iterations", 
+                   cl::desc("Max number of narrowing iterations"),
+                   cl::init(10));
+
+cl::opt<unsigned int>
+CrabWideningJumpSet("crab-widening-jump-set", 
+                    cl::desc("Size of the jump set used for widening"),
+                    cl::init(0));
+
+cl::opt<CrabDomain>
+ClamDomain("crab-dom",
+      cl::desc("Crab numerical abstract domain used to infer invariants"),
+      cl::values 
+      (clEnumValN(INTERVALS, "int",
+		   "Classical interval domain (default)"),
+       clEnumValN(TERMS_INTERVALS, "term-int",
+		   "Intervals with uninterpreted functions."),       
+       clEnumValN(INTERVALS_CONGRUENCES, "ric",
+		   "Reduced product of intervals with congruences"),
+       clEnumValN(DIS_INTERVALS, "dis-int",
+		   "Disjunctive intervals based on Clousot's DisInt domain"),
+       clEnumValN(TERMS_DIS_INTERVALS, "term-dis-int",
+		   "Disjunctive Intervals with uninterpreted functions."),
+       clEnumValN(BOXES, "boxes",
+		   "Disjunctive intervals based on ldds"),
+       clEnumValN(ZONES_SPLIT_DBM, "zones",
+		   "Zones domain with Sparse DBMs in Split Normal Form"),
+       clEnumValN(OCT, "oct", "Octagons domain"),
+       clEnumValN(PK, "pk", "Polyhedra domain"),
+       clEnumValN(TERMS_ZONES, "rtz",
+		   "Reduced product of term-dis-int and zones."),
+       clEnumValN(WRAPPED_INTERVALS, "w-int",
+		  "Wrapped interval domain")),
+#ifdef HAVE_ALL_DOMAINS
+       cl::init(INTERVALS));
+#else
+       cl::init(ZONES_SPLIT_DBM));
+#endif 
+
+cl::opt<bool>
+CrabBackward("crab-backward", 
+	     cl::desc("Perform an iterative forward/backward analysis.\n"
+		      "It is only useful to prove assertions.\n"
+		      "Only the intra-procedural version has been implemented."),
+           cl::init(false));
+
+// If domain is num
+cl::opt<unsigned>
+CrabRelationalThreshold("crab-relational-threshold", 
+   cl::desc("Max number of live vars per block before switching "
+	    "to a non-relational domain"),
+   cl::init(10000),
+   cl::Hidden);
+
+cl::opt<bool>
+CrabLive("crab-live", 
+	 cl::desc("Run Crab with live ranges. "
+		  "It can lose precision if relational domains"),
+	 cl::init(false));
+
+cl::opt<bool>
+CrabInter("crab-inter",
+           cl::desc("Crab Inter-procedural analysis"), 
+           cl::init(false));
+
+// It does not make much sense to have non-relational domains here.
+cl::opt<CrabDomain>
+CrabSummDomain("crab-inter-sum-dom",
+    cl::desc("Crab relational domain to generate function summaries"),
+    cl::values 
+    (clEnumValN(ZONES_SPLIT_DBM, "zones",
+		 "Zones domain with sparse DBMs in Split Normal Form"),
+     clEnumValN(OCT, "oct", "Octagons domain"),
+     clEnumValN(TERMS_ZONES, "rtz",
+		 "Reduced product of term-dis-int and zones.")),
+    cl::init(ZONES_SPLIT_DBM));
+
+cl::opt<enum heap_analysis_t>
+CrabHeapAnalysis("crab-heap-analysis",
+   cl::desc("Heap analysis used for memory disambiguation"),
+   cl::values
+    (clEnumValN(LLVM_DSA  , "llvm-dsa"  , "context-insensitive llvm dsa"),
+     clEnumValN(CI_SEA_DSA, "ci-sea-dsa", "context-insensitive sea dsa"),
+     clEnumValN(CS_SEA_DSA, "cs-sea-dsa", "context-sensitive sea dsa")),
+   cl::init(heap_analysis_t::LLVM_DSA));
+
+// Specific llvm-dsa/sea-dsa options
+cl::opt<bool>
+CrabDsaDisambiguateUnknown("crab-dsa-disambiguate-unknown",
+    cl::desc("Disambiguate unknown pointers (unsound)"), 
+    cl::init(false),
+    cl::Hidden);
+
+cl::opt<bool>
+CrabDsaDisambiguatePtrCast("crab-dsa-disambiguate-ptr-cast",
+    cl::desc("Disambiguate pointers that have been casted from/to integers (unsound)"), 
+    cl::init(false),
+    cl::Hidden);
+
+cl::opt<bool>
+CrabDsaDisambiguateExternal("crab-dsa-disambiguate-external",
+    cl::desc("Disambiguate pointers that have been passed to external functions (unsound)"), 
+    cl::init(false),
+    cl::Hidden);
+
+// Prove assertions
+cl::opt<assert_check_kind_t>
+CrabCheck("crab-check", 
+	   cl::desc("Check user assertions"),
+	   cl::values(
+	       clEnumValN(NOCHECKS  , "none"  , "None"),
+	       clEnumValN(ASSERTION , "assert", "User assertions")),
+	       //clEnumValN(NULLITY   , "null"  , "Null dereference (unused/untested)")),
+	   cl::init(assert_check_kind_t::NOCHECKS));
+
+cl::opt<unsigned int>
+CrabCheckVerbose("crab-check-verbose", 
+                 cl::desc("Print verbose information about checks"),
+                 cl::init(0));
+
+// Important to clam clients (e.g., SeaHorn):
+// Shadow variables are variables that cannot be mapped back to a
+// const Value*. These are created for instance for memory heaps.
+cl::opt<bool>
+CrabKeepShadows("crab-keep-shadows",
+    cl::desc("Preserve shadow variables in invariants, summaries, and preconditions"), 
+    cl::init(false),
+    cl::Hidden);
+

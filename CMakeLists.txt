@@ -157,7 +157,7 @@ if (GIT_FOUND)
   if (TopLevel)
     set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/crab" CACHE STRING "crab root directory")
   else ()
-    set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/clam/crab" CACHE STRING "crab root directory")
+    set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/clam/crab" CACHE STRING "crab root directory" FORCE)
   endif ()
   
   add_custom_target (crab-git

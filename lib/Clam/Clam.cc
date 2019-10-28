@@ -56,184 +56,14 @@
 #include <unordered_map>
 #include <unordered_set>
 
-
 using namespace llvm;
 using namespace clam;
 using namespace crab::cfg;
+using namespace crab::cg;
+using namespace crab::analyzer;
+using namespace crab::checker;
 
-cl::opt<bool>
-CrabPrintAns("crab-print-invariants", 
-              cl::desc("Print Crab invariants"),
-              cl::init(false));
-
-cl::opt<bool>
-CrabPrintSumm("crab-print-summaries", 
-               cl::desc("Print Crab function summaries"),
-               cl::init(false));
-
-cl::opt<bool>
-CrabStoreInvariants("crab-store-invariants", 
-               cl::desc("Store invariants"),
-               cl::init(true));
-
-cl::opt<bool>
-CrabStats("crab-stats", 
-           cl::desc("Show Crab statistics and analysis results"),
-           cl::init(false));
-
-cl::opt<bool>
-CrabBuildOnlyCFG("crab-only-cfg", 
-           cl::desc("Build Crab CFG without running the analysis"),
-           cl::init(false));
-
-cl::opt<bool>
-CrabPrintUnjustifiedAssumptions("crab-print-unjustified-assumptions", 
-cl::desc("Print unjustified assumptions done by Crab (experimental: only integer overflow)"),
-cl::init(false));
-
-cl::opt<unsigned int>
-CrabWideningDelay("crab-widening-delay", 
-   cl::desc("Max number of fixpoint iterations until widening is applied"),
-   cl::init(1));
-
-cl::opt<unsigned int>
-CrabNarrowingIters("crab-narrowing-iterations", 
-                   cl::desc("Max number of narrowing iterations"),
-                   cl::init(10));
-
-cl::opt<unsigned int>
-CrabWideningJumpSet("crab-widening-jump-set", 
-                    cl::desc("Size of the jump set used for widening"),
-                    cl::init(0));
-
-cl::opt<CrabDomain>
-ClamDomain("crab-dom",
-      cl::desc("Crab numerical abstract domain used to infer invariants"),
-      cl::values 
-      (clEnumValN(INTERVALS, "int",
-		   "Classical interval domain (default)"),
-       clEnumValN(TERMS_INTERVALS, "term-int",
-		   "Intervals with uninterpreted functions."),       
-       clEnumValN(INTERVALS_CONGRUENCES, "ric",
-		   "Reduced product of intervals with congruences"),
-       clEnumValN(DIS_INTERVALS, "dis-int",
-		   "Disjunctive intervals based on Clousot's DisInt domain"),
-       clEnumValN(TERMS_DIS_INTERVALS, "term-dis-int",
-		   "Disjunctive Intervals with uninterpreted functions."),
-       clEnumValN(BOXES, "boxes",
-		   "Disjunctive intervals based on ldds"),
-       clEnumValN(ZONES_SPLIT_DBM, "zones",
-		   "Zones domain with Sparse DBMs in Split Normal Form"),
-       clEnumValN(OCT, "oct", "Octagons domain"),
-       clEnumValN(PK, "pk", "Polyhedra domain"),
-       clEnumValN(TERMS_ZONES, "rtz",
-		   "Reduced product of term-dis-int and zones."),
-       clEnumValN(WRAPPED_INTERVALS, "w-int",
-		  "Wrapped interval domain")),
-#ifdef HAVE_ALL_DOMAINS
-       cl::init(INTERVALS));
-#else
-       cl::init(ZONES_SPLIT_DBM));
-#endif 
-
-cl::opt<bool>
-CrabBackward("crab-backward", 
-	     cl::desc("Perform an iterative forward/backward analysis.\n"
-		      "It is only useful to prove assertions.\n"
-		      "Only the intra-procedural version has been implemented."),
-           cl::init(false));
-
-// If domain is num
-cl::opt<unsigned>
-CrabRelationalThreshold("crab-relational-threshold", 
-   cl::desc("Max number of live vars per block before switching "
-	    "to a non-relational domain"),
-   cl::init(10000),
-   cl::Hidden);
-
-cl::opt<bool>
-CrabLive("crab-live", 
-	 cl::desc("Run Crab with live ranges. "
-		  "It can lose precision if relational domains"),
-	 cl::init(false));
-
-cl::opt<bool>
-CrabInter("crab-inter",
-           cl::desc("Crab Inter-procedural analysis"), 
-           cl::init(false));
-
-// It does not make much sense to have non-relational domains here.
-cl::opt<CrabDomain>
-CrabSummDomain("crab-inter-sum-dom",
-    cl::desc("Crab relational domain to generate function summaries"),
-    cl::values 
-    (clEnumValN(ZONES_SPLIT_DBM, "zones",
-		 "Zones domain with sparse DBMs in Split Normal Form"),
-     clEnumValN(OCT, "oct", "Octagons domain"),
-     clEnumValN(TERMS_ZONES, "rtz",
-		 "Reduced product of term-dis-int and zones.")),
-    cl::init(ZONES_SPLIT_DBM));
-
-cl::opt<enum tracked_precision>
-CrabTrackLev("crab-track",
-   cl::desc("Track abstraction level of the Crab Cfg"),
-   cl::values
-    (clEnumValN(NUM, "num", "Integer and Boolean registers only"),
-     clEnumValN(PTR, "ptr", "num + pointer offsets"),
-     clEnumValN(ARR, "arr", "ptr + memory contents via array abstraction")),
-   cl::init(tracked_precision::NUM));
-
-cl::opt<enum heap_analysis_t>
-CrabHeapAnalysis("crab-heap-analysis",
-   cl::desc("Heap analysis used for memory disambiguation"),
-   cl::values
-    (clEnumValN(LLVM_DSA  , "llvm-dsa"  , "context-insensitive llvm dsa"),
-     clEnumValN(CI_SEA_DSA, "ci-sea-dsa", "context-insensitive sea dsa"),
-     clEnumValN(CS_SEA_DSA, "cs-sea-dsa", "context-sensitive sea dsa")),
-   cl::init(heap_analysis_t::LLVM_DSA));
-
-// Specific llvm-dsa/sea-dsa options
-cl::opt<bool>
-CrabDsaDisambiguateUnknown("crab-dsa-disambiguate-unknown",
-    cl::desc("Disambiguate unknown pointers (unsound)"), 
-    cl::init(false),
-    cl::Hidden);
-
-cl::opt<bool>
-CrabDsaDisambiguatePtrCast("crab-dsa-disambiguate-ptr-cast",
-    cl::desc("Disambiguate pointers that have been casted from/to integers (unsound)"), 
-    cl::init(false),
-    cl::Hidden);
-
-cl::opt<bool>
-CrabDsaDisambiguateExternal("crab-dsa-disambiguate-external",
-    cl::desc("Disambiguate pointers that have been passed to external functions (unsound)"), 
-    cl::init(false),
-    cl::Hidden);
-
-// Prove assertions
-cl::opt<assert_check_kind_t>
-CrabCheck("crab-check", 
-	   cl::desc("Check user assertions"),
-	   cl::values(
-	       clEnumValN(NOCHECKS  , "none"  , "None"),
-	       clEnumValN(ASSERTION , "assert", "User assertions")),
-	       //clEnumValN(NULLITY   , "null"  , "Null dereference (unused/untested)")),
-	   cl::init(assert_check_kind_t::NOCHECKS));
-
-cl::opt<unsigned int>
-CrabCheckVerbose("crab-check-verbose", 
-                 cl::desc("Print verbose information about checks"),
-                 cl::init(0));
-
-// Important to clam clients (e.g., SeaHorn):
-// Shadow variables are variables that cannot be mapped back to a
-// const Value*. These are created for instance for memory heaps.
-cl::opt<bool>
-CrabKeepShadows("crab-keep-shadows",
-    cl::desc("Preserve shadow variables in invariants, summaries, and preconditions"), 
-    cl::init(false),
-    cl::Hidden);
+#include "ClamOptions.def"
 
 // In C++11 we need to pass to std::bind "this" (if class member
 // functions are called) as well as all placeholders for each
@@ -245,10 +75,6 @@ static std::function<Ret(Ts...)> bind_this(C* c, Ret(C::*m)(Ts...)) {
 
 namespace clam {
   
-  using namespace crab::analyzer;
-  using namespace crab::checker;
-  using namespace crab::cg;
-
   /** Begin typedefs **/
   typedef crab::analyzer::liveness<cfg_ref_t> liveness_t;
   typedef crab::cg::call_graph<cfg_ref_t> call_graph_t; 
@@ -570,9 +396,8 @@ namespace clam {
    **/
   class IntraClam_Impl {
   public:
-    IntraClam_Impl(const Function &fun, crab::cfg::tracked_precision cfg_precision,
-		   HeapAbstraction &mem, CrabBuilderManager &man,
-		   const TargetLibraryInfo &tli)
+    IntraClam_Impl(const Function &fun, HeapAbstraction &mem, const TargetLibraryInfo &tli,
+		   CrabBuilderManager &man)
       : m_cfg_builder(nullptr), m_fun(fun), m_vfac(man.get_var_factory()) {
       
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started Crab CFG construction for "
@@ -580,7 +405,8 @@ namespace clam {
       if (isTrackable(m_fun)) {
 	if (!man.has_cfg(m_fun)) {
 	  // -- build a crab cfg for func
-	  m_cfg_builder.reset(new CfgBuilder(m_fun, m_vfac, mem, cfg_precision, &tli));
+	  m_cfg_builder.reset(new CfgBuilder(m_fun, m_vfac, mem, &tli,
+					     man.get_cfg_builder_params()));
 	  m_cfg_builder->build_cfg();
 	  man.add(fun, m_cfg_builder);
 	} else {
@@ -932,12 +758,10 @@ namespace clam {
    *   Begin IntraClam methods
    **/
   IntraClam::IntraClam(const Function &fun, const TargetLibraryInfo &tli,
-		       HeapAbstraction &mem,
-		       CrabBuilderManager &man,
-		       crab::cfg::tracked_precision cfg_precision)
+		       HeapAbstraction &mem, CrabBuilderManager &man)
     : m_impl(nullptr), m_fun(fun), m_mem(mem), m_builder_man(man) {
     m_impl = make_unique<IntraClam_Impl>
-      (m_fun, cfg_precision, m_mem,  m_builder_man, tli);
+      (m_fun, m_mem, tli, m_builder_man);
   }
 
   IntraClam::~IntraClam() {}
@@ -1016,9 +840,8 @@ namespace clam {
    **/
   class InterClam_Impl {
   public:
-    InterClam_Impl(const Module& M, crab::cfg::tracked_precision cfg_precision,
-		   HeapAbstraction &mem, CrabBuilderManager &man, 
-		   const TargetLibraryInfo &tli)
+    InterClam_Impl(const Module& M, HeapAbstraction &mem, 
+		   const TargetLibraryInfo &tli, CrabBuilderManager &man)
       : m_cg(nullptr), m_crab_builder_man(man), m_M(M)  {
 
       std::vector<cfg_ref_t> cfg_ref_vector;
@@ -1029,7 +852,7 @@ namespace clam {
 	  if (!man.has_cfg(F)) {
 	    CrabBuilderManager::CfgBuilderPtr Builder
 	      (std::make_shared<CfgBuilder>(F, m_crab_builder_man.get_var_factory(),
-					    mem, cfg_precision, &tli));
+					    mem, &tli, man.get_cfg_builder_params()));
 	    Builder->build_cfg();
 	    m_crab_builder_man.add(F, Builder);
 	    cfg = &(Builder->get_cfg());	    
@@ -1319,12 +1142,10 @@ namespace clam {
    *   Begin InterClam methods
    **/
   InterClam::InterClam(const Module &module,  const TargetLibraryInfo &tli,
-		       HeapAbstraction &mem,		       
-		       CrabBuilderManager &man,
-		       crab::cfg::tracked_precision cfg_precision)
+		       HeapAbstraction &mem, CrabBuilderManager &man)		        
     : m_impl(nullptr), m_mem(mem), m_builder_man(man) {
     m_impl = make_unique<InterClam_Impl>
-      (module, cfg_precision, m_mem, m_builder_man, tli);
+      (module, m_mem, tli, m_builder_man);
   }
 
   InterClam::~InterClam() {}
@@ -1379,9 +1200,13 @@ namespace clam {
    **/
   ClamPass::ClamPass()
     : llvm::ModulePass(ID), 
-      m_mem(new DummyHeapAbstraction()),
-      m_cfg_builder_man(new CrabBuilderManager()),
-      m_tli(nullptr) { }
+    m_mem(new DummyHeapAbstraction()),
+    m_cfg_builder_man(new CrabBuilderManager(
+	      CrabBuilderParams(CrabTrackLev, CrabCFGSimplify, true,
+				CrabEnableUniqueScalars, CrabDisablePointers,
+				CrabIncludeHavoc, CrabArrayInit, CrabUnsoundArrayInit,
+				CrabEnableBignums, CrabPrintCFG))),
+    m_tli(nullptr) { }
 
   void ClamPass::releaseMemory() {
     m_pre_map.clear(); 
@@ -1390,13 +1215,31 @@ namespace clam {
   }
 
   bool ClamPass::runOnFunction(Function &F) {
-    IntraClam_Impl crab(F, CrabTrackLev, *m_mem, *m_cfg_builder_man, *m_tli);
+    IntraClam_Impl crab(F, *m_mem, *m_tli, *m_cfg_builder_man);
     AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
     return false;
   }
   
   bool ClamPass::runOnModule(Module &M) {
+
+    m_params.dom = ClamDomain;
+    m_params.sum_dom = CrabSummDomain;
+    m_params.run_backward = CrabBackward;
+    m_params.run_liveness = CrabLive;
+    m_params.relational_threshold = CrabRelationalThreshold;
+    m_params.widening_delay = CrabWideningDelay;
+    m_params.narrowing_iters = CrabNarrowingIters;
+    m_params.widening_jumpset = CrabWideningJumpSet;
+    m_params.stats = CrabStats;
+    m_params.print_invars = CrabPrintAns;
+    m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
+    m_params.print_summaries = CrabPrintSumm;
+    m_params.store_invariants = CrabStoreInvariants;
+    m_params.keep_shadow_vars = CrabKeepShadows;
+    m_params.check = CrabCheck;
+    m_params.check_verbose = CrabCheckVerbose;
+            
     unsigned num_analyzed_funcs = 0;
     for (auto &F : M) {
       if (!isTrackable(F)) continue;
@@ -1444,25 +1287,8 @@ namespace clam {
       CLAM_WARNING("running clam without memory analysis");
     }
 
-    m_params.dom = ClamDomain;
-    m_params.sum_dom = CrabSummDomain;
-    m_params.run_backward = CrabBackward;
-    m_params.run_liveness = CrabLive;
-    m_params.relational_threshold = CrabRelationalThreshold;
-    m_params.widening_delay = CrabWideningDelay;
-    m_params.narrowing_iters = CrabNarrowingIters;
-    m_params.widening_jumpset = CrabWideningJumpSet;
-    m_params.stats = CrabStats;
-    m_params.print_invars = CrabPrintAns;
-    m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
-    m_params.print_summaries = CrabPrintSumm;
-    m_params.store_invariants = CrabStoreInvariants;
-    m_params.keep_shadow_vars = CrabKeepShadows;
-    m_params.check = CrabCheck;
-    m_params.check_verbose = CrabCheckVerbose;
-        
     if (CrabInter){
-      InterClam_Impl inter_crab(M, CrabTrackLev, *m_mem, *m_cfg_builder_man, *m_tli);
+      InterClam_Impl inter_crab(M, *m_mem, *m_tli, *m_cfg_builder_man);
       AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
       inter_crab.Analyze(m_params, assumption_map_t(), results);
     } else {

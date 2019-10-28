@@ -45,7 +45,6 @@
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 
 #include "crab/common/debug.hpp"
@@ -63,71 +62,6 @@ using namespace llvm;
 using namespace crab;
 using namespace ikos;
 using namespace crab::cfg;
-
-cl::opt<bool>
-CrabCFGSimplify("crab-cfg-simplify",
-	 cl::desc("Simplify Crab CFG"), 
-	 cl::init(false),
-	 cl::Hidden);
-
-cl::opt<bool>
-CrabPrintCFG("crab-print-cfg",
-	 cl::desc("Print Crab CFG"), 
-	 cl::init(false));
-
-cl::opt<bool>
-CrabEnableUniqueScalars("crab-singleton-aliases",
-	 cl::desc("Treat singleton alias sets as scalar values"), 
-	 cl::init(false));
-
-/** 
- * Do not translate memory instructions to crab pointer
- * instructions. However, memory instructions will be translated to
- * crab array instructions if tracked precision >= ARR.
- */
-cl::opt<bool>
-CrabDisablePointers("crab-disable-ptr",
-		    cl::desc("Disable translation of pointer instructions"), 
-		    cl::init(false),
-		    cl::Hidden);
-/**
- * Since LLVM IR is in SSA form many of the havoc statements are
- * redundant since variables can be defined only once.
- */
-cl::opt<bool>
-CrabIncludeHavoc("crab-include-useless-havoc",
-		 cl::desc("Include all havoc statements."), 
-		 cl::init(true),
-		 cl::Hidden);
-
-/**
- * Initialization of contents of allocation sites(e.g. alloca's and
- * global variables).
- **/
-cl::opt<bool>
-CrabArrayInit("crab-arr-init",
-	cl::desc("Initialization of arrays for weak array domains (e.g., smashing)."), 
-	cl::init(true),
-	cl::Hidden);
-
-/**
- * Enable initialization of arrays that correspond to objects that may
- * contain an infinite number of memory locations.
- *
- * Initialization of allocation sites originated from calloc or memset
- * instructions may be unsound if it can be executed by more than one
- * execution.
-*/
-cl::opt<bool>
-CrabUnsoundArrayInit("crab-unsound-array-init",
-		     cl::desc("Potentially unsound initialization of arrays."), 
-		     cl::init(false),
-		     cl::Hidden);
-
-cl::opt<bool>
-CrabEnableBignums("crab-enable-bignums",
-     cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."), 
-     cl::init(false));
 
 namespace clam {
 
@@ -167,20 +101,19 @@ namespace clam {
     return isInteger(v.getType());
   }
 
-  static bool isPointer(const llvm::Type *t,
-			const crab::cfg::tracked_precision tracklev) {
-    return (t->isPointerTy() && tracklev >= PTR && !CrabDisablePointers);
+  static bool isPointer(const llvm::Type *t, const CrabBuilderParams &params) {
+    return (t->isPointerTy() && !params.ignore_pointers());
   }
 
-  static bool isPointer(const llvm::Value&v,
-			const crab::cfg::tracked_precision tracklev) {
-    return isPointer(v.getType(), tracklev);
+  static bool isPointer(const llvm::Value&v, const CrabBuilderParams &params) {
+    return isPointer(v.getType(), params);
   }
 
   /** Converts v to z_number. Assumes that v is signed */
-  static z_number toZNumber(const llvm::APInt &v, bool& is_bignum) {
+  static z_number toZNumber(const llvm::APInt &v, const CrabBuilderParams &params,
+			    bool& is_bignum) {
     is_bignum = false;
-    if (!CrabEnableBignums) {
+    if (!params.enable_bignums) {
       is_bignum = isSignedBigNum(v);
       
     }
@@ -204,32 +137,31 @@ namespace clam {
   }
 
   // The return value should be z_number and not number_t
-  static z_number getIntConstant(const ConstantInt* CI, bool& is_bignum){
+  static z_number getIntConstant(const ConstantInt* CI, const CrabBuilderParams &params,
+				 bool& is_bignum){
     is_bignum = false;
     if (CI->getType()->isIntegerTy(1)) {
       return z_number((int64_t) CI->getZExtValue());
     } else {
-      return toZNumber(CI->getValue(), is_bignum);
+      return toZNumber(CI->getValue(), params, is_bignum);
     }
   }
 
-  static bool isTrackedType(const llvm::Type& ty,
-			    const crab::cfg::tracked_precision tracklev) {
+  static bool isTrackedType(const llvm::Type& ty, const CrabBuilderParams &params) {
     // -- a pointer
     if (ty.isPointerTy()) 
-      return (tracklev >= crab::cfg::PTR && !CrabDisablePointers); 
+      return (!params.ignore_pointers()); 
     
     // -- always track integer and boolean registers
     return ty.isIntegerTy();
   }
 
-  static bool isTracked(const llvm::Value &v,
-			const crab::cfg::tracked_precision tracklev) {
+  static bool isTracked(const llvm::Value &v, const CrabBuilderParams &params) {
     // -- ignore any shadow variable created by seahorn
     if (v.getName().startswith("shadow.mem")) 
       return false;
 
-    return isTrackedType(*v.getType(), tracklev);
+    return isTrackedType(*v.getType(), params);
   }
 
   // A crab callsite should return a value if the I's callee has a
@@ -237,20 +169,18 @@ namespace clam {
   // returns. In LLVM, a callsite does not need to fully match with
   // the function signature but in Crab we require to do so. E.g.,
   // LLVM can remove the return value of the callsite if it's dead.
-  static bool ShouldCallSiteReturn(llvm::CallInst& I,
-				   const crab::cfg::tracked_precision tracklev) {
+  static bool ShouldCallSiteReturn(llvm::CallInst& I, const CrabBuilderParams &params) {
     llvm::CallSite CS(&I);
     if (llvm::Function* Callee = CS.getCalledFunction()) {
       Type* RT = Callee->getReturnType();
-      return (!(RT->isVoidTy()) && isTrackedType(*RT, tracklev));
+      return (!(RT->isVoidTy()) && isTrackedType(*RT, params));
     }
     return false;
   }
 
   // Whether the callsite returns a value.
-  static bool DoesCallSiteReturn(llvm::CallInst& I,
-				 const crab::cfg::tracked_precision tracklev) {
-    return (!I.getType()->isVoidTy() && isTracked(I, tracklev));
+  static bool DoesCallSiteReturn(llvm::CallInst& I, const CrabBuilderParams &params) {
+    return (!I.getType()->isVoidTy() && isTracked(I, params));
   }
 
   // Convenient wrapper for a LLVM variable or constant
@@ -416,11 +346,11 @@ namespace clam {
   class crabLitFactoryImpl {
   public:
     
-    crabLitFactoryImpl(llvm_variable_factory &vfac, crab::cfg::tracked_precision tracklev);
+    crabLitFactoryImpl(llvm_variable_factory &vfac, const CrabBuilderParams& params);
 
     llvm_variable_factory& get_vfac() { return m_vfac; }
-    
-    crab::cfg::tracked_precision get_track() const { return m_tracklev;}
+
+    const CrabBuilderParams& get_cfg_builder_params() const { return m_params;}
 
     // Translate v into a crab literal based on v's type
     crab_lit_ref_t getLit(const llvm::Value &v);
@@ -466,7 +396,7 @@ namespace clam {
     typedef typename lit_cache_t::value_type binding_t;
     
     llvm_variable_factory &m_vfac;
-    crab::cfg::tracked_precision m_tracklev;
+    const CrabBuilderParams &m_params;
     lit_cache_t m_lit_cache;
 
     Optional<crabBoolLit> getBoolLit(const llvm::Value &v);
@@ -475,8 +405,8 @@ namespace clam {
   };
   
   crabLitFactoryImpl::crabLitFactoryImpl(llvm_variable_factory &vfac,
-					 crab::cfg::tracked_precision tracklev)
-    : m_vfac(vfac), m_tracklev(tracklev) {}
+					 const CrabBuilderParams &params)
+    : m_vfac(vfac), m_params(params) {}
 
   crab_lit_ref_t crabLitFactoryImpl::getLit(const llvm::Value &v) {
     auto it = m_lit_cache.find(&v);
@@ -617,7 +547,7 @@ namespace clam {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant boolean
 	bool is_bignum;
-	z_number n = getIntConstant(c, is_bignum);
+	z_number n = getIntConstant(c, m_params, is_bignum);
 	if (!is_bignum) {
 	  return crabBoolLit(n > 0 ? true : false);
 	}
@@ -645,7 +575,7 @@ namespace clam {
       if (const llvm::ConstantInt *c = llvm::dyn_cast<const llvm::ConstantInt>(&v)) {
 	// -- constant integer
 	bool is_bignum;	
-	z_number n = getIntConstant(c, is_bignum);
+	z_number n = getIntConstant(c, m_params, is_bignum);
 	if (!is_bignum) {
 	  return crabIntLit(n);
 	}
@@ -658,9 +588,8 @@ namespace clam {
     return llvm::None;
   }
 
-  crabLitFactory::crabLitFactory(llvm_variable_factory &vfac,
-				crab::cfg::tracked_precision tracklev)
-    : m_impl(new crabLitFactoryImpl(vfac, tracklev)) { }
+  crabLitFactory::crabLitFactory(llvm_variable_factory &vfac, const CrabBuilderParams &params)
+    : m_impl(new crabLitFactoryImpl(vfac, params)) { }
     
   crabLitFactory::~crabLitFactory() {
     delete m_impl;
@@ -668,9 +597,14 @@ namespace clam {
 
   llvm_variable_factory& crabLitFactory::get_vfac()
   { return m_impl->get_vfac(); }
-    
-  crab::cfg::tracked_precision crabLitFactory::get_track() const
-  { return m_impl->get_track(); }
+
+  crab::cfg::tracked_precision crabLitFactory::get_track() const {
+    return get_cfg_builder_params().precision_level;
+  }
+
+  const CrabBuilderParams& crabLitFactory::get_cfg_builder_params() const {
+    return m_impl->get_cfg_builder_params();
+  }
 
   crab_lit_ref_t crabLitFactory::getLit(const llvm::Value &v)
   { return m_impl->getLit(v);}
@@ -948,10 +882,11 @@ namespace clam {
     return true;
   }
 
-  // helper to handle option CrabEnableUniqueScalars
+  // Return whether the region contains a singleton alias class
   template<typename HeapAbstraction>
-  static const Value* isGlobalSingleton(Region<HeapAbstraction> r) {
-    if (CrabEnableUniqueScalars) {
+  static const Value* isGlobalSingleton(Region<HeapAbstraction> r,
+					bool enable_unique_scalars) {
+    if (enable_unique_scalars) {
       if (r.isUnknown()) return nullptr;
       if (r.get_type() == INT_REGION || r.get_type() == BOOL_REGION) {
 	if (const Value* v = r.getSingleton()) {
@@ -962,9 +897,8 @@ namespace clam {
     return nullptr;
   }
 
-  // helper to handle option CrabIncludeHavoc
-  static void havoc(var_t v, basic_block_t &bb) {
-    if (CrabIncludeHavoc) {
+  static void havoc(var_t v, basic_block_t &bb, bool include_useless_havoc) {
+    if (include_useless_havoc) {
       bb.havoc(v);
     }
   }
@@ -986,12 +920,16 @@ namespace clam {
     var_t lhs = ref->getVar();
 
     crab_lit_ref_t ref0 = lfac.getLit(v0);
-    if (!ref0 || !(ref0->isInt()))
-    { havoc(lhs,bb); return;}
+    if (!ref0 || !(ref0->isInt())) {
+      havoc(lhs, bb, lfac.get_cfg_builder_params().include_useless_havoc);
+      return;
+    }
 
     crab_lit_ref_t ref1 = lfac.getLit(v1);
-    if (!ref1 || !(ref1->isInt()))
-    { havoc(lhs,bb); return;}
+    if (!ref1 || !(ref1->isInt())) {
+      havoc(lhs, bb, lfac.get_cfg_builder_params().include_useless_havoc);
+      return;
+    }
     
     lin_exp_t op0 = lfac.getExp(ref0);
     lin_exp_t op1 = lfac.getExp(ref1);
@@ -1208,7 +1146,7 @@ namespace clam {
 
       for (; PHINode *phi = dyn_cast<PHINode>(curr); ++curr) {        
         const Value &v = *phi->getIncomingValueForBlock(&m_inc_BB);
-        if (!isTracked(v, m_lfac.get_track())) continue;
+        if (!isTracked(v, m_lfac.get_cfg_builder_params())) continue;
         const PHINode* phi_v = dyn_cast<PHINode>(&v);
         if (phi_v && (phi_v->getParent() == &BB)) {
 	  // -- save the old version of the variable that maps to the
@@ -1248,7 +1186,7 @@ namespace clam {
       curr = BB.begin();
       for (; isa<PHINode>(curr); ++curr) {
         PHINode &phi = *cast<PHINode>(curr);
-        if (!isTracked(phi, m_lfac.get_track())) continue;	
+        if (!isTracked(phi, m_lfac.get_cfg_builder_params())) continue;	
         const Value &v = *phi.getIncomingValueForBlock(&m_inc_BB);
 
 	crab_lit_ref_t lhs_ref = m_lfac.getLit(phi);
@@ -1263,7 +1201,7 @@ namespace clam {
 	    m_bb.bool_assign(lhs, it->second);
 	  } else if (phi.getType()->isIntegerTy()) {
 	    m_bb.assign(lhs, it->second);
-	  } else if (isPointer(phi, m_lfac.get_track())){
+	  } else if (isPointer(phi, m_lfac.get_cfg_builder_params())){
 	    m_bb.ptr_assign(lhs, it->second, number_t(0));
 	  }
         } else {
@@ -1302,18 +1240,41 @@ namespace clam {
     const DataLayout* m_dl;
     const TargetLibraryInfo* m_tli;
     basic_block_t& m_bb;
-    const bool m_is_inter_proc;
     unsigned int m_object_id;
     bool m_has_seahorn_fail;
-    std::set<mem_region_t>& m_init_regions;
-    
-    unsigned fieldOffset(const StructType *t, unsigned field) {
+    DenseMap<const statement_t*,const Instruction*> &m_rev_map;
+    std::set<mem_region_t> &m_init_regions;     
+    const CrabBuilderParams &m_params;
+        
+    unsigned fieldOffset(const StructType *t, unsigned field) const {
       return m_dl->getStructLayout(const_cast<StructType*>(t))->
           getElementOffset(field);
     }
 
-    uint64_t storageSize(const Type *t) {
+    uint64_t storageSize(const Type *t) const {
       return clam::storageSize(t, *m_dl);
+    }
+
+    /* 
+     *  Special function to return an unconstrained array index
+     *  variable. This is used when we cannot statically know the integeroffset
+     *  of a pointer with respect to its memory object.
+     */
+    var_t get_unconstrained_array_index_variable(llvm_variable_factory &vfac) {
+      // use static to return always the same variable to save id's
+      static var_t v(vfac.get(), crab::INT_TYPE, 32);
+      m_bb.havoc(v);
+      return v;
+    }
+
+    /* 
+     *  Insert key-value in the reverse map but only if no CFG
+     *  simplifications enabled 
+     */
+    void insert_rev_map(const statement_t* s, Instruction& inst) {
+      if (!m_params.simplify) {
+	m_rev_map.insert({s, &inst});
+      }
     }
         
     // Return true if all uses of V are non-trackable memory accesses.
@@ -1454,12 +1415,16 @@ namespace clam {
       const Value& v2 = *i.getOperand(1);
       
       crab_lit_ref_t ref1 = m_lfac.getLit(v1);
-      if (!ref1 || !(ref1->isInt()))
-      {havoc(lhs,m_bb); return;}
+      if (!ref1 || !(ref1->isInt())) {
+	havoc(lhs, m_bb, m_params.include_useless_havoc);
+	return;
+      }
 
       crab_lit_ref_t ref2 = m_lfac.getLit(v2);
-      if (!ref2 || !(ref2->isInt()))
-      {havoc(lhs,m_bb); return;}
+      if (!ref2 || !(ref2->isInt())) {
+	havoc(lhs, m_bb, m_params.include_useless_havoc);
+	return;
+      }
       
       lin_exp_t op1 = m_lfac.getExp(ref1);
       lin_exp_t op2 = m_lfac.getExp(ref2);
@@ -1530,12 +1495,16 @@ namespace clam {
       var_t lhs = (ref ? ref->getVar() : m_lfac.mkBoolVar());
       
       crab_lit_ref_t b1 = m_lfac.getLit(v1);
-      if (!b1 || !(b1->isBool()))
-      {havoc(lhs, m_bb); return lhs;}
+      if (!b1 || !(b1->isBool())) {
+	havoc(lhs, m_bb, m_params.include_useless_havoc);
+	return lhs;
+      }
 
       crab_lit_ref_t b2 = m_lfac.getLit(v2);
-      if (!b2 || !(b2->isBool()))
-      {havoc(lhs, m_bb); return lhs;}
+      if (!b2 || !(b2->isBool())) {
+	havoc(lhs, m_bb, m_params.include_useless_havoc);
+	return lhs;
+      }
            
       switch(op) {
       case BinaryOperator::And:
@@ -1591,7 +1560,7 @@ namespace clam {
 	break;
       default:
 	CLAM_WARNING("translation skipped bool logic operation at line " << __LINE__);
-	havoc(lhs, m_bb);
+	havoc(lhs, m_bb, m_params.include_useless_havoc);
       }
       return lhs;
     }
@@ -1608,12 +1577,16 @@ namespace clam {
       const Value& v2 = *i.getOperand(1);
 
       crab_lit_ref_t ref1 = m_lfac.getLit(v1);
-      if (!ref1 || !(ref1->isInt()))
-      {havoc(lhs,m_bb); return;}
+      if (!ref1 || !(ref1->isInt())) {
+	havoc(lhs, m_bb, m_params.include_useless_havoc);
+	return;
+      }
 
       crab_lit_ref_t ref2 = m_lfac.getLit(v2);
-      if (!ref2 || !(ref2->isInt()))
-      {havoc(lhs,m_bb); return;}
+      if (!ref2 || !(ref2->isInt())) {
+	havoc(lhs, m_bb, m_params.include_useless_havoc);
+	return;
+      }
       
       lin_exp_t op1 = m_lfac.getExp(ref1);
       lin_exp_t op2 = m_lfac.getExp(ref2);
@@ -1626,7 +1599,7 @@ namespace clam {
 	  break;
         default:
 	  CLAM_WARNING("translation skipped " << i << " at line " << __LINE__);
-          havoc(lhs,m_bb);
+          havoc(lhs, m_bb, m_params.include_useless_havoc);
       }
     }
 
@@ -1635,16 +1608,20 @@ namespace clam {
       if (!I.getType()->isVoidTy()) {
 	crab_lit_ref_t ref = m_lfac.getLit(I);
 	assert(ref->isVar());
-	if (isPointer(I, m_lfac.get_track())) {
+	if (isPointer(I, m_params)) {
 	  m_bb.ptr_new_object(ref->getVar(), m_object_id++);
-	} else if (isTracked(I, m_lfac.get_track())) {
+	} else if (isTracked(I, m_params)) {
 	  // -- havoc return value	  
-	  havoc(ref->getVar(), m_bb);
+	  havoc(ref->getVar(), m_bb, m_params.include_useless_havoc);
 	}
       }
 
-      // TODO: add an array_init statement.
-      // if (m_lfac.get_track() == ARR && CrabArrayInit && CrabUnsoundArrayInit) {
+      /**
+       * TODO: add an array_init statement for the allocation function.
+       * This would be unsound in general so we need to be careful.
+       **/
+      
+      // if (m_params.do_aggressive_initialize_arrays()) {
       //   mem_region_t r = GET_REGION(I,&I);
       //   bool isMainCaller = I.getParent()->getParent()->getName().equals("main");
       //   if (isMainCaller && !r.isUnknown()) {
@@ -1679,7 +1656,7 @@ namespace clam {
 	  m_bb.array_assign(m_lfac.mkArrayVar(dst_reg), m_lfac.mkArrayVar(src_reg));
 	}
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
-	if (CrabUnsoundArrayInit && isInteger(*(MSI->getValue()))) {
+	if (m_params.do_aggressive_initialize_arrays() && isInteger(*(MSI->getValue()))) {
 	  Value* dst = MSI->getDest();
 	  mem_region_t r = get_region(m_mem, parent, dst);
 	  if (r.isUnknown()) return;
@@ -1697,8 +1674,9 @@ namespace clam {
 	      if (m_init_regions.insert(r).second) {
 		if (val_ref->isVar()) {
 		  m_bb.array_init(arr_var, lb_idx, ub_idx, val_ref->getVar(), elem_size);
-	      } else {
-		  m_bb.array_init(arr_var, lb_idx, ub_idx, m_lfac.getIntCst(val_ref), elem_size);
+		} else {
+		  m_bb.array_init(arr_var, lb_idx, ub_idx,
+				  m_lfac.getIntCst(val_ref), elem_size);
 		}
 	      }
 	    } else if (val_ref->isBool()) {
@@ -1747,7 +1725,7 @@ namespace clam {
 	    return;
 	  }
 	}
-	if (isGlobalSingleton(r)) {
+	if (isGlobalSingleton(r, m_params.lower_singleton_aliases)) {
 	  // Promote the global to an integer/boolean scalar
 	  var_t s = m_lfac.mkArraySingletonVar(r);
 	  if (isInteger(ty)) {
@@ -1832,12 +1810,12 @@ namespace clam {
 
       Value *cond = CS.getArgument(0);
       
-      if (!isTracked(*cond, m_lfac.get_track())) return;
+      if (!isTracked(*cond, m_params)) return;
       
       if (ConstantInt *CI = dyn_cast<ConstantInt>(cond)) {
         // -- cond is a constant
 	bool is_bignum;
-	z_number cond_val = getIntConstant(CI, is_bignum);
+	z_number cond_val = getIntConstant(CI, m_params, is_bignum);
 	if (!is_bignum) {
 	  if (cond_val > 0) {
 	    if (isAssertFn(callee) || isAssumeFn(callee)) {
@@ -1910,22 +1888,24 @@ namespace clam {
    public:
 
     CrabInstVisitor(crabLitFactory &lfac, HeapAbstraction &mem,
-		    const DataLayout* dl, const TargetLibraryInfo* tli,
-		    basic_block_t &bb, bool isInterProc, std::set<mem_region_t>& init_regions)
+      const DataLayout* dl, const TargetLibraryInfo* tli,
+      basic_block_t &bb, 
+      llvm::DenseMap<const statement_t*, const llvm::Instruction*> &rev_map,
+      std::set<mem_region_t>& init_regions,		    
+      const CrabBuilderParams &params)
       : m_lfac(lfac)
       , m_mem(mem)
       , m_dl(dl)
       , m_tli(tli)
       , m_bb(bb)
-      , m_is_inter_proc(isInterProc)
       , m_object_id(0)
       , m_has_seahorn_fail(false)
-      , m_init_regions(init_regions) {}
+      , m_rev_map(rev_map)
+      , m_init_regions(init_regions)
+      , m_params(params) {}
 
     bool has_seahorn_fail() const { return m_has_seahorn_fail;}
 
-  public:
-    
     /// skip PHI nodes (processed elsewhere)
     void visitPHINode(PHINode &I) {}
 
@@ -1940,17 +1920,17 @@ namespace clam {
     /// operand of other instructions.
     void visitCmpInst(CmpInst &I) {
       
-      if (!isTracked(I, m_lfac.get_track())) return;
+      if (!isTracked(I, m_params)) return;
 
       crab_lit_ref_t ref = m_lfac.getLit(I);
       assert(ref->isVar());
       
-      if (isPointer(*I.getOperand(0),m_lfac.get_track()) &&
-	  isPointer(*I.getOperand(1),m_lfac.get_track())) {
+      if (isPointer(*I.getOperand(0),m_params) &&
+	  isPointer(*I.getOperand(1),m_params)) {
 	
 	if (!AllUsesAreBrInst(&I)) {
 	  CLAM_WARNING("translation skipped comparison between pointers");
-	  havoc(ref->getVar(), m_bb);		  
+	  havoc(ref->getVar(), m_bb, m_params.include_useless_havoc);		  
 	}
 	return;
       }
@@ -1958,7 +1938,7 @@ namespace clam {
       // make sure we only translate if both operands are integers or booleans
       if (!I.getOperand(0)->getType()->isIntegerTy() ||
 	  !I.getOperand(1)->getType()->isIntegerTy()) {
-	havoc(ref->getVar(), m_bb);	
+	havoc(ref->getVar(), m_bb, m_params.include_useless_havoc);	
 	return;
       }
 
@@ -1986,7 +1966,7 @@ namespace clam {
     }
     
     void visitBinaryOperator(BinaryOperator &I) {
-      if (!isTracked(I, m_lfac.get_track())) return;
+      if (!isTracked(I, m_params)) return;
       
       crab_lit_ref_t ref = m_lfac.getLit(I);
       if (!ref || !(ref->isVar())) {
@@ -2015,12 +1995,12 @@ namespace clam {
 	  doIntLogicOp(ref, I);
 	break;
       default:
-	havoc(ref->getVar(), m_bb);
+	havoc(ref->getVar(), m_bb, m_params.include_useless_havoc);
       }
     }
         
     void visitCastInst(CastInst &I) {
-      if (!isTracked(I, m_lfac.get_track())) return;
+      if (!isTracked(I, m_params)) return;
 
       // XXX: Once we respect integer bitwidths, this optimization
       // cannot be applied.
@@ -2051,7 +2031,7 @@ namespace clam {
       assert(dst && dst->isVar());
       crab_lit_ref_t src = m_lfac.getLit(*(I.getOperand(0)));
       if (!src) {
-	havoc(dst->getVar(), m_bb);
+	havoc(dst->getVar(), m_bb, m_params.include_useless_havoc);
 	return;
       }
       
@@ -2060,7 +2040,7 @@ namespace clam {
 	if (I.getSrcTy() == I.getDestTy()) {
 	  // assume the frontend removes useless casts.
 	  CLAM_WARNING("translation does not support non-op integer casts");
-	  havoc(dst->getVar(), m_bb);
+	  havoc(dst->getVar(), m_bb, m_params.include_useless_havoc);
 	} else {
 	  if (!src->isVar()) {
 	    // We store the constant into a variable
@@ -2111,7 +2091,7 @@ namespace clam {
 	  //CLAM_WARNING("translation skipped pointer to integer cast");
 	} else if (isa<IntToPtrInst>(I)) {
 	  //CLAM_WARNING("translation skipped integer to pointer cast");
-	} else if (isa<BitCastInst>(I) && isPointer(*I.getOperand(0), m_lfac.get_track())) {
+	} else if (isa<BitCastInst>(I) && isPointer(*I.getOperand(0), m_params)) {
 
 	  if (src->isPtr()) {
 	    if (m_lfac.isPtrNull(src)) {
@@ -2125,7 +2105,7 @@ namespace clam {
 	  CLAM_WARNING("translation skipped " << I << " at line " << __LINE__);	  
 	}
       }
-      havoc(dst->getVar(), m_bb);
+      havoc(dst->getVar(), m_bb, m_params.include_useless_havoc);
     }
 
     // Analysis of select instructions is cumbersome since it requires
@@ -2141,15 +2121,15 @@ namespace clam {
     // undesirable then we try to deal with the select instruction
     // here.
     void visitSelectInst(SelectInst &I) {
-      if (!isTracked(I, m_lfac.get_track())) return;
+      if (!isTracked(I, m_params)) return;
 
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       assert(lhs && lhs->isVar());
       
-      if (isPointer(I, m_lfac.get_track())) {
+      if (isPointer(I, m_params)) {
 	// We don't even bother with pointers
 	CLAM_WARNING("skipped " << I << "\n" << "Enable --lower-select.");
-	havoc(lhs->getVar(), m_bb);
+	havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
 	return;
       }
       
@@ -2163,8 +2143,14 @@ namespace clam {
       
       if (isBool(I)) {
 	// --- All operands are BOOL
-	if (!op1->isBool()) {havoc(lhs->getVar(), m_bb); return;}
-	if (!op2->isBool()) {havoc(lhs->getVar(), m_bb); return;}	
+	if (!op1->isBool()) {
+	  havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+	  return;
+	}
+	if (!op2->isBool()) {
+	  havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+	  return;
+	}	
 	
 	// -- simple cases first: we know the condition is either true or false
 	if (ConstantInt *ci = dyn_cast<ConstantInt>(&cond)) {
@@ -2215,8 +2201,14 @@ namespace clam {
       } else if (isInteger(I)) {
 	
 	// --- All operands except the condition are INTEGERS
-	if (!op1->isInt()) {havoc(lhs->getVar(), m_bb); return;}
-	if (!op2->isInt()) {havoc(lhs->getVar(), m_bb); return;}	
+	if (!op1->isInt()) {
+	  havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+	  return;
+	}
+	if (!op2->isInt()) {
+	  havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+	  return;
+	}	
 	
 	lin_exp_t e1 = m_lfac.getExp(op1);
 	lin_exp_t e2 = m_lfac.getExp(op2);
@@ -2259,19 +2251,19 @@ namespace clam {
 	CLAM_WARNING("skipped " << I << "\n" <<
 			 "Crab select does not support natively boolean conditions.\n" << 
 			 "Meanwhile, enable --lower-select or --crab-bool-as-int");
-	havoc(lhs->getVar(), m_bb);
+	havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
         #endif 
       } 
     }
     
     void visitGetElementPtrInst(GetElementPtrInst &I) {
-      if (!isTracked(I, m_lfac.get_track())) return;
+      if (!isTracked(I, m_params)) return;
       
       CRAB_LOG("cfg-gep", llvm::errs() << "Translating " << I << "\n");
 
       Function& parent = *(I.getParent()->getParent());
       mem_region_t r = get_region(m_mem, parent, &I); 
-      if (isGlobalSingleton(r)) {
+      if (isGlobalSingleton(r, m_params.lower_singleton_aliases)) {
 	CRAB_LOG("cfg-gep", llvm::errs() << "Skipped singleton region\n");
 	return;
       }
@@ -2281,13 +2273,13 @@ namespace clam {
       crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
       
       if (!ptr) {
-        havoc(lhs->getVar(), m_bb);
+        havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
         return;
       }
       
       if (m_lfac.isPtrNull(ptr)) {
 	CLAM_WARNING(I << " doing pointer arithmetic with null pointer.");
-        havoc(lhs->getVar(), m_bb);
+        havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
         return;
       }
       assert(ptr->isVar());
@@ -2297,7 +2289,7 @@ namespace clam {
       APInt offset(bitwidth, 0);
       if (I.accumulateConstantOffset(*m_dl, offset)) {
 	bool is_bignum = false;
-	z_number o(toZNumber(offset, is_bignum));
+	z_number o(toZNumber(offset, m_params, is_bignum));
 	if (is_bignum) {
 	  m_bb.havoc(lhs->getVar());
 	} else {
@@ -2401,7 +2393,7 @@ namespace clam {
 	}
 	mem_region_t r = get_region(m_mem, parent, I.getPointerOperand()); 
 	if (!r.isUnknown()) {
-	  if (isGlobalSingleton(r)) {
+	  if (isGlobalSingleton(r, m_params.lower_singleton_aliases)) {
 	    // Promote the global to an integer/boolean scalar
 	    var_t s = m_lfac.mkArraySingletonVar(r);
 	    if (isInteger(*I.getValueOperand())) {
@@ -2418,13 +2410,14 @@ namespace clam {
 	    } else { /* unreachable */ }
 	  } else {
 	    Type* ty = I.getOperand(0)->getType();
-	    var_t idx = ptr->getVar();
-	    
-	    // We havoc the array index if we are not tracking it.
-	    if (!isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
-	      m_bb.havoc(idx);
-	    }	    
-
+	    /** 
+	     * TODO: We completely forget the array index. This is ok
+	     * for array smashing but it will be too imprecise for
+	     * other array domains. We need to perform static analysis
+	     * to identify for a given pointer its offset wrt to its
+	     * allocation site.
+	     **/
+	    var_t idx = get_unconstrained_array_index_variable(m_lfac.get_vfac()); 
 	    if (val->isVar()) {
 	      var_t t = val->getVar();
 	      // Due to heap abstraction imprecisions, it can happen
@@ -2436,24 +2429,29 @@ namespace clam {
 		// store instruction does not overflow
 		m_bb.truncate(val->getVar(), t);
 	      } 
-	      m_bb.array_store(m_lfac.mkArrayVar(r), idx, t, 
-				m_dl->getTypeAllocSize(ty),
-			       r.getSingleton() != nullptr);
+	      auto const* crab_stmt = m_bb.array_store(m_lfac.mkArrayVar(r), idx, t, 
+						       m_dl->getTypeAllocSize(ty),
+						       r.getSingleton() != nullptr);
+	      insert_rev_map(crab_stmt, I);
 	    } else {
 	      if (val->isInt()) {
-		m_bb.array_store(m_lfac.mkArrayVar(r), idx, m_lfac.getIntCst(val),
-				  m_dl->getTypeAllocSize(ty),
-				 r.getSingleton() != nullptr);
+		auto const* crab_stmt =
+		  m_bb.array_store(m_lfac.mkArrayVar(r), idx, m_lfac.getIntCst(val),
+				   m_dl->getTypeAllocSize(ty),
+				   r.getSingleton() != nullptr);
+		insert_rev_map(crab_stmt, I);
 	      } else if (val->isBool()){
-		m_bb.array_store(m_lfac.mkArrayVar(r), idx, 
-				  m_lfac.isBoolTrue(val) ? number_t(1): number_t(0),
-				  m_dl->getTypeAllocSize(ty),
-				 r.getSingleton() != nullptr);
+		auto const* crab_stmt =
+		  m_bb.array_store(m_lfac.mkArrayVar(r), idx, 
+				   m_lfac.isBoolTrue(val) ? number_t(1): number_t(0),
+				   m_dl->getTypeAllocSize(ty),
+				   r.getSingleton() != nullptr);
+		insert_rev_map(crab_stmt, I);		
 	      } else { /* unreachable */}
 	    }
 	  }
 	}
-      } // else if (isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
+      } // else if (isPointer(*I.getPointerOperand(), m_params)) {
 	// if (!val) {
 	//   // this can happen e.g., with store double %_10, double* %_11
 	//   // do nothing since we ignore floating point operations.
@@ -2468,7 +2466,7 @@ namespace clam {
 	//     m_bb.ptr_store(ptr->getVar(), val->getVar());
 	//   }
 	// }
-      else if (isPointer(*I.getValueOperand(), m_lfac.get_track())) {
+      else if (isPointer(*I.getValueOperand(), m_params)) {
 	if (!val || !val->isPtr()) {
 	  CLAM_ERROR("expecting a value operand of pointer type in store instruction");
 	}
@@ -2488,7 +2486,7 @@ namespace clam {
 	This case is symmetric to StoreInst.
        */
 
-      if (!isTracked(I, m_lfac.get_track())) {
+      if (!isTracked(I, m_params)) {
 	return;
       }
       
@@ -2497,7 +2495,7 @@ namespace clam {
       
       if (isa<ConstantExpr>(I.getPointerOperand())) {
 	// We don't handle constant expressions.
-	havoc(lhs->getVar(), m_bb);
+	havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
 	return;
       }
       
@@ -2510,7 +2508,7 @@ namespace clam {
       
       if (m_lfac.isPtrNull(ptr)) {
 	CLAM_WARNING(I << " is possibly dereferencing a null pointer");
-	havoc(lhs->getVar(), m_bb);
+	havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
 	return;
       }
 
@@ -2521,7 +2519,7 @@ namespace clam {
 	} 	
 	mem_region_t r = get_region(m_mem, parent, I.getPointerOperand()); 
 	if (!(r.isUnknown())) {
-	  if (isGlobalSingleton(r)) {
+	  if (isGlobalSingleton(r, m_params.lower_singleton_aliases)) {
 	    // Promote the global to an integer/boolean scalar
 	    var_t s = m_lfac.mkArraySingletonVar(r); 
 	    if (isInteger(I)) {
@@ -2530,10 +2528,6 @@ namespace clam {
 	      m_bb.bool_assign(lhs->getVar(), s, false);
 	    } else { /* unreachable */ }
 	  } else {
-	    // We havoc the array index if we are not tracking it.
-	    if (!isPointer(*I.getPointerOperand(), m_lfac.get_track())) {
-	      m_bb.havoc(ptr->getVar());
-	    }
 	    var_t t = lhs->getVar();
 	    // Due to heap abstraction imprecisions, it can happen
 	    // that the region's bitwidth is smaller than lhs'
@@ -2541,9 +2535,18 @@ namespace clam {
 	    if (r.get_bitwidth() < lhs->getVar().get_bitwidth()) {
 	      t = m_lfac.mkIntVar(r.get_bitwidth());
 	    }
-	    var_t idx = ptr->getVar();
-	    m_bb.array_load(t, m_lfac.mkArrayVar(r), idx,
-			    m_dl->getTypeAllocSize(I.getType()));
+	    /** 
+	     * TODO: We completely forget the array index. This is ok
+	     * for array smashing but it will be too imprecise for
+	     * other array domains. We need to perform static analysis
+	     * to identify for a given pointer its offset wrt to its
+	     * allocation site.
+	     **/
+	    var_t idx = get_unconstrained_array_index_variable(m_lfac.get_vfac()); 
+	    auto const* crab_stmt =
+	      m_bb.array_load(t, m_lfac.mkArrayVar(r), idx,
+			      m_dl->getTypeAllocSize(I.getType()));
+	    insert_rev_map(crab_stmt, I);
 	    if (r.get_bitwidth() < lhs->getVar().get_bitwidth()) {
 	      // XXX: not sure if signed extension is correct.
 	      // Regions are signed-agnostic so dont know what is the
@@ -2555,7 +2558,7 @@ namespace clam {
 	  }
 	  return;
 	}
-      } else if (isPointer(I, m_lfac.get_track())) {
+      } else if (isPointer(I, m_params)) {
 	if (!lhs || !lhs->isVar()) {
 	  CLAM_ERROR("unexpected lhs of load instruction");
 	}
@@ -2564,23 +2567,23 @@ namespace clam {
 	return;
       } 
       
-      havoc(lhs->getVar(), m_bb);
+      havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
     }
     
     void visitAllocaInst(AllocaInst &I) {
 
-      if (!isTracked(I, m_lfac.get_track())) {
+      if (!isTracked(I, m_params)) {
 	return;
       }
       
-      if (isPointer(I, m_lfac.get_track())) {
+      if (isPointer(I, m_params)) {
 	crab_lit_ref_t lhs = m_lfac.getLit(I);
 	assert(lhs && lhs->isVar());
 	m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
       }
 
       Function& parent = *(I.getParent()->getParent());
-      if (m_lfac.get_track() == ARR && CrabArrayInit) {
+      if (m_params.do_initialize_arrays()) {
 	mem_region_t r = get_region(m_mem, parent, &I);
 	if (!r.isUnknown()) {
 	  
@@ -2637,12 +2640,12 @@ namespace clam {
 	  // -- unresolved indirect call
 	  CLAM_WARNING("skipped indirect call. Enabling --devirt-functions might help.");
 	  
-	  if (DoesCallSiteReturn(I, m_lfac.get_track()) &&
-	      ShouldCallSiteReturn(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_params) &&
+	      ShouldCallSiteReturn(I, m_params)) {
 	    // havoc return value
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
-	    havoc(lhs->getVar(), m_bb);
+	    havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
 	  }
 	}
 	return;
@@ -2663,7 +2666,8 @@ namespace clam {
         return;
       }
 
-      if (CrabArrayInit && (isZeroInitializer(callee) || isIntInitializer(callee))) {
+      if (m_params.do_initialize_arrays() &&
+	  (isZeroInitializer(callee) || isIntInitializer(callee))) {
 	doInitializer(I);
 	return;
       }
@@ -2672,19 +2676,20 @@ namespace clam {
         if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I)) {
           doMemIntrinsic(*MI);
         } else {
-	  if (DoesCallSiteReturn(I, m_lfac.get_track()) &&
-	      ShouldCallSiteReturn(I, m_lfac.get_track())) {
+	  if (DoesCallSiteReturn(I, m_params) &&
+	      ShouldCallSiteReturn(I, m_params)) {
 	    // -- havoc return value of the intrinsics
 	    crab_lit_ref_t lhs = m_lfac.getLit(I);
 	    assert(lhs && lhs->isVar());
-	    havoc(lhs->getVar(), m_bb);
+	    havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
 	  }
 	}
 	return;
       }
       
 
-      if (callee->isDeclaration() || callee->isVarArg() || !m_is_inter_proc) {
+      if (callee->isDeclaration() || callee->isVarArg() ||
+	  !m_params.interprocedural) {
 	/**
 	 * If external or we don't perform inter-procedural reasoning
 	 * then we make sure all modified arrays and return value of
@@ -2692,17 +2697,17 @@ namespace clam {
 	 **/      
 	
         // -- havoc return value
-        if (DoesCallSiteReturn(I, m_lfac.get_track()) &&
-	    ShouldCallSiteReturn(I, m_lfac.get_track())) {
+        if (DoesCallSiteReturn(I, m_params) &&
+	    ShouldCallSiteReturn(I, m_params)) {
 	  crab_lit_ref_t lhs = m_lfac.getLit(I);
 	  assert(lhs && lhs->isVar());
-	  havoc(lhs->getVar(), m_bb);
+	  havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
 	}
         // -- havoc all modified regions by the callee
         if (m_lfac.get_track() == ARR) {
 	  mem_region_vector_t mods = get_modified_regions(m_mem, I);
           for (auto a : mods) {
-	    if (isGlobalSingleton(a))
+	    if (isGlobalSingleton(a, m_params.lower_singleton_aliases))
 	      m_bb.havoc(m_lfac.mkArraySingletonVar(a));
 	    else
 	      m_bb.havoc(m_lfac.mkArrayVar(a));
@@ -2736,13 +2741,13 @@ namespace clam {
       // -- add the actual parameters of the llvm callsite: i1,...in.
       for (auto &a : llvm::make_range(CS.arg_begin(), CS.arg_end())) {
         Value *v = a.get();
-        if (!isTracked(*v, m_lfac.get_track())) continue;
+        if (!isTracked(*v, m_params)) continue;
         inputs.push_back(normalizeFuncParamOrRet(*v, m_bb, m_lfac));
       }
       
       // -- add the return value of the llvm calliste: o
-      if (ShouldCallSiteReturn(I, m_lfac.get_track())) {
-	if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+      if (ShouldCallSiteReturn(I, m_params)) {
+	if (DoesCallSiteReturn(I, m_params)) {
 	  crab_lit_ref_t ret = m_lfac.getLit(I);
 	  assert(ret && ret->isVar());
 	  outputs.push_back(ret->getVar());
@@ -2758,7 +2763,7 @@ namespace clam {
 	    unsigned bitwidth = RT->getIntegerBitWidth();      
 	    var_t fresh_ret = m_lfac.mkIntVar(bitwidth);	    
 	    outputs.push_back(fresh_ret);	    	    
-	  } else if (isPointer(RT, m_lfac.get_track())) {
+	  } else if (isPointer(RT, m_params)) {
 	    var_t fresh_ret = m_lfac.mkPtrVar();	    	    
 	    outputs.push_back(fresh_ret);	    
 	  } else {
@@ -2766,7 +2771,7 @@ namespace clam {
 	  }
 	}
       } else {
-	if (DoesCallSiteReturn(I, m_lfac.get_track())) {
+	if (DoesCallSiteReturn(I, m_params)) {
 	  // LLVM shouldn't allow this.
 	  CLAM_ERROR("Unexpected type mismatch between callsite and function signature");
 	}
@@ -2787,7 +2792,7 @@ namespace clam {
 
         // -- add only read regions as array input parameters
         for (auto a: onlyreads) {
-          if (isGlobalSingleton(a)) {
+          if (isGlobalSingleton(a, m_params.lower_singleton_aliases)) {
 	    // Promote the global to a scalar
 	    inputs.push_back(m_lfac.mkArraySingletonVar(a));
 	  } else {
@@ -2802,7 +2807,7 @@ namespace clam {
 	  }
 	  
           // input version
-          if (isGlobalSingleton(a)) {
+          if (isGlobalSingleton(a, m_params.lower_singleton_aliases)) {
 	    // Promote the global to a scalar
             inputs.push_back(m_lfac.mkArraySingletonVar(a));  
 	  } else {
@@ -2810,7 +2815,7 @@ namespace clam {
 	  }
 
           // output version
-          if (isGlobalSingleton(a)) {
+          if (isGlobalSingleton(a, m_params.lower_singleton_aliases)) {
 	    // Promote the global to a scalar
             outputs.push_back(m_lfac.mkArraySingletonVar(a));  	    
 	  } else  {
@@ -2834,11 +2839,11 @@ namespace clam {
 
     /// base case. if all else fails.
     void visitInstruction(Instruction &I) {
-      if (!isTracked(I, m_lfac.get_track())) return;
+      if (!isTracked(I, m_params)) return;
       CLAM_WARNING("Skipped " << I); 
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       if (lhs && lhs->isVar()) {
-	havoc(lhs->getVar(), m_bb);
+	havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
       }
     }
     
@@ -2847,21 +2852,21 @@ namespace clam {
   CfgBuilder::CfgBuilder(const Function& func, 
 			 llvm_variable_factory &vfac,
 			 HeapAbstraction &mem, 
-			 tracked_precision tracklev,			 
 			 const TargetLibraryInfo* tli,
-			 bool isInterProc)
+			 const CrabBuilderParams &params) 
     : m_is_cfg_built(false),
       // HACK: it's safe to remove constness because we know that the
       // Builder never modifies the bitcode.
       m_func(const_cast<Function&>(func)),
-      m_lfac(vfac, tracklev),
+      m_lfac(vfac, params),
       m_mem(mem),
       m_cfg(nullptr),
       m_id(0),             
       m_dl(&(func.getParent()->getDataLayout())),
       m_tli(tli),
-      m_is_inter_proc(isInterProc){
-    m_cfg.reset(new cfg_t(make_crab_basic_block_label(&m_func.getEntryBlock()), tracklev));
+      m_params(params) {
+    m_cfg.reset(new cfg_t(make_crab_basic_block_label(&m_func.getEntryBlock()),
+			  m_params.precision_level));
   }
 
   CfgBuilder::~CfgBuilder() {}
@@ -2872,6 +2877,15 @@ namespace clam {
     return *m_cfg;
   }
 
+  const llvm::Instruction* CfgBuilder::get_instruction(const statement_t& s) const {
+    auto it = m_rev_map.find(&s);
+    if (it != m_rev_map.end()){
+      return it->second;
+    } else {
+      return nullptr;
+    }
+  }
+  
   basic_block_label_t CfgBuilder::get_crab_basic_block(const BasicBlock *bb) const {
     auto it = m_node_to_crab_map.find(bb);
     if (it == m_node_to_crab_map.end()) {
@@ -2977,8 +2991,8 @@ namespace clam {
 	      if (cst_opt.hasValue()) {
 		bb.assume(cst_opt.getValue()); 
 	      }
-	    } else if (isPointer(*(CI->getOperand(0)), m_lfac.get_track()) &&
-		       isPointer(*(CI->getOperand(1)), m_lfac.get_track())) {
+	    } else if (isPointer(*(CI->getOperand(0)), m_params) &&
+		       isPointer(*(CI->getOperand(1)), m_params)) {
 	      auto cst_opt = cmpInstToCrabPtr(*CI, m_lfac, isNegated);
 	      if (cst_opt.hasValue()) {
 		bb.ptr_assume(cst_opt.getValue()); 
@@ -3078,7 +3092,7 @@ namespace clam {
       
       // -- build a CFG block ignoring branches, phi-nodes, and return
       CrabInstVisitor v(m_lfac, m_mem, m_dl, m_tli, *bb,
-			m_is_inter_proc, init_regions);
+			m_rev_map, init_regions, m_params);
       v.visit(B);
       // hook for seahorn
       has_seahorn_fail |= (v.has_seahorn_fail() && m_func.getName().equals("main"));
@@ -3096,9 +3110,9 @@ namespace clam {
 	if (has_seahorn_fail) {
 	  ret_block->assertion(lin_cst_t::get_false(), getDebugLoc(RI));	  
 	}
-	if (m_is_inter_proc) {
+	if (m_params.interprocedural) {
 	  if (Value * RV = RI->getReturnValue()) {
-	    if (isTracked(*RV, m_lfac.get_track())) {
+	    if (isTracked(*RV, m_params)) {
 	      ret_val = var_ref_t(normalizeFuncParamOrRet(*RV, *ret_block, m_lfac));
 	      bb->ret(ret_val.get());
 	    }
@@ -3125,9 +3139,12 @@ namespace clam {
     }
 
 
-    /// TODO: add an array init statement
+    /**
+     ** TODO: add an array init statement for each new region.
+     ** This is not sound in general so we need to be careful.
+     **/
     /// Allocate arrays with initial values 
-    // if (m_lfac.get_track() == ARR && CrabArrayInit && CrabUnsoundArrayInit) {
+    // if (m_params.do_aggressive_initialize_arrays()) {
     //   // getNewRegions returns all the new nodes created by the
     //   // function (via malloc-like functions) except if the function
     //   // is main.
@@ -3139,7 +3156,7 @@ namespace clam {
     // }
 
     /// Add function declaration
-    if (m_is_inter_proc && !m_func.isVarArg()) {
+    if (m_params.interprocedural && !m_func.isVarArg()) {
       
       /**
        * Translate LLVM function declaration 
@@ -3172,7 +3189,7 @@ namespace clam {
 	// signature it has a return type. E.g., "int foo() {
 	// unreachable; }"
 	const Type& RT = *m_func.getReturnType();
-	if (isTrackedType(RT, m_lfac.get_track())) {
+	if (isTrackedType(RT, m_params)) {
 	  if (isBool(&RT)) {
 	    ret_val = var_ref_t(m_lfac.mkBoolVar());  
 	  } else if (isInteger(&RT)) {
@@ -3192,7 +3209,7 @@ namespace clam {
       
       // -- add input parameters i1,...,in
       for (Value &arg : llvm::make_range(m_func.arg_begin(), m_func.arg_end())) {
-        if (!isTracked(arg, m_lfac.get_track())) continue;
+        if (!isTracked(arg, m_params)) continue;
 
 	crab_lit_ref_t i = m_lfac.getLit(arg);
 	assert(i && i->isVar());
@@ -3234,7 +3251,7 @@ namespace clam {
 		 
         // -- add only read regions as input parameters
         for (auto a: onlyreads) {
-          if (isGlobalSingleton(a)) {
+          if (isGlobalSingleton(a, m_params.lower_singleton_aliases)) {
 	    // Promote the global to a scalar
 	    inputs.push_back(m_lfac.mkArraySingletonVar(a));
 	  } else {
@@ -3257,7 +3274,7 @@ namespace clam {
 
 	  /** Added in the entry block of the function **/
           entry.set_insert_point_front();
-          if (const Value *v = isGlobalSingleton(a)) {
+          if (const Value *v = isGlobalSingleton(a, m_params.lower_singleton_aliases)) {
 	    // Promote the global to a scalar
 	    Type* ty = cast<PointerType>(v->getType())->getElementType();
 	    var_t s = m_lfac.mkArraySingletonVar(a);
@@ -3287,7 +3304,7 @@ namespace clam {
 	    inputs.push_back(a_in.get());
 	  
           // output version
-          if (isGlobalSingleton(a)) {
+          if (isGlobalSingleton(a, m_params.lower_singleton_aliases)) {
 	    // Promote the global to a scalar
 	    outputs.push_back(m_lfac.mkArraySingletonVar(a));
 	  } else {
@@ -3402,7 +3419,7 @@ namespace clam {
       }
     }
     
-    if (CrabCFGSimplify) {
+    if (m_params.simplify) {
       // -- Remove dead statements generated by our translation
       CRAB_VERBOSE_IF(1,crab::get_msg_stream() << "Started CFG dead code elimination\n";); 
       cfg_ref_t cfg_ref(*m_cfg);
@@ -3415,14 +3432,17 @@ namespace clam {
       m_cfg->simplify();      
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished CFG simplification\n";);
     }
-    
-    if (CrabPrintCFG) crab::outs() << *m_cfg << "\n";
+
+    if (m_params.print_cfg) {
+      crab::outs () << *m_cfg << "\n";
+    }
     return ;
   }
 
 
   /* CFG Manager class */
-  CrabBuilderManager::CrabBuilderManager(){}
+  CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params)
+    : m_params(params) {}
   
   CrabBuilderManager::~CrabBuilderManager(){}
   
@@ -3452,5 +3472,8 @@ namespace clam {
   variable_factory_t& CrabBuilderManager::get_var_factory() {
     return m_vfac;
   }
-  
+ 
+  const CrabBuilderParams& CrabBuilderManager::get_cfg_builder_params() const {
+    return m_params;
+  }
 } // end namespace clam
