@@ -162,8 +162,7 @@ namespace clam {
     IntraClam(const llvm::Function &fun,	      
 	      const llvm::TargetLibraryInfo &tli,
 	      HeapAbstraction &mem,
-	      CrabBuilderManager &man,
-	      const crab::cfg::tracked_precision cfg_precision = crab::cfg::NUM);
+	      CrabBuilderManager &man);
 
     ~IntraClam();    
 
@@ -261,8 +260,7 @@ namespace clam {
     InterClam(const llvm::Module &module,
 	      const llvm::TargetLibraryInfo &tli,
 	      HeapAbstraction &mem,
-	      CrabBuilderManager &man,
-	      const crab::cfg::tracked_precision cfg_precision = crab::cfg::NUM);
+	      CrabBuilderManager &man);
 
     ~InterClam();    
 
