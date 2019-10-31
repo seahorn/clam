@@ -762,6 +762,7 @@ namespace clam {
     : m_impl(nullptr), m_fun(fun), m_mem(mem), m_builder_man(man) {
     m_impl = make_unique<IntraClam_Impl>
       (m_fun, m_mem, tli, m_builder_man);
+    CRAB_VERBOSE_IF(1, man.get_cfg_builder_params().write(errs()));
   }
 
   IntraClam::~IntraClam() {}

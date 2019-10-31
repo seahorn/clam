@@ -3453,6 +3453,37 @@ namespace clam {
   }
 
 
+  /* CrabBuilderParams class */
+
+  void CrabBuilderParams::write(raw_ostream &o) const {
+    o << "CFG builder options:\n";
+    o << "\tabstraction level: ";
+    switch(precision_level) {
+    case crab::cfg::PTR:
+      if (!ignore_ptr) {
+	o << "integers and pointer offsets\n";
+	break;
+      }
+    case crab::cfg::NUM:
+      o << "only integers\n";
+      break;
+    case crab::cfg::ARR:
+      if (ignore_ptr) {
+	o << "integers and pointer contents but ignoring pointer arithmetic\n"; 
+      } else {
+	o << "integers, pointer arithmetic, and pointer contents\n"; 
+      }
+      break;
+    default:;;
+    }
+    o << "\tsimplify cfg: " << simplify << "\n";
+    o << "\tinterproc cfg: " << interprocedural << "\n";
+    o << "\tlower singleton aliases into scalars: " << lower_singleton_aliases << "\n";
+    o << "\tinitialize arrays: " << initialize_arrays << "\n";
+    o << "\tenable possibly unsound initialization of arrays: "
+      << aggressive_initialize_arrays << "\n";
+    o << "\tenable big numbers: " << enable_bignums << "\n";
+  }
   /* CFG Manager class */
   CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params)
     : m_params(params) {}

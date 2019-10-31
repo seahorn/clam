@@ -17,6 +17,7 @@ namespace llvm {
   class BasicBlock;
   class Function;
   class Twine;
+  class raw_ostream;
 }
 
 namespace clam {
@@ -111,6 +112,8 @@ namespace clam {
       set_array_precision();
       ignore_ptr = true;
     }
+
+    void write(llvm::raw_ostream &o) const;
   };
 
   // forward declarations
