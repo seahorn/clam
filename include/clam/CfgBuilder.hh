@@ -85,34 +85,38 @@ namespace clam {
       , aggressive_initialize_arrays(_aggressive_initialize_arrays)
       , enable_bignums(_enable_bignums)
       , print_cfg(_print_cfg) {}
-    
-    bool ignore_pointers() const {
-      return precision_level >= crab::cfg::PTR && !ignore_ptr;
-    }
 
-    bool do_initialize_arrays() const {
+    bool track_pointers() const {
+      return precision_level >= crab::cfg::PTR && !ignore_ptr;      
+    }
+    
+    bool enabled_array_initialization() const {
       return precision_level == crab::cfg::ARR && initialize_arrays;
     }
 
-    bool do_aggressive_initialize_arrays() const {
+    bool enabled_aggressive_array_initialization() const {
       return (precision_level == crab::cfg::ARR && initialize_arrays &&
 	      aggressive_initialize_arrays);
     }
+
+    /* Represent only booleans and integers */
+    void set_num_precision() {
+      precision_level = crab::cfg::NUM;
+    }
+
+    /* Represent booleans, integers, and pointers */
+    void set_pointer_precision() {
+      precision_level = crab::cfg::PTR;
+      ignore_ptr = false;            
+    }
     
-    // for precise array domains such array graph or array expansion
-    // domain
+    /* Represent booleans, integers, and arrays of those types */
     void set_array_precision() {
       precision_level = crab::cfg::ARR;
-      lower_singleton_aliases = true;
+      ignore_ptr = true;      
       initialize_arrays = true;
     }
-
-    // for weak array domains such as array smashing
-    void set_array_precision_without_offsets() {
-      set_array_precision();
-      ignore_ptr = true;
-    }
-
+    
     void write(llvm::raw_ostream &o) const;
   };
 

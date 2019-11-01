@@ -102,7 +102,7 @@ namespace clam {
   }
 
   static bool isPointer(const llvm::Type *t, const CrabBuilderParams &params) {
-    return (t->isPointerTy() && !params.ignore_pointers());
+    return (t->isPointerTy() && params.track_pointers());
   }
 
   static bool isPointer(const llvm::Value&v, const CrabBuilderParams &params) {
@@ -150,7 +150,7 @@ namespace clam {
   static bool isTrackedType(const llvm::Type& ty, const CrabBuilderParams &params) {
     // -- a pointer
     if (ty.isPointerTy()) 
-      return (!params.ignore_pointers()); 
+      return (params.track_pointers()); 
     
     // -- always track integer and boolean registers
     return ty.isIntegerTy();
@@ -1625,7 +1625,7 @@ namespace clam {
        * This would be unsound in general so we need to be careful.
        **/
       
-      // if (m_params.do_aggressive_initialize_arrays()) {
+      // if (m_params.enabled_aggressive_array_initialization()) {
       //   mem_region_t r = GET_REGION(I,&I);
       //   bool isMainCaller = I.getParent()->getParent()->getName().equals("main");
       //   if (isMainCaller && !r.isUnknown()) {
@@ -1660,7 +1660,7 @@ namespace clam {
 	  m_bb.array_assign(m_lfac.mkArrayVar(dst_reg), m_lfac.mkArrayVar(src_reg));
 	}
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
-	if (m_params.do_aggressive_initialize_arrays() && isInteger(*(MSI->getValue()))) {
+	if (m_params.enabled_aggressive_array_initialization() && isInteger(*(MSI->getValue()))) {
 	  Value* dst = MSI->getDest();
 	  mem_region_t r = get_region(m_mem, parent, dst);
 	  if (r.isUnknown()) return;
@@ -2596,7 +2596,7 @@ namespace clam {
       }
 
       Function& func = *(I.getParent()->getParent());
-      if (m_params.do_initialize_arrays()) {
+      if (m_params.enabled_array_initialization()) {
 	mem_region_t r = get_region(m_mem, func, &I);
 	if (!r.isUnknown()) {
 	  
@@ -2679,7 +2679,7 @@ namespace clam {
         return;
       }
 
-      if (m_params.do_initialize_arrays() &&
+      if (m_params.enabled_array_initialization() &&
 	  (isZeroInitializer(callee) || isIntInitializer(callee))) {
 	doInitializer(I);
 	return;
@@ -3157,7 +3157,7 @@ namespace clam {
      ** This is not sound in general so we need to be careful.
      **/
     /// Allocate arrays with initial values 
-    // if (m_params.do_aggressive_initialize_arrays()) {
+    // if (m_params.enabled_aggressive_array_initialization()) {
     //   // getNewRegions returns all the new nodes created by the
     //   // function (via malloc-like functions) except if the function
     //   // is main.
@@ -3461,7 +3461,7 @@ namespace clam {
     switch(precision_level) {
     case crab::cfg::PTR:
       if (!ignore_ptr) {
-	o << "integers and pointer offsets\n";
+	o << "integers and pointers\n";
 	break;
       }
     case crab::cfg::NUM:
@@ -3469,9 +3469,9 @@ namespace clam {
       break;
     case crab::cfg::ARR:
       if (ignore_ptr) {
-	o << "integers and pointer contents but ignoring pointer arithmetic\n"; 
+	o << "integers and arrays (memory abstraction)\n"; 
       } else {
-	o << "integers, pointer arithmetic, and pointer contents\n"; 
+	o << "integers, pointers, and arrays (memory abstraction)\n"; 
       }
       break;
     default:;;
@@ -3479,7 +3479,7 @@ namespace clam {
     o << "\tsimplify cfg: " << simplify << "\n";
     o << "\tinterproc cfg: " << interprocedural << "\n";
     o << "\tlower singleton aliases into scalars: " << lower_singleton_aliases << "\n";
-    o << "\tinitialize arrays: " << initialize_arrays << "\n";
+    o << "\tinitialize arrays: " << enabled_array_initialization() << "\n";
     o << "\tenable possibly unsound initialization of arrays: "
       << aggressive_initialize_arrays << "\n";
     o << "\tenable big numbers: " << enable_bignums << "\n";

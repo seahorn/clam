@@ -1207,7 +1207,11 @@ namespace clam {
 				CrabEnableUniqueScalars, CrabDisablePointers,
 				CrabIncludeHavoc, CrabArrayInit, CrabUnsoundArrayInit,
 				CrabEnableBignums, CrabPrintCFG))),
-    m_tli(nullptr) { }
+    m_tli(nullptr) {
+    CRAB_VERBOSE_IF(1,    
+		    m_cfg_builder_man->get_cfg_builder_params().write(errs());
+		    errs() << "\n";);
+  }
 
   void ClamPass::releaseMemory() {
     m_pre_map.clear(); 
