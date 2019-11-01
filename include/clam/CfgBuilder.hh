@@ -5,6 +5,7 @@
 
 #include "clam/crab/crab_cfg.hh"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Optional.h"
 
 #include <memory>
 #include <unordered_map>
@@ -17,6 +18,7 @@ namespace llvm {
   class BasicBlock;
   class Function;
   class Twine;
+  class raw_ostream;
 }
 
 namespace clam {
@@ -84,33 +86,39 @@ namespace clam {
       , aggressive_initialize_arrays(_aggressive_initialize_arrays)
       , enable_bignums(_enable_bignums)
       , print_cfg(_print_cfg) {}
-    
-    bool ignore_pointers() const {
-      return precision_level >= crab::cfg::PTR && !ignore_ptr;
-    }
 
-    bool do_initialize_arrays() const {
+    bool track_pointers() const {
+      return precision_level >= crab::cfg::PTR && !ignore_ptr;      
+    }
+    
+    bool enabled_array_initialization() const {
       return precision_level == crab::cfg::ARR && initialize_arrays;
     }
 
-    bool do_aggressive_initialize_arrays() const {
+    bool enabled_aggressive_array_initialization() const {
       return (precision_level == crab::cfg::ARR && initialize_arrays &&
 	      aggressive_initialize_arrays);
     }
-    
-    // for precise array domains such array graph or array expansion
-    // domain
-    void set_array_precision() {
-      precision_level = crab::cfg::ARR;
-      lower_singleton_aliases = true;
-      initialize_arrays = true;
+
+    /* Represent only booleans and integers */
+    void set_num_precision() {
+      precision_level = crab::cfg::NUM;
     }
 
-    // for weak array domains such as array smashing
-    void set_array_precision_without_offsets() {
-      set_array_precision();
-      ignore_ptr = true;
+    /* Represent booleans, integers, and pointers */
+    void set_pointer_precision() {
+      precision_level = crab::cfg::PTR;
+      ignore_ptr = false;            
     }
+    
+    /* Represent booleans, integers, and arrays of those types */
+    void set_array_precision() {
+      precision_level = crab::cfg::ARR;
+      ignore_ptr = true;      
+      initialize_arrays = true;
+    }
+    
+    void write(llvm::raw_ostream &o) const;
   };
 
   // forward declarations
@@ -145,6 +153,8 @@ namespace clam {
     
     var_t mkPtrVar();
 
+    llvm::Optional<var_t> mkVar(const llvm::Value&v);
+    
     var_t mkIntArrayVar(unsigned bitwidth);
     
     var_t mkBoolArrayVar();

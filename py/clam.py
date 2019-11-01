@@ -13,7 +13,7 @@ import resource
 import stats
 
 root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-verbose = False
+verbose = True
 
 running_process = None
 
@@ -280,14 +280,11 @@ def parseArgs(argv):
                     help='Max number of live vars per block before switching to a non-relational domain',
                     default=10000)
     p.add_argument('--crab-track',
-                    help="Track integers (num), pointer offsets (ptr), and memory contents (arr)\n"
-                    "- ptr: subsumes num\n"
-                    "- arr: subsumes num+ptr\n"
-                    "- arr-no-ptr: as arr but excluding non-constant pointer offsets\n",
-                    choices=['num', 'ptr', 'arr', 'arr-no-ptr'], dest='track', default='num')
+                   help='Track integers (num), num + pointer offsets (ptr), and num + memory contents (arr) via memory abstraction',
+                   choices=['num', 'ptr', 'arr'], dest='track', default='num')
     p.add_argument('--crab-heap-analysis',
-                   help="Heap analysis used for Crab memory disambiguation:\n"
-                   "- llvm-dsa: context-insensitive llvm-dsa\n"
+                   help="Heap analysis used for memory disambiguation (i.e., --crab-track=arr):\n"
+                   "- llvm-dsa: context-insensitive llvm-dsa (deprecated) \n"
                    "- ci-sea-dsa: context-insensitive sea-dsa\n"
                    "- cs-sea-dsa: context-sensitive sea-dsa\n"
                    "- ci-sea-dsa-types: context-insensitive sea-dsa with types\n"
@@ -701,9 +698,10 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
     clam_args.append('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
     clam_args.append('--crab-relational-threshold={0}'.format(args.num_threshold))
-    if args.track == 'arr-no-ptr':    
+    if args.track == 'arr':    
         clam_args.append('--crab-track=arr')
-        clam_args.append('--crab-disable-ptr')        
+        clam_args.append('--crab-disable-ptr')
+        clam_args.append('--crab-arr-init')
     else:
         clam_args.append('--crab-track={0}'.format(args.track))
     if args.crab_heap_analysis == 'llvm-dsa' or \

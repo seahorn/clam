@@ -17,7 +17,7 @@ include (CTest)
 
 # By default, we don't include clam transformations if we are an
 # embedded project, but user can change that.
-option(CrabTransforms OFF)
+option(CLAM_INCLUDE_TRANSFORMS OFF)
 
 # Save old CMAKE_FIND_LIBRARY_SUFFIXES
 set(_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -25,12 +25,12 @@ set(_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
 # determine if this is top-level or embedded project
 if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
   set(TopLevel TRUE)
-  set(CrabTransforms ON)  
+  set(CLAM_INCLUDE_TRANSFORMS ON)  
 else()
   set(TopLevel FALSE)
 endif()
 
-if (CrabTransforms)
+if (CLAM_INCLUDE_TRANSFORMS)
   message(STATUS "Including clam transformations.")
 else()
   message(STATUS "Excluding clam transformations.")
@@ -339,7 +339,7 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES ${_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
 if (NOT TopLevel)
    set(XCLAM_LIBS
        ClamAnalysis ClamInstrumentation)
-   if (CrabTransforms)
+   if (CLAM_INCLUDE_TRANSFORMS)
      set(XCLAM_LIBS ${XCLAM_LIBS} LlvmPasses)
    endif()
   

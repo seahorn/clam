@@ -6,7 +6,7 @@ CrabTrackLev("crab-track",
    cl::values
     (clEnumValN(NUM, "num", "Integer and Boolean registers only"),
      clEnumValN(PTR, "ptr", "num + pointer offsets"),
-     clEnumValN(ARR, "arr", "ptr + memory contents via array abstraction")),
+     clEnumValN(ARR, "arr", "num + memory contents via array abstraction")),
    cl::init(tracked_precision::NUM));
 
 cl::opt<bool>
@@ -20,6 +20,10 @@ CrabPrintCFG("crab-print-cfg",
 	 cl::desc("Print Crab CFG"), 
 	 cl::init(false));
 
+/**
+ * Translate singleton alias sets as scalar values.
+ * This is specially useful for global variables.
+ */
 cl::opt<bool>
 CrabEnableUniqueScalars("crab-singleton-aliases",
 	 cl::desc("Treat singleton alias sets as scalar values"), 
@@ -27,7 +31,7 @@ CrabEnableUniqueScalars("crab-singleton-aliases",
 
 /** 
  * Do not translate memory instructions to crab pointer
- * instructions. However, memory instructions will be translated to
+ * instructions. Memory instructions can be still translated to
  * crab array instructions if tracked precision >= ARR.
  */
 cl::opt<bool>
