@@ -5,6 +5,7 @@
 
 #include "clam/crab/crab_cfg.hh"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Optional.h"
 
 #include <memory>
 #include <unordered_map>
@@ -152,6 +153,8 @@ namespace clam {
     
     var_t mkPtrVar();
 
+    llvm::Optional<var_t> mkVar(const llvm::Value&v);
+    
     var_t mkIntArrayVar(unsigned bitwidth);
     
     var_t mkBoolArrayVar();

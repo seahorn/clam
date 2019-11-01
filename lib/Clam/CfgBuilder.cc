@@ -379,6 +379,9 @@ namespace clam {
     // Create a fresh pointer variable
     var_t mkPtrVar();
 
+    // Create a fresh variable from a Value
+    llvm::Optional<var_t> mkVar(const Value&v);
+    
     // Common accessors to crab_lit_ref_t subclasses.
     bool isBoolTrue(const crab_lit_ref_t ref) const;
     
@@ -506,6 +509,18 @@ namespace clam {
   
   var_t crabLitFactoryImpl::mkPtrVar() 
   {  return var_t(m_vfac.get(), PTR_TYPE); }     
+
+  llvm::Optional<var_t> crabLitFactoryImpl::mkVar(const Value&v)  {
+    if (isBool(v)) {
+      return mkBoolVar();
+    } else if (isInteger(v)) {
+      unsigned bitwidth = v.getType()->getIntegerBitWidth();      
+      return mkIntVar(bitwidth);
+    } else if (isPointer(v, m_params)) {
+      return mkPtrVar();      
+    }
+    return llvm::None;
+  }
   
   bool crabLitFactoryImpl::isBoolTrue(const crab_lit_ref_t ref) const {
     if (!ref || !ref->isBool())
@@ -634,6 +649,9 @@ namespace clam {
     
   var_t crabLitFactory::mkPtrVar()
   { return m_impl->mkPtrVar();}        
+
+  llvm::Optional<var_t> crabLitFactory::mkVar(const Value& v)
+  { return m_impl->mkVar(v);}        
     
   bool crabLitFactory::isBoolTrue(const crab_lit_ref_t ref) const
   { return m_impl->isBoolTrue(ref);}
@@ -1111,10 +1129,20 @@ namespace clam {
 	}
       }
     }
-    // we should not reach this point since v is tracked.
-    CLAM_ERROR("cannot normalize function parameter or return value");
-    // clang complains otherwise
-    abort();
+
+    if (isTracked(v, lfac.get_cfg_builder_params())) {
+      if (isa<ConstantExpr>(v)) {
+	CLAM_WARNING("Clam cfg builder created a fresh variable from constant expr");
+	llvm::Optional<var_t> fresh_v = lfac.mkVar(v);
+	if (fresh_v.hasValue()) {
+	  return fresh_v.getValue();
+	}
+      }
+      // we should not reach this point since v is tracked.
+      CLAM_ERROR("cannot normalize function parameter or return value");
+      // clang complains otherwise
+      abort();
+    }
   }
   
   //! Translate PHI nodes
@@ -2993,7 +3021,9 @@ namespace clam {
               (ci->isZero() && br->getSuccessor(1) != &dst)) {
             bb.unreachable();
 	  }
-        } else {
+        } else if (const ConstantExpr *ce = dyn_cast<const ConstantExpr>(&c)) {
+	  CLAM_WARNING("Clam cfg builder skipped a branch condition with constant expression");
+	} else {
           bool isNegated = (br->getSuccessor(1) == &dst);
 	  bool lower_cond_as_bool = false;
           if (CmpInst* CI = dyn_cast<CmpInst>(& const_cast<Value&>(c)))  {
