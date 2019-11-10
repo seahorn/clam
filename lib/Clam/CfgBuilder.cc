@@ -58,6 +58,8 @@
 #include <algorithm>
 #include <unordered_map>
 
+#include <boost/functional/hash_fwd.hpp> // for hash_combine
+
 using namespace llvm;
 using namespace crab;
 using namespace ikos;
@@ -183,6 +185,7 @@ namespace clam {
     return (!I.getType()->isVoidTy() && isTracked(I, params));
   }
 
+  
   // Convenient wrapper for a LLVM variable or constant
   class crabLit {
   public:
@@ -343,6 +346,8 @@ namespace clam {
     
   };
 
+  typedef std::shared_ptr<crabLit> crab_lit_ref_t;
+  
   class crabLitFactoryImpl {
   public:
     
@@ -603,6 +608,70 @@ namespace clam {
     return llvm::None;
   }
 
+  
+  /** 
+      Factory to create crab literals: typed variable or number.
+  **/
+  class crabLitFactory {
+  public:
+    
+    crabLitFactory(llvm_variable_factory &vfac, const CrabBuilderParams& params);
+
+    ~crabLitFactory();
+    
+    llvm_variable_factory& get_vfac();
+
+    crab::cfg::tracked_precision get_track() const;
+    
+    const CrabBuilderParams& get_cfg_builder_params() const;
+
+    /** convert a Value to a crabLit **/
+    crab_lit_ref_t getLit(const llvm::Value &v);
+
+    /** make typed variables **/
+    var_t mkIntVar(unsigned bitwidth);
+    
+    var_t mkBoolVar();
+    
+    var_t mkPtrVar();
+
+    llvm::Optional<var_t> mkVar(const llvm::Value&v);
+    
+    var_t mkIntArrayVar(unsigned bitwidth);
+    
+    var_t mkBoolArrayVar();
+    
+    var_t mkPtrArrayVar();
+    
+    template<typename Region> var_t mkArrayVar(Region r);
+    
+    template<typename Region> var_t mkArraySingletonVar(Region r);    
+
+    /** direct accessors to crabLit subclasses **/
+    bool isBoolTrue(const crab_lit_ref_t ref) const;
+    
+    bool isBoolFalse(const crab_lit_ref_t ref) const;
+
+    bool isPtrNull(const crab_lit_ref_t ref) const;
+
+    lin_exp_t getExp(const crab_lit_ref_t ref) const;
+    
+    number_t getIntCst(const crab_lit_ref_t ref) const;    
+          
+  private:
+    crabLitFactoryImpl* m_impl;
+  };
+
+  struct pair_hash {
+    template<typename T1, typename T2>
+    std::size_t operator()(const std::pair<T1,T2> &p) const {
+      std::size_t seed = 0;
+      boost::hash_combine(seed, p.first);
+      boost::hash_combine(seed, p.second);	
+      return seed;
+    }
+  };
+    
   crabLitFactory::crabLitFactory(llvm_variable_factory &vfac, const CrabBuilderParams &params)
     : m_impl(new crabLitFactoryImpl(vfac, params)) { }
     
@@ -2890,11 +2959,111 @@ namespace clam {
     
   }; // end class
 
-  CfgBuilder::CfgBuilder(const Function& func, 
-			 llvm_variable_factory &vfac,
-			 HeapAbstraction &mem, 
-			 const TargetLibraryInfo* tli,
-			 const CrabBuilderParams &params) 
+
+  class CfgBuilderImpl {
+   public:
+    
+    CfgBuilderImpl(const llvm::Function& func, 
+		   llvm_variable_factory &vfac,
+		   HeapAbstraction &mem, 
+		   const llvm::TargetLibraryInfo *tli,
+		   const CrabBuilderParams &params);
+    
+    void build_cfg();
+
+    CfgBuilderImpl(const CfgBuilderImpl& o) = delete;
+    
+    CfgBuilderImpl& operator=(const CfgBuilderImpl& o) = delete;
+    
+    ~CfgBuilderImpl();
+
+    // return crab control flow graph
+    cfg_t& get_cfg();
+
+    // map a llvm basic block to a crab basic block label
+    basic_block_label_t get_crab_basic_block(const llvm::BasicBlock *bb) const;
+
+    // map a llvm edge to a crab basic block label.
+    // return nullptr if the edge is not translated to a crab basic block.
+    const basic_block_label_t*
+    get_crab_basic_block(const llvm::BasicBlock *src,
+  			 const llvm::BasicBlock *dst) const;
+
+    // Most crab statements have back pointers to LLVM operands so it
+    // is always possible to find the corresponding LLVM
+    // instruction. Array crab operations are an exceptions.
+    // 
+    // This method maps an **array** crab statement to its
+    // corresponding llvm instruction. Return null if the the array
+    // instruction is not mapped to a LLVM instruction.
+    const llvm::Instruction* get_instruction(const statement_t& s) const;
+
+   private:
+
+    // map from a llvm basic block to a crab basic block id
+    using node_to_crab_block_map_t = std::unordered_map<const llvm::BasicBlock*,
+  						      basic_block_label_t>;
+
+    // map from a llvm edge to a crab basic block id
+    using edge_to_crab_block_map_t = std::unordered_map<std::pair<const llvm::BasicBlock*,
+  								  const llvm::BasicBlock*>,
+  							basic_block_label_t, pair_hash>;
+    
+    // keep track whether the crab CFG has been built
+    bool m_is_cfg_built;
+    // The function should be const because it's never modified.
+    llvm::Function &m_func;
+    // literal factory
+    crabLitFactory m_lfac; 
+    HeapAbstraction &m_mem;
+    // the crab CFG
+    std::unique_ptr<cfg_t> m_cfg;
+    // generate unique identifiers for crab basic block ids
+    unsigned int m_id;
+    // map llvm CFG basic blocks to crab basic block ids
+    node_to_crab_block_map_t m_node_to_crab_map;
+    // map llvm CFG edges to crab basic block ids
+    edge_to_crab_block_map_t m_edge_to_crab_map;
+    // map Crab statement to its corresponding LLVM instruction
+    // 
+    // In most of the crab statements, their operands have back
+    // pointers to their corresponding LLVM values. However, this is
+    // not the case for array instructions. For those case, we keep
+    // explicitly the reverse mapping.
+    llvm::DenseMap<const statement_t*, const llvm::Instruction*> m_rev_map;
+    // information about LLVM pointers
+    const llvm::DataLayout* m_dl;
+    const llvm::TargetLibraryInfo *m_tli;
+    // cfg builder parameters
+    const CrabBuilderParams& m_params;
+    
+    /// Helpers for build_cfg
+    
+    // Given a llvm basic block return its corresponding crab basic block    
+    basic_block_t* lookup(const llvm::BasicBlock &bb) const;
+
+    void add_block(const llvm::BasicBlock &bb);
+    
+    void add_edge(const llvm::BasicBlock &src, const llvm::BasicBlock &target);
+
+    basic_block_t* exec_edge(const llvm::BasicBlock &src,
+  			     const llvm::BasicBlock &target); 
+
+    void add_block_in_between(basic_block_t &src, basic_block_t &dst,
+  			      basic_block_t &between);
+    
+    basic_block_label_t make_crab_basic_block_label(const llvm::BasicBlock* bb);
+    
+    basic_block_label_t make_crab_basic_block_label(const llvm::BasicBlock* src,
+  						    const llvm::BasicBlock* dst);
+  }; // end class CfgBuilderImpl
+
+  
+  CfgBuilderImpl::CfgBuilderImpl(const Function& func, 
+				 llvm_variable_factory &vfac,
+				 HeapAbstraction &mem, 
+				 const TargetLibraryInfo* tli,
+				 const CrabBuilderParams &params) 
     : m_is_cfg_built(false),
       // HACK: it's safe to remove constness because we know that the
       // Builder never modifies the bitcode.
@@ -2910,15 +3079,15 @@ namespace clam {
 			  m_params.precision_level));
   }
 
-  CfgBuilder::~CfgBuilder() {}
+  CfgBuilderImpl::~CfgBuilderImpl() {}
 
-  cfg_t& CfgBuilder::get_cfg() {
+  cfg_t& CfgBuilderImpl::get_cfg() {
     // it won't build if already built
     build_cfg();
     return *m_cfg;
   }
 
-  const llvm::Instruction* CfgBuilder::get_instruction(const statement_t& s) const {
+  const llvm::Instruction* CfgBuilderImpl::get_instruction(const statement_t& s) const {
     auto it = m_rev_map.find(&s);
     if (it != m_rev_map.end()){
       return it->second;
@@ -2927,7 +3096,7 @@ namespace clam {
     }
   }
   
-  basic_block_label_t CfgBuilder::get_crab_basic_block(const BasicBlock *bb) const {
+  basic_block_label_t CfgBuilderImpl::get_crab_basic_block(const BasicBlock *bb) const {
     auto it = m_node_to_crab_map.find(bb);
     if (it == m_node_to_crab_map.end()) {
       CLAM_ERROR("cannot map llvm basic block ", bb->getName(),
@@ -2938,7 +3107,7 @@ namespace clam {
   }
   
   const basic_block_label_t*
-  CfgBuilder::get_crab_basic_block(const BasicBlock *src,
+  CfgBuilderImpl::get_crab_basic_block(const BasicBlock *src,
 				   const BasicBlock *dst) const {
     auto it = m_edge_to_crab_map.find(std::make_pair(src, dst));
     if (it != m_edge_to_crab_map.end()) {
@@ -2949,7 +3118,7 @@ namespace clam {
   }
     
   // Given a llvm basic block return its corresponding crab basic block
-  basic_block_t* CfgBuilder::lookup(const BasicBlock &bb) const {
+  basic_block_t* CfgBuilderImpl::lookup(const BasicBlock &bb) const {
     auto it = m_node_to_crab_map.find(&bb);
     if (it == m_node_to_crab_map.end()) {
       return nullptr;
@@ -2957,7 +3126,7 @@ namespace clam {
     return &(m_cfg->get_node(it->second));
   }
 
-  void CfgBuilder::add_block(const BasicBlock &bb) {
+  void CfgBuilderImpl::add_block(const BasicBlock &bb) {
     auto it = m_node_to_crab_map.find(&bb);
     if (it == m_node_to_crab_map.end()) {
       auto bb_label = make_crab_basic_block_label(&bb);
@@ -2965,21 +3134,21 @@ namespace clam {
     }
   }  
 
-  void CfgBuilder::add_edge(const BasicBlock &src, const BasicBlock &dst) {
+  void CfgBuilderImpl::add_edge(const BasicBlock &src, const BasicBlock &dst) {
     basic_block_t* crab_src = lookup(src);
     basic_block_t* crab_dst = lookup(dst);
     assert(crab_src && crab_dst);
     *crab_src >> *crab_dst;
   }  
 
-  void CfgBuilder::add_block_in_between(basic_block_t &src, basic_block_t &dst,
-					basic_block_t &bb) {
+  void CfgBuilderImpl::add_block_in_between(basic_block_t &src, basic_block_t &dst,
+					    basic_block_t &bb) {
     src -= dst;
     src >> bb;
     bb >> dst;
   }  
 
-  basic_block_label_t CfgBuilder::make_crab_basic_block_label(const BasicBlock* bb) {
+  basic_block_label_t CfgBuilderImpl::make_crab_basic_block_label(const BasicBlock* bb) {
     ++m_id;
     basic_block_label_t res(bb, m_id);
     m_node_to_crab_map.insert({bb, res});
@@ -2992,8 +3161,8 @@ namespace clam {
     return prefix + id_str;
   }
 
-  basic_block_label_t CfgBuilder::make_crab_basic_block_label(const BasicBlock* src,
-							      const BasicBlock* dst) {
+  basic_block_label_t CfgBuilderImpl::make_crab_basic_block_label(const BasicBlock* src,
+								  const BasicBlock* dst) {
     ++m_id;    
     std::string name = create_bb_name(m_id);
     basic_block_label_t res(src, dst, name, m_id);
@@ -3002,7 +3171,7 @@ namespace clam {
   }
 
   //! return the new block inserted between src and dest if any
-  basic_block_t* CfgBuilder::exec_edge(const BasicBlock &src, const BasicBlock &dst) {
+  basic_block_t* CfgBuilderImpl::exec_edge(const BasicBlock &src, const BasicBlock &dst) {
     if (const BranchInst *br=dyn_cast<const BranchInst>(src.getTerminator())) {
       if (br->isConditional()) {
         basic_block_t* crab_src = lookup(src);
@@ -3104,7 +3273,7 @@ namespace clam {
     return true;
   }
 
-  void CfgBuilder::build_cfg() {
+  void CfgBuilderImpl::build_cfg() {
     if (m_is_cfg_built) {
       return;
     }
@@ -3514,27 +3683,69 @@ namespace clam {
       << aggressive_initialize_arrays << "\n";
     o << "\tenable big numbers: " << enable_bignums << "\n";
   }
+  
+  /* CFG Builder class */
+  CfgBuilder::CfgBuilder(const llvm::Function& func, CrabBuilderManager &man)
+    : m_impl(new CfgBuilderImpl(func,
+				man.get_var_factory(),
+				man.get_heap_abstraction(),
+				&(man.get_tli()),
+				man.get_cfg_builder_params())) {}
+    
+  CfgBuilder::~CfgBuilder() {}
+  
+  void CfgBuilder::build_cfg() {
+    m_impl->build_cfg();
+  }
+  
+  cfg_t& CfgBuilder::get_cfg() {
+    return m_impl->get_cfg();
+  }
+
+  basic_block_label_t CfgBuilder::
+  get_crab_basic_block(const llvm::BasicBlock *bb) const {
+    return m_impl->get_crab_basic_block(bb);
+  }
+
+  const basic_block_label_t*
+  CfgBuilder::get_crab_basic_block(const llvm::BasicBlock *src,
+				   const llvm::BasicBlock *dst) const {
+    return m_impl->get_crab_basic_block(src, dst);
+  }
+
+  const llvm::Instruction* CfgBuilder::get_instruction(const statement_t& s) const {
+    return m_impl->get_instruction(s);
+  }
+  
   /* CFG Manager class */
-  CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params)
-    : m_params(params) {}
+  CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
+					 const llvm::TargetLibraryInfo *tli,
+					 std::unique_ptr<HeapAbstraction> mem)
+    : m_params(params), m_tli(tli), m_mem(std::move(mem)) {}
   
   CrabBuilderManager::~CrabBuilderManager(){}
-  
+
+  CrabBuilderManager::CfgBuilderPtr CrabBuilderManager::mk_cfg_builder(const Function &f) {
+    auto it = m_cfg_builder_map.find(&f);
+    if (it == m_cfg_builder_map.end()) {
+      CfgBuilderPtr builder(new CfgBuilder(f, *this));
+      builder->build_cfg();
+      m_cfg_builder_map.insert({&f, builder});
+      return builder;
+    } else {
+      return it->second;
+    }
+  }
+					  
   bool CrabBuilderManager::has_cfg(const Function &f) const {
     return m_cfg_builder_map.find(&f) != m_cfg_builder_map.end();
   }
     
-  void CrabBuilderManager::add(const Function &f, CfgBuilderPtr builder) {
-    if (!has_cfg(f)) {
-      m_cfg_builder_map.insert({&f, builder});
-    }
-  }
-
   cfg_t& CrabBuilderManager::get_cfg(const Function &f) const {
     return get_cfg_builder(f)->get_cfg();
   }
 
-  const CrabBuilderManager::CfgBuilderPtr
+  CrabBuilderManager::CfgBuilderPtr
   CrabBuilderManager::get_cfg_builder(const Function &f) const {
     auto it = m_cfg_builder_map.find(&f);
     if (it == m_cfg_builder_map.end()) {
@@ -3550,4 +3761,13 @@ namespace clam {
   const CrabBuilderParams& CrabBuilderManager::get_cfg_builder_params() const {
     return m_params;
   }
+
+  const llvm::TargetLibraryInfo& CrabBuilderManager::get_tli() const {
+    return *m_tli;
+  }
+  
+  HeapAbstraction& CrabBuilderManager::get_heap_abstraction() {
+    return *m_mem;
+  }
+  
 } // end namespace clam

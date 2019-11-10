@@ -448,7 +448,7 @@ bool InsertInvariants::runOnFunction(Function &F) {
     }
     if (alread_dead_block) continue;
 
-    auto cfg_builder_ptr = crab->getCfgBuilderMan().get_cfg_builder(F);
+    auto cfg_builder_ptr = crab->get_cfg_builder_man().get_cfg_builder(F);
 
     if (auto pre = crab->get_pre(&B, false /*keep shadows*/)) {
       ///////

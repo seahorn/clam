@@ -396,19 +396,14 @@ namespace clam {
    **/
   class IntraClam_Impl {
   public:
-    IntraClam_Impl(const Function &fun, HeapAbstraction &mem, const TargetLibraryInfo &tli,
-		   CrabBuilderManager &man)
+    IntraClam_Impl(const Function &fun, CrabBuilderManager &man)
       : m_cfg_builder(nullptr), m_fun(fun), m_vfac(man.get_var_factory()) {
       
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started Crab CFG construction for "
-		                       << fun.getName() << "\n");
+		                                << fun.getName() << "\n");
       if (isTrackable(m_fun)) {
 	if (!man.has_cfg(m_fun)) {
-	  // -- build a crab cfg for func
-	  m_cfg_builder.reset(new CfgBuilder(m_fun, m_vfac, mem, &tli,
-					     man.get_cfg_builder_params()));
-	  m_cfg_builder->build_cfg();
-	  man.add(fun, m_cfg_builder);
+	  m_cfg_builder = man.mk_cfg_builder(m_fun);
 	} else {
 	  m_cfg_builder = man.get_cfg_builder(m_fun);
 	}
@@ -757,11 +752,9 @@ namespace clam {
   /**
    *   Begin IntraClam methods
    **/
-  IntraClam::IntraClam(const Function &fun, const TargetLibraryInfo &tli,
-		       HeapAbstraction &mem, CrabBuilderManager &man)
-    : m_impl(nullptr), m_fun(fun), m_mem(mem), m_builder_man(man) {
-    m_impl = make_unique<IntraClam_Impl>
-      (m_fun, m_mem, tli, m_builder_man);
+  IntraClam::IntraClam(const Function &fun, CrabBuilderManager &man)
+    : m_impl(nullptr), m_fun(fun), m_builder_man(man) {
+    m_impl = make_unique<IntraClam_Impl>(m_fun, m_builder_man); 
     CRAB_VERBOSE_IF(1, man.get_cfg_builder_params().write(errs()));
   }
 
@@ -771,6 +764,10 @@ namespace clam {
     m_pre_map.clear();
     m_post_map.clear();
     m_checks_db.clear();
+  }
+
+  CrabBuilderManager& IntraClam::get_cfg_builder_man() {
+    return m_builder_man;
   }
   
   void IntraClam::analyze(AnalysisParams &params,
@@ -841,25 +838,17 @@ namespace clam {
    **/
   class InterClam_Impl {
   public:
-    InterClam_Impl(const Module& M, HeapAbstraction &mem, 
-		   const TargetLibraryInfo &tli, CrabBuilderManager &man)
+    InterClam_Impl(const Module& M, CrabBuilderManager &man)
       : m_cg(nullptr), m_crab_builder_man(man), m_M(M)  {
 
       std::vector<cfg_ref_t> cfg_ref_vector;
       for (auto const &F : m_M) {
         if (isTrackable(F)) {
 	  // -- build cfg's
-	  cfg_t* cfg = nullptr;
 	  if (!man.has_cfg(F)) {
-	    CrabBuilderManager::CfgBuilderPtr Builder
-	      (std::make_shared<CfgBuilder>(F, m_crab_builder_man.get_var_factory(),
-					    mem, &tli, man.get_cfg_builder_params()));
-	    Builder->build_cfg();
-	    m_crab_builder_man.add(F, Builder);
-	    cfg = &(Builder->get_cfg());	    
-	  } else {
-	    cfg = &(man.get_cfg(F));
+	    m_crab_builder_man.mk_cfg_builder(F);
 	  }
+	  cfg_t* cfg = &(m_crab_builder_man.get_cfg(F));
 	  cfg_ref_vector.push_back(*cfg);
 	  CRAB_VERBOSE_IF(1, llvm::outs() << "Built Crab CFG for "
 			                  << F.getName() << "\n");
@@ -1142,11 +1131,9 @@ namespace clam {
   /**
    *   Begin InterClam methods
    **/
-  InterClam::InterClam(const Module &module,  const TargetLibraryInfo &tli,
-		       HeapAbstraction &mem, CrabBuilderManager &man)		        
-    : m_impl(nullptr), m_mem(mem), m_builder_man(man) {
-    m_impl = make_unique<InterClam_Impl>
-      (module, m_mem, tli, m_builder_man);
+  InterClam::InterClam(const Module &module, CrabBuilderManager &man)		        
+    : m_impl(nullptr), m_builder_man(man) {
+    m_impl = make_unique<InterClam_Impl>(module, m_builder_man);
   }
 
   InterClam::~InterClam() {}
@@ -1155,6 +1142,10 @@ namespace clam {
     m_pre_map.clear();
     m_post_map.clear();
     m_checks_db.clear();
+  }
+
+  CrabBuilderManager& InterClam::get_cfg_builder_man() {
+    return m_builder_man;
   }
   
   void InterClam::analyze(AnalysisParams &params,
@@ -1199,35 +1190,71 @@ namespace clam {
   /**
    * Begin ClamPass methods
    **/
-  ClamPass::ClamPass()
-    : llvm::ModulePass(ID), 
-    m_mem(new DummyHeapAbstraction()),
-    m_cfg_builder_man(new CrabBuilderManager(
-	      CrabBuilderParams(CrabTrackLev, CrabCFGSimplify, true,
-				CrabEnableUniqueScalars, CrabDisablePointers,
-				CrabIncludeHavoc, CrabArrayInit, CrabUnsoundArrayInit,
-				CrabEnableBignums, CrabPrintCFG))),
-    m_tli(nullptr) {
-    CRAB_VERBOSE_IF(1,    
-		    m_cfg_builder_man->get_cfg_builder_params().write(errs());
-		    errs() << "\n";);
-  }
-
+  ClamPass::ClamPass():
+    llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {}
+  
   void ClamPass::releaseMemory() {
     m_pre_map.clear(); 
     m_post_map.clear();
     m_checks_db.clear();
   }
-
-  bool ClamPass::runOnFunction(Function &F) {
-    IntraClam_Impl crab(F, *m_mem, *m_tli, *m_cfg_builder_man);
-    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
-    crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
-    return false;
-  }
   
   bool ClamPass::runOnModule(Module &M) {
 
+    /// Translate the module to Crab CFGs
+    
+    CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
+			     CrabEnableUniqueScalars, CrabDisablePointers,
+			     CrabIncludeHavoc, CrabArrayInit, CrabUnsoundArrayInit,
+			     CrabEnableBignums, CrabPrintCFG);
+
+    auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+    
+    std::unique_ptr<HeapAbstraction> mem = nullptr;
+    switch(CrabHeapAnalysis) {
+    case heap_analysis_t::LLVM_DSA:
+      #ifdef HAVE_DSA
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);
+      mem.reset
+	(new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
+				    CrabDsaDisambiguateUnknown,
+				    CrabDsaDisambiguatePtrCast,
+				    CrabDsaDisambiguateExternal));
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished llvm-dsa analysis\n";);      
+      break;
+      #else
+      // execute CI_SEA_DSA
+      #endif      
+    case heap_analysis_t::CI_SEA_DSA:
+    case heap_analysis_t::CS_SEA_DSA: {
+      #ifdef HAVE_SEA_DSA      
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
+      CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();      
+      const DataLayout& dl = M.getDataLayout();
+      sea_dsa::AllocWrapInfo* allocWrapInfo = &getAnalysis<sea_dsa::AllocWrapInfo>();      
+      mem.reset
+	(new SeaDsaHeapAbstraction(M, cg, dl, *tli, *allocWrapInfo,
+				   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
+				   CrabDsaDisambiguateUnknown,
+				   CrabDsaDisambiguatePtrCast,
+				   CrabDsaDisambiguateExternal));
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished sea-dsa analysis\n";);      
+      break;
+      #endif 
+    }
+    default:
+      CLAM_WARNING("running clam without memory analysis");
+    }
+
+    m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem)));
+    
+    CRAB_VERBOSE_IF(1,    
+		    m_cfg_builder_man->get_cfg_builder_params().write(errs());
+		    errs() << "\n";);
+
+    
+    /// Run the analysis 
+						  
     m_params.dom = ClamDomain;
     m_params.sum_dom = CrabSummDomain;
     m_params.run_backward = CrabBackward;
@@ -1256,44 +1283,9 @@ namespace clam {
              crab::get_msg_stream() << "Total number of analyzed functions:" 
                            << num_analyzed_funcs << "\n";);
 
-    m_tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
-    switch(CrabHeapAnalysis) {
-    case LLVM_DSA:
-      #ifdef HAVE_DSA
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);
-      m_mem.reset
-	(new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
-				    CrabDsaDisambiguateUnknown,
-				    CrabDsaDisambiguatePtrCast,
-				    CrabDsaDisambiguateExternal));
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished llvm-dsa analysis\n";);      
-      break;
-      #else
-      // execute CI_SEA_DSA
-      #endif      
-    case CI_SEA_DSA:
-    case CS_SEA_DSA: {
-      #ifdef HAVE_SEA_DSA      
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
-      CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();      
-      const DataLayout& dl = M.getDataLayout();
-      sea_dsa::AllocWrapInfo* allocWrapInfo = &getAnalysis<sea_dsa::AllocWrapInfo>();      
-      m_mem.reset
-	(new SeaDsaHeapAbstraction(M, cg, dl, *m_tli, *allocWrapInfo,
-				   (CrabHeapAnalysis == CS_SEA_DSA),
-				   CrabDsaDisambiguateUnknown,
-				   CrabDsaDisambiguatePtrCast,
-				   CrabDsaDisambiguateExternal));
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished sea-dsa analysis\n";);      
-      break;
-      #endif 
-    }
-    default:
-      CLAM_WARNING("running clam without memory analysis");
-    }
 
     if (CrabInter){
-      InterClam_Impl inter_crab(M, *m_mem, *m_tli, *m_cfg_builder_man);
+      InterClam_Impl inter_crab(M, *m_cfg_builder_man);
       AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
       inter_crab.Analyze(m_params, assumption_map_t(), results);
     } else {
@@ -1342,6 +1334,13 @@ namespace clam {
    return false;
   }
 
+  bool ClamPass::runOnFunction(Function &F) {
+    IntraClam_Impl crab(F, *m_cfg_builder_man);
+    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+    crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
+    return false;
+  }
+  
   void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
     #ifdef HAVE_DSA
@@ -1370,13 +1369,10 @@ namespace clam {
     return m_cfg_builder_man->get_cfg(F);
   }
 
-  variable_factory_t& ClamPass::get_var_factory() {
-    return m_cfg_builder_man->get_var_factory();
-  }
-  
-  const CrabBuilderManager& ClamPass::getCfgBuilderMan() const {
+  CrabBuilderManager& ClamPass::get_cfg_builder_man() {
     return *m_cfg_builder_man;
   }
+  
   // return invariants that hold at the entry of block
   wrapper_dom_ptr
   ClamPass::get_pre(const llvm::BasicBlock *block, bool keep_shadows) const {

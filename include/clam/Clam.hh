@@ -13,20 +13,11 @@
 
 // forward declarations
 
-namespace llvm {
-  class TargetLibraryInfo;
-}
-
 namespace clam {
-  class HeapAbstraction;
   struct GenericAbsDomWrapper;
   class IntraClam_Impl;
   class InterClam_Impl;
   class CrabBuilderManager;
-}
-
-namespace sea_dsa {
-  class AllocWrapInfo;
 }
 
 namespace clam {
@@ -50,18 +41,6 @@ namespace clam {
        , PK
        , WRAPPED_INTERVALS
      };
-
-  ////
-  // Heap analysis for memory disambiguation
-  ////
-  enum heap_analysis_t
-    { // use llvm-dsa (only context-insensitive)
-      LLVM_DSA = 0,
-      // use context-insensitive sea-dsa
-      CI_SEA_DSA = 1,
-      // use context-sensitive sea-dsa
-      CS_SEA_DSA = 2
-  };
   
   ////
   // Kind of checker
@@ -122,9 +101,14 @@ namespace clam {
    * Intra-procedural analysis of a function
    * 
    * Basic usage:
-   *    CrabBuilderManager man;
+   *    // Create a crab cfg builder manager
+   *    CrabBuilderParams params;
    *    auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
-   *    IntraClam ic(fun, tli, man);
+   *    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction()); 
+   *    CrabBuilderManager man(params, tli, std::move(mem));
+   *    // Create an intra-procedural analysis 
+   *    IntraClam ic(fun, man);
+   * 
    *    AnalysisParams params;
    *    ic.analyze(params, assumption_map_t());
    *    for (auto &b: fun) {
@@ -145,7 +129,6 @@ namespace clam {
   private:
 
     std::unique_ptr<IntraClam_Impl> m_impl;
-    HeapAbstraction &m_mem;
     CrabBuilderManager &m_builder_man;
     const llvm::Function &m_fun;
     invariant_map_t m_pre_map;
@@ -158,17 +141,17 @@ namespace clam {
     /**
      * Constructor that builds a crab CFG
      **/
-    IntraClam(const llvm::Function &fun,	      
-	      const llvm::TargetLibraryInfo &tli,
-	      HeapAbstraction &mem,
-	      CrabBuilderManager &man);
-
+    IntraClam(const llvm::Function &fun, CrabBuilderManager &man);
+    
     ~IntraClam();    
 
     /** 
      * Clear all the internal state
      **/
     void clear();
+
+    /* return the manager used to build all CFGs */
+    CrabBuilderManager& get_cfg_builder_man();    
     
     /**
      * Call crab analysis on the CFG under assumptions.
@@ -203,11 +186,6 @@ namespace clam {
 		      bool layered_solving,
 		      std::vector<Statement>& core) const;
 
-    /** 
-     * Return memory abstraction used by crab 
-     **/ 
-    HeapAbstraction& get_heap_abstraction() { return m_mem;}
-    
     /**
      * Return invariants that hold at the entry of b
      **/
@@ -244,7 +222,6 @@ namespace clam {
   private:
 
     std::unique_ptr<InterClam_Impl> m_impl;
-    HeapAbstraction &m_mem;
     CrabBuilderManager &m_builder_man;
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
@@ -256,13 +233,13 @@ namespace clam {
     /**
      * Constructor that builds a crab call graph.
      **/
-    InterClam(const llvm::Module &module,
-	      const llvm::TargetLibraryInfo &tli,
-	      HeapAbstraction &mem,
-	      CrabBuilderManager &man);
+    InterClam(const llvm::Module &module, CrabBuilderManager &man);
 
     ~InterClam();    
 
+    /* return the manager used to build all CFGs */
+    CrabBuilderManager& get_cfg_builder_man();    
+    
     /** 
      * Clear all the internal state
      **/
@@ -273,10 +250,6 @@ namespace clam {
      **/    
     void analyze(AnalysisParams &params, const assumption_map_t &assumptions);
 
-    /** 
-     * Return memory abstraction used by crab 
-     **/ 
-    HeapAbstraction& get_heap_abstraction() { return m_mem;}
     
     /**
      * Return invariants that hold at the entry of b
@@ -311,11 +284,9 @@ namespace clam {
     invariant_map_t m_pre_map;
     invariant_map_t m_post_map;
     edges_set m_infeasible_edges;
-    std::unique_ptr<HeapAbstraction> m_mem;    
     std::unique_ptr<CrabBuilderManager> m_cfg_builder_man;
     checks_db_t m_checks_db; 
     AnalysisParams m_params;
-    const llvm::TargetLibraryInfo *m_tli;
     
    public:
 
@@ -335,16 +306,12 @@ namespace clam {
     virtual llvm::StringRef getPassName() const {return "Clam";}
     /* end ModulePass API */
 
-    variable_factory_t& get_var_factory();
-
-    HeapAbstraction& get_heap_abstraction() { return *m_mem;}
-
-    const AnalysisParams& get_analysis_params() { return m_params;}
-
-    const CrabBuilderManager& getCfgBuilderMan() const;
+    /* return the manager used to build all CFGs */
+    CrabBuilderManager& get_cfg_builder_man();    
 
     bool has_cfg(llvm::Function &F);
-    
+
+    /* return the Crab CFG associated to F */
     cfg_ref_t get_cfg(llvm::Function &F);
     
     /**

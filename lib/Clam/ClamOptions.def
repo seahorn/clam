@@ -194,13 +194,13 @@ CrabSummDomain("crab-inter-sum-dom",
 		 "Reduced product of term-dis-int and zones.")),
     cl::init(ZONES_SPLIT_DBM));
 
-cl::opt<enum heap_analysis_t>
+cl::opt<heap_analysis_t>
 CrabHeapAnalysis("crab-heap-analysis",
    cl::desc("Heap analysis used for memory disambiguation"),
    cl::values
-    (clEnumValN(LLVM_DSA  , "llvm-dsa"  , "context-insensitive llvm dsa"),
-     clEnumValN(CI_SEA_DSA, "ci-sea-dsa", "context-insensitive sea dsa"),
-     clEnumValN(CS_SEA_DSA, "cs-sea-dsa", "context-sensitive sea dsa")),
+    (clEnumValN(heap_analysis_t::LLVM_DSA  , "llvm-dsa"  , "context-insensitive llvm dsa"),
+     clEnumValN(heap_analysis_t::CI_SEA_DSA, "ci-sea-dsa", "context-insensitive sea dsa"),
+     clEnumValN(heap_analysis_t::CS_SEA_DSA, "cs-sea-dsa", "context-sensitive sea dsa")),
    cl::init(heap_analysis_t::LLVM_DSA));
 
 // Specific llvm-dsa/sea-dsa options
