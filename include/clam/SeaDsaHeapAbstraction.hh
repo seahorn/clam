@@ -16,13 +16,13 @@ namespace sea_dsa {
   class GlobalAnalysis;
   class Node;
   class Cell;
+  class AllocWrapInfo;  
 }
 
 namespace llvm {
   class DataLayout;
   class CallGraph;
   class TargetLibraryInfo;
-  class AllocWrapInfo;
 }
 
 namespace clam {

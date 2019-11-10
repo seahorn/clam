@@ -5,18 +5,6 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clam {
-
-////
-// Heap analysis for memory disambiguation
-////
-enum class heap_analysis_t {
-  // use llvm-dsa (only context-insensitive)
-  LLVM_DSA = 0,
-  // use context-insensitive sea-dsa
-  CI_SEA_DSA = 1,
-  // use context-sensitive sea-dsa
-  CS_SEA_DSA = 2
-};
   
 /* Dummy heap analysis if no pointer analysis is available */  
 struct DummyHeapAbstraction: public HeapAbstraction {
