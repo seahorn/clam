@@ -71,6 +71,11 @@ else ()
   message(STATUS "Inter-procedural analysis is disabled to reduce compilation time")
   set (HAVE_INTER FALSE)
 endif ()
+
+option (CLAM_USE_SHADOW_MEM_SEA_DSA "Use sea-dsa shadow mem annotations" OFF)
+if (CLAM_USE_SHADOW_MEM_SEA_DSA)
+  set (HAVE_SHADOW_MEM_SEA_DSA TRUE)
+endif()
 #### end clam options ######
 
 # Add path for custom modules

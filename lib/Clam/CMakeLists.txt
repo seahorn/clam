@@ -5,6 +5,8 @@ add_llvm_library (ClamAnalysis ${CLAM_LIBS_TYPE}
   Clam.cc
   LlvmDsaHeapAbstraction.cc
   SeaDsaHeapAbstraction.cc
+  SeaDsaHeapAbstractionUtils.cc
+  SeaDsaHeapAbstractionChecks.cc
   NameValues.cc
   crab/path_analyzer.cc    
   )

@@ -5,6 +5,8 @@
 #include "clam/config.h"
 #include "crab/common/debug.hpp"
 
+#include "llvm/Support/raw_ostream.h"
+
 #include <vector>
 
 // forward declarations
@@ -13,8 +15,8 @@ namespace llvm {
   class Function;
   class Value;
   class Instruction;
-  class raw_ostream;
   class StringRef;
+  class CallInst;
 }
 
 namespace clam {
@@ -75,7 +77,11 @@ private:
   friend class LlvmDsaHeapAbstraction;
   #endif
   #ifdef HAVE_SEA_DSA
+  #ifdef HAVE_SHADOW_MEM_SEA_DSA
   friend class SeaDsaHeapAbstraction;
+  #else
+  friend class LegacySeaDsaHeapAbstraction;
+  #endif 
   #endif 
   
   
