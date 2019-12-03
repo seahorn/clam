@@ -7,13 +7,13 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/PatternMatch.h"
 
-#include "boost/range.hpp"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/iterator_range.h"
 
 using namespace llvm;
 using namespace llvm::PatternMatch;
 
-namespace crab_llvm {
+namespace clam {
 
   /// Returns true if v is used by assume
   static bool hasAssumeUsers (Value &v) {
@@ -42,7 +42,7 @@ namespace crab_llvm {
 
       std::vector<Instruction*> to_remove;
       
-      for (auto &I : boost::make_iterator_range(inst_begin (F), inst_end (F))) {
+      for (auto &I : llvm::make_range(inst_begin (F), inst_end (F))) {
         if (!isa<CallInst> (&I)) continue;
 	
         CallSite CS (&I);
@@ -97,7 +97,7 @@ namespace crab_llvm {
     }
     
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Convert verifier.assume to llvm.assume";
+      return "Clam: Convert verifier.assume to llvm.assume";
     }
     
   };
@@ -110,6 +110,6 @@ namespace crab_llvm {
   
 }
 
-static llvm::RegisterPass<crab_llvm::PromoteAssume>
+static llvm::RegisterPass<clam::PromoteAssume>
 X ("promote-assume",
-   "Promote crab-llvm assume to llvm assume intrinsic");
+   "Promote crab assume to llvm assume intrinsic");

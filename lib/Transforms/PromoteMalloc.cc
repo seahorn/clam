@@ -2,11 +2,10 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
 
-#include "boost/range.hpp"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/raw_ostream.h"
 
-
-namespace crab_llvm {
+namespace clam {
 
   using namespace llvm;
   
@@ -28,7 +27,7 @@ namespace crab_llvm {
 
       SmallVector<Instruction*, 16> kill;
       
-      for (auto &I : boost::make_iterator_range (inst_begin (F), inst_end (F)))
+      for (auto &I : llvm::make_range(inst_begin (F), inst_end (F)))
       {
         if (!isa<CallInst> (&I)) continue;
 
@@ -62,7 +61,7 @@ namespace crab_llvm {
     }
     
     virtual StringRef getPassName () const {
-      return "CrabLlvm: Promote malloc to alloca instructions";
+      return "Clam: Promote malloc to alloca instructions";
     }
     
   };
@@ -70,10 +69,10 @@ namespace crab_llvm {
   char PromoteMalloc::ID = 0;
 }
 
-namespace crab_llvm
+namespace clam
 {
   Pass *createPromoteMallocPass () {return new PromoteMalloc ();} 
 }
 
-static llvm::RegisterPass<crab_llvm::PromoteMalloc> 
+static llvm::RegisterPass<clam::PromoteMalloc> 
 X ("promote-malloc", "Promote top-level malloc calls to alloca");

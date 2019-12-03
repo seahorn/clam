@@ -1,4 +1,4 @@
-add_library(LlvmPasses ${CRABLLVM_LIBS_TYPE}
+add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE}
   LowerCstExpr.cc
   LowerGvInitializers.cc
   LowerSelect.cc
@@ -11,6 +11,13 @@ add_library(LlvmPasses ${CRABLLVM_LIBS_TYPE}
   PromoteAssume.cc  
   PromoteMalloc.cc
   )
+
+llvm_map_components_to_libnames(LLVM_LIBS
+  support core irreader bitwriter instrumentation ipo scalaropts codegen objcarcopts)
+
+target_link_libraries(LlvmPasses
+  ## Needed if dynamic linking
+  ${LLVM_LIBS})
 
 if (HAVE_DSA)
   add_definitions(-Wno-undefined-var-template)

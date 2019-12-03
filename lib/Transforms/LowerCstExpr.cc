@@ -6,7 +6,7 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/ADT/SmallPtrSet.h"
 
-namespace crab_llvm {
+namespace clam {
   
   using namespace llvm;
 
@@ -52,11 +52,14 @@ namespace crab_llvm {
             Instruction* InsertLoc = PHI->getIncomingBlock (i)->getTerminator ();        
             assert(InsertLoc);
             if (ConstantExpr * CstExp = hasCstExpr (PHI->getIncomingValue(i))) {
+	      // skip if CstExp is not the same as incoming PHI value
+	      if (CstExp != PHI->getIncomingValue(i))
+		continue;
               Instruction* NewInst = lowerCstExpr (CstExp, InsertLoc);
-              for (unsigned int j=i; j < PHI->getNumIncomingValues(); j++) {
-                if ( (PHI->getIncomingValue (j) == PHI->getIncomingValue (i)) &&
-                     (PHI->getIncomingBlock (j) == PHI->getIncomingBlock (i))) {
-                  PHI->setIncomingValue (j, NewInst);
+              for (unsigned int j= PHI->getNumIncomingValues(); j>i; --j) {
+                if ( (PHI->getIncomingValue(j-1) == PHI->getIncomingValue (i)) &&
+                     (PHI->getIncomingBlock(j-1) == PHI->getIncomingBlock (i))) {
+                  PHI->setIncomingValue (j-1, NewInst);
                 }
               }
               worklist.insert (NewInst);
@@ -92,7 +95,7 @@ namespace crab_llvm {
     }
 
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Lower constant expressions";
+      return "Clam: Lower constant expressions";
     }
     
   };

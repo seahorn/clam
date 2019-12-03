@@ -4,7 +4,7 @@
 
 using namespace llvm;
 
-namespace crab_llvm
+namespace clam
 {
   struct RemoveUnreachableBlocksPass : public FunctionPass
   {
@@ -19,7 +19,7 @@ namespace crab_llvm
     }
     
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Remove unreachable blocks";
+      return "Clam: Remove unreachable blocks";
     }
 
   };

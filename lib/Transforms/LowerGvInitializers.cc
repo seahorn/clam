@@ -25,16 +25,18 @@
  */
 
 #include "llvm/Pass.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/DenseMap.h"
 
+#include "clam/Support/Boost.hh"
 #include "boost/range.hpp"
 #include "boost/format.hpp"
 
@@ -44,7 +46,7 @@ using namespace llvm;
 
 #define DEBUG_TYPE "lower-gv"
 
-namespace crab_llvm {
+namespace clam {
 
   class LowerGvInitializers : public ModulePass {
     
@@ -180,7 +182,7 @@ namespace crab_llvm {
 	  CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);	  
 	  change = true;
 	} else {
-	  //llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *ATy << "\n";
+	  // CLAM_WARNING("skipped initialization of " << *ATy);
 	}
       } else if (isa<PointerType> (T)) {
         #ifdef DEBUG_LOWER_GV
@@ -197,7 +199,7 @@ namespace crab_llvm {
 	CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);
 	change = true;
       } else {
-	//llvm::errs () << "CRABLLVM WARNING: skipped initialization of " << *T << "\n";
+	// CLAM_WARNING("skipped initialization of " << *T);
       }
 
       stack.pop_back();	      
@@ -290,8 +292,7 @@ namespace crab_llvm {
       if (!f) return false;
 
       std::vector<GlobalVariable*> gvs;
-      for (GlobalVariable &gv : boost::make_iterator_range(M.global_begin(),
-							   M.global_end())) {
+      for (GlobalVariable &gv: llvm::make_range(M.global_begin(), M.global_end())) {
         if (gv.hasInitializer () && gv.getName() != "llvm.used")
 	  gvs.push_back(&gv);
       }
@@ -369,7 +370,7 @@ namespace crab_llvm {
     }
 
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Lower global initializers";
+      return "Clam: Lower global initializers";
     }
     
   };

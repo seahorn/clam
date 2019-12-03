@@ -15,7 +15,7 @@
 
 #define DEBUG_TYPE "lower-unsigned-icmp"
 
-namespace crab_llvm {
+namespace clam {
   
   using namespace llvm;
   
@@ -34,8 +34,8 @@ namespace crab_llvm {
   }
   
   static bool isNonNegIntCst (Value *V) {
-    if (ConstantInt *K = dyn_cast<ConstantInt> (V)) 
-      return (K->getSExtValue() >= 0);
+    if (ConstantInt *K = dyn_cast<ConstantInt> (V))
+      return (K->getValue().isNonNegative() >= 0);      
     return false;
   }
 
@@ -255,7 +255,7 @@ namespace crab_llvm {
     }
         
     virtual StringRef getPassName() const {
-      return "CrabLlvm: Lower ULT and ULE instructions";
+      return "Clam: Lower ULT and ULE instructions";
     }
     
     virtual void getAnalysisUsage (AnalysisUsage &AU) const {
