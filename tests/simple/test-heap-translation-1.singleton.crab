@@ -1,0 +1,70 @@
+; RUN: %clam -O0 --crab-inter --crab-track=arr --crab-only-cfg --crab-print-cfg \
+; RUN:           --crab-singleton-aliases \ 
+; RUN:           "%S/test-heap-translation-1.c" 2>&1 | OutputCheck %s --comment=";"
+
+; CHECK: \(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\) declare foo\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\)
+(@V_3:int,@V_6:int,@V_9:arr_int) declare foo(@V_5:int,@V_7:int,@V_8:arr_int)
+_1:
+  @V_9 = @V_8;
+  @V_6 = @V_7;
+  @V_3 = @V_5;
+  _2 = @V_3;
+  _store = _2+1;
+  @V_3 = _store;
+
+; CHECK: \(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\) declare bar\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\)
+(@V_3:int,@V_6:int,@V_9:arr_int) declare bar(@V_13:int,@V_14:int,@V_15:arr_int)
+_1:
+  @V_9 = @V_15;
+  @V_6 = @V_14;
+  @V_3 = @V_13;
+  _2 = @V_6;
+  _store = _2+1;
+  @V_6 = _store;
+
+
+_19:int declare main()
+_call:
+  @V_3 = 5;
+  @V_6 = 3;
+  @V_9[0...39] := 0;
+; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call foo\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\)
+  (@V_3,@V_6,@V_9)= call foo(@V_3:int,@V_6:int,@V_9:arr_int);
+  .0 = 0;
+  goto _.0;
+_.0:
+  goto __@bb_8,__@bb_9;
+__@bb_8:
+  assume(.0 <= 9);
+  goto _4;
+_4:
+  goto __@bb_10,__@bb_11;
+__@bb_10:
+  assume(_6 = 0);
+  goto _11;
+_11:
+  _12 = @V_3;
+  array_store(@V_9,@V_25,_12,sz=4);
+  goto _14;
+_14:
+  _br3 = .0+1;
+  .0 = _br3;
+  goto _.0;
+__@bb_11:
+  assume(_6 != 0);
+  goto _8;
+_8:
+  _9 = @V_6;
+  array_store(@V_9,@V_22,_9,sz=4);
+  goto _14;
+__@bb_9:
+  assume(-.0 <= -10);
+  goto _call4;
+_call4:
+; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call bar\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\)
+  (@V_3,@V_6,@V_9)= call bar(@V_3:int,@V_6:int,@V_9:arr_int);
+  _17 = .0+-1;
+  _19 = array_load(@V_9,@V_30,sz=4);
+  _20 = (_19 <=_u 6);
+  assert(_20);
+  return _19;

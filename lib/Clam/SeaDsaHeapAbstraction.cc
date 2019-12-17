@@ -666,11 +666,12 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(const llvm::Module& M, llvm::CallGr
     std::vector<region_t>& modsF  = m_func_mods[&F];
     std::vector<region_t>& newsF  = m_func_news[&F];
 
-    std::vector<bool> readsB, modsB, newsB;
-    readsB.reserve(readsF.size());
-    modsB.reserve(modsF.size());
-    newsB.reserve(newsF.size());
-
+    // Initialized to true (i.e., all regions are consistent until the
+    // opposite is proven)
+    std::vector<bool> readsB(readsF.size(), true);
+    std::vector<bool> modsB(modsF.size(), true);
+    std::vector<bool> newsB(newsF.size(), true);
+    
     std::vector<CallInst*> worklist;
     /// First pass: for each memory region we check whether caller and
     /// callee agree on it.
@@ -685,7 +686,7 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(const llvm::Module& M, llvm::CallGr
 	continue;
       }
       worklist.push_back(CI);
-      
+
       std::vector<region_bool_t>& readsC = cs_accessed[CI];
       std::vector<region_bool_t>& modsC = cs_mods[CI];
       std::vector<region_bool_t>& newsC = cs_news[CI];
