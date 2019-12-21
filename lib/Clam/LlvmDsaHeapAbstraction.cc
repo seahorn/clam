@@ -149,7 +149,7 @@ namespace clam {
   }
 
   // canBeDisambiguated succeeds if returned valued != UNTYPED_REGION
-  static region_info canBeDisambiguated(const llvm::DSNode *n, unsigned offset,
+  static RegionInfo canBeDisambiguated(const llvm::DSNode *n, unsigned offset,
 					bool disambiguate_unknown,
 					bool disambiguate_ptr_cast,
 					bool disambiguate_external) {
@@ -161,14 +161,14 @@ namespace clam {
     if (n->isNodeCompletelyFolded() || n->isCollapsedNode()) {
       CRAB_LOG("heap-abs", 
 	       llvm::errs() << "\tCannot be disambiguated: node is already collapsed.\n";);
-      return region_info(UNTYPED_REGION, 0);
+      return RegionInfo(UNTYPED_REGION, 0);
     }
 
     if (n->isUnknownNode()) {
       if (!disambiguate_unknown) {
 	CRAB_LOG("heap-abs",
 		 llvm::errs() << "\tCannot be disambiguated: node is unknown.\n";);
-	return region_info(UNTYPED_REGION, 0);
+	return RegionInfo(UNTYPED_REGION, 0);
       }
     }
 
@@ -176,7 +176,7 @@ namespace clam {
       if (!disambiguate_external) {
 	CRAB_LOG("heap-abs", 
 		 llvm::errs() << "\tCannot be disambiguated: node is incomplete.\n";);
-	return region_info(UNTYPED_REGION, 0);
+	return RegionInfo(UNTYPED_REGION, 0);
       }
     }
     
@@ -185,7 +185,7 @@ namespace clam {
 	CRAB_LOG("heap-abs", 
 		 llvm::errs() << "\tCannot be disambiguated: node is casted "
 		              << "from/to an integer.\n";);
-	return region_info(UNTYPED_REGION, 0);
+	return RegionInfo(UNTYPED_REGION, 0);
       }
     }
     
@@ -193,20 +193,20 @@ namespace clam {
       if (!disambiguate_external) {
 	CRAB_LOG("heap-abs", 
 		 llvm::errs() << "\tCannot be disambiguated: node is external.\n";);
-	return region_info(UNTYPED_REGION, 0);
+	return RegionInfo(UNTYPED_REGION, 0);
       }
     }
     
     isInteger int_pred;
     if (isTypedCell(n, offset, int_pred) || isTypedArray(n, offset, int_pred)) {
       CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
-      return region_info(INT_REGION, int_pred.m_bitwidth);
+      return RegionInfo(INT_REGION, int_pred.m_bitwidth);
     } 
 
     isBool bool_pred;
     if (isTypedCell(n, offset, bool_pred) || isTypedArray(n, offset, bool_pred)) {
       CRAB_LOG("heap-abs", llvm::errs() << "\tDisambiguation succeed!\n";);
-      return region_info(BOOL_REGION, 1);
+      return RegionInfo(BOOL_REGION, 1);
     } 
 
     // TODO: modify here to consider cells containing pointers.
@@ -214,7 +214,7 @@ namespace clam {
     CRAB_LOG("heap-abs",
 	     llvm::errs() << "\tCannot be disambiguated: do not contain integer.\n";);
     
-    return region_info(UNTYPED_REGION, 0);
+    return RegionInfo(UNTYPED_REGION, 0);
   }
   
   template <typename Set>
@@ -270,7 +270,7 @@ namespace clam {
   ///////
   
 
-  LlvmDsaHeapAbstraction::region_id_t
+  LlvmDsaHeapAbstraction::RegionId
   LlvmDsaHeapAbstraction::getId(const llvm::DSNode *n, unsigned offset) {
     auto it = m_node_ids.find(n);
     if (it != m_node_ids.end()) {
@@ -284,7 +284,7 @@ namespace clam {
      **/
     
     
-    region_id_t id = m_max_id;
+    RegionId id = m_max_id;
     m_node_ids[n] = id;
 
     // XXX: we only have the reverse map for the offset 0.  That's
@@ -323,7 +323,7 @@ namespace clam {
     
     //CRAB_LOG("heap-abs", llvm::errs() << f.getName() << "\n");
     
-    region_vector_t reads, mods, news;
+    RegionVec reads, mods, news;
     for (const llvm::DSNode* n : reach) {
       if (!n->isReadNode() && !n->isModifiedNode()) {
 	continue;
@@ -332,7 +332,7 @@ namespace clam {
       // Iterate over each node field and extract regions from there
       for (auto &kv: llvm::make_range(n->type_begin(), n->type_end())) {
 	unsigned o = kv.first;
-	region_info r_info = canBeDisambiguated(n, o,
+	RegionInfo r_info = canBeDisambiguated(n, o,
 						m_disambiguate_unknown,
 						m_disambiguate_ptr_cast,
 						m_disambiguate_external);
@@ -345,11 +345,11 @@ namespace clam {
 	  continue;
 	}
 	if ((n->isReadNode() || n->isModifiedNode()) && retReach.count(n) <= 0)
-	  reads.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  reads.push_back(Region(id, r_info, getSingleton(id)));
 	if (n->isModifiedNode() && retReach.count(n) <= 0)
-	  mods.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  mods.push_back(Region(id, r_info, getSingleton(id)));
 	if (n->isModifiedNode() && retReach.count(n)) 
-	  news.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  news.push_back(Region(id, r_info, getSingleton(id)));
 			       
       }
     }
@@ -402,7 +402,7 @@ namespace clam {
     //  llvm::DSGraph::NodeMapTy nodeMap;
     //  dsg->computeCalleeCallerMapping(CS, CF, *cdsg, nodeMap);
     
-    region_vector_t reads, mods, news;
+    RegionVec reads, mods, news;
     for (const llvm::DSNode* n : reach) {
       if (!n->isReadNode() && !n->isModifiedNode())
 	continue;
@@ -411,7 +411,7 @@ namespace clam {
       // there.
       for (auto &kv: llvm::make_range(n->type_begin(), n->type_end())) {
 	unsigned o = kv.first;
-	region_info r_info = canBeDisambiguated(n,o,
+	RegionInfo r_info = canBeDisambiguated(n,o,
 						m_disambiguate_unknown,
 						m_disambiguate_ptr_cast,
 						m_disambiguate_external);
@@ -425,17 +425,17 @@ namespace clam {
 	}
 	
 	if ((n->isReadNode() || n->isModifiedNode()) && retReach.count(n) <= 0)
-	  reads.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  reads.push_back(Region(id, r_info, getSingleton(id)));
 	if (n->isModifiedNode() && retReach.count(n) <= 0)
-	  mods.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info));
+	  mods.push_back(Region(id, r_info, getSingleton(id)));
 	if (n->isModifiedNode() && retReach.count(n))
-	  news.push_back(region_t(static_cast<HeapAbstraction*>(this), id, r_info)); 
+	  news.push_back(Region(id, r_info, getSingleton(id))); 
 			       
       }
     }
     
     // -- add the region of the lhs of the call site
-    //region_t ret = getRegion(*(I.getParent()->getParent()), &I);
+    //Region ret = getRegion(*(I.getParent()->getParent()), &I, &I);
     //if (!ret.isUnknown()) mods.push_back(ret); 
     
     m_callsite_accessed[&I] = reads; 
@@ -473,16 +473,17 @@ namespace clam {
   }
 
   // f is used to know in which DSGraph we should search for V
-  LlvmDsaHeapAbstraction::region_t
-  LlvmDsaHeapAbstraction::getRegion(const llvm::Function& F, const llvm::Value* V)  {
+  Region LlvmDsaHeapAbstraction::getRegion(const llvm::Function &F,
+					   const llvm::Instruction *I,
+					   const llvm::Value *V)  {
     // Note each function has its own graph and a copy of the global
     // graph. Nodes in both graphs are merged.  However, m_dsa has
     // its own global graph which seems not to be merged with
     // function's graphs, and thus, it cannot be used here.
-    if (!m_dsa) return region_t();
+    if (!m_dsa) return Region();
     
     llvm::DSGraph *dsg = m_dsa->getDSGraph(F);
-    if (!dsg) return region_t();
+    if (!dsg) return Region();
 
     llvm::DSNodeHandle &cell = dsg->getNodeForValue(V);
     llvm::DSNode *n = cell.getNode();
@@ -491,27 +492,27 @@ namespace clam {
       cell = gDsg->getNodeForValue(V);
       n = cell.getNode();
     }
-    if (!n) return region_t();
+    if (!n) return Region();
 
-    region_info r_info = canBeDisambiguated(n, cell.getOffset(),
+    RegionInfo r_info = canBeDisambiguated(n, cell.getOffset(),
 					    m_disambiguate_unknown,
 					    m_disambiguate_ptr_cast,
 					    m_disambiguate_external);
 
     if (r_info.get_type() == UNTYPED_REGION) {
-      return region_t();
+      return Region();
     } else {
       int id = getId(n,cell.getOffset());
       if (id < 0) {
-	return region_t();
+	return Region();
       } else {
-	return region_t(static_cast<HeapAbstraction*>(this), id, r_info);
+	return Region(id, r_info, getSingleton(id));
       }
     }
   }
   
-  const llvm::Value* LlvmDsaHeapAbstraction::getSingleton(region_id_t region) const {
-    auto const it = m_rev_node_ids.find(region);
+  const llvm::Value* LlvmDsaHeapAbstraction::getSingleton(RegionId id) const {
+    auto const it = m_rev_node_ids.find(id);
     if (it == m_rev_node_ids.end()) 
       return nullptr;
     //  TODO: consider also singleton containing pointers.
@@ -519,50 +520,50 @@ namespace clam {
     return getTypedSingleton(it->second, pred);
   }
   
-  LlvmDsaHeapAbstraction::region_vector_t
+  LlvmDsaHeapAbstraction::RegionVec
   LlvmDsaHeapAbstraction::getAccessedRegions(const llvm::Function& F)  {
     return m_func_accessed [&F];
   }
 
-  LlvmDsaHeapAbstraction::region_vector_t
+  LlvmDsaHeapAbstraction::RegionVec
   LlvmDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function& F)  {
-    region_vector_t v1 = m_func_accessed[&F];
-    region_vector_t v2 = m_func_mods[&F];
-    std::set<LlvmDsaHeapAbstraction::region_t> s2(v2.begin(), v2.end());
+    RegionVec v1 = m_func_accessed[&F];
+    RegionVec v2 = m_func_mods[&F];
+    std::set<Region> s2(v2.begin(), v2.end());
     vector_difference(v1,s2);
     return v1;
   }
   
-  LlvmDsaHeapAbstraction::region_vector_t
+  LlvmDsaHeapAbstraction::RegionVec
   LlvmDsaHeapAbstraction::getModifiedRegions(const llvm::Function& F) {
     return m_func_mods[&F];
   }
   
-  LlvmDsaHeapAbstraction::region_vector_t
+  LlvmDsaHeapAbstraction::RegionVec
   LlvmDsaHeapAbstraction::getNewRegions(const llvm::Function& F) {
     return m_func_news[&F];
   }
   
-  LlvmDsaHeapAbstraction::region_vector_t
+  LlvmDsaHeapAbstraction::RegionVec
   LlvmDsaHeapAbstraction::getAccessedRegions(const llvm::CallInst& I) {
     return m_callsite_accessed[&I];
   }
   
-  LlvmDsaHeapAbstraction::region_vector_t
+  LlvmDsaHeapAbstraction::RegionVec
   LlvmDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst& I)  {
-    region_vector_t v1 = m_callsite_accessed[&I];
-    region_vector_t v2 = m_callsite_mods[&I];
-    std::set<LlvmDsaHeapAbstraction::region_t> s2(v2.begin(), v2.end());
+    RegionVec v1 = m_callsite_accessed[&I];
+    RegionVec v2 = m_callsite_mods[&I];
+    std::set<Region> s2(v2.begin(), v2.end());
     vector_difference(v1,s2);
     return v1;
   }
   
-  LlvmDsaHeapAbstraction::region_vector_t
+  LlvmDsaHeapAbstraction::RegionVec
   LlvmDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst& I) {
     return m_callsite_mods[&I];
   }
   
-  LlvmDsaHeapAbstraction::region_vector_t
+  LlvmDsaHeapAbstraction::RegionVec
   LlvmDsaHeapAbstraction::getNewRegions(const llvm::CallInst& I)  {
     return m_callsite_news[&I];
   }

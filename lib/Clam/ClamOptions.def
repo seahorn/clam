@@ -51,7 +51,7 @@ CrabIncludeHavoc("crab-include-useless-havoc",
 
 /**
  * Initialization of contents of allocation sites(e.g. alloca's and
- * global variables).
+ * global variables). This is sound but it might be imprecise.
  **/
 cl::opt<bool>
 CrabArrayInit("crab-arr-init",
@@ -63,7 +63,7 @@ CrabArrayInit("crab-arr-init",
  * Enable initialization of arrays that correspond to objects that may
  * contain an infinite number of memory locations.
  *
- * Initialization of allocation sites originated from calloc or memset
+ * Initialization of allocation sites originated from calloc 
  * instructions may be unsound if it can be executed by more than one
  * execution.
 */
@@ -78,6 +78,16 @@ CrabEnableBignums("crab-enable-bignums",
      cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."), 
      cl::init(false));
 
+namespace clam {
+bool XMemShadows;
+}
+
+cl::opt<bool, true>
+CrabMemShadows("crab-memssa",
+    cl::desc("Instrument each memory instruction with shadow.mem functions "
+    	     "to convert the program into memory SSA form, and translate to Crab "
+	     "preserving memory SSA form"),
+    cl::location(clam::XMemShadows), cl::init(false), llvm::cl::Hidden);
 
 /*** Crab Analysis Options ***/
 
@@ -198,9 +208,12 @@ cl::opt<heap_analysis_t>
 CrabHeapAnalysis("crab-heap-analysis",
    cl::desc("Heap analysis used for memory disambiguation"),
    cl::values
-    (clEnumValN(heap_analysis_t::LLVM_DSA  , "llvm-dsa"  , "context-insensitive llvm dsa"),
-     clEnumValN(heap_analysis_t::CI_SEA_DSA, "ci-sea-dsa", "context-insensitive sea dsa"),
-     clEnumValN(heap_analysis_t::CS_SEA_DSA, "cs-sea-dsa", "context-sensitive sea dsa")),
+    (clEnumValN(heap_analysis_t::LLVM_DSA, "llvm-dsa",
+                "context-insensitive llvm-dsa"),
+     clEnumValN(heap_analysis_t::CI_SEA_DSA, "ci-sea-dsa",
+                "context-insensitive sea-dsa"),
+     clEnumValN(heap_analysis_t::CS_SEA_DSA, "cs-sea-dsa",
+                "context-sensitive sea-dsa")),
    cl::init(heap_analysis_t::LLVM_DSA));
 
 // Specific llvm-dsa/sea-dsa options

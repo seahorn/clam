@@ -283,17 +283,17 @@ def parseArgs(argv):
                    help='Track integers (num), num + pointer offsets (ptr), and num + memory contents (arr) via memory abstraction',
                    choices=['num', 'ptr', 'arr'], dest='track', default='num')
     p.add_argument('--crab-heap-analysis',
-                   help="Heap analysis used for memory disambiguation (i.e., --crab-track=arr):\n"
+                   help="Heap analysis used for memory disambiguation (if --crab-track=arr):\n"
                    "- llvm-dsa: context-insensitive llvm-dsa (deprecated) \n"
                    "- ci-sea-dsa: context-insensitive sea-dsa\n"
                    "- cs-sea-dsa: context-sensitive sea-dsa\n"
-                   "- ci-sea-dsa-types: context-insensitive sea-dsa with types\n"
+                   "- ci-sea-dsa-types: context-insensitive sea-dsa with types (default)\n"
                    "- cs-sea-dsa-types: context-sensitive sea-dsa with types\n",
                    choices=['llvm-dsa',
-                             'ci-sea-dsa', 'cs-sea-dsa',
-                             'ci-sea-dsa-types', 'cs-sea-dsa-types'],
+                            'ci-sea-dsa', 'cs-sea-dsa',
+                            'ci-sea-dsa-types', 'cs-sea-dsa-types'],                   
                     dest='crab_heap_analysis',
-                    default='ci-sea-dsa')
+                    default='ci-sea-dsa-types')
     p.add_argument('--crab-singleton-aliases',
                     help='Translate singleton alias sets (mostly globals) as scalar values',
                     dest='crab_singleton_aliases', default=False, action='store_true')
@@ -390,6 +390,13 @@ def parseArgs(argv):
     p.add_argument('--crab-enable-bignums',
                     help=a.SUPPRESS,
                     dest='crab_enable_bignums', default=False, action='store_true')
+    #Instrument each memory instruction with shadow.mem functions to
+    #convert the program into memory SSA form and translate to crab
+    #preserving that memory SSA form.
+    p.add_argument('--crab-memssa',
+                    help=a.SUPPRESS,
+                    dest='crab_memssa', default=False, action='store_true')
+    
     #### END CRAB
     
     args = p.parse_args(argv)
@@ -714,6 +721,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     elif args.crab_heap_analysis == 'cs-sea-dsa-types':
         clam_args.append('--crab-heap-analysis=cs-sea-dsa')
         clam_args.append('--sea-dsa-type-aware=true')
+        
     if args.crab_singleton_aliases: clam_args.append('--crab-singleton-aliases')
     if args.crab_inter: clam_args.append('--crab-inter')
     if args.crab_backward: clam_args.append('--crab-backward')
@@ -737,7 +745,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-store-invariants=true')
     else:
         clam_args.append('--crab-store-invariants=false')    
-    # hidden options
+    # begin hidden options
     if args.crab_dsa_unknown: clam_args.append('--crab-dsa-disambiguate-unknown')
     if args.crab_dsa_ptr_cast: clam_args.append('--crab-dsa-disambiguate-ptr-cast')
     if args.crab_dsa_external: clam_args.append('--crab-dsa-disambiguate-external')    
@@ -752,6 +760,10 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-enable-bignums=true')
     else:
         clam_args.append('--crab-enable-bignums=false')
+    if args.crab_memssa:
+        clam_args.append('--crab-memssa=true')
+    # end hidden options
+        
     if verbose: print ' '.join(clam_args)
 
     if args.out_name is not None:

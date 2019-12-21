@@ -2,11 +2,12 @@ add_llvm_library (ClamAnalysis ${CLAM_LIBS_TYPE}
   CfgBuilder.cc
   CfgBuilderLit.cc
   CfgBuilderUtils.cc
+  CfgBuilderShadowMem.cc  
   Clam.cc
   LlvmDsaHeapAbstraction.cc
   SeaDsaHeapAbstraction.cc
   SeaDsaHeapAbstractionUtils.cc
-  SeaDsaHeapAbstractionChecks.cc
+  SeaDsaHeapAbstractionDsaToRegion.cc
   NameValues.cc
   crab/path_analyzer.cc    
   )

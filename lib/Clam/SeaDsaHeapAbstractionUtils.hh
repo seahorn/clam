@@ -1,8 +1,6 @@
 #pragma once
 #include "clam/config.h"
 
-#ifdef HAVE_SEA_DSA
-
 #include <set>
 
 namespace llvm {
@@ -51,4 +49,3 @@ struct isIntegerOrBool : std::unary_function<const llvm::Type *, bool> {
 
 } // end namespace seadsa_heap_abs_impl
 } // end namespace clam
-#endif

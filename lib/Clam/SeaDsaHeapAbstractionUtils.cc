@@ -1,7 +1,5 @@
 #include "clam/config.h"
 
-#ifdef HAVE_SEA_DSA
-
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
@@ -97,4 +95,3 @@ void argReachableNodes(const llvm::Function &fn, Graph &G, NodeSet &reach,
 
 } // end namespace seadsa_heap_abs_impl
 } // namespace clam
-#endif /*HAVE_SEA_DSA*/

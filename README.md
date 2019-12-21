@@ -45,8 +45,7 @@ The basic compilation steps are:
 
 Clam provides several components that are installed via the `extra`
 target. These components can be used by other projects outside of
-Clam.
-
+Clam. 
 
 * [llvm-dsa](https://github.com/seahorn/llvm-dsa): ``` git clone https://github.com/seahorn/llvm-dsa.git ```
 
@@ -55,7 +54,7 @@ Clam.
   (Data Structure Analysis) is a heap analysis
   described
   [here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps)
-  and it is used by Clam to disambiguate the heap.
+  and it is used by Clam to disambiguate the heap (*Deprecated*)
   
 * [sea-dsa](https://github.com/seahorn/sea-dsa): ```git clone https://github.com/seahorn/sea-dsa.git```
 
@@ -68,7 +67,9 @@ Clam.
    `llvm-seahorn` provides specialized versions of `InstCombine` and
    `IndVarSimplify` LLVM passes as well as a LLVM pass to convert undefined values into nondeterministic calls.
 
-To include these external components, type instead:
+The component `sea-dsa` is mandatory, `llvm-dsa` is deprecated, and
+`llvm-seahorn` is highly recommended. To include these external
+components, type instead:
 
      mkdir build && cd build
      cmake -DCMAKE_INSTALL_PREFIX=_DIR_ ../
@@ -295,18 +296,22 @@ We also provide the option `--crab-track=VAL` to indicate the level of
 abstraction of the translation. The possible values of `VAL` are:
 
 - `num`: translate only operations over integer and boolean scalars (LLVM registers).
-- `ptr`: `num` + translate all operations over pointers using crab pointer operations. 
-- `arr`: `num` + translates all operations over pointers using pointer
-  arithmetic and Crab arrays.
+- `ptr`: `num` + translate all operations over pointers using Crab pointer operations. 
+- `arr`: `num` + translates all operations over pointers using Crab arrays.
 
-   If the level is `arr` then Clam's frontend will partition the
-   heap into disjoint regions using a pointer analysis. Each region is
-   mapped to a Crab array, and each LLVM load and store is translated
-   to an array read and write operation, respectively. Then, it will
-   use an array domain provided by Crab whose base domain is the one
-   selected by option `--crab-domain`. If option
-   `--crab-singleton-aliases` is enabled then Clam translates
-   global singleton regions to scalar variables.
+    Although the translation with level `ptr` should work, Crab does
+    not actually reason about pointers (although we are working on
+    it). Thus, this translation is not very useful at the moment.
+
+    To reason about memory contents and taking aliasing into account
+    use the level `arr`.  At this level, the Clam's frontend will
+    partition the heap into disjoint regions using a pointer
+    analysis. Each region is mapped to a Crab array, and each LLVM
+    load and store is translated to an array read and write operation,
+    respectively. Then, it will use an array domain provided by Crab
+    whose base domain is the one selected by option
+    `--crab-domain`. If option `--crab-singleton-aliases` is enabled
+    then Clam translates global singleton regions to scalar variables.
 
 By default, all the analyses are run in an intra-procedural
 manner. Enable the option `--crab-inter` to run the inter-procedural

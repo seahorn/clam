@@ -52,13 +52,14 @@ crab_lit_ref_t crabLitFactoryImpl::getLit(const Value &v) {
   return nullptr;
 }
 
-var_t crabLitFactoryImpl::mkArrayVar(mem_region_t mem_region) {
+var_t crabLitFactoryImpl::mkArrayVar(Region mem_region, const Value *name) {
   crab::variable_type type = crab::UNK_TYPE;
   unsigned bitwidth = 0; /* unknown */
-  switch (mem_region.get_type()) {
+  auto info = mem_region.getRegionInfo();
+  switch (info.get_type()) {
   case INT_REGION:
     type = ARR_INT_TYPE;
-    bitwidth = mem_region.get_bitwidth();
+    bitwidth = info.get_bitwidth();
     break;
   case BOOL_REGION:
     type = ARR_BOOL_TYPE;
@@ -69,17 +70,19 @@ var_t crabLitFactoryImpl::mkArrayVar(mem_region_t mem_region) {
     break;
   default:
     CLAM_ERROR("unsupported region type");
-  }
-  return var_t(m_vfac.get(mem_region.get_id()), type, bitwidth);
+  }  
+  auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.get_id()));  
+  return var_t(varname, type, bitwidth);
 }
 
-var_t crabLitFactoryImpl::mkArraySingletonVar(mem_region_t mem_region) {
+var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
+					      const Value *name) {
   crab::variable_type type = crab::UNK_TYPE;
   unsigned bitwidth = 0; /* unknown */
   if (const Value *v = mem_region.getSingleton()) {
     Type *ty = cast<PointerType>(v->getType())->getElementType();
     bitwidth = ty->getIntegerBitWidth();
-    if (mem_region.get_type() == INT_REGION && bitwidth <= 1) {
+    if (mem_region.getRegionInfo().get_type() == INT_REGION && bitwidth <= 1) {
       CLAM_ERROR("Integer region must have bitwidth > 1");
     }
     // If the singleton contains a pointer then getIntegerBitWidth()
@@ -88,7 +91,7 @@ var_t crabLitFactoryImpl::mkArraySingletonVar(mem_region_t mem_region) {
   } else {
     CLAM_ERROR("Memory region does not belong to a global singleton");
   }
-  switch (mem_region.get_type()) {
+  switch (mem_region.getRegionInfo().get_type()) {
   case INT_REGION:
     type = INT_TYPE;
     break;
@@ -101,7 +104,8 @@ var_t crabLitFactoryImpl::mkArraySingletonVar(mem_region_t mem_region) {
   default:
     CLAM_ERROR("unsupported region type");
   }
-  return var_t(m_vfac.get(mem_region.get_id()), type, bitwidth);
+  auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.get_id()));
+  return var_t(varname, type, bitwidth);
 }
 
 var_t crabLitFactoryImpl::mkIntArrayVar(unsigned bitwidth) {
@@ -247,12 +251,12 @@ var_t crabLitFactory::mkBoolArrayVar() { return m_impl->mkBoolArrayVar(); }
 
 var_t crabLitFactory::mkPtrArrayVar() { return m_impl->mkPtrArrayVar(); }
 
-template <> var_t crabLitFactory::mkArrayVar(mem_region_t r) {
-  return m_impl->mkArrayVar(r);
+var_t crabLitFactory::mkArrayVar(Region r, const Value *name) {
+  return m_impl->mkArrayVar(r, name);
 }
 
-template <> var_t crabLitFactory::mkArraySingletonVar(mem_region_t r) {
-  return m_impl->mkArraySingletonVar(r);
+var_t crabLitFactory::mkArraySingletonVar(Region r, const Value *name) {
+  return m_impl->mkArraySingletonVar(r, name);
 }
 
 var_t crabLitFactory::mkIntVar(unsigned bitwidth) {

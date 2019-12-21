@@ -1,6 +1,5 @@
 #include "clam/config.h"
 
-#ifdef HAVE_SEA_DSA
 /**
  * Heap abstraction based on sea-dsa (https://github.com/seahorn/sea-dsa).
  */
@@ -18,7 +17,7 @@
 #include "sea_dsa/Global.hh"
 #include "sea_dsa/Graph.hh"
 
-#include "SeaDsaHeapAbstractionChecks.hh"
+#include "SeaDsaHeapAbstractionDsaToRegion.hh"
 #include "SeaDsaHeapAbstractionUtils.hh"
 #include "clam/SeaDsaHeapAbstraction.hh"
 #include "clam/Support/Debug.hh"
@@ -32,16 +31,15 @@ namespace clam {
 using namespace sea_dsa;
 using namespace llvm;
 
-LegacySeaDsaHeapAbstraction::region_t
-LegacySeaDsaHeapAbstraction::mkRegion(LegacySeaDsaHeapAbstraction *heap_abs,
-                                      const Cell &c, region_info ri) {
-  LegacySeaDsaHeapAbstraction::region_t out(
-      static_cast<HeapAbstraction *>(heap_abs), getId(c), ri);
+Region LegacySeaDsaHeapAbstraction::mkRegion(const Cell &c, RegionInfo ri) {
+  auto id = getId(c);
+  return Region(id, ri, getSingleton(id));
+  
   // // sanity check
-  // if (const llvm::Value* v = out.getSingleton()) {
+  // if (const llvm::Value* v = res.getSingleton()) {
   //   if (const llvm::GlobalVariable *gv = llvm::dyn_cast<const
   //   llvm::GlobalVariable>(v)) {
-  //     switch(out.get_type()) {
+  //     switch(res.get_type()) {
   //     case BOOL_REGION:
   // 	if (!gv->getType()->getElementType()->isIntegerTy(1)) {
   // 	  assert(false);
@@ -59,10 +57,9 @@ LegacySeaDsaHeapAbstraction::mkRegion(LegacySeaDsaHeapAbstraction *heap_abs,
   //     }
   //   }
   // }
-  return out;
 }
 
-LegacySeaDsaHeapAbstraction::region_id_t
+LegacySeaDsaHeapAbstraction::RegionId
 LegacySeaDsaHeapAbstraction::getId(const Cell &c) {
   const Node *n = c.getNode();
   unsigned offset = c.getOffset();
@@ -72,7 +69,7 @@ LegacySeaDsaHeapAbstraction::getId(const Cell &c) {
     return it->second + offset;
   }
 
-  region_id_t id = m_max_id;
+  RegionId id = m_max_id;
   m_node_ids[n] = id;
 
   // XXX: we only have the reverse map for the offset 0.  That's
@@ -112,7 +109,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodes(
   std::set<const Node *> reach, retReach;
   seadsa_heap_abs_impl::argReachableNodes(f, G, reach, retReach);
 
-  std::vector<region_t> reads, mods, news;
+  RegionVec reads, mods, news;
   for (const Node *n : reach) {
     if (!n->isRead() && !n->isModified()) {
       continue;
@@ -124,12 +121,12 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodes(
     for (auto &kv : n->types()) {
 
       Cell c(const_cast<Node *>(n), kv.first);
-      region_info r_info =
-          canBeDisambiguated(c, m_dl, m_disambiguate_unknown,
+      RegionInfo r_info =
+          DsaToRegion(c, m_dl, m_disambiguate_unknown,
                              m_disambiguate_ptr_cast, m_disambiguate_external);
 
       if (r_info.get_type() != UNTYPED_REGION) {
-        region_t reg(mkRegion(this, c, r_info));
+        Region reg(mkRegion(c, r_info));
         if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
           reads.push_back(reg);
         }
@@ -202,8 +199,8 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
     for (auto &kv : n->types()) {
 
       Cell calleeC(const_cast<Node *>(n), kv.first);
-      region_info calleeRI =
-          canBeDisambiguated(calleeC, m_dl, m_disambiguate_unknown,
+      RegionInfo calleeRI =
+          DsaToRegion(calleeC, m_dl, m_disambiguate_unknown,
                              m_disambiguate_ptr_cast, m_disambiguate_external);
 
       if (calleeRI.get_type() != UNTYPED_REGION) {
@@ -215,7 +212,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
           CLAM_ERROR("caller cell cannot be mapped to callee cell");
         }
 
-        region_info callerRI = canBeDisambiguated(
+        RegionInfo callerRI = DsaToRegion(
             callerC, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
             m_disambiguate_external);
         /**
@@ -232,7 +229,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
          * regions are exposed to clients.
          **/
         bool is_consistent_callsite = (calleeRI == callerRI);
-        region_t reg(mkRegion(this, callerC, calleeRI));
+        Region reg(mkRegion(callerC, calleeRI));
         if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
           reads.push_back({reg, is_consistent_callsite});
         }
@@ -251,7 +248,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   }
 
   // -- add the region of the lhs of the call site
-  // region_t ret = getRegion(*(I.getParent()->getParent()), &I);
+  // Region ret = getRegion(*(I.getParent()->getParent()), &I, &I);
   // if (!ret.isUnknown()) mods.push_back(ret);
 
   accessed_map[&I] = reads;
@@ -314,9 +311,9 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
   }
 
   for (auto const &F : m_m) {
-    std::vector<region_t> &readsF = m_func_accessed[&F];
-    std::vector<region_t> &modsF = m_func_mods[&F];
-    std::vector<region_t> &newsF = m_func_news[&F];
+    RegionVec &readsF = m_func_accessed[&F];
+    RegionVec &modsF = m_func_mods[&F];
+    RegionVec &newsF = m_func_news[&F];
 
     std::vector<bool> readsB, modsB, newsB;
     readsB.reserve(readsF.size());
@@ -371,7 +368,7 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
     }
 
     /// Second phase: cache final regions.
-    std::vector<region_t> readsF_out, modsF_out, newsF_out;
+    RegionVec readsF_out, modsF_out, newsF_out;
     for (unsigned i = 0, e = readsB.size(); i < e; i++) {
       if (readsB[i]) {
         readsF_out.push_back(readsF[i]);
@@ -396,7 +393,7 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
       CallInst *CI = worklist.back();
       worklist.pop_back();
 
-      std::vector<region_t> readsC_out, modsC_out, newsC_out;
+      RegionVec readsC_out, modsC_out, newsC_out;
       std::vector<region_bool_t> &readsC = cs_accessed[CI];
       std::vector<region_bool_t> &modsC = cs_mods[CI];
       std::vector<region_bool_t> &newsC = cs_news[CI];
@@ -428,36 +425,36 @@ LegacySeaDsaHeapAbstraction::~LegacySeaDsaHeapAbstraction() {
 }
 
 // f is used to know in which Graph we should search for V
-LegacySeaDsaHeapAbstraction::region_t
-LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
-                                       const llvm::Value *V) {
+Region LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
+					      const llvm::Instruction *I/*unused*/,
+					      const llvm::Value *V) {
   if (!m_dsa || !m_dsa->hasGraph(fn)) {
-    return region_t();
+    return Region();
   }
 
   Graph &G = m_dsa->getGraph(fn);
   if (!G.hasCell(*V)) {
-    return region_t();
+    return Region();
   }
 
   const Cell &c = G.getCell(*V);
   if (c.isNull()) {
-    return region_t();
+    return Region();
   }
 
-  region_info r_info =
-      canBeDisambiguated(c, m_dl, m_disambiguate_unknown,
-                         m_disambiguate_ptr_cast, m_disambiguate_external);
+  RegionInfo r_info =
+      DsaToRegion(c, m_dl, m_disambiguate_unknown,
+		  m_disambiguate_ptr_cast, m_disambiguate_external);
 
   if (r_info.get_type() == UNTYPED_REGION) {
-    return region_t();
+    return Region();
   } else {
-    return mkRegion(this, c, r_info);
+    return mkRegion(c, r_info);
   }
 }
 
 const llvm::Value *
-LegacySeaDsaHeapAbstraction::getSingleton(region_id_t region) const {
+LegacySeaDsaHeapAbstraction::getSingleton(RegionId region) const {
   auto const it = m_rev_node_ids.find(region);
   if (it == m_rev_node_ids.end())
     return nullptr;
@@ -475,19 +472,19 @@ LegacySeaDsaHeapAbstraction::getSingleton(region_id_t region) const {
   return nullptr;
 }
 
-LegacySeaDsaHeapAbstraction::region_vector_t
+LegacySeaDsaHeapAbstraction::RegionVec
 LegacySeaDsaHeapAbstraction::getAccessedRegions(const llvm::Function &fn) {
   return m_func_accessed[&fn];
 }
 
-LegacySeaDsaHeapAbstraction::region_vector_t
+LegacySeaDsaHeapAbstraction::RegionVec
 LegacySeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {
-  region_vector_t v1 = m_func_accessed[&fn];
-  region_vector_t v2 = m_func_mods[&fn];
-  std::set<LegacySeaDsaHeapAbstraction::region_t> s2(v2.begin(), v2.end());
+  RegionVec v1 = m_func_accessed[&fn];
+  RegionVec v2 = m_func_mods[&fn];
+  std::set<Region> s2(v2.begin(), v2.end());
 
   // return v1 \ s2
-  region_vector_t out;
+  RegionVec out;
   out.reserve(v1.size());
   for (unsigned i = 0, e = v1.size(); i < e; ++i) {
     if (!s2.count(v1[i])) {
@@ -497,29 +494,29 @@ LegacySeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {
   return out;
 }
 
-LegacySeaDsaHeapAbstraction::region_vector_t
+LegacySeaDsaHeapAbstraction::RegionVec
 LegacySeaDsaHeapAbstraction::getModifiedRegions(const llvm::Function &fn) {
   return m_func_mods[&fn];
 }
 
-LegacySeaDsaHeapAbstraction::region_vector_t
+LegacySeaDsaHeapAbstraction::RegionVec
 LegacySeaDsaHeapAbstraction::getNewRegions(const llvm::Function &fn) {
   return m_func_news[&fn];
 }
 
-LegacySeaDsaHeapAbstraction::region_vector_t
+LegacySeaDsaHeapAbstraction::RegionVec
 LegacySeaDsaHeapAbstraction::getAccessedRegions(const llvm::CallInst &I) {
   return m_callsite_accessed[&I];
 }
 
-LegacySeaDsaHeapAbstraction::region_vector_t
+LegacySeaDsaHeapAbstraction::RegionVec
 LegacySeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) {
-  region_vector_t v1 = m_callsite_accessed[&I];
-  region_vector_t v2 = m_callsite_mods[&I];
-  std::set<LegacySeaDsaHeapAbstraction::region_t> s2(v2.begin(), v2.end());
+  RegionVec v1 = m_callsite_accessed[&I];
+  RegionVec v2 = m_callsite_mods[&I];
+  std::set<Region> s2(v2.begin(), v2.end());
 
   // return v1 \ s2
-  region_vector_t out;
+  RegionVec out;
   out.reserve(v1.size());
   for (unsigned i = 0, e = v1.size(); i < e; ++i) {
     if (!s2.count(v1[i])) {
@@ -529,15 +526,15 @@ LegacySeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) {
   return out;
 }
 
-LegacySeaDsaHeapAbstraction::region_vector_t
+LegacySeaDsaHeapAbstraction::RegionVec
 LegacySeaDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst &I) {
   return m_callsite_mods[&I];
 }
 
-LegacySeaDsaHeapAbstraction::region_vector_t
+LegacySeaDsaHeapAbstraction::RegionVec
 LegacySeaDsaHeapAbstraction::getNewRegions(const llvm::CallInst &I) {
   return m_callsite_news[&I];
 }
 
 } // namespace clam
-#endif /*HAVE_SEA_DSA*/
+

@@ -5,9 +5,9 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "CfgBuilderMemReg.hh"
 #include "clam/CfgBuilderParams.hh"
 #include "clam/crab/crab_cfg.hh"
+#include "clam/HeapAbstraction.hh"
 
 #include <unordered_map>
 
@@ -170,6 +170,7 @@ typedef std::shared_ptr<crabLit> crab_lit_ref_t;
 /* Implementation of a factory to create literals */
 class crabLitFactoryImpl {
 public:
+  
   crabLitFactoryImpl(llvm_variable_factory &vfac,
                      const CrabBuilderParams &params);
 
@@ -190,10 +191,10 @@ public:
   var_t mkPtrArrayVar();
 
   // Create an array variable associated with region r.
-  var_t mkArrayVar(mem_region_t r);
+  var_t mkArrayVar(Region r, const llvm::Value *name);
 
   // Create an scalar variable associated with region r.
-  var_t mkArraySingletonVar(mem_region_t r);
+  var_t mkArraySingletonVar(Region r, const llvm::Value *name);
 
   // Create a fresh integer variable of bitwidth bits
   var_t mkIntVar(unsigned bitwidth);
@@ -236,6 +237,7 @@ private:
  **/
 class crabLitFactory {
 public:
+  
   crabLitFactory(llvm_variable_factory &vfac, const CrabBuilderParams &params);
 
   ~crabLitFactory();
@@ -264,10 +266,10 @@ public:
 
   var_t mkPtrArrayVar();
 
-  template <typename Region> var_t mkArrayVar(Region r);
+  var_t mkArrayVar(Region r, const llvm::Value *name = nullptr);
 
-  template <typename Region> var_t mkArraySingletonVar(Region r);
-
+  var_t mkArraySingletonVar(Region r, const llvm::Value *name = nullptr);
+  
   /** direct accessors to crabLit subclasses **/
   bool isBoolTrue(const crab_lit_ref_t ref) const;
 

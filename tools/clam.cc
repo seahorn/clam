@@ -31,6 +31,8 @@
 #include "clam/Transforms/InsertInvariants.hh"
 #include "crab/common/debug.hpp"
 
+#include "sea_dsa/ShadowMem.hh"
+
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
               llvm::cl::Required, llvm::cl::value_desc("filename"));
@@ -92,6 +94,10 @@ static llvm::cl::opt<bool>
 PromoteAssume("crab-promote-assume", 
 	       llvm::cl::desc("Promote verifier.assume to llvm.assume intrinsics"),
 	       llvm::cl::init(false));
+
+namespace clam {
+extern bool XMemShadows;
+}
 
 /* logging and verbosity */
 
@@ -284,6 +290,10 @@ int main(int argc, char **argv) {
   }
   #endif 
 
+  if (XMemShadows) {
+    pass_manager.add(sea_dsa::createShadowMemPass());
+  }
+  
   // -- lower ULT and ULE instructions  
   if(LowerUnsignedICmp) {
     pass_manager.add(clam::createLowerUnsignedICmpPass());   
@@ -306,8 +316,9 @@ int main(int argc, char **argv) {
     pass_manager.add(new clam::ClamPass());
   }
 
-  if(!AsmOutputFilename.empty()) 
-    pass_manager.add(createPrintModulePass(asmOutput->os()));
+  if(!AsmOutputFilename.empty()) {
+    pass_manager.add(createPrintModulePass(asmOutput->os()));    
+  }
  
   if (!NoCrab) {
     // -- perform dead code elimination and insert invariants as

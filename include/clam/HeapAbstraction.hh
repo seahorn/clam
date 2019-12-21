@@ -1,19 +1,18 @@
 #pragma once
 
-/* Generic class for a heap analysis */
+/* Generic class for a Dsa-like analysis */
 
 #include "clam/config.h"
 #include "crab/common/debug.hpp"
 
 #include "llvm/Support/raw_ostream.h"
-
+#include "llvm/IR/Value.h"
 #include <vector>
 
 // forward declarations
 namespace llvm {
 class Module;
 class Function;
-class Value;
 class Instruction;
 class StringRef;
 class CallInst;
@@ -22,7 +21,7 @@ class CallInst;
 namespace clam {
 
 ////
-// Heap analysis for memory disambiguation
+// Dsa analysis for memory disambiguation
 ////
 enum class heap_analysis_t {
   // use llvm-dsa (only context-insensitive)
@@ -40,28 +39,36 @@ typedef enum {
   PTR_REGION = 3
 } region_type_t;
 
-class region_info {
+class RegionInfo {
   region_type_t m_region_type;
   // if the region contains a basic type (bool or integer) then
-  // m_bitwidth is the bitwidth of the basic type. Otherwise, it is
-  // 0.
+  // m_bitwidth is the bitwidth of the basic type. Otherwise, it is 0.
   unsigned m_bitwidth;
 
 public:
-  region_info(region_type_t t, unsigned b) : m_region_type(t), m_bitwidth(b) {}
+  RegionInfo(region_type_t t, unsigned b):
+    m_region_type(t), m_bitwidth(b) {}
 
-  region_info(const region_info &other) = default;
-  region_info &operator=(const region_info &other) = default;
-  bool operator==(const region_info &o) {
-    return (get_type() == o.get_type() && get_bitwidth() == o.get_bitwidth());
+  RegionInfo(const RegionInfo &other) = default;
+  
+  RegionInfo &operator=(const RegionInfo &other) = default;
+  
+  bool operator==(const RegionInfo &o) {
+    return (get_type() == o.get_type() &&
+	    get_bitwidth() == o.get_bitwidth());
   }
+  
   region_type_t get_type() const { return m_region_type; }
+  
   unsigned get_bitwidth() const { return m_bitwidth; }
 };
 
-template <typename Mem> class Region {
+/** 
+ * A region abstracts a Dsa node field to create a symbolic name.
+ **/
+class Region {
 public:
-  using region_id_t = long unsigned int;
+  using RegionId = long unsigned int;
 
 private:
   // A region different from unknown should represent a consecutive
@@ -69,59 +76,59 @@ private:
   // accessed uniformly so the analysis can use it in a safe
   // manner.
 
-  friend struct DummyHeapAbstraction;
-#ifdef HAVE_DSA
-  friend class LlvmDsaHeapAbstraction;
-#endif
-#ifdef HAVE_SEA_DSA
-#ifdef HAVE_SHADOW_MEM_SEA_DSA
-  friend class SeaDsaHeapAbstraction;
-#else
-  friend class LegacySeaDsaHeapAbstraction;
-#endif
-#endif
-
-  Mem *m_mem;
-  region_id_t m_id;
-  region_info m_info;
-
-  Region(Mem *mem, region_id_t id, region_info info)
-      : m_mem(mem), m_id(id), m_info(info) {}
-
+  // Unique id
+  RegionId m_id;
+  // type of the region
+  RegionInfo m_info;
+  // whether the region contains a singleton value or not.
+  const llvm::Value* m_singleton;
+  
 public:
-  Region() : m_mem(nullptr), m_id(0), m_info(region_info(UNTYPED_REGION, 0)) {}
 
-  Region(const Region<Mem> &other) = default;
+  Region(RegionId id, RegionInfo info, const llvm::Value *singleton)
+    : m_id(id), m_info(info), m_singleton(singleton)
+  {}
+  
+  Region()
+    : m_id(0), m_info(RegionInfo(UNTYPED_REGION, 0)), m_singleton(nullptr)
+  {}
 
-  Region(Region<Mem> &&other) = default;
+  Region(const Region &other) = default;
 
-  Region<Mem> &operator=(const Region<Mem> &other) = default;
+  Region(Region &&other) = default;
 
-  bool isUnknown() const { return (m_info.get_type() == UNTYPED_REGION); }
+  Region &operator=(const Region &other) = default;
 
-  const llvm::Value *getSingleton() const {
-    if (!m_mem)
-      return nullptr;
-    else
-      return m_mem->getSingleton(m_id);
+  RegionId get_id() const {
+    return m_id;
+  }
+  
+  bool isUnknown() const {
+    return (m_info.get_type() == UNTYPED_REGION);
   }
 
-  region_type_t get_type() const { return m_info.get_type(); }
+  const llvm::Value *getSingleton() const {
+    return m_singleton;
+  }
 
-  unsigned get_bitwidth() const { return m_info.get_bitwidth(); }
+  RegionInfo getRegionInfo() const {
+    return m_info;
+  }
+  
+  bool operator<(const Region &o) const {
+    return (m_id < o.m_id);
+  }
 
-  bool operator<(const Region<Mem> &o) const { return (m_id < o.m_id); }
-
-  bool operator==(const Region<Mem> &o) const { return (m_id == o.m_id); }
-
-  region_id_t get_id() const { return m_id; }
+  bool operator==(const Region &o) const {
+    return (m_id == o.m_id);
+  }
 
   void write(llvm::raw_ostream &o) const {
     if (isUnknown()) {
       o << "unknown";
     } else {
       o << "R_" << m_id << ":";
-      switch (get_type()) {
+      switch (getRegionInfo().get_type()) {
       case UNTYPED_REGION:
         o << "U";
         break;
@@ -138,18 +145,16 @@ public:
     }
   }
 
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &o,
-                                       const Region<Mem> &r) {
+  friend
+  llvm::raw_ostream &operator<<(llvm::raw_ostream &o, const Region &r) {
     r.write(o);
     return o;
   }
 };
 
-template <typename Mem>
-inline llvm::raw_ostream &operator<<(llvm::raw_ostream &o,
-                                     std::vector<Region<Mem>> s) {
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &o, std::vector<Region> s) {
   o << "{";
-  for (typename std::vector<Region<Mem>>::iterator it = s.begin(), et = s.end();
+  for (typename std::vector<Region>::iterator it = s.begin(), et = s.end();
        it != et;) {
     o << *it;
     ++it;
@@ -160,54 +165,56 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &o,
   return o;
 }
 
+
+/* A convenient wrapper for a Dsa-like analysis */
 class HeapAbstraction {
-
-  template <typename Any> friend class Region;
-
-public:
-  typedef Region<HeapAbstraction> region_t;
-  typedef std::vector<region_t> region_vector_t;
-  typedef typename region_t::region_id_t region_id_t;
-
-protected:
-  // return a value if the region corresponds to a single-cell
-  // global memory cell, or nullptr otherwise.
-  virtual const llvm::Value *getSingleton(region_id_t region) const = 0;
+  friend class Region;
 
 public:
+  typedef std::vector<Region> RegionVec;
+  typedef typename Region::RegionId RegionId;
+
+  // Add a new value if a new HeapAbstraction subclass is created
+  // This is used to use static_cast.
+  enum class ClassId { DUMMY, LLVM_DSA, SEA_DSA};
+  
   HeapAbstraction() {}
 
   virtual ~HeapAbstraction() {}
 
+  virtual ClassId getClassId() const = 0;
+  
   // XXX: ideally all these methods should be marked as const but
   // neither sea-dsa nor llvm-dsa provide APIs to allow that.
 
-  // Function is used to know in which function the Value lives
-  virtual region_t getRegion(const llvm::Function &, const llvm::Value *) = 0;
+  // fun is used to know in which function ptr lives.
+  // If not null, i is the instruction that uses ptr.
+  virtual Region getRegion(const llvm::Function &fun,
+			   const llvm::Instruction *i, const llvm::Value *ptr) = 0;
 
   // read and written regions by the function
-  virtual region_vector_t getAccessedRegions(const llvm::Function &) = 0;
+  virtual RegionVec getAccessedRegions(const llvm::Function &) = 0;
 
   // only read regions by the function
-  virtual region_vector_t getOnlyReadRegions(const llvm::Function &) = 0;
+  virtual RegionVec getOnlyReadRegions(const llvm::Function &) = 0;
 
   // written regions by the function
-  virtual region_vector_t getModifiedRegions(const llvm::Function &) = 0;
+  virtual RegionVec getModifiedRegions(const llvm::Function &) = 0;
 
   // regions that are reachable only from the return of the function
-  virtual region_vector_t getNewRegions(const llvm::Function &) = 0;
+  virtual RegionVec getNewRegions(const llvm::Function &) = 0;
 
   // read and written regions by the callee
-  virtual region_vector_t getAccessedRegions(const llvm::CallInst &) = 0;
+  virtual RegionVec getAccessedRegions(const llvm::CallInst &) = 0;
 
   // only read regions by the function
-  virtual region_vector_t getOnlyReadRegions(const llvm::CallInst &) = 0;
+  virtual RegionVec getOnlyReadRegions(const llvm::CallInst &) = 0;
 
   // written regions by the callee
-  virtual region_vector_t getModifiedRegions(const llvm::CallInst &) = 0;
+  virtual RegionVec getModifiedRegions(const llvm::CallInst &) = 0;
 
   // regions that are reachable only from the return of the callee
-  virtual region_vector_t getNewRegions(const llvm::CallInst &) = 0;
+  virtual RegionVec getNewRegions(const llvm::CallInst &) = 0;
 
   virtual llvm::StringRef getName() const = 0;
 };

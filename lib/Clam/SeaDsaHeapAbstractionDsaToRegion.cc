@@ -1,7 +1,6 @@
 #include "clam/config.h"
 
-#ifdef HAVE_SEA_DSA
-#include "SeaDsaHeapAbstractionChecks.hh"
+#include "SeaDsaHeapAbstractionDsaToRegion.hh"
 #include "SeaDsaHeapAbstractionUtils.hh"
 
 #include "llvm/IR/DataLayout.h"
@@ -124,7 +123,7 @@ static bool isOverlappingCell(const Cell &c, const DataLayout &dl) {
 // Extra conditions required for array smashing-like abstractions
 static bool isSafeForWeakArrayDomains(const Cell &c, const DataLayout &dl) {
   if (isOverlappingCell(c, dl)) {
-    CRAB_LOG("heap-abs", errs() << "\tCannot be disambiguated because overlaps "
+    CRAB_LOG("heap-abs", errs() << "\tCannot be converted to region because overlaps "
                                    "with other cells.\n";);
     return false;
   }
@@ -136,7 +135,7 @@ static bool isSafeForWeakArrayDomains(const Cell &c, const DataLayout &dl) {
     CRAB_LOG(
         "heap-abs",
         errs()
-            << "\tCannot be disambiguated because cell is out-of-bounds.\n";);
+            << "\tCannot be converted to region because cell is out-of-bounds.\n";);
     return false;
   }
 
@@ -146,7 +145,7 @@ static bool isSafeForWeakArrayDomains(const Cell &c, const DataLayout &dl) {
                       return (kv.first != offset);
                     })) {
       CRAB_LOG("heap-abs",
-               errs() << "\tCannot be disambiguated because cell's node is "
+               errs() << "\tCannot be converted to region because cell's node is "
                       << " an array accessed with different offsets\n";);
       return false;
     }
@@ -162,50 +161,50 @@ namespace clam {
 using namespace llvm;
 using namespace sea_dsa;
 
-// canBeDisambiguated succeeds if returned valued != UNTYPED_REGION
-region_info canBeDisambiguated(const Cell &c, const DataLayout &dl,
-                               bool disambiguate_unknown,
-                               bool disambiguate_ptr_cast,
-                               bool disambiguate_external) {
+// DsaToRegion succeeds if returned valued != UNTYPED_REGION
+RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
+		       bool disambiguate_unknown,
+		       bool disambiguate_ptr_cast,
+		       bool disambiguate_external) {
   if (c.isNull()) {
-    return region_info(UNTYPED_REGION, 0);
+    return RegionInfo(UNTYPED_REGION, 0);
   }
 
   const Node *n = c.getNode();
   unsigned offset = c.getOffset();
 
   CRAB_LOG("heap-abs", errs() << "*** Checking whether node at offset "
-                              << offset << " can be disambiguated ... \n"
+                              << offset << " can be converted to region ... \n"
                               << "\t" << *n << "\n";);
 
   if (!n->isModified() && !n->isRead()) {
     CRAB_LOG("heap-abs", errs()
                              << "\tWe do not bother to disambiguate it because "
                              << "it is never accessed.\n";);
-    return region_info(UNTYPED_REGION, 0);
+    return RegionInfo(UNTYPED_REGION, 0);
   }
 
   if (n->isOffsetCollapsed()) {
     CRAB_LOG(
         "heap-abs",
-        errs() << "\tCannot be disambiguated: node is already collapsed.\n";);
-    return region_info(UNTYPED_REGION, 0);
+        errs() << "\tCannot be converted to region: node is already collapsed.\n";);
+    return RegionInfo(UNTYPED_REGION, 0);
   }
 
   if (n->isIntToPtr() || n->isPtrToInt()) {
     if (!disambiguate_ptr_cast) {
       CRAB_LOG("heap-abs", errs()
-                               << "\tCannot be disambiguated: node is casted "
+                               << "\tCannot be converted to region: node is casted "
                                << "from/to an integer.\n";);
-      return region_info(UNTYPED_REGION, 0);
+      return RegionInfo(UNTYPED_REGION, 0);
     }
   }
 
   if (n->isExternal()) {
     if (!disambiguate_external) {
       CRAB_LOG("heap-abs",
-               errs() << "\tCannot be disambiguated: node is external.\n";);
-      return region_info(UNTYPED_REGION, 0);
+               errs() << "\tCannot be converted to region: node is external.\n";);
+      return RegionInfo(UNTYPED_REGION, 0);
     }
   }
 
@@ -218,11 +217,11 @@ region_info canBeDisambiguated(const Cell &c, const DataLayout &dl,
                                   << " with bitwidth=" << int_pred.m_bitwidth
                                   << "\n"
                                   << "\t" << *n << "\n";);
-      return region_info(INT_REGION, int_pred.m_bitwidth);
+      return RegionInfo(INT_REGION, int_pred.m_bitwidth);
     } else {
-      CRAB_LOG("heap-abs", errs() << "\tCannot be disambiguated because it's "
+      CRAB_LOG("heap-abs", errs() << "\tCannot be converted to region because it's "
                                      "not safe weak array domains\n";);
-      return region_info(UNTYPED_REGION, 0);
+      return RegionInfo(UNTYPED_REGION, 0);
     }
   }
 
@@ -234,20 +233,19 @@ region_info canBeDisambiguated(const Cell &c, const DataLayout &dl,
                                   << "Found BOOL_REGION at offset " << offset
                                   << " with bitwidth=1\n"
                                   << "\t" << *n << "\n";);
-      return region_info(BOOL_REGION, 1);
+      return RegionInfo(BOOL_REGION, 1);
     } else {
-      CRAB_LOG("heap-abs", errs() << "\tCannot be disambiguated because it's "
+      CRAB_LOG("heap-abs", errs() << "\tCannot be converted to region because it's "
                                      "not safe weak array domains\n";);
-      return region_info(UNTYPED_REGION, 0);
+      return RegionInfo(UNTYPED_REGION, 0);
     }
   }
 
   // TODO: modify here to consider cells containing pointers.
   CRAB_LOG("heap-abs",
-           errs() << "\tCannot be disambiguated: do not contain integer.\n";);
+           errs() << "\tCannot be converted to region: do not contain integer.\n";);
 
-  return region_info(UNTYPED_REGION, 0);
+  return RegionInfo(UNTYPED_REGION, 0);
 }
 
 } // end namespace clam
-#endif

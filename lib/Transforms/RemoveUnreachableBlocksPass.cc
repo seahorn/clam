@@ -2,6 +2,18 @@
 #include "llvm/IR/Function.h"
 #include "llvm/Transforms/Utils/Local.h"
 
+#include "clam/config.h"
+
+#include "sea_dsa/ShadowMem.hh"
+#include "sea_dsa/DsaAnalysis.hh"
+
+#ifdef HAVE_DSA
+#include "dsa/DataStructure.h"
+#include "dsa/AllocatorIdentification.h"
+#include "dsa/AddressTakenAnalysis.h"
+#include "dsa/Steensgaard.hh"
+#endif
+
 using namespace llvm;
 
 namespace clam
@@ -15,7 +27,17 @@ namespace clam
     {return removeUnreachableBlocks (F);}
     
     void getAnalysisUsage (AnalysisUsage &AU) const {
-      //  AU.setPreservesAll ();
+      #ifdef HAVE_DSA
+      // Preserve DSA passes
+      AU.addPreservedID(StdLibDataStructuresID);
+      AU.addPreservedID(AddressTakenAnalysisID);
+      AU.addPreservedID(AllocIdentifyID);
+      AU.addPreservedID(LocalDataStructuresID);
+      AU.addPreservedID(SteensgaardDataStructuresID);
+      #endif
+      // Preserve Sea-DSA passes
+      AU.addPreservedID(sea_dsa::DsaAnalysis::ID);
+      AU.addPreservedID(sea_dsa::ShadowMemPass::ID);
     }
     
     virtual StringRef getPassName() const {

@@ -32,9 +32,8 @@
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
 #endif
-#ifdef HAVE_SEA_DSA
 #include "sea_dsa/AllocWrapInfo.hh"
-#endif 
+#include "sea_dsa/ShadowMem.hh"
 
 #include "crab/common/debug.hpp"
 #include "crab/common/stats.hpp"
@@ -1204,49 +1203,61 @@ namespace clam {
     /// Translate the module to Crab CFGs
     
     CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
-			     CrabEnableUniqueScalars, CrabDisablePointers,
-			     CrabIncludeHavoc, CrabArrayInit, CrabUnsoundArrayInit,
+			     CrabEnableUniqueScalars, CrabMemShadows, 
+			     CrabDisablePointers, CrabIncludeHavoc,
+			     CrabArrayInit, CrabUnsoundArrayInit,
 			     CrabEnableBignums, CrabPrintCFG);
 
     auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
     
-    std::unique_ptr<HeapAbstraction> mem = nullptr;
-    switch(CrabHeapAnalysis) {
-    case heap_analysis_t::LLVM_DSA:
-      #ifdef HAVE_DSA
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);
-      mem.reset
-	(new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
-				    CrabDsaDisambiguateUnknown,
-				    CrabDsaDisambiguatePtrCast,
-				    CrabDsaDisambiguateExternal));
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished llvm-dsa analysis\n";);      
-      break;
-      #else
-      // execute CI_SEA_DSA
-      #endif      
-    case heap_analysis_t::CI_SEA_DSA:
-    case heap_analysis_t::CS_SEA_DSA: {
-      #ifdef HAVE_SEA_DSA      
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
-      CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();      
-      const DataLayout& dl = M.getDataLayout();
-      sea_dsa::AllocWrapInfo* allocWrapInfo = &getAnalysis<sea_dsa::AllocWrapInfo>();      
-      mem.reset
-	(new SeaDsaHeapAbstraction(M, cg, dl, *tli, *allocWrapInfo,
-				   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
-				   CrabDsaDisambiguateUnknown,
-				   CrabDsaDisambiguatePtrCast,
-				   CrabDsaDisambiguateExternal));
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished sea-dsa analysis\n";);      
-      break;
-      #endif 
-    }
-    default:
-      CLAM_WARNING("running clam without memory analysis");
+    if (!CrabMemShadows) {
+      // If CrabMemShadows is enabled then we don't run any heap
+      // analysis.
+      switch(CrabHeapAnalysis) {
+      case heap_analysis_t::LLVM_DSA:
+        #ifdef HAVE_DSA
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);
+	mem.reset
+	  (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
+				      CrabDsaDisambiguateUnknown,
+				      CrabDsaDisambiguatePtrCast,
+				      CrabDsaDisambiguateExternal));
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished llvm-dsa analysis\n";);      
+	break;
+        #else
+	// execute CI_SEA_DSA
+        #endif      
+      case heap_analysis_t::CI_SEA_DSA:
+      case heap_analysis_t::CS_SEA_DSA: {
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
+	CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();      
+	const DataLayout& dl = M.getDataLayout();
+	sea_dsa::AllocWrapInfo* allocWrapInfo = &getAnalysis<sea_dsa::AllocWrapInfo>();      
+	mem.reset
+	  (new LegacySeaDsaHeapAbstraction(M, cg, dl, *tli, *allocWrapInfo,
+					   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
+					   CrabDsaDisambiguateUnknown,
+					   CrabDsaDisambiguatePtrCast,
+					   CrabDsaDisambiguateExternal));
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished sea-dsa analysis\n";);      
+	break;
+      }      
+      default:
+	CLAM_WARNING("running clam without memory analysis");
+      }
     }
 
-    m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem)));
+    /// create the builder manager
+    sea_dsa::ShadowMem *sm = nullptr;
+    if (auto smp = getAnalysisIfAvailable<sea_dsa::ShadowMemPass>()) {
+      sm = &(smp->getShadowMem());
+    } else {
+      if (CrabMemShadows) {
+	CLAM_WARNING("getAnalysisIfAvailable<ShadowMemPass> returned null");
+      }
+    }
+    m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem), sm));
     
     CRAB_VERBOSE_IF(1,    
 		    m_cfg_builder_man->get_cfg_builder_params().write(errs());
@@ -1347,9 +1358,7 @@ namespace clam {
     AU.addRequiredTransitive<SteensgaardDataStructures>();
     #endif 
     AU.addRequired<TargetLibraryInfoWrapperPass>();
-    #ifdef HAVE_SEA_DSA    
     AU.addRequired<sea_dsa::AllocWrapInfo>();
-    #endif     
     AU.addRequired<UnifyFunctionExitNodes>();
     AU.addRequired<clam::NameValues>();
     AU.addRequired<CallGraphWrapperPass>();

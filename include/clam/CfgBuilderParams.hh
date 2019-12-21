@@ -10,9 +10,12 @@ struct CrabBuilderParams {
   crab::cfg::tracked_precision precision_level;
   // Perform dead code elimination, cfg simplifications, etc
   bool simplify;
+  // translate precisely calls
   bool interprocedural;
   // Lower singleton aliases (e.g., globals) to scalar ones
   bool lower_singleton_aliases;
+  // Translate memory operations in SSA form
+  bool memory_ssa;
   // Ignore translation of LLVM pointer instructions to Crab
   // pointer instructions.
   // 
@@ -41,6 +44,7 @@ struct CrabBuilderParams {
     , simplify(false)
     , interprocedural(true)
     , lower_singleton_aliases(false)
+    , memory_ssa(false)
     , ignore_ptr(false)
     , include_useless_havoc(true)
     , initialize_arrays(true)
@@ -50,13 +54,15 @@ struct CrabBuilderParams {
   
   CrabBuilderParams(crab::cfg::tracked_precision _precision_level,
 		    bool _simplify, bool _interprocedural, bool _lower_singleton_aliases,
-		    bool _ignore_ptr, bool _include_useless_havoc, bool _initialize_arrays,
+		    bool _memory_ssa, bool _ignore_ptr, 
+		    bool _include_useless_havoc, bool _initialize_arrays,
 		    bool _aggressive_initialize_arrays, bool _enable_bignums,
 		    bool _print_cfg):
     precision_level(_precision_level)
     , simplify(_simplify)
     , interprocedural(_interprocedural)
     , lower_singleton_aliases(_lower_singleton_aliases)
+    , memory_ssa(_memory_ssa)
     , ignore_ptr(_ignore_ptr)
     , include_useless_havoc(_include_useless_havoc)
     , initialize_arrays(_initialize_arrays)
@@ -93,6 +99,11 @@ struct CrabBuilderParams {
     precision_level = crab::cfg::ARR;
     ignore_ptr = true;      
     initialize_arrays = true;
+  }
+
+  /* Produce all Crab CFGs in Memory SSA form */
+  void enable_memory_ssa() {
+    memory_ssa = true;
   }
   
   void write(llvm::raw_ostream &o) const;
