@@ -121,6 +121,11 @@ void reachableNodes (const Function &fn, Graph &g, Set &inputReach, Set& retReac
   }
 }
 
+struct NodeOrdering {
+  bool operator()(const Node *n1, const Node *n2) const {
+    return n1->getId() < n2->getId();
+  }
+};
   
 /// Computes Node reachable from the call arguments in the graph.
 /// reach - all reachable nodes
@@ -454,7 +459,7 @@ void  SeaDsaHeapAbstraction::computeReadModNewNodes(const llvm::Function& f) {
   // We treat them as readnone functions
   if (f.getName().startswith("shadow.mem")) return;
 
-  std::set<const Node*> reach, retReach;
+  std::set<const Node*, seadsa_heap_abs_impl::NodeOrdering> reach, retReach;
   seadsa_heap_abs_impl::argReachableNodes(f, G, reach, retReach);
 
   std::vector<region_t> reads, mods, news;
@@ -529,8 +534,7 @@ void  SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(const llvm::Call
   Graph &calleeG = m_dsa->getGraph(CalleeF);
     
   // -- compute callee nodes reachable from arguments and returns
-  std::set<const Node*> reach;
-  std::set<const Node*> retReach;
+  std::set<const Node*, seadsa_heap_abs_impl::NodeOrdering> reach, retReach;  
   seadsa_heap_abs_impl::argReachableNodes (CalleeF, calleeG, reach, retReach);
     
   // -- compute mapping between callee and caller graphs
