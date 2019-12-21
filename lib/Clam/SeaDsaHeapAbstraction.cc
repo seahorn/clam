@@ -106,7 +106,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodes(
   if (f.getName().startswith("shadow.mem"))
     return;
 
-  std::set<const Node *> reach, retReach;
+  seadsa_heap_abs_impl::NodeSet reach, retReach;
   seadsa_heap_abs_impl::argReachableNodes(f, G, reach, retReach);
 
   RegionVec reads, mods, news;
@@ -179,10 +179,9 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   Graph &calleeG = m_dsa->getGraph(CalleeF);
 
   // -- compute callee nodes reachable from arguments and returns
-  std::set<const Node *> reach;
-  std::set<const Node *> retReach;
-  seadsa_heap_abs_impl::argReachableNodes(CalleeF, calleeG, reach, retReach);
-
+  seadsa_heap_abs_impl::NodeSet reach, retReach;  
+  seadsa_heap_abs_impl::argReachableNodes (CalleeF, calleeG, reach, retReach);
+    
   // -- compute mapping between callee and caller graphs
   SimulationMapper simMap;
   Graph::computeCalleeCallerMapping(CS, calleeG, callerG, simMap);
@@ -315,12 +314,13 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
     RegionVec &modsF = m_func_mods[&F];
     RegionVec &newsF = m_func_news[&F];
 
-    std::vector<bool> readsB, modsB, newsB;
-    readsB.reserve(readsF.size());
-    modsB.reserve(modsF.size());
-    newsB.reserve(newsF.size());
-
-    std::vector<CallInst *> worklist;
+    // Initialized to true (i.e., all regions are consistent until the
+    // opposite is proven)
+    std::vector<bool> readsB(readsF.size(), true);
+    std::vector<bool> modsB(modsF.size(), true);
+    std::vector<bool> newsB(newsF.size(), true);
+    
+    std::vector<CallInst*> worklist;
     /// First pass: for each memory region we check whether caller and
     /// callee agree on it.
     for (const Use &U : F.uses()) {

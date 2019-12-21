@@ -18,6 +18,10 @@ using namespace sea_dsa;
 
 namespace seadsa_heap_abs_impl {
 
+bool NodeOrdering::operator()(const sea_dsa::Node *n1, const sea_dsa::Node *n2) const {
+    return n1->getId() < n2->getId();
+}
+
 void set_difference(NodeSet &s1, NodeSet &s2) {
   NodeSet s3;
   std::set_difference(s1.begin(), s1.end(), s2.begin(), s2.end(),

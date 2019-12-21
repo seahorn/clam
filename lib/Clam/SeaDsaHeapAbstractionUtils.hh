@@ -16,7 +16,11 @@ class Node;
 namespace clam {
 namespace seadsa_heap_abs_impl {
 
-using NodeSet = std::set<const sea_dsa::Node *>;
+struct NodeOrdering {
+  bool operator()(const sea_dsa::Node *n1, const sea_dsa::Node *n2) const;
+};
+
+using NodeSet = std::set<const sea_dsa::Node *, NodeOrdering>;
 
 void set_difference(NodeSet &s1, NodeSet &s2);
 
