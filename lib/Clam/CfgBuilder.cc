@@ -3083,19 +3083,13 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tabstraction level: ";
   switch (precision_level) {
   case crab::cfg::PTR:
-    if (!ignore_ptr) {
-      o << "integers and pointers\n";
-      break;
-    }
+    o << "integers and pointers\n";
+    break;
   case crab::cfg::NUM:
     o << "only integers\n";
     break;
   case crab::cfg::ARR:
-    if (ignore_ptr) {
-      o << "integers and arrays (memory abstraction)\n";
-    } else {
-      o << "integers, pointers, and arrays (memory abstraction)\n";
-    }
+    o << "integers and arrays (memory abstraction)\n";
     break;
   default:;
     ;

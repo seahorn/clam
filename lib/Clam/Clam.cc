@@ -1204,7 +1204,7 @@ namespace clam {
     
     CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
 			     CrabEnableUniqueScalars, CrabMemShadows, 
-			     CrabDisablePointers, CrabIncludeHavoc,
+			     CrabIncludeHavoc,
 			     CrabArrayInit, CrabUnsoundArrayInit,
 			     CrabEnableBignums, CrabPrintCFG);
 

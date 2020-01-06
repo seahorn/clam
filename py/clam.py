@@ -708,7 +708,6 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args.append('--crab-relational-threshold={0}'.format(args.num_threshold))
     if args.track == 'arr':    
         clam_args.append('--crab-track=arr')
-        clam_args.append('--crab-disable-ptr')
         clam_args.append('--crab-arr-init')
     else:
         clam_args.append('--crab-track={0}'.format(args.track))

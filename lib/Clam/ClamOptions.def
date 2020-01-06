@@ -29,16 +29,6 @@ CrabEnableUniqueScalars("crab-singleton-aliases",
 	 cl::desc("Treat singleton alias sets as scalar values"), 
 	 cl::init(false));
 
-/** 
- * Do not translate memory instructions to crab pointer
- * instructions. Memory instructions can be still translated to
- * crab array instructions if tracked precision >= ARR.
- */
-cl::opt<bool>
-CrabDisablePointers("crab-disable-ptr",
-		    cl::desc("Disable translation of pointer instructions"), 
-		    cl::init(false),
-		    cl::Hidden);
 /**
  * Since LLVM IR is in SSA form many of the havoc statements are
  * redundant since variables can be defined only once.

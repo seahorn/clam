@@ -16,12 +16,6 @@ struct CrabBuilderParams {
   bool lower_singleton_aliases;
   // Translate memory operations in SSA form
   bool memory_ssa;
-  // Ignore translation of LLVM pointer instructions to Crab
-  // pointer instructions.
-  // 
-  // Memory instructions will be translated to Crab array
-  // instructions if tracked precision >= ARR.
-  bool ignore_ptr;
   // Remove useless havoc operations 
   bool include_useless_havoc;
   // Initialization of arrays for weak Crab array domains (e.g., smashing)
@@ -45,7 +39,6 @@ struct CrabBuilderParams {
     , interprocedural(true)
     , lower_singleton_aliases(false)
     , memory_ssa(false)
-    , ignore_ptr(false)
     , include_useless_havoc(true)
     , initialize_arrays(true)
     , aggressive_initialize_arrays(false)
@@ -54,7 +47,7 @@ struct CrabBuilderParams {
   
   CrabBuilderParams(crab::cfg::tracked_precision _precision_level,
 		    bool _simplify, bool _interprocedural, bool _lower_singleton_aliases,
-		    bool _memory_ssa, bool _ignore_ptr, 
+		    bool _memory_ssa, 
 		    bool _include_useless_havoc, bool _initialize_arrays,
 		    bool _aggressive_initialize_arrays, bool _enable_bignums,
 		    bool _print_cfg):
@@ -63,7 +56,6 @@ struct CrabBuilderParams {
     , interprocedural(_interprocedural)
     , lower_singleton_aliases(_lower_singleton_aliases)
     , memory_ssa(_memory_ssa)
-    , ignore_ptr(_ignore_ptr)
     , include_useless_havoc(_include_useless_havoc)
     , initialize_arrays(_initialize_arrays)
     , aggressive_initialize_arrays(_aggressive_initialize_arrays)
@@ -71,7 +63,7 @@ struct CrabBuilderParams {
     , print_cfg(_print_cfg) {}
   
   bool track_pointers() const {
-    return precision_level >= crab::cfg::PTR && !ignore_ptr;      
+    return precision_level == crab::cfg::PTR;
   }
   
   bool enabled_array_initialization() const {
@@ -91,13 +83,11 @@ struct CrabBuilderParams {
   /* Represent booleans, integers, and pointers */
   void set_pointer_precision() {
     precision_level = crab::cfg::PTR;
-    ignore_ptr = false;            
   }
   
   /* Represent booleans, integers, and arrays of those types */
   void set_array_precision() {
     precision_level = crab::cfg::ARR;
-    ignore_ptr = true;      
     initialize_arrays = true;
   }
 
