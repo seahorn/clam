@@ -30,11 +30,15 @@
  *
  * - Ignore floating point instructions.
  * - Ignore inttoptr/ptrtoint instructions.
- * - Almost ignore memset/memmove/memcpy
- * - Only if ARR level: if a `LoadInst`'s lhs (`StoreInst` value
- *   operand) is a pointer then the translation ignores the LLVM
- *   instruction and hence, it won't add any Crab array statement
- *   `array_load` (`array_store`).
+ * - Almost ignore memset/memmove/memcpy.
+ * - Only if PTR precision: if a `LoadInst`'s lhs (`StoreInst` value
+ *   operand) is not a pointer then the translation ignores safely the
+ *   LLVM instruction and hence, it won't add the corresponding Crab
+ *   pointer statement `ptr_load` (`ptr_store`).
+ * - Only if ARR precision: if a `LoadInst`'s lhs (`StoreInst` value
+ *   operand) is a pointer then the translation ignores safely the
+ *   LLVM instruction and hence, it won't add the corresponding Crab
+ *   array statement `array_load` (`array_store`).
  *
  * Continue reading only if you are interested about preserving memory
  * SSA form during the translation to Crab.
@@ -48,7 +52,7 @@
  * A new WIP translation uses sea-dsa `ShadowMem` pass to instrument
  * memory operations with special functions that are used to convert
  * the bitcode in memory SSA form. The Crab translation preserves this
- * memory SSA form. This translation can be useful with a very tight
+ * memory SSA form. This translation can be useful when a very tight
  * cooperation between SeaHorn and Clam is desired. For now, the
  * translation only works for **inlined** programs.
  * 
@@ -60,7 +64,6 @@
  * translation is used, otherwise the memory SSA-based one. The
  * `HeapAnalysis` parameter should be an instance of
  * `DummyHeapAbstraction` if memory SSA-based translation is used.
- * 
  */
 
 #include "llvm/ADT/APInt.h"
@@ -600,6 +603,11 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
    *  integer offset of a pointer with respect to its memory object.
    */
   var_t get_unconstrained_array_index_variable(llvm_variable_factory &vfac);
+  /* Evaluate the offset of an object pointed to by v statically */
+  Optional<z_number> eval_offset(Value &v, LLVMContext &ctx);
+  /* Call eval_offset and if it fails to infer the offset then call
+     get_unconstrained_array_index_variable */
+  lin_exp_t infer_array_index(Value &v, LLVMContext &ctx, llvm_variable_factory &vfac);
   /*
    *  Insert key-value in the reverse map but only if no CFG
    *  simplifications enabled
@@ -689,6 +697,33 @@ var_t CrabInstVisitor::get_unconstrained_array_index_variable(
   // m_bb.havoc(v);
   return v;
 }
+
+Optional<z_number> CrabInstVisitor::eval_offset(Value &v, LLVMContext &ctx) {
+  llvm::ObjectSizeOpts Opts;
+  Opts.RoundToAlign = true;
+  Opts.EvalMode = llvm::ObjectSizeOpts::Mode::Max;
+  ObjectSizeOffsetVisitor OSOV(*m_dl, m_tli, ctx, Opts);
+  auto sizeOffset = OSOV.compute(&v);
+  if (OSOV.knownOffset(sizeOffset)) {
+    const int64_t offset = sizeOffset.second.getSExtValue();
+    return z_number(offset);
+  }
+  return llvm::None;
+}
+
+lin_exp_t CrabInstVisitor::infer_array_index(Value &v, LLVMContext &ctx,
+					     llvm_variable_factory &vfac) {
+    auto offsetOpt = eval_offset(v, ctx);
+    if (offsetOpt.hasValue()) {
+      // we were able to get the offset statically
+      return offsetOpt.getValue();
+    } else {
+      // we cannot infer statically the offset so we return an
+      // unconstrained variable.
+      return get_unconstrained_array_index_variable(vfac);
+    }
+  }
+
 
 void CrabInstVisitor::insert_rev_map(const statement_t *s, Instruction &inst) {
   if (!m_params.simplify) {
@@ -1839,7 +1874,10 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
      * to identify for a given pointer its offset wrt to its
      * allocation site.
      **/
-    var_t idx = get_unconstrained_array_index_variable(m_lfac.get_vfac());
+    //var_t idx = get_unconstrained_array_index_variable(m_lfac.get_vfac());
+    lin_exp_t idx = infer_array_index(*I.getPointerOperand(),
+				      I.getContext(),
+				      m_lfac.get_vfac());
     
     /**
      * We can help the array domain if we know already that
@@ -2021,7 +2059,11 @@ void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton,
      * to identify for a given pointer its offset wrt to its
      * allocation site.
      **/
-    var_t idx = get_unconstrained_array_index_variable(m_lfac.get_vfac());
+    //var_t idx = get_unconstrained_array_index_variable(m_lfac.get_vfac());
+    lin_exp_t idx = infer_array_index(*I.getPointerOperand(),
+				      I.getContext(),
+				      m_lfac.get_vfac());
+    
     auto const *crab_stmt = m_bb.array_load(
 	 lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()));
     insert_rev_map(crab_stmt, I);
