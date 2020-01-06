@@ -289,10 +289,6 @@ int main(int argc, char **argv) {
     pass_manager.add(llvm_seahorn::createDeadNondetElimPass());
   }
   #endif 
-
-  if (XMemShadows) {
-    pass_manager.add(sea_dsa::createShadowMemPass());
-  }
   
   // -- lower ULT and ULE instructions  
   if(LowerUnsignedICmp) {
@@ -306,10 +302,15 @@ int main(int argc, char **argv) {
   if (LowerSelect) {
     pass_manager.add(clam::createLowerSelectPass());
   }
-
+  
   // -- ensure one single exit point per function
   // LowerUnsignedIcmpPass and LowerSelect can add multiple returns.
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+
+  if (XMemShadows) {
+    // XXX: it should preserve unifyFunctionExitNodes pass.
+    pass_manager.add(sea_dsa::createShadowMemPass());
+  }
   
   if (!NoCrab) {
     /// -- run the crab analyzer

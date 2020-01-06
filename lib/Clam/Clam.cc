@@ -1226,6 +1226,7 @@ namespace clam {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished llvm-dsa analysis\n";);      
 	break;
         #else
+	CLAM_WARNING("llvm-dsa heap analysis is not available. Running sea-dsa");
 	// execute CI_SEA_DSA
         #endif      
       case heap_analysis_t::CI_SEA_DSA:
@@ -1242,9 +1243,10 @@ namespace clam {
 					   CrabDsaDisambiguateExternal));
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished sea-dsa analysis\n";);      
 	break;
-      }      
+      }
+      case heap_analysis_t::NONE:
       default:
-	CLAM_WARNING("running clam without memory analysis");
+	CLAM_WARNING("running clam without heap analysis");
       }
     }
 
@@ -1354,15 +1356,27 @@ namespace clam {
   
   void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
+    
     #ifdef HAVE_DSA
-    AU.addRequiredTransitive<SteensgaardDataStructures>();
+    if (!CrabMemShadows &&
+	CrabHeapAnalysis == heap_analysis_t::LLVM_DSA) {
+      // don't run llvm-dsa unless llvm-dsa is used
+      AU.addRequiredTransitive<SteensgaardDataStructures>();
+    }
     #endif 
     AU.addRequired<TargetLibraryInfoWrapperPass>();
-    AU.addRequired<sea_dsa::AllocWrapInfo>();
+    if (!CrabMemShadows &&
+	(CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
+	 CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA)) {
+      // don't run the pass unless sea-dsa uses it 
+      AU.addRequired<sea_dsa::AllocWrapInfo>();
+    } 
+    if (CrabMemShadows) {
+      AU.addRequired<sea_dsa::ShadowMemPass>();
+    }
     AU.addRequired<UnifyFunctionExitNodes>();
     AU.addRequired<clam::NameValues>();
     AU.addRequired<CallGraphWrapperPass>();
-    AU.addPreserved<CallGraphWrapperPass>();
   } 
   
   /**

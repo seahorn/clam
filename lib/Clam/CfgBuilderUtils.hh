@@ -71,35 +71,39 @@ bool isBoolArray(const llvm::Type &T);
 
 bool isIntArray(const llvm::Type &T);
 
-bool isAssertFn(const llvm::Function *F);
+bool isAssertFn(const llvm::Function &F);
 
-bool isSeaHornFail(const llvm::Function *F);
+bool isSeaHornFail(const llvm::Function &F);
 
-bool isErrorFn(const llvm::Function *F);
+bool isErrorFn(const llvm::Function &F);
 
-bool isAssumeFn(const llvm::Function *F);
+bool isAssumeFn(const llvm::Function &F);
 
-bool isNotAssumeFn(const llvm::Function *F);
+bool isNotAssumeFn(const llvm::Function &F);
 
-bool isVerifierCall(const llvm::Function *F);
+bool isVerifierCall(const llvm::Function &F);
 
-bool isZeroInitializer(const llvm::Function *F);
+bool isZeroInitializer(const llvm::Function &F);
 
-bool isIntInitializer(const llvm::Function *F);
+bool isZeroInitializer(const llvm::CallInst &CI);
+
+bool isIntInitializer(const llvm::Function &F);
+
+bool isIntInitializer(const llvm::CallInst &CI);
 
 // Return true if all uses are BranchInst's
-bool AllUsesAreBrInst(llvm::Value *V);
+bool AllUsesAreBrInst(llvm::Value &V);
 
 // Return true if all uses are BranchInst's or Select's
-bool AllUsesAreBrOrIntSelectCondInst(llvm::Value *V);
+bool AllUsesAreBrOrIntSelectCondInst(llvm::Value &V);
 
 // Return true if all uses are the callee at callsites
-bool AllUsesAreIndirectCalls(llvm::Value *V);
+bool AllUsesAreIndirectCalls(llvm::Value &V);
 
 // Return true if all uses are verifier calls (assume/assert)
-bool AllUsesAreVerifierCalls(llvm::Value *V);
+bool AllUsesAreVerifierCalls(llvm::Value &V);
 
 // Return true if all uses are GEPs
-bool AllUsesAreGEP(llvm::Value *V);
+bool AllUsesAreGEP(llvm::Value &V);
 
 } // namespace clam

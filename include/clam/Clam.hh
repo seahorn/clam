@@ -230,7 +230,9 @@ namespace clam {
 
     virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const ;
 
-    virtual llvm::StringRef getPassName() const {return "Clam";}
+    virtual llvm::StringRef getPassName() const {
+      return "Clam: Crab for Llvm Abstraction Manager";
+    }
     /* end ModulePass API */
 
     /* return the manager used to build all CFGs */

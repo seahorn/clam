@@ -226,7 +226,7 @@ private:
   llvm_variable_factory &m_vfac;
   const CrabBuilderParams &m_params;
   lit_cache_t m_lit_cache;
-
+  
   llvm::Optional<crabBoolLit> getBoolLit(const llvm::Value &v);
   llvm::Optional<crabIntLit> getIntLit(const llvm::Value &v);
   llvm::Optional<crabPtrLit> getPtrLit(const llvm::Value &v);

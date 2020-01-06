@@ -89,8 +89,8 @@ bool isTrackedType(const Type &ty, const CrabBuilderParams &params) {
 
 bool isTracked(const Value &v, const CrabBuilderParams &params) {
   // -- ignore any shadow variable created by seahorn
-  if (v.getName().startswith("shadow.mem"))
-    return false;
+  //if (v.getName().startswith("shadow.mem"))
+  //return false;
 
   return isTrackedType(*v.getType(), params);
 }
@@ -167,65 +167,83 @@ bool isIntArray(const Type &T) {
 //   return (T.isArrayTy() && T.getArrayElementType()->isPointerTy());
 // }
 
-bool isAssertFn(const Function *F) {
-  return (F->getName().equals("verifier.assert") ||
-          F->getName().equals("crab.assert") ||
-          F->getName().equals("__CRAB_assert"));
+bool isAssertFn(const Function &F) {
+  return (F.getName().equals("verifier.assert") ||
+          F.getName().equals("crab.assert") ||
+          F.getName().equals("__CRAB_assert"));
 }
 
-bool isSeaHornFail(const Function *F) {
-  return (F->getName().equals("seahorn.fail"));
+bool isSeaHornFail(const Function &F) {
+  return (F.getName().equals("seahorn.fail"));
 }
 
-bool isErrorFn(const Function *F) {
-  return (F->getName().equals("seahorn.error") ||
-          F->getName().equals("verifier.error") ||
-          F->getName().equals("__VERIFIER_error") ||
-          F->getName().equals("__SEAHORN_error"));
+bool isErrorFn(const Function &F) {
+  return (F.getName().equals("seahorn.error") ||
+          F.getName().equals("verifier.error") ||
+          F.getName().equals("__VERIFIER_error") ||
+          F.getName().equals("__SEAHORN_error"));
 }
 
-bool isAssumeFn(const Function *F) {
-  return (F->getName().equals("verifier.assume") ||
-          F->getName().equals("__VERIFIER_assume") ||
-          F->getName().equals("__CRAB_assume"));
+bool isAssumeFn(const Function &F) {
+  return (F.getName().equals("verifier.assume") ||
+          F.getName().equals("__VERIFIER_assume") ||
+          F.getName().equals("__CRAB_assume"));
 }
 
-bool isNotAssumeFn(const Function *F) {
-  return (F->getName().equals("verifier.assume.not") ||
-          F->getName().equals("__VERIFIER_assume_not") ||
-          F->getName().equals("__CRAB_assume_not"));
+bool isNotAssumeFn(const Function &F) {
+  return (F.getName().equals("verifier.assume.not") ||
+          F.getName().equals("__VERIFIER_assume_not") ||
+          F.getName().equals("__CRAB_assume_not"));
 }
 
-bool isVerifierCall(const Function *F) {
+bool isVerifierCall(const Function &F) {
   return (isAssertFn(F) || isErrorFn(F) || isAssumeFn(F) || isNotAssumeFn(F) ||
           isSeaHornFail(F));
 }
 
-bool isZeroInitializer(const Function *F) {
-  return F->getName().startswith("verifier.zero_initializer");
+bool isZeroInitializer(const Function &F) {
+  return F.getName().startswith("verifier.zero_initializer");
 }
 
-bool isIntInitializer(const Function *F) {
-  return F->getName().startswith("verifier.int_initializer");
+bool isZeroInitializer(const CallInst &CI) {
+  ImmutableCallSite CS(&CI);
+  const Value *calleeV = CS.getCalledValue();
+  if (const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts())) {
+    return isZeroInitializer(*callee);
+  }
+  return false;
+}
+
+bool isIntInitializer(const Function &F) {
+  return F.getName().startswith("verifier.int_initializer");
+}
+
+bool isIntInitializer(const CallInst &CI) {
+  ImmutableCallSite CS(&CI);
+  const Value *calleeV = CS.getCalledValue();
+  if (const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts())) {
+    return isIntInitializer(*callee);
+  }
+  return false;
 }
 
 // Return true if all uses are BranchInst's
-bool AllUsesAreBrInst(Value *V) {
+bool AllUsesAreBrInst(Value &V) {
   // XXX: do not strip pointers here
-  for (auto &U : V->uses())
+  for (auto &U : V.uses())
     if (!isa<BranchInst>(U.getUser()))
       return false;
   return true;
 }
 
 // Return true if all uses are BranchInst's or Select's
-bool AllUsesAreBrOrIntSelectCondInst(Value *V) {
+bool AllUsesAreBrOrIntSelectCondInst(Value &V) {
   // XXX: do not strip pointers here
-  for (auto &U : V->uses()) {
+  for (auto &U : V.uses()) {
     if ((!isa<BranchInst>(U.getUser())) && (!isa<SelectInst>(U.getUser())))
       return false;
     if (SelectInst *SI = dyn_cast<SelectInst>(U.getUser())) {
-      if (isBool(*SI) || SI->getCondition() != V) {
+      if (isBool(*SI) || SI->getCondition() != &V) {
         // if the operands are bool or V is not the condition
         return false;
       }
@@ -235,13 +253,13 @@ bool AllUsesAreBrOrIntSelectCondInst(Value *V) {
 }
 
 // Return true if all uses are the callee at callsites
-bool AllUsesAreIndirectCalls(Value *V) {
+bool AllUsesAreIndirectCalls(Value &V) {
   // XXX: do not strip pointers here
-  for (auto &U : V->uses()) {
+  for (auto &U : V.uses()) {
     if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
       CallSite CS(CI);
       const Value *callee = CS.getCalledValue();
-      if (callee == V)
+      if (callee == &V)
         continue;
     }
     return false;
@@ -250,14 +268,14 @@ bool AllUsesAreIndirectCalls(Value *V) {
 }
 
 // Return true if all uses are verifier calls (assume/assert)
-bool AllUsesAreVerifierCalls(Value *V) {
-  for (auto &U : V->uses()) {
+bool AllUsesAreVerifierCalls(Value &V) {
+  for (auto &U : V.uses()) {
     if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
       CallSite CS(CI);
       const Value *calleeV = CS.getCalledValue();
       const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
       if (callee &&
-          (isAssertFn(callee) || isAssumeFn(callee) || isNotAssumeFn(callee))) {
+          (isAssertFn(*callee) || isAssumeFn(*callee) || isNotAssumeFn(*callee))) {
         continue;
       }
     }
@@ -267,8 +285,8 @@ bool AllUsesAreVerifierCalls(Value *V) {
 }
 
 // Return true if all uses are GEPs
-bool AllUsesAreGEP(Value *V) {
-  for (auto &U : V->uses())
+bool AllUsesAreGEP(Value &V) {
+  for (auto &U : V.uses())
     if (!isa<GetElementPtrInst>(U.getUser()))
       return false;
   return true;

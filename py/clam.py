@@ -289,7 +289,8 @@ def parseArgs(argv):
                    "- cs-sea-dsa: context-sensitive sea-dsa\n"
                    "- ci-sea-dsa-types: context-insensitive sea-dsa with types (default)\n"
                    "- cs-sea-dsa-types: context-sensitive sea-dsa with types\n",
-                   choices=['llvm-dsa',
+                   choices=['none',
+                            'llvm-dsa',
                             'ci-sea-dsa', 'cs-sea-dsa',
                             'ci-sea-dsa-types', 'cs-sea-dsa-types'],                   
                     dest='crab_heap_analysis',
@@ -711,7 +712,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-arr-init')
     else:
         clam_args.append('--crab-track={0}'.format(args.track))
-    if args.crab_heap_analysis == 'llvm-dsa' or \
+    if args.crab_heap_analysis == 'none' or \
+       args.crab_heap_analysis == 'llvm-dsa' or \
        args.crab_heap_analysis == 'ci-sea-dsa' or \
        args.crab_heap_analysis == 'cs-sea-dsa':
         clam_args.append('--crab-heap-analysis={0}'.format(args.crab_heap_analysis))

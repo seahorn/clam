@@ -208,13 +208,15 @@ cl::opt<heap_analysis_t>
 CrabHeapAnalysis("crab-heap-analysis",
    cl::desc("Heap analysis used for memory disambiguation"),
    cl::values
-    (clEnumValN(heap_analysis_t::LLVM_DSA, "llvm-dsa",
+    (clEnumValN(heap_analysis_t::NONE, "none",
+                "Disable heap analysis"),
+     clEnumValN(heap_analysis_t::LLVM_DSA, "llvm-dsa",
                 "context-insensitive llvm-dsa"),
      clEnumValN(heap_analysis_t::CI_SEA_DSA, "ci-sea-dsa",
                 "context-insensitive sea-dsa"),
      clEnumValN(heap_analysis_t::CS_SEA_DSA, "cs-sea-dsa",
                 "context-sensitive sea-dsa")),
-   cl::init(heap_analysis_t::LLVM_DSA));
+   cl::init(heap_analysis_t::CI_SEA_DSA));
 
 // Specific llvm-dsa/sea-dsa options
 cl::opt<bool>

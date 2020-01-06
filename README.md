@@ -296,8 +296,8 @@ We also provide the option `--crab-track=VAL` to indicate the level of
 abstraction of the translation. The possible values of `VAL` are:
 
 - `num`: translate only operations over integer and boolean scalars (LLVM registers).
-- `ptr`: `num` + translate all operations over pointers using Crab pointer operations. 
-- `arr`: `num` + translates all operations over pointers using Crab arrays.
+- `ptr`: `num` + translate all pointer operations using Crab pointer operations. 
+- `arr`: `num` + translates all pointer operations using Crab arrays.
 
     Although the translation with level `ptr` should work, Crab does
     not actually reason about pointers (although we are working on

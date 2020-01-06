@@ -87,7 +87,7 @@ public:
 class CrabBuilderManager {
 public:
   using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
-  
+
   CrabBuilderManager(CrabBuilderParams params,
 		     const llvm::TargetLibraryInfo *tli,
 		     std::unique_ptr<HeapAbstraction> mem,
@@ -130,7 +130,7 @@ private:
   // All CFGs supervised by this manager are created using the same
   // variable factory.
   variable_factory_t m_vfac;
-  // Whole-program heap analysis 
+  // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
   // Shadow memory (it can be null if not available)
   sea_dsa::ShadowMem *m_sm;
