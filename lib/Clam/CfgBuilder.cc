@@ -1050,7 +1050,7 @@ void CrabInstVisitor::doIntLogicOp(crab_lit_ref_t ref, BinaryOperator &i) {
   case BinaryOperator::And:
   case BinaryOperator::Or:
   case BinaryOperator::Xor:
-    doBinOp(BinaryOperator::And, lhs, op1, op2);
+    doBinOp(i.getOpcode(), lhs, op1, op2);
     break;
   default:
     CLAM_WARNING("translation skipped " << i << " at line " << __LINE__);
