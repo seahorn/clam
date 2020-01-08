@@ -38,10 +38,11 @@ enum assert_check_kind_t
  **/
 struct AnalysisParams {
   CrabDomain dom;
-  CrabDomain sum_dom;
+  CrabDomain sum_dom; // only if bottom-up inter
   bool run_backward;
   bool run_liveness;
   bool run_inter;
+  unsigned int max_calling_contexts; // only if top-down inter
   unsigned relational_threshold;
   unsigned widening_delay;
   unsigned narrowing_iters;
@@ -58,7 +59,8 @@ struct AnalysisParams {
   
   AnalysisParams()
     : dom(INTERVALS), sum_dom(ZONES_SPLIT_DBM),
-      run_backward(false), run_liveness(false), run_inter(false),
+      run_backward(false), run_liveness(false),
+      run_inter(false), max_calling_contexts(UINT_MAX),
       relational_threshold(10000),
       widening_delay(1), narrowing_iters(10), widening_jumpset(0),
       stats(false),

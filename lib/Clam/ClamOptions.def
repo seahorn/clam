@@ -182,6 +182,12 @@ CrabInter("crab-inter",
            cl::desc("Crab Inter-procedural analysis"), 
            cl::init(false));
 
+cl::opt<unsigned>
+CrabInterMaxSummaries("crab-inter-max-summaries", 
+	 cl::desc("Maximum number of summaries per function tracked by "
+		  "the top-down interprocedural analysis"),
+	 cl::init(UINT_MAX));
+	 
 // It does not make much sense to have non-relational domains here.
 cl::opt<CrabDomain>
 CrabSummDomain("crab-inter-sum-dom",

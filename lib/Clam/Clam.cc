@@ -1307,7 +1307,7 @@ namespace clam {
     m_params.sum_dom = CrabSummDomain;
     m_params.run_backward = CrabBackward;
     m_params.run_inter = CrabInter;
-    m_params.max_calling_contexts = CrabInterMaxContexts;
+    m_params.max_calling_contexts = CrabInterMaxSummaries;
     m_params.run_liveness = CrabLive;
     m_params.relational_threshold = CrabRelationalThreshold;
     m_params.widening_delay = CrabWideningDelay;

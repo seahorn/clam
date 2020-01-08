@@ -305,6 +305,10 @@ def parseArgs(argv):
                     help='Choose abstract domain for computing summaries',
                     choices=['zones','oct','rtz'],
                     dest='crab_inter_sum_dom', default='zones')
+    p.add_argument('--crab-inter-max-summaries', 
+                    type=int, dest='inter_max_summaries', 
+                    help='Max number of summaries per function',
+                    default=1000000)
     p.add_argument('--crab-backward',
                     help='Run iterative forward/backward analysis for proving assertions (only intra version available and very experimental)',
                     dest='crab_backward', default=False, action='store_true')
@@ -722,9 +726,10 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     elif args.crab_heap_analysis == 'cs-sea-dsa-types':
         clam_args.append('--crab-heap-analysis=cs-sea-dsa')
         clam_args.append('--sea-dsa-type-aware=true')
-        
     if args.crab_singleton_aliases: clam_args.append('--crab-singleton-aliases')
-    if args.crab_inter: clam_args.append('--crab-inter')
+    if args.crab_inter:
+        clam_args.append('--crab-inter')
+        clam_args.append('--crab-inter-max-summaries={0}'.format(args.inter_max_summaries))
     if args.crab_backward: clam_args.append('--crab-backward')
     if args.crab_live: clam_args.append('--crab-live')
     clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
