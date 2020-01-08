@@ -1,5 +1,7 @@
 #pragma once
 
+#include "clam/config.h"
+
 namespace clam {
 
 ////
@@ -38,11 +40,15 @@ enum assert_check_kind_t
  **/
 struct AnalysisParams {
   CrabDomain dom;
-  CrabDomain sum_dom; // only if bottom-up inter
+#ifndef TOP_DOWN_INTER_ANALYSIS  
+  CrabDomain sum_dom; 
+#endif   
   bool run_backward;
   bool run_liveness;
   bool run_inter;
-  unsigned int max_calling_contexts; // only if top-down inter
+#ifdef TOP_DOWN_INTER_ANALYSIS    
+  unsigned int max_calling_contexts;
+#endif   
   unsigned relational_threshold;
   unsigned widening_delay;
   unsigned narrowing_iters;
@@ -58,9 +64,15 @@ struct AnalysisParams {
   unsigned check_verbose;
   
   AnalysisParams()
-    : dom(INTERVALS), sum_dom(ZONES_SPLIT_DBM),
+    : dom(INTERVALS),
+#ifndef TOP_DOWN_INTER_ANALYSIS        
+      sum_dom(ZONES_SPLIT_DBM),
+#endif       
       run_backward(false), run_liveness(false),
-      run_inter(false), max_calling_contexts(UINT_MAX),
+      run_inter(false),
+#ifdef TOP_DOWN_INTER_ANALYSIS        
+      max_calling_contexts(UINT_MAX),
+#endif       
       relational_threshold(10000),
       widening_delay(1), narrowing_iters(10), widening_jumpset(0),
       stats(false),
@@ -70,8 +82,10 @@ struct AnalysisParams {
       check(NOCHECKS), check_verbose(0) { }
   
   std::string abs_dom_to_str() const;
-  
+
+#ifndef TOP_DOWN_INTER_ANALYSIS  
   std::string sum_abs_dom_to_str() const;
+#endif
 };
 
 } // end namespace clam

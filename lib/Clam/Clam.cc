@@ -20,7 +20,6 @@
 #include "llvm/Support/Debug.h"
 
 #include "clam/config.h"
-#define TOP_DOWN_INTER_ANALYSIS // TODO: move to cmake
 #include "clam/AbstractDomain.hh"
 #include "clam/Clam.hh"
 #include "clam/CfgBuilder.hh"
@@ -391,9 +390,11 @@ namespace clam {
     return dom_to_str(dom);
   }
 
+#ifndef TOP_DOWN_INTER_ANALYSIS
   std::string AnalysisParams::sum_abs_dom_to_str() const {
     return dom_to_str(sum_dom);
   }
+#endif 
     
   /**
    * Internal implementation of the intra-procedural analysis
@@ -927,6 +928,7 @@ namespace clam {
       
       // -- run the interprocedural analysis
       if (!CrabBuildOnlyCFG) {
+#ifndef TOP_DOWN_INTER_ANALYSIS	
 	if (inter_analyses.count({params.sum_dom, params.dom})) {
 	  inter_analyses.at({params.sum_dom, params.dom}).analyze(params, results);
 	} else {
@@ -941,6 +943,19 @@ namespace clam {
 			 << "Compile with -DENABLE_INTER=ON or do not use --crab-inter\n";
 	  }
 	}
+#else
+	if (inter_analyses.count(params.dom)) {
+	  inter_analyses.at(params.dom).analyze(params, results);
+	} else {
+	  if (inter_analyses.count(ZONES_SPLIT_DBM)) {
+	    crab::outs() << "Warning: abstract domains not found or enabled.\n"
+			 << "Compile with -DALL_DOMAINS=ON.\n";	    
+	  } else {
+	    crab::outs() << "Warning: inter-procedural analysis is not enabled.\n"
+			 << "Compile with -DENABLE_INTER=ON or do not use --crab-inter\n";
+	  }
+	}
+#endif 	
       }
       
       // free liveness map
@@ -969,7 +984,11 @@ namespace clam {
     }
     
     /** Run inter-procedural analysis on the whole call graph **/
+#ifdef TOP_DOWN_INTER_ANALYSIS
+    template<typename Dom>
+#else    
     template<typename BUDom, typename TDDom>
+#endif     
     void analyzeCg(const AnalysisParams &params,
 		   AnalysisResults &results) {
 
@@ -977,10 +996,10 @@ namespace clam {
       CRAB_VERBOSE_IF(1, 
  		      crab::get_msg_stream() << "Running top-down inter-procedural analysis " 
 		                             << "with domain:" 
-		                             << "\"" << TDDom::getDomainName() << "\""
+		                             << "\"" << Dom::getDomainName() << "\""
 		                             << "  ...\n";);
 
-      typedef top_down_inter_analyzer<call_graph_ref_t, TDDom> inter_analyzer_t;
+      typedef top_down_inter_analyzer<call_graph_ref_t, Dom> inter_analyzer_t;
       typedef top_down_inter_analyzer_parameters<call_graph_ref_t> inter_params_t;      
 
       inter_params_t inter_params;
@@ -993,7 +1012,7 @@ namespace clam {
       inter_params.descending_iters = params.narrowing_iters;
       inter_params.thresholds_size = params.widening_jumpset;
       inter_analyzer_t analyzer(*m_cg, inter_params);
-      analyzer.run(TDDom::top());
+      analyzer.run(Dom::top());
       if (inter_params.run_checker) {
 	results.checksdb += analyzer.get_all_checks();
       }
@@ -1121,6 +1140,31 @@ namespace clam {
     };
 
     // Domains used for intra-procedural analysis
+#ifdef TOP_DOWN_INTER_ANALYSIS
+    const std::map<CrabDomain, inter_analysis> inter_analyses {
+      #ifdef HAVE_INTER
+      { ZONES_SPLIT_DBM,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t>), "zones" }}
+      #ifdef HAVE_ALL_DOMAINS
+      , { INTERVALS,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<interval_domain_t>), "intervals" }}
+      , { WRAPPED_INTERVALS,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<wrapped_interval_domain_t>), "wrapped intervals" }}
+      , { OCT,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t>), "oct" }}
+      , { TERMS_ZONES,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<num_domain_t>), "terms+zones" }}
+      , { TERMS_DIS_INTERVALS,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<term_dis_int_domain_t>), "terms+dis_intervals" }}
+      , { BOXES,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<boxes_domain_t>), "boxes" }}
+      , { PK,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<pk_domain_t>), "pk" }}	
+      #endif
+      #endif 	
+    };    
+  };
+#else    
     const std::map<std::pair<CrabDomain,CrabDomain>, inter_analysis> inter_analyses {
       #ifdef HAVE_INTER
       {{ZONES_SPLIT_DBM, ZONES_SPLIT_DBM},
@@ -1160,7 +1204,7 @@ namespace clam {
       #endif 	
     };    
   };
-
+#endif 
 
   /**
    *   Begin InterClam methods
@@ -1304,10 +1348,14 @@ namespace clam {
     /// Run the analysis 
 						  
     m_params.dom = ClamDomain;
+#ifndef TOP_DOWN_INTER_ANALYSIS            
     m_params.sum_dom = CrabSummDomain;
+#endif     
     m_params.run_backward = CrabBackward;
     m_params.run_inter = CrabInter;
+#ifdef TOP_DOWN_INTER_ANALYSIS            
     m_params.max_calling_contexts = CrabInterMaxSummaries;
+#endif     
     m_params.run_liveness = CrabLive;
     m_params.relational_threshold = CrabRelationalThreshold;
     m_params.widening_delay = CrabWideningDelay;

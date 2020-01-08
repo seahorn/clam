@@ -12,3 +12,7 @@
 /** Include inter-procedural analysis */
 #cmakedefine HAVE_INTER ${HAVE_INTER}
 
+/** Use new top-down inter-procedural analysis.  Otherwise, it will
+    use the old bottom-up analysis */
+#cmakedefine TOP_DOWN_INTER_ANALYSIS ${TOP_DOWN_INTER_ANALYSIS}
+
