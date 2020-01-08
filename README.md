@@ -15,8 +15,8 @@ supports LLVM 5.0. There is an experimental branch `llvm-8.0` for LLVM
 Clam is written in C++ and uses heavily the Boost library. The
 main requirements are:
 
-- C++ compiler supporting c++11
-- Boost
+- Modern C++ compiler supporting c++11
+- Boost >= 1.62
 - GMP 
 - MPFR (if `-DCRAB_USE_APRON=ON` or `-DCRAB_USE_ELINA=ON`)
 
@@ -295,7 +295,7 @@ where `N` is the maximum number of thresholds.
 We also provide the option `--crab-track=VAL` to indicate the level of
 abstraction of the translation. The possible values of `VAL` are:
 
-- `num`: translate only operations over integer and boolean scalars (LLVM registers).
+- `num`: translate only operations over LLVM registers of integer and boolean types.
 - `ptr`: `num` + translate all pointer operations using Crab pointer operations. 
 - `arr`: `num` + translates all pointer operations using Crab arrays.
 
@@ -314,15 +314,13 @@ abstraction of the translation. The possible values of `VAL` are:
     then Clam translates global singleton regions to scalar variables.
 
 By default, all the analyses are run in an intra-procedural
-manner. Enable the option `--crab-inter` to run the inter-procedural
-version. Clam implements a standard two-phase algorithm in which
-the call graph is first traversed from the leaves to the root while
-computing summaries and then from the root the leaves reusing
-summaries. Each function is executed only once. The analysis is sound
-with recursive functions but imprecise. The option
-`--crab-print-summaries` displays the summaries for each function. The
-inter-procedural analysis is specially important if reasoning about
-memory contents is desired.
+manner. Whenever possible, we recommend to run Clam with option
+`--inline`. This option will inline all function calls if the callee
+is not recursive. If inlining is not desired or too expensive, enable
+the option `--crab-inter` to run the inter-procedural version. Clam
+implements a standard top-down inter-procedural analysis with
+memoization. The analysis is sound with recursive functions but
+imprecise.
 
 Clam provides the **very experimental** option `--crab-backward`
 to enable an iterative forward-backward analysis that might produce
@@ -448,9 +446,6 @@ Crab. Here some of them:
   invariants (e.g., `boxes` or `dis-int`) but they are still limited
   in terms of expressiveness to keep them tractable.
 
-- The interprocedural analysis is summary-based but it's
-  context-insensitive. 
-  
 - The backward analysis is too experimental and it requires more work.
   
 - The option `--crab-track=ptr` translates pointer operations to Crab
