@@ -5,54 +5,54 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clam {
-
+  
 /* Dummy heap analysis if no pointer analysis is available */  
 struct DummyHeapAbstraction: public HeapAbstraction {
 
-  using typename HeapAbstraction::region_t;
-  using typename HeapAbstraction::region_vector_t;
-  using typename HeapAbstraction::region_id_t;  
+  using typename HeapAbstraction::RegionVec;
+  using typename HeapAbstraction::RegionId;  
   
   DummyHeapAbstraction(): HeapAbstraction() { }
-  
-  const llvm::Value* getSingleton(region_id_t) const {
-    return nullptr;
+
+  HeapAbstraction::ClassId getClassId() const {
+    return HeapAbstraction::ClassId::DUMMY;
   }
   
-  region_t getRegion(const llvm::Function&, const llvm::Value*) {
-    return region_t();
+  Region getRegion(const llvm::Function&,
+		   const llvm::Instruction*, const llvm::Value*) {
+    return Region();
   }
   
-  region_vector_t getAccessedRegions(const llvm::Function&) {
-    return region_vector_t();
+  RegionVec getAccessedRegions(const llvm::Function&) {
+    return RegionVec();
   }
   
-  region_vector_t getOnlyReadRegions(const llvm::Function&) {
-    return region_vector_t();
+  RegionVec getOnlyReadRegions(const llvm::Function&) {
+    return RegionVec();
   }
   
-  region_vector_t getModifiedRegions(const llvm::Function&) {
-    return region_vector_t();
+  RegionVec getModifiedRegions(const llvm::Function&) {
+    return RegionVec();
   }
   
-  region_vector_t getNewRegions(const llvm::Function&) {
-    return region_vector_t();
+  RegionVec getNewRegions(const llvm::Function&) {
+    return RegionVec();
   }
   
-  region_vector_t getAccessedRegions(const llvm::CallInst&) {
-    return region_vector_t();
+  RegionVec getAccessedRegions(const llvm::CallInst&) {
+    return RegionVec();
   }
   
-  region_vector_t getOnlyReadRegions(const llvm::CallInst&) {
-    return region_vector_t();
+  RegionVec getOnlyReadRegions(const llvm::CallInst&) {
+    return RegionVec();
   }
   
-  region_vector_t getModifiedRegions(const llvm::CallInst&) {
-    return region_vector_t();
+  RegionVec getModifiedRegions(const llvm::CallInst&) {
+    return RegionVec();
   }
   
-  region_vector_t getNewRegions(const llvm::CallInst&) {
-    return region_vector_t();
+  RegionVec getNewRegions(const llvm::CallInst&) {
+    return RegionVec();
   }
   
   llvm::StringRef getName() const {

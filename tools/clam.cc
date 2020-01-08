@@ -31,6 +31,8 @@
 #include "clam/Transforms/InsertInvariants.hh"
 #include "crab/common/debug.hpp"
 
+#include "sea_dsa/ShadowMem.hh"
+
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
               llvm::cl::Required, llvm::cl::value_desc("filename"));
@@ -92,6 +94,10 @@ static llvm::cl::opt<bool>
 PromoteAssume("crab-promote-assume", 
 	       llvm::cl::desc("Promote verifier.assume to llvm.assume intrinsics"),
 	       llvm::cl::init(false));
+
+namespace clam {
+extern bool XMemShadows;
+}
 
 /* logging and verbosity */
 
@@ -283,7 +289,7 @@ int main(int argc, char **argv) {
     pass_manager.add(llvm_seahorn::createDeadNondetElimPass());
   }
   #endif 
-
+  
   // -- lower ULT and ULE instructions  
   if(LowerUnsignedICmp) {
     pass_manager.add(clam::createLowerUnsignedICmpPass());   
@@ -296,18 +302,24 @@ int main(int argc, char **argv) {
   if (LowerSelect) {
     pass_manager.add(clam::createLowerSelectPass());
   }
-
+  
   // -- ensure one single exit point per function
   // LowerUnsignedIcmpPass and LowerSelect can add multiple returns.
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+
+  if (XMemShadows) {
+    // XXX: it should preserve unifyFunctionExitNodes pass.
+    pass_manager.add(sea_dsa::createShadowMemPass());
+  }
   
   if (!NoCrab) {
     /// -- run the crab analyzer
     pass_manager.add(new clam::ClamPass());
   }
 
-  if(!AsmOutputFilename.empty()) 
-    pass_manager.add(createPrintModulePass(asmOutput->os()));
+  if(!AsmOutputFilename.empty()) {
+    pass_manager.add(createPrintModulePass(asmOutput->os()));    
+  }
  
   if (!NoCrab) {
     // -- perform dead code elimination and insert invariants as

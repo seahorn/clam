@@ -71,6 +71,16 @@ else ()
   message(STATUS "Inter-procedural analysis is disabled to reduce compilation time")
   set (HAVE_INTER FALSE)
 endif ()
+
+## only applicable if CLAM_ENABLE_INTER is ON
+option (CLAM_TOP_DOWN_INTER "Use new top-down inter-procedural analysis" ON)
+if (CLAM_TOP_DOWN_INTER)
+  message(STATUS "Compiling with new top-down inter-procedural analysis")
+  set(TOP_DOWN_INTER_ANALYSIS TRUE)
+else()
+  message(STATUS "Compiling with bottom-up inter-procedural analysis")
+  set(TOP_DOWN_INTER_ANALYSIS FALSE)
+endif()  
 #### end clam options ######
 
 # Add path for custom modules
@@ -263,7 +273,10 @@ endif()
 
 if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
     EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/src/DsaAnalysis.cc)
-  set (HAVE_SEA_DSA TRUE)    
+  set (HAVE_SEA_DSA TRUE)
+else()
+  message (WARNING "No SEA DSA found in ${CMAKE_SOURCE_DIR}/sea-dsa. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
+  return()
 endif()
 
 if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND

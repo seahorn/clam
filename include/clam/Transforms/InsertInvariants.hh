@@ -32,7 +32,7 @@ namespace clam {
     virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const ;
 
     virtual llvm::StringRef getPassName () const {
-      return "CrabLlvm: insert invariants as verifier.assume instructions";
+      return "Clam: insert invariants as verifier.assume instructions";
     }
 
   };

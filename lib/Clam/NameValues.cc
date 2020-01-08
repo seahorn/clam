@@ -47,9 +47,17 @@ namespace clam {
       if (boost::starts_with(*line_iter, "; Function Attrs:"))
 	++line_iter;
       
+
+      // Function parameters can be unnamed
+      for (auto &Arg : F.args()) {
+        if (!Arg.hasName()) {
+	  Arg.setName("arg");
+	}
+      }
+
       // -- skip function definition line
       ++line_iter;
-    
+      
       for (Function::iterator BI = F.begin (), BE = F.end (); 
 	   BI != BE && line_iter != lines.end (); ++BI) {
 	BasicBlock &BB = *BI;

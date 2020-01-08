@@ -1,4 +1,8 @@
 // RUN: %clam --turn-undef-nondet --lower-unsigned-icmp --inline --devirt-functions=types --externalize-addr-taken-functions --crab-narrowing-iterations=2 --crab-widening-delay=2 --crab-widening-jump-set=0 --crab-check=assert --crab-stats  --crab-dom=boxes --crab-track=arr --crab-singleton-aliases  --crab-do-not-print-invariants --crab-sanity-checks "%s" 2>&1 | OutputCheck -l debug %s
+// RUN: %clam --turn-undef-nondet --lower-unsigned-icmp --inline --devirt-functions=types --externalize-addr-taken-functions --crab-narrowing-iterations=2 --crab-widening-delay=2 --crab-widening-jump-set=0 --crab-check=assert --crab-stats  --crab-dom=boxes --crab-track=arr --crab-do-not-print-invariants --crab-sanity-checks "%s" 2>&1 | OutputCheck -l debug %s
+// RUN: %clam --turn-undef-nondet --lower-unsigned-icmp --inline --devirt-functions=types --externalize-addr-taken-functions --crab-narrowing-iterations=2 --crab-widening-delay=2 --crab-widening-jump-set=0 --crab-check=assert --crab-stats  --crab-dom=boxes --crab-track=arr --crab-singleton-aliases --crab-memssa --crab-do-not-print-invariants --crab-sanity-checks "%s" 2>&1 | OutputCheck -l debug %s
+// RUN: %clam --turn-undef-nondet --lower-unsigned-icmp --inline --devirt-functions=types --externalize-addr-taken-functions --crab-narrowing-iterations=2 --crab-widening-delay=2 --crab-widening-jump-set=0 --crab-check=assert --crab-stats  --crab-dom=boxes --crab-track=arr --crab-memssa --crab-do-not-print-invariants --crab-sanity-checks "%s" 2>&1 | OutputCheck -l debug %s
+
 // CHECK: ^16  Number of total safe checks$
 // CHECK: ^ 0  Number of total error checks$
 // CHECK: ^ 0  Number of total warning checks$

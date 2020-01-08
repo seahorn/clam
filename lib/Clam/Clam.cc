@@ -32,15 +32,18 @@
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
 #endif
-#ifdef HAVE_SEA_DSA
 #include "sea_dsa/AllocWrapInfo.hh"
-#endif 
+#include "sea_dsa/ShadowMem.hh"
 
 #include "crab/common/debug.hpp"
 #include "crab/common/stats.hpp"
 #include "crab/analysis/fwd_analyzer.hpp"
 #include "crab/analysis/bwd_analyzer.hpp"
-#include "crab/analysis/inter_fwd_analyzer.hpp"
+#ifdef TOP_DOWN_INTER_ANALYSIS
+#include "crab/analysis/inter/top_down_inter_analyzer.hpp"
+#else
+#include "crab/analysis/inter/bottom_up_inter_analyzer.hpp"
+#endif 
 #include "crab/analysis/dataflow/liveness.hpp"
 #include "crab/analysis/dataflow/assumptions.hpp"
 #include "crab/checkers/assertion.hpp"
@@ -387,28 +390,25 @@ namespace clam {
     return dom_to_str(dom);
   }
 
+#ifndef TOP_DOWN_INTER_ANALYSIS
   std::string AnalysisParams::sum_abs_dom_to_str() const {
     return dom_to_str(sum_dom);
   }
+#endif 
     
   /**
    * Internal implementation of the intra-procedural analysis
    **/
   class IntraClam_Impl {
   public:
-    IntraClam_Impl(const Function &fun, HeapAbstraction &mem, const TargetLibraryInfo &tli,
-		   CrabBuilderManager &man)
+    IntraClam_Impl(const Function &fun, CrabBuilderManager &man)
       : m_cfg_builder(nullptr), m_fun(fun), m_vfac(man.get_var_factory()) {
       
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started Crab CFG construction for "
-		                       << fun.getName() << "\n");
+		                                << fun.getName() << "\n");
       if (isTrackable(m_fun)) {
 	if (!man.has_cfg(m_fun)) {
-	  // -- build a crab cfg for func
-	  m_cfg_builder.reset(new CfgBuilder(m_fun, m_vfac, mem, &tli,
-					     man.get_cfg_builder_params()));
-	  m_cfg_builder->build_cfg();
-	  man.add(fun, m_cfg_builder);
+	  m_cfg_builder = man.mk_cfg_builder(m_fun);
 	} else {
 	  m_cfg_builder = man.get_cfg_builder(m_fun);
 	}
@@ -757,11 +757,9 @@ namespace clam {
   /**
    *   Begin IntraClam methods
    **/
-  IntraClam::IntraClam(const Function &fun, const TargetLibraryInfo &tli,
-		       HeapAbstraction &mem, CrabBuilderManager &man)
-    : m_impl(nullptr), m_fun(fun), m_mem(mem), m_builder_man(man) {
-    m_impl = make_unique<IntraClam_Impl>
-      (m_fun, m_mem, tli, m_builder_man);
+  IntraClam::IntraClam(const Function &fun, CrabBuilderManager &man)
+    : m_impl(nullptr), m_fun(fun), m_builder_man(man) {
+    m_impl = make_unique<IntraClam_Impl>(m_fun, m_builder_man); 
     CRAB_VERBOSE_IF(1, man.get_cfg_builder_params().write(errs()));
   }
 
@@ -771,6 +769,10 @@ namespace clam {
     m_pre_map.clear();
     m_post_map.clear();
     m_checks_db.clear();
+  }
+
+  CrabBuilderManager& IntraClam::get_cfg_builder_man() {
+    return m_builder_man;
   }
   
   void IntraClam::analyze(AnalysisParams &params,
@@ -841,25 +843,17 @@ namespace clam {
    **/
   class InterClam_Impl {
   public:
-    InterClam_Impl(const Module& M, HeapAbstraction &mem, 
-		   const TargetLibraryInfo &tli, CrabBuilderManager &man)
+    InterClam_Impl(const Module& M, CrabBuilderManager &man)
       : m_cg(nullptr), m_crab_builder_man(man), m_M(M)  {
 
       std::vector<cfg_ref_t> cfg_ref_vector;
       for (auto const &F : m_M) {
         if (isTrackable(F)) {
 	  // -- build cfg's
-	  cfg_t* cfg = nullptr;
 	  if (!man.has_cfg(F)) {
-	    CrabBuilderManager::CfgBuilderPtr Builder
-	      (std::make_shared<CfgBuilder>(F, m_crab_builder_man.get_var_factory(),
-					    mem, &tli, man.get_cfg_builder_params()));
-	    Builder->build_cfg();
-	    m_crab_builder_man.add(F, Builder);
-	    cfg = &(Builder->get_cfg());	    
-	  } else {
-	    cfg = &(man.get_cfg(F));
+	    m_crab_builder_man.mk_cfg_builder(F);
 	  }
+	  cfg_t* cfg = &(m_crab_builder_man.get_cfg(F));
 	  cfg_ref_vector.push_back(*cfg);
 	  CRAB_VERBOSE_IF(1, llvm::outs() << "Built Crab CFG for "
 			                  << F.getName() << "\n");
@@ -934,6 +928,7 @@ namespace clam {
       
       // -- run the interprocedural analysis
       if (!CrabBuildOnlyCFG) {
+#ifndef TOP_DOWN_INTER_ANALYSIS	
 	if (inter_analyses.count({params.sum_dom, params.dom})) {
 	  inter_analyses.at({params.sum_dom, params.dom}).analyze(params, results);
 	} else {
@@ -948,6 +943,19 @@ namespace clam {
 			 << "Compile with -DENABLE_INTER=ON or do not use --crab-inter\n";
 	  }
 	}
+#else
+	if (inter_analyses.count(params.dom)) {
+	  inter_analyses.at(params.dom).analyze(params, results);
+	} else {
+	  if (inter_analyses.count(ZONES_SPLIT_DBM)) {
+	    crab::outs() << "Warning: abstract domains not found or enabled.\n"
+			 << "Compile with -DALL_DOMAINS=ON.\n";	    
+	  } else {
+	    crab::outs() << "Warning: inter-procedural analysis is not enabled.\n"
+			 << "Compile with -DENABLE_INTER=ON or do not use --crab-inter\n";
+	  }
+	}
+#endif 	
       }
       
       // free liveness map
@@ -976,11 +984,40 @@ namespace clam {
     }
     
     /** Run inter-procedural analysis on the whole call graph **/
+#ifdef TOP_DOWN_INTER_ANALYSIS
+    template<typename Dom>
+#else    
     template<typename BUDom, typename TDDom>
+#endif     
     void analyzeCg(const AnalysisParams &params,
 		   AnalysisResults &results) {
-      
-      typedef inter_fwd_analyzer<call_graph_ref_t, BUDom, TDDom> inter_analyzer_t;
+
+#ifdef TOP_DOWN_INTER_ANALYSIS
+      CRAB_VERBOSE_IF(1, 
+ 		      crab::get_msg_stream() << "Running top-down inter-procedural analysis " 
+		                             << "with domain:" 
+		                             << "\"" << Dom::getDomainName() << "\""
+		                             << "  ...\n";);
+
+      typedef top_down_inter_analyzer<call_graph_ref_t, Dom> inter_analyzer_t;
+      typedef top_down_inter_analyzer_parameters<call_graph_ref_t> inter_params_t;      
+
+      inter_params_t inter_params;
+      inter_params.run_checker = params.check;
+      inter_params.checker_verbosity  = params.check_verbose;
+      inter_params.minimize_invariants = true;
+      inter_params.max_call_contexts = params.max_calling_contexts;
+      inter_params.live_map = (params.run_liveness ? &m_live_map : nullptr);
+      inter_params.widening_delay = params.widening_delay;
+      inter_params.descending_iters = params.narrowing_iters;
+      inter_params.thresholds_size = params.widening_jumpset;
+      inter_analyzer_t analyzer(*m_cg, inter_params);
+      analyzer.run(Dom::top());
+      if (inter_params.run_checker) {
+	results.checksdb += analyzer.get_all_checks();
+      }
+#else      
+      typedef bottom_up_inter_analyzer<call_graph_ref_t, BUDom, TDDom> inter_analyzer_t;
       typedef inter_checker<inter_analyzer_t> inter_checker_t;
       typedef assert_property_checker<inter_analyzer_t> assert_prop_t;
       //typedef null_property_checker<inter_analyzer_t> null_prop_t;
@@ -998,6 +1035,7 @@ namespace clam {
 				params.narrowing_iters, 
 				params.widening_jumpset);
       analyzer.run(TDDom::top());
+#endif
     
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished inter-procedural analysis.\n");
       
@@ -1062,19 +1100,22 @@ namespace clam {
 	      pretty_printer_impl::print_annotations(cfg, annotations);	    
 	    }
 	  }
-	  
+
+#ifndef TOP_DOWN_INTER_ANALYSIS	  
 	  // Summaries are not currently stored but it would be easy to do so.	    
 	  if (params.print_summaries && analyzer.has_summary(cfg)) {
 	    auto summ = analyzer.get_summary(cfg);
 	    crab::outs() << "SUMMARY " << *summ << "\n";
 	  }
+#endif 	  
 	}
       }
       
       if (params.store_invariants || params.print_invars) {	
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "All invariants stored.\n");
       }
-      
+
+#ifndef TOP_DOWN_INTER_ANALYSIS      
       // --- checking assertions and collecting data
       if (params.check) {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Checking assertions ... \n"); 
@@ -1088,6 +1129,7 @@ namespace clam {
 	results.checksdb += checker.get_all_checks();
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished assert checking.\n"); 
       }
+#endif       
       return;
     }
 
@@ -1098,6 +1140,31 @@ namespace clam {
     };
 
     // Domains used for intra-procedural analysis
+#ifdef TOP_DOWN_INTER_ANALYSIS
+    const std::map<CrabDomain, inter_analysis> inter_analyses {
+      #ifdef HAVE_INTER
+      { ZONES_SPLIT_DBM,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t>), "zones" }}
+      #ifdef HAVE_ALL_DOMAINS
+      , { INTERVALS,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<interval_domain_t>), "intervals" }}
+      , { WRAPPED_INTERVALS,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<wrapped_interval_domain_t>), "wrapped intervals" }}
+      , { OCT,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t>), "oct" }}
+      , { TERMS_ZONES,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<num_domain_t>), "terms+zones" }}
+      , { TERMS_DIS_INTERVALS,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<term_dis_int_domain_t>), "terms+dis_intervals" }}
+      , { BOXES,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<boxes_domain_t>), "boxes" }}
+      , { PK,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<pk_domain_t>), "pk" }}	
+      #endif
+      #endif 	
+    };    
+  };
+#else    
     const std::map<std::pair<CrabDomain,CrabDomain>, inter_analysis> inter_analyses {
       #ifdef HAVE_INTER
       {{ZONES_SPLIT_DBM, ZONES_SPLIT_DBM},
@@ -1137,16 +1204,14 @@ namespace clam {
       #endif 	
     };    
   };
-
+#endif 
 
   /**
    *   Begin InterClam methods
    **/
-  InterClam::InterClam(const Module &module,  const TargetLibraryInfo &tli,
-		       HeapAbstraction &mem, CrabBuilderManager &man)		        
-    : m_impl(nullptr), m_mem(mem), m_builder_man(man) {
-    m_impl = make_unique<InterClam_Impl>
-      (module, m_mem, tli, m_builder_man);
+  InterClam::InterClam(const Module &module, CrabBuilderManager &man)		        
+    : m_impl(nullptr), m_builder_man(man) {
+    m_impl = make_unique<InterClam_Impl>(module, m_builder_man);
   }
 
   InterClam::~InterClam() {}
@@ -1155,6 +1220,10 @@ namespace clam {
     m_pre_map.clear();
     m_post_map.clear();
     m_checks_db.clear();
+  }
+
+  CrabBuilderManager& InterClam::get_cfg_builder_man() {
+    return m_builder_man;
   }
   
   void InterClam::analyze(AnalysisParams &params,
@@ -1199,38 +1268,94 @@ namespace clam {
   /**
    * Begin ClamPass methods
    **/
-  ClamPass::ClamPass()
-    : llvm::ModulePass(ID), 
-    m_mem(new DummyHeapAbstraction()),
-    m_cfg_builder_man(new CrabBuilderManager(
-	      CrabBuilderParams(CrabTrackLev, CrabCFGSimplify, true,
-				CrabEnableUniqueScalars, CrabDisablePointers,
-				CrabIncludeHavoc, CrabArrayInit, CrabUnsoundArrayInit,
-				CrabEnableBignums, CrabPrintCFG))),
-    m_tli(nullptr) {
-    CRAB_VERBOSE_IF(1,    
-		    m_cfg_builder_man->get_cfg_builder_params().write(errs());
-		    errs() << "\n";);
-  }
-
+  ClamPass::ClamPass():
+    llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {}
+  
   void ClamPass::releaseMemory() {
     m_pre_map.clear(); 
     m_post_map.clear();
     m_checks_db.clear();
   }
-
-  bool ClamPass::runOnFunction(Function &F) {
-    IntraClam_Impl crab(F, *m_mem, *m_tli, *m_cfg_builder_man);
-    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
-    crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
-    return false;
-  }
   
   bool ClamPass::runOnModule(Module &M) {
 
+    /// Translate the module to Crab CFGs
+    
+    CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
+			     CrabEnableUniqueScalars, CrabMemShadows, 
+			     CrabIncludeHavoc,
+			     CrabArrayInit, CrabUnsoundArrayInit,
+			     CrabEnableBignums, CrabPrintCFG);
+
+    auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
+    
+    if (!CrabMemShadows) {
+      // If CrabMemShadows is enabled then we don't run any heap
+      // analysis.
+      switch(CrabHeapAnalysis) {
+      case heap_analysis_t::LLVM_DSA:
+        #ifdef HAVE_DSA
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);
+	mem.reset
+	  (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
+				      CrabDsaDisambiguateUnknown,
+				      CrabDsaDisambiguatePtrCast,
+				      CrabDsaDisambiguateExternal));
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished llvm-dsa analysis\n";);      
+	break;
+        #else
+	CLAM_WARNING("llvm-dsa heap analysis is not available. Running sea-dsa");
+	// execute CI_SEA_DSA
+        #endif      
+      case heap_analysis_t::CI_SEA_DSA:
+      case heap_analysis_t::CS_SEA_DSA: {
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
+	CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();      
+	const DataLayout& dl = M.getDataLayout();
+	sea_dsa::AllocWrapInfo* allocWrapInfo = &getAnalysis<sea_dsa::AllocWrapInfo>();      
+	mem.reset
+	  (new LegacySeaDsaHeapAbstraction(M, cg, dl, *tli, *allocWrapInfo,
+					   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
+					   CrabDsaDisambiguateUnknown,
+					   CrabDsaDisambiguatePtrCast,
+					   CrabDsaDisambiguateExternal));
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished sea-dsa analysis\n";);      
+	break;
+      }
+      case heap_analysis_t::NONE:
+      default:
+	CLAM_WARNING("running clam without heap analysis");
+      }
+    }
+
+    /// create the builder manager
+    sea_dsa::ShadowMem *sm = nullptr;
+    if (auto smp = getAnalysisIfAvailable<sea_dsa::ShadowMemPass>()) {
+      sm = &(smp->getShadowMem());
+    } else {
+      if (CrabMemShadows) {
+	CLAM_WARNING("getAnalysisIfAvailable<ShadowMemPass> returned null");
+      }
+    }
+    m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem), sm));
+    
+    CRAB_VERBOSE_IF(1,    
+		    m_cfg_builder_man->get_cfg_builder_params().write(errs());
+		    errs() << "\n";);
+
+    
+    /// Run the analysis 
+						  
     m_params.dom = ClamDomain;
+#ifndef TOP_DOWN_INTER_ANALYSIS            
     m_params.sum_dom = CrabSummDomain;
+#endif     
     m_params.run_backward = CrabBackward;
+    m_params.run_inter = CrabInter;
+#ifdef TOP_DOWN_INTER_ANALYSIS            
+    m_params.max_calling_contexts = CrabInterMaxSummaries;
+#endif     
     m_params.run_liveness = CrabLive;
     m_params.relational_threshold = CrabRelationalThreshold;
     m_params.widening_delay = CrabWideningDelay;
@@ -1256,44 +1381,9 @@ namespace clam {
              crab::get_msg_stream() << "Total number of analyzed functions:" 
                            << num_analyzed_funcs << "\n";);
 
-    m_tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
-    switch(CrabHeapAnalysis) {
-    case LLVM_DSA:
-      #ifdef HAVE_DSA
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);
-      m_mem.reset
-	(new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
-				    CrabDsaDisambiguateUnknown,
-				    CrabDsaDisambiguatePtrCast,
-				    CrabDsaDisambiguateExternal));
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished llvm-dsa analysis\n";);      
-      break;
-      #else
-      // execute CI_SEA_DSA
-      #endif      
-    case CI_SEA_DSA:
-    case CS_SEA_DSA: {
-      #ifdef HAVE_SEA_DSA      
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
-      CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();      
-      const DataLayout& dl = M.getDataLayout();
-      sea_dsa::AllocWrapInfo* allocWrapInfo = &getAnalysis<sea_dsa::AllocWrapInfo>();      
-      m_mem.reset
-	(new SeaDsaHeapAbstraction(M, cg, dl, *m_tli, *allocWrapInfo,
-				   (CrabHeapAnalysis == CS_SEA_DSA),
-				   CrabDsaDisambiguateUnknown,
-				   CrabDsaDisambiguatePtrCast,
-				   CrabDsaDisambiguateExternal));
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished sea-dsa analysis\n";);      
-      break;
-      #endif 
-    }
-    default:
-      CLAM_WARNING("running clam without memory analysis");
-    }
 
     if (CrabInter){
-      InterClam_Impl inter_crab(M, *m_mem, *m_tli, *m_cfg_builder_man);
+      InterClam_Impl inter_crab(M, *m_cfg_builder_man);
       AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
       inter_crab.Analyze(m_params, assumption_map_t(), results);
     } else {
@@ -1342,19 +1432,36 @@ namespace clam {
    return false;
   }
 
+  bool ClamPass::runOnFunction(Function &F) {
+    IntraClam_Impl crab(F, *m_cfg_builder_man);
+    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+    crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
+    return false;
+  }
+  
   void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
+    
     #ifdef HAVE_DSA
-    AU.addRequiredTransitive<SteensgaardDataStructures>();
+    if (!CrabMemShadows &&
+	CrabHeapAnalysis == heap_analysis_t::LLVM_DSA) {
+      // don't run llvm-dsa unless llvm-dsa is used
+      AU.addRequiredTransitive<SteensgaardDataStructures>();
+    }
     #endif 
     AU.addRequired<TargetLibraryInfoWrapperPass>();
-    #ifdef HAVE_SEA_DSA    
-    AU.addRequired<sea_dsa::AllocWrapInfo>();
-    #endif     
+    if (!CrabMemShadows &&
+	(CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
+	 CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA)) {
+      // don't run the pass unless sea-dsa uses it 
+      AU.addRequired<sea_dsa::AllocWrapInfo>();
+    } 
+    if (CrabMemShadows) {
+      AU.addRequired<sea_dsa::ShadowMemPass>();
+    }
     AU.addRequired<UnifyFunctionExitNodes>();
     AU.addRequired<clam::NameValues>();
     AU.addRequired<CallGraphWrapperPass>();
-    AU.addPreserved<CallGraphWrapperPass>();
   } 
   
   /**
@@ -1370,13 +1477,10 @@ namespace clam {
     return m_cfg_builder_man->get_cfg(F);
   }
 
-  variable_factory_t& ClamPass::get_var_factory() {
-    return m_cfg_builder_man->get_var_factory();
-  }
-  
-  const CrabBuilderManager& ClamPass::getCfgBuilderMan() const {
+  CrabBuilderManager& ClamPass::get_cfg_builder_man() {
     return *m_cfg_builder_man;
   }
+  
   // return invariants that hold at the entry of block
   wrapper_dom_ptr
   ClamPass::get_pre(const llvm::BasicBlock *block, bool keep_shadows) const {

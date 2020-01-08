@@ -15,8 +15,8 @@ be used because it has not been ported yet to LLVM 8.0.
 Clam is written in C++ and uses heavily the Boost library. The
 main requirements are:
 
-- C++ compiler supporting c++11
-- Boost
+- Modern C++ compiler supporting c++11
+- Boost >= 1.62
 - GMP 
 - MPFR (if `-DCRAB_USE_APRON=ON` or `-DCRAB_USE_ELINA=ON`)
 
@@ -45,8 +45,7 @@ The basic compilation steps are:
 
 Clam provides several components that are installed via the `extra`
 target. These components can be used by other projects outside of
-Clam.
-
+Clam. 
 
 * [llvm-dsa](https://github.com/seahorn/llvm-dsa): ``` git clone https://github.com/seahorn/llvm-dsa.git ```
 
@@ -55,7 +54,7 @@ Clam.
   (Data Structure Analysis) is a heap analysis
   described
   [here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps)
-  and it is used by Clam to disambiguate the heap.
+  and it is used by Clam to disambiguate the heap (*Deprecated*)
   
 * [sea-dsa](https://github.com/seahorn/sea-dsa): ```git clone https://github.com/seahorn/sea-dsa.git```
 
@@ -68,7 +67,9 @@ Clam.
    `llvm-seahorn` provides specialized versions of `InstCombine` and
    `IndVarSimplify` LLVM passes as well as a LLVM pass to convert undefined values into nondeterministic calls.
 
-To include these external components, type instead:
+The component `sea-dsa` is mandatory, `llvm-dsa` is deprecated, and
+`llvm-seahorn` is highly recommended. To include these external
+components, type instead:
 
      mkdir build && cd build
      cmake -DCMAKE_INSTALL_PREFIX=_DIR_ ../
@@ -294,30 +295,32 @@ where `N` is the maximum number of thresholds.
 We also provide the option `--crab-track=VAL` to indicate the level of
 abstraction of the translation. The possible values of `VAL` are:
 
-- `num`: translate only operations over integer and boolean scalars (LLVM registers).
-- `ptr`: `num` + translate all operations over pointers using crab pointer operations. 
-- `arr`: `num` + translates all operations over pointers using pointer
-  arithmetic and Crab arrays.
+- `num`: translate only operations over LLVM registers of integer and boolean types.
+- `ptr`: `num` + translate all pointer operations using Crab pointer operations. 
+- `arr`: `num` + translates all pointer operations using Crab arrays.
 
-   If the level is `arr` then Clam's frontend will partition the
-   heap into disjoint regions using a pointer analysis. Each region is
-   mapped to a Crab array, and each LLVM load and store is translated
-   to an array read and write operation, respectively. Then, it will
-   use an array domain provided by Crab whose base domain is the one
-   selected by option `--crab-domain`. If option
-   `--crab-singleton-aliases` is enabled then Clam translates
-   global singleton regions to scalar variables.
+    Although the translation with level `ptr` should work, Crab does
+    not actually reason about pointers (although we are working on
+    it). Thus, this translation is not very useful at the moment.
+
+    To reason about memory contents and taking aliasing into account
+    use the level `arr`.  At this level, the Clam's frontend will
+    partition the heap into disjoint regions using a pointer
+    analysis. Each region is mapped to a Crab array, and each LLVM
+    load and store is translated to an array read and write operation,
+    respectively. Then, it will use an array domain provided by Crab
+    whose base domain is the one selected by option
+    `--crab-domain`. If option `--crab-singleton-aliases` is enabled
+    then Clam translates global singleton regions to scalar variables.
 
 By default, all the analyses are run in an intra-procedural
-manner. Enable the option `--crab-inter` to run the inter-procedural
-version. Clam implements a standard two-phase algorithm in which
-the call graph is first traversed from the leaves to the root while
-computing summaries and then from the root the leaves reusing
-summaries. Each function is executed only once. The analysis is sound
-with recursive functions but imprecise. The option
-`--crab-print-summaries` displays the summaries for each function. The
-inter-procedural analysis is specially important if reasoning about
-memory contents is desired.
+manner. Whenever possible, we recommend to run Clam with option
+`--inline`. This option will inline all function calls if the callee
+is not recursive. If inlining is not desired or too expensive, enable
+the option `--crab-inter` to run the inter-procedural version. Clam
+implements a standard top-down inter-procedural analysis with
+memoization. The analysis is sound with recursive functions but
+imprecise.
 
 Clam provides the **very experimental** option `--crab-backward`
 to enable an iterative forward-backward analysis that might produce
@@ -443,9 +446,6 @@ Crab. Here some of them:
   invariants (e.g., `boxes` or `dis-int`) but they are still limited
   in terms of expressiveness to keep them tractable.
 
-- The interprocedural analysis is summary-based but it's
-  context-insensitive. 
-  
 - The backward analysis is too experimental and it requires more work.
   
 - The option `--crab-track=ptr` translates pointer operations to Crab
