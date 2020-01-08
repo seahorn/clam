@@ -474,7 +474,7 @@ namespace clam {
 
   // f is used to know in which DSGraph we should search for V
   Region LlvmDsaHeapAbstraction::getRegion(const llvm::Function &F,
-					   const llvm::Instruction *I,
+					   const llvm::Instruction *I /*unused*/,
 					   const llvm::Value *V)  {
     // Note each function has its own graph and a copy of the global
     // graph. Nodes in both graphs are merged.  However, m_dsa has

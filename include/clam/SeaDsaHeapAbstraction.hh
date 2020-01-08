@@ -121,4 +121,6 @@ private:
   llvm::DenseMap<const llvm::CallInst *, RegionVec> m_callsite_mods;
   llvm::DenseMap<const llvm::CallInst *, RegionVec> m_callsite_news;
 };
+
+using SeaDsaHeapAbstraction = LegacySeaDsaHeapAbstraction;
 } // end namespace clam
