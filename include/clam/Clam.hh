@@ -239,6 +239,12 @@ namespace clam {
     /* return the manager used to build all CFGs */
     CrabBuilderManager& get_cfg_builder_man();    
 
+    /* return the analysis options */
+    const AnalysisParams& get_analysis_params() const {
+      return m_params;
+    }
+
+    /* return true if there is Crab CFG for F */
     bool has_cfg(llvm::Function &F);
 
     /* return the Crab CFG associated to F */
