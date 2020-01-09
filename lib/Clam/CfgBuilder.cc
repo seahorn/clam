@@ -83,6 +83,7 @@
 #include "CfgBuilderShadowMem.hh"
 
 #include "clam/CfgBuilder.hh"
+#include "clam/DummyHeapAbstraction.hh"
 #include "clam/Support/CFG.hh"
 #include "clam/Support/Debug.hh"
 #include "crab/common/debug.hpp"
@@ -437,9 +438,9 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
         auto it = old_val_map.find(&v);
         if (it == old_val_map.end()) {
           if (crab_lit_ref_t phi_val_ref = m_lfac.getLit(v)) {
-	    // shadow mem phi node: array
 	    auto sm_it = sm_cell_map.find(&v);
 	    if (sm_it != sm_cell_map.end()) {
+	      // shadow mem phi node: array
               if (!phi_val_ref->isVar()) {
 		CLAM_ERROR("unexpected shadow PHI node");
 	      }
@@ -466,36 +467,45 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 	      } else {
 		CLAM_WARNING("Skipped shadow mem phi node" << *phi);
 	      }
+	    } else {
+	      // non-shadow mem phi node: bool, integer, or pointer
+
+	      if (phi->getName().startswith("shadow.mem")) {
+		// XXX: If clam is run from SeaHorn then the bitcode
+		// will be instrumented by ShadowMem. Here we try to
+		// identify PHI shadow mem instructions and ignore them.
+		continue;
+	      }
+	      
+	      if (phi_val_ref->isBool()) {
+		var_t lhs = m_lfac.mkBoolVar();
+		if (phi_val_ref->isVar()) {
+		  m_bb.bool_assign(lhs, phi_val_ref->getVar());
+		} else {
+		  m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref)
+				   ? lin_cst_t::get_true()
+				   : lin_cst_t::get_false());
+		}
+		old_val_map.insert({&v, lhs});
+	      } else if (phi_val_ref->isInt()) {
+		var_t lhs =
+		  m_lfac.mkIntVar(phi_v->getType()->getIntegerBitWidth());
+		m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
+		old_val_map.insert({&v, lhs});	     
+	      } else if (phi_val_ref->isPtr()) {
+		var_t lhs = m_lfac.mkPtrVar();
+		if (phi_val_ref->isVar()) {
+		  m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
+		} else {
+		  m_bb.ptr_null(lhs);
+		}
+		old_val_map.insert({&v, lhs});
+	      } else { 
+		/* unreachable */
+	      }
 	    }
-	    // non-shadow mem phi node: bool, integer, or pointer
-            else if (phi_val_ref->isBool()) {
-              var_t lhs = m_lfac.mkBoolVar();
-              if (phi_val_ref->isVar()) {
-                m_bb.bool_assign(lhs, phi_val_ref->getVar());
-              } else {
-                m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref)
-                                          ? lin_cst_t::get_true()
-                                          : lin_cst_t::get_false());
-              }
-              old_val_map.insert({&v, lhs});
-            } else if (phi_val_ref->isInt()) {
-	      var_t lhs =
-		m_lfac.mkIntVar(phi_v->getType()->getIntegerBitWidth());
-	      m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
-	      old_val_map.insert({&v, lhs});	     
-            } else if (phi_val_ref->isPtr()) {
-              var_t lhs = m_lfac.mkPtrVar();
-              if (phi_val_ref->isVar()) {
-                m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
-              } else {
-                m_bb.ptr_null(lhs);
-              }
-              old_val_map.insert({&v, lhs});
-            }
-          } else {
-            CLAM_ERROR("unexpected PHI node");
-          }
-        }
+	  }
+	}
       }
     }
 
@@ -507,9 +517,9 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
       
       const Value &v = *phi.getIncomingValueForBlock(&m_inc_BB);
 
-      /// Shadow mem PHI node: array 
       auto sm_it = sm_cell_map.find(&v);
       if (sm_it != sm_cell_map.end()) {
+	/// Shadow mem PHI node: array 
 	Region reg  = sm_it->second.second;
 	bool lowerToScalar = get_singleton_value(reg, m_params.lower_singleton_aliases);	
 	if (lowerToScalar) {
@@ -529,49 +539,57 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 	  m_bb.array_assign(m_lfac.mkArrayVar(reg, &phi),
 			    m_lfac.mkArrayVar(reg, &v));
 	}
-	continue;
-      }
-      
-      /// Regular PHI node: bool, integer, or pointer
-      crab_lit_ref_t lhs_ref = m_lfac.getLit(phi);
-      if (!lhs_ref || !lhs_ref->isVar()) {
-	CLAM_ERROR("unexpected PHI instruction");
-      }
-      var_t lhs = lhs_ref->getVar();	
-      auto it = old_val_map.find(&v);
-      if (it != old_val_map.end()) {
-	// -- use old version if exists
-	if (isBool(phi)) {
-	  m_bb.bool_assign(lhs, it->second);
-	} else if (phi.getType()->isIntegerTy()) {
-	  m_bb.assign(lhs, it->second);
-	} else if (isPointer(phi, m_lfac.get_cfg_builder_params())) {
-	  m_bb.ptr_assign(lhs, it->second, number_t(0));
+      } else {
+	/// Regular PHI node: bool, integer, or pointer
+
+	if (phi.getName().startswith("shadow.mem")) {
+	  // XXX: If clam is run from SeaHorn then the bitcode will be
+	  // instrumented by ShadowMem. Here we try to identify PHI
+	  // shadow mem instructions and ignore them.
+	  continue;
 	}
-      } else {	
-	if (crab_lit_ref_t phi_val_ref = m_lfac.getLit(v)) {
-	  if (phi_val_ref->isBool()) {
-	    if (phi_val_ref->isVar()) {
-              m_bb.bool_assign(lhs, phi_val_ref->getVar());
-	    } else {
-	      m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref)
-			       ? lin_cst_t::get_true()
-			       : lin_cst_t::get_false());
-	    }
-	  } else if (phi_val_ref->isInt()) {
-	    m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
-	  } else if (phi_val_ref->isPtr()) {
-	    if (phi_val_ref->isVar()) {
-	      m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
-	    } else {
-	      m_bb.ptr_null(lhs);
-	    }
-	  } else { /* unreachable*/
+	
+	crab_lit_ref_t lhs_ref = m_lfac.getLit(phi);
+	if (!lhs_ref || !lhs_ref->isVar()) {
+	  CLAM_ERROR("unexpected PHI instruction");
+	}
+	var_t lhs = lhs_ref->getVar();	
+	auto it = old_val_map.find(&v);
+	if (it != old_val_map.end()) {
+	  // -- use old version if exists
+	  if (isBool(phi)) {
+	    m_bb.bool_assign(lhs, it->second);
+	  } else if (phi.getType()->isIntegerTy()) {
+	    m_bb.assign(lhs, it->second);
+	  } else if (isPointer(phi, m_lfac.get_cfg_builder_params())) {
+	    m_bb.ptr_assign(lhs, it->second, number_t(0));
 	  }
-	} else {
-	  // we can be here if the incoming value is a bignum and we
-	  // don't allow bignums.
-	  m_bb.havoc(lhs);
+	} else {	
+	  if (crab_lit_ref_t phi_val_ref = m_lfac.getLit(v)) {
+	    if (phi_val_ref->isBool()) {
+	      if (phi_val_ref->isVar()) {
+		m_bb.bool_assign(lhs, phi_val_ref->getVar());
+	      } else {
+		m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref)
+				 ? lin_cst_t::get_true()
+				 : lin_cst_t::get_false());
+	      }
+	    } else if (phi_val_ref->isInt()) {
+	      m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
+	    } else if (phi_val_ref->isPtr()) {
+	      if (phi_val_ref->isVar()) {
+		m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
+	      } else {
+		m_bb.ptr_null(lhs);
+	      }
+	    } else {
+	      /* unreachable*/
+	    }
+	  } else {
+	    // we can be here if the incoming value is a bignum and we
+	    // don't allow bignums.
+	    m_bb.havoc(lhs);
+	  }
 	}
       }
     }
@@ -3179,16 +3197,23 @@ CfgBuilder::get_instruction(const statement_t &s) const {
 
 /* CFG Manager class */
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
-                                       const llvm::TargetLibraryInfo *tli,
-                                       std::unique_ptr<HeapAbstraction> mem,
-				       sea_dsa::ShadowMem *sm)
-  : m_params(params), m_tli(tli), m_mem(std::move(mem)), m_sm(sm) {
-  // some sanity checks
+                                       const llvm::TargetLibraryInfo &tli,
+                                       std::unique_ptr<HeapAbstraction> mem)
+  : m_params(params), m_tli(tli), m_mem(std::move(mem)), m_sm(nullptr) {
+  // This constructor cannot enable memory ssa form
   if (m_params.memory_ssa) {
-    if (!sm) {
-      CLAM_WARNING("Memory SSA needs ShadowMem");
-      m_params.memory_ssa  = false;
-    } else if (params.interprocedural) {
+    CLAM_WARNING("Memory SSA needs ShadowMem");
+    m_params.memory_ssa  = false;
+  }
+}
+
+CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
+                                       const llvm::TargetLibraryInfo &tli,
+				       sea_dsa::ShadowMem &sm)
+  : m_params(params), m_tli(tli), m_mem(new DummyHeapAbstraction()), m_sm(&sm) {
+  // This constructor can enable memory ssa form
+  if (m_params.memory_ssa) {
+    if (params.interprocedural) {
       m_params.interprocedural = false;
     } 
   }
@@ -3237,7 +3262,7 @@ const CrabBuilderParams &CrabBuilderManager::get_cfg_builder_params() const {
 }
 
 const llvm::TargetLibraryInfo &CrabBuilderManager::get_tli() const {
-  return *m_tli;
+  return m_tli;
 }
 
 HeapAbstraction &CrabBuilderManager::get_heap_abstraction() { return *m_mem; }
