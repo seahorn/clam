@@ -1287,10 +1287,11 @@ namespace clam {
 			     CrabArrayInit, CrabUnsoundArrayInit,
 			     CrabEnableBignums, CrabPrintCFG);
 
-    auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
-    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
-    
+    auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+
+    /// Create the CFG builder manager
     if (!CrabMemShadows) {
+      std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());    
       // If CrabMemShadows is enabled then we don't run any heap
       // analysis.
       switch(CrabHeapAnalysis) {
@@ -1315,7 +1316,7 @@ namespace clam {
 	const DataLayout& dl = M.getDataLayout();
 	sea_dsa::AllocWrapInfo* allocWrapInfo = &getAnalysis<sea_dsa::AllocWrapInfo>();      
 	mem.reset
-	  (new LegacySeaDsaHeapAbstraction(M, cg, dl, *tli, *allocWrapInfo,
+	  (new LegacySeaDsaHeapAbstraction(M, cg, dl, tli, *allocWrapInfo,
 					   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
 					   CrabDsaDisambiguateUnknown,
 					   CrabDsaDisambiguatePtrCast,
@@ -1327,18 +1328,17 @@ namespace clam {
       default:
 	CLAM_WARNING("running clam without heap analysis");
       }
-    }
-
-    /// create the builder manager
-    sea_dsa::ShadowMem *sm = nullptr;
-    if (auto smp = getAnalysisIfAvailable<sea_dsa::ShadowMemPass>()) {
-      sm = &(smp->getShadowMem());
+      m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem))); 
     } else {
-      if (CrabMemShadows) {
-	CLAM_WARNING("getAnalysisIfAvailable<ShadowMemPass> returned null");
+      if (auto smp = getAnalysisIfAvailable<sea_dsa::ShadowMemPass>()) {
+	m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, smp->getShadowMem()));      
+      } else {
+	std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());	
+	m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem)));
+	if (CrabMemShadows) 
+	  CLAM_WARNING("getAnalysisIfAvailable<ShadowMemPass> returned null");
       }
     }
-    m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem), sm));
     
     CRAB_VERBOSE_IF(1,    
 		    m_cfg_builder_man->get_cfg_builder_params().write(errs());

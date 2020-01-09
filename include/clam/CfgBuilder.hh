@@ -88,10 +88,17 @@ class CrabBuilderManager {
 public:
   using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
 
+  // This constructor will use HeapAbstraction to translate LLVM
+  // memory instructions to Crab arrays.
   CrabBuilderManager(CrabBuilderParams params,
-		     const llvm::TargetLibraryInfo *tli,
-		     std::unique_ptr<HeapAbstraction> mem,
-		     sea_dsa::ShadowMem *sm = nullptr);
+		     const llvm::TargetLibraryInfo &tli,
+		     std::unique_ptr<HeapAbstraction> mem);
+
+  // This constructor will use ShadowMem to translate LLVM memory
+  // instructions to Crab arrays.
+  CrabBuilderManager(CrabBuilderParams params,
+		     const llvm::TargetLibraryInfo &tli,
+		     sea_dsa::ShadowMem &sm);
   
   ~CrabBuilderManager();
   
@@ -126,7 +133,7 @@ private:
   // Map LLVM function to Crab CfgBuilder
   llvm::DenseMap<const llvm::Function*, CfgBuilderPtr> m_cfg_builder_map;
   // Used for the translation from bitcode to Crab CFG
-  const llvm::TargetLibraryInfo *m_tli;
+  const llvm::TargetLibraryInfo &m_tli;
   // All CFGs supervised by this manager are created using the same
   // variable factory.
   variable_factory_t m_vfac;
