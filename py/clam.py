@@ -301,10 +301,10 @@ def parseArgs(argv):
     p.add_argument('--crab-inter',
                     help='Run summary-based, inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
-    p.add_argument('--crab-inter-sum-dom',
-                    help='Choose abstract domain for computing summaries',
-                    choices=['zones','oct','rtz'],
-                    dest='crab_inter_sum_dom', default='zones')
+    # p.add_argument('--crab-inter-sum-dom',
+    #                 help='Choose abstract domain for computing summaries',
+    #                 choices=['zones','oct','rtz'],
+    #                 dest='crab_inter_sum_dom', default='zones')
     p.add_argument('--crab-inter-max-summaries', 
                     type=int, dest='inter_max_summaries', 
                     help='Max number of summaries per function',
@@ -681,7 +681,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args = clam_args + extra_opts
     
     if args.log is not None:
-        for l in args.log.split(':'): clam_args.extend(['-log', l])
+        for l in args.log.split(':'): clam_args.extend(['-crab-log', l])
 
     # disable sinking instructions to end of basic block
     # this might create unwanted aliasing scenarios
@@ -705,7 +705,6 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-lower-switch=false')
     
     clam_args.append('--crab-dom={0}'.format(args.crab_dom))
-    clam_args.append('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))
     clam_args.append('--crab-widening-delay={0}'.format(args.widening_delay))
     clam_args.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
     clam_args.append('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
@@ -730,6 +729,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_inter:
         clam_args.append('--crab-inter')
         clam_args.append('--crab-inter-max-summaries={0}'.format(args.inter_max_summaries))
+        #clam_args.append('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))
+        
     if args.crab_backward: clam_args.append('--crab-backward')
     if args.crab_live: clam_args.append('--crab-live')
     clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
