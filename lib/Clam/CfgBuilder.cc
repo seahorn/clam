@@ -411,10 +411,8 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 	auto cellOpt = getShadowMemCell(phi, v, *sm);	
 	if (cellOpt.hasValue()) {	  
 	  sea_dsa::Cell cell = cellOpt.getValue();
-	  auto cellIdOpt = sm->getCellId(cell);
-	  RegionInfo info = DsaToRegion(cell, m_dl, false, false, false);
-	  if (info.get_type() != UNTYPED_REGION) {
-	    Region reg(cellIdOpt.getValue(), info, cell.getNode()->getUniqueScalar());	    
+	  Region reg = getShadowRegion(cell, m_dl, *sm);
+	  if (!reg.isUnknown()) {
 	    sm_cell_map.insert({&v, {cell, reg}});
 	  }
       	}

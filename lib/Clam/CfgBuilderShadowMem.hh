@@ -49,6 +49,11 @@ Region getShadowRegion(llvm::CallInst &shadowCI,
 		       const llvm::DataLayout &dl,
 		       const sea_dsa::ShadowMem &sm);
 
+// Get region from a cell
+Region getShadowRegion(const sea_dsa::Cell &c,
+		       const llvm::DataLayout &dl,		       
+		       const sea_dsa::ShadowMem &sm);
+  
 // Find the shadow instruction associated to the global initializer.
 // It can return null.
 llvm::CallInst* getShadowCIFromGvInitializer(const sea_dsa::ShadowMem &sm,
