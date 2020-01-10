@@ -163,6 +163,7 @@ using namespace sea_dsa;
 
 // DsaToRegion succeeds if returned valued != UNTYPED_REGION
 RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
+		       bool split_dsa_nodes,
 		       bool disambiguate_unknown,
 		       bool disambiguate_ptr_cast,
 		       bool disambiguate_external) {
@@ -172,7 +173,10 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
 
   const Node *n = c.getNode();
   unsigned offset = c.getOffset();
-
+  if (!split_dsa_nodes) {
+    offset = 0;
+  }
+  
   CRAB_LOG("heap-abs", errs() << "*** Checking whether node at offset "
                               << offset << " can be converted to region ... \n"
                               << "\t" << *n << "\n";);

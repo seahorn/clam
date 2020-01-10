@@ -17,6 +17,8 @@ namespace clam {
 // array. Succeeds if returned value != UNTYPED_REGION
 RegionInfo DsaToRegion(const sea_dsa::Cell &c,
 		       const llvm::DataLayout &dl,
+		       // field-sensitivity
+		       bool split_dsa_nodes,
 		       // flags to allow unsound disambiguation
 		       bool disambiguate_unknown,
 		       bool disambiguate_ptr_cast,
