@@ -3198,18 +3198,19 @@ CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        const llvm::TargetLibraryInfo &tli,
                                        std::unique_ptr<HeapAbstraction> mem)
   : m_params(params), m_tli(tli), m_mem(std::move(mem)), m_sm(nullptr) {
-  // This constructor cannot enable memory ssa form
+  // This constructor cannot enable memory ssa form.
   if (m_params.memory_ssa) {
     CLAM_WARNING("Memory SSA needs ShadowMem");
     m_params.memory_ssa  = false;
   }
+  CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
 }
 
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        const llvm::TargetLibraryInfo &tli,
 				       sea_dsa::ShadowMem &sm)
   : m_params(params), m_tli(tli), m_mem(new DummyHeapAbstraction()), m_sm(&sm) {
-  // This constructor can enable memory ssa form
+  // This constructor enables memory ssa form.
   if (m_params.memory_ssa) {
     if (params.interprocedural) {
       m_params.interprocedural = false;
@@ -3219,6 +3220,7 @@ CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
     CLAM_WARNING("Clam will try to preserve memory SSA form but it is work-in progress.\n"
 		 << "Currently, it only works if all functions have been inlined");
   }
+  CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));  
 }
 
 CrabBuilderManager::~CrabBuilderManager() {}

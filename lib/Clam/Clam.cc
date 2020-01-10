@@ -404,16 +404,18 @@ namespace clam {
     IntraClam_Impl(const Function &fun, CrabBuilderManager &man)
       : m_cfg_builder(nullptr), m_fun(fun), m_vfac(man.get_var_factory()) {
       
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started Crab CFG construction for "
-		                                << fun.getName() << "\n");
       if (isTrackable(m_fun)) {
 	if (!man.has_cfg(m_fun)) {
+	  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+			  << "Started Crab CFG construction for "
+			  << fun.getName() << "\n");	  
 	  m_cfg_builder = man.mk_cfg_builder(m_fun);
+	  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+			  << "Finished Crab CFG construction for "
+			  << fun.getName() << "\n");	
 	} else {
 	  m_cfg_builder = man.get_cfg_builder(m_fun);
 	}
-	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished Crab CFG construction for "
-			                          << fun.getName() << "\n");	
       } else {
 	CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
 			                << fun.getName() << "\n");
@@ -760,7 +762,6 @@ namespace clam {
   IntraClam::IntraClam(const Function &fun, CrabBuilderManager &man)
     : m_impl(nullptr), m_fun(fun), m_builder_man(man) {
     m_impl = make_unique<IntraClam_Impl>(m_fun, m_builder_man); 
-    CRAB_VERBOSE_IF(1, man.get_cfg_builder_params().write(errs()));
   }
 
   IntraClam::~IntraClam() {}
@@ -1339,12 +1340,7 @@ namespace clam {
 	  CLAM_WARNING("getAnalysisIfAvailable<ShadowMemPass> returned null");
       }
     }
-    
-    CRAB_VERBOSE_IF(1,    
-		    m_cfg_builder_man->get_cfg_builder_params().write(errs());
-		    errs() << "\n";);
-
-    
+        
     /// Run the analysis 
 						  
     m_params.dom = ClamDomain;
