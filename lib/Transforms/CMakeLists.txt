@@ -24,6 +24,8 @@ if (HAVE_DSA)
   target_link_libraries(LlvmPasses ${DSA_LIBS})
 endif()
 
+target_link_libraries(LlvmPasses ${SEA_DSA_LIBS})
+
 install(TARGETS LlvmPasses 
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
