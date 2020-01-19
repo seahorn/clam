@@ -80,7 +80,22 @@ if (CLAM_TOP_DOWN_INTER)
 else()
   message(STATUS "Compiling with bottom-up inter-procedural analysis")
   set(TOP_DOWN_INTER_ANALYSIS FALSE)
-endif()  
+endif()
+
+option (CLAM_USE_DBM_BIGNUM "Use big numbers for DBM weights" OFF)
+if (CLAM_USE_DBM_BIGNUM)
+  message(STATUS "DBM-based domains will use big numbers for representing weights")  
+  set(USE_DBM_BIGNUM TRUE)
+else()
+  set(USE_DBM_BIGNUM FALSE)
+  option (CLAM_USE_DBM_SAFEINT "Use safe integers for DBM weights" OFF)
+  if (CLAM_USE_DBM_SAFEINT)
+    message(STATUS "DBM-based domains will use safe integers for representing weights")  
+    set(USE_DBM_SAFEINT TRUE)
+  else()
+    set(USE_DBM_SAFEINT FALSE)
+  endif()
+endif()
 #### end clam options ######
 
 # Add path for custom modules
