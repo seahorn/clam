@@ -273,7 +273,7 @@ static bool instrument_loads(AbsDomain inv, basic_block_t& bb,
     
   IRBuilder<> Builder(ctx);
   bool change=false;
-  abs_tr_t vis(&inv);
+  abs_tr_t vis(inv);
     
   for (auto &s: bb) {
     s.accept(&vis); //propagate the invariant one statement forward
@@ -295,11 +295,12 @@ static bool instrument_loads(AbsDomain inv, basic_block_t& bb,
     }
       
     if (!I) continue;
-
-    if (inv.is_top()) continue;
+    
+    AbsDomain next_inv = std::move(vis.get_abs_value());
+    if (next_inv.is_top()) continue;
     // -- Filter out all constraints that do not use x.
     lin_cst_sys_t rel_csts;
-    for (auto cst: inv.to_linear_constraint_system()) {
+    for (auto cst: next_inv.to_linear_constraint_system()) {
       auto vs = cst.variables();
       if (!(vs & load_vs).empty())
 	rel_csts += cst;
@@ -448,7 +449,7 @@ bool InsertInvariants::runOnFunction(Function &F) {
     }
     if (alread_dead_block) continue;
 
-    auto cfg_builder_ptr = crab->getCfgBuilderMan().get_cfg_builder(F);
+    auto cfg_builder_ptr = crab->get_cfg_builder_man().get_cfg_builder(F);
 
     if (auto pre = crab->get_pre(&B, false /*keep shadows*/)) {
       ///////

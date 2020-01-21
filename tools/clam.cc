@@ -29,7 +29,8 @@
 #include "clam/Passes.hh"
 #include "clam/Clam.hh"
 #include "clam/Transforms/InsertInvariants.hh"
-#include "crab/common/debug.hpp"
+
+#include "sea_dsa/ShadowMem.hh"
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
@@ -93,61 +94,9 @@ PromoteAssume("crab-promote-assume",
 	       llvm::cl::desc("Promote verifier.assume to llvm.assume intrinsics"),
 	       llvm::cl::init(false));
 
-/* logging and verbosity */
-
-struct LogOpt {
-  void operator=(const std::string &tag) const 
-  { crab::CrabEnableLog(tag); } 
-};
-
-LogOpt loc;
-
-static llvm::cl::opt<LogOpt, true, llvm::cl::parser<std::string> > 
-LogClOption("log",
-             llvm::cl::desc("Enable specified log level"),
-             llvm::cl::location(loc),
-             llvm::cl::value_desc("string"),
-             llvm::cl::ValueRequired, llvm::cl::ZeroOrMore);
-
-struct VerboseOpt {
-  void operator=(unsigned level) const 
-  { crab::CrabEnableVerbosity(level); } 
-};
-
-VerboseOpt verbose;
-
-static llvm::cl::opt<VerboseOpt, true, llvm::cl::parser<unsigned> > 
-CrabVerbose("crab-verbose",
-	    llvm::cl::desc("Enable verbose messages"),
-	    llvm::cl::location(verbose),
-	    llvm::cl::value_desc("uint"));
-
-
-struct WarningOpt {
-  void operator=(bool val) const 
-  { crab::CrabEnableWarningMsg(val); } 
-};
-
-WarningOpt warning;
-
-static llvm::cl::opt<WarningOpt, true, llvm::cl::parser<bool> > 
-CrabEnableWarning("crab-enable-warnings",
-	    llvm::cl::desc("Enable warning messages"),
-	    llvm::cl::location(warning),
-	    llvm::cl::value_desc("bool"));
-
-struct SanityChecksOpt {
-  void operator=(bool val) const 
-  { crab::CrabEnableSanityChecks(val); } 
-};
-
-SanityChecksOpt sanity;
-
-static llvm::cl::opt<SanityChecksOpt, true, llvm::cl::parser<bool> > 
-CrabSanityChecks("crab-sanity-checks",
-	    llvm::cl::desc("Enable sanity checks"),
-	    llvm::cl::location(sanity),
-	    llvm::cl::value_desc("bool"));
+namespace clam {
+extern bool XMemShadows;
+}
 
 using namespace clam;
 
@@ -283,7 +232,7 @@ int main(int argc, char **argv) {
     pass_manager.add(llvm_seahorn::createDeadNondetElimPass());
   }
   #endif 
-
+  
   // -- lower ULT and ULE instructions  
   if(LowerUnsignedICmp) {
     pass_manager.add(clam::createLowerUnsignedICmpPass());   
@@ -296,18 +245,24 @@ int main(int argc, char **argv) {
   if (LowerSelect) {
     pass_manager.add(clam::createLowerSelectPass());
   }
-
+  
   // -- ensure one single exit point per function
   // LowerUnsignedIcmpPass and LowerSelect can add multiple returns.
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+
+  if (XMemShadows) {
+    // XXX: it should preserve unifyFunctionExitNodes pass.
+    pass_manager.add(sea_dsa::createShadowMemPass());
+  }
   
   if (!NoCrab) {
     /// -- run the crab analyzer
     pass_manager.add(new clam::ClamPass());
   }
 
-  if(!AsmOutputFilename.empty()) 
-    pass_manager.add(createPrintModulePass(asmOutput->os()));
+  if(!AsmOutputFilename.empty()) {
+    pass_manager.add(createPrintModulePass(asmOutput->os()));    
+  }
  
   if (!NoCrab) {
     // -- perform dead code elimination and insert invariants as

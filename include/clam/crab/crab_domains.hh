@@ -48,17 +48,48 @@ namespace clam {
   
   /// -- Intervals
   typedef interval_domain<number_t, varname_t> BASE(interval_domain_t);
-  // // -- enable apron version for more precise backward operations
-  // typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_INT>
-  // BASE(interval_domain_t);
   /// -- Wrapped interval domain (APLAS'12)
   typedef wrapped_interval_domain<number_t, varname_t> BASE(wrapped_interval_domain_t);
+  /// To choose DBM parameters
+  struct BigNumDBMParams{
+    /* This version uses unlimited integers so no overflow */
+    enum { chrome_dijkstra = 1 };
+    enum { widen_restabilize = 1 };
+    enum { special_assign = 1 };
+    enum { close_bounds_inline = 0 };	 
+    typedef ikos::z_number Wt;
+    typedef crab::SparseWtGraph<Wt> graph_t;
+  };
+  struct SafeFastDBMParams{
+    /* This version checks for overflow and raise error if detected*/
+    enum { chrome_dijkstra = 1 };
+    enum { widen_restabilize = 1 };
+    enum { special_assign = 1 };
+    enum { close_bounds_inline = 0 };	 
+    typedef crab::safe_i64 Wt;
+    typedef crab::AdaptGraph<Wt> graph_t;
+  };
+  struct FastDBMParams{
+    /* This version does not check for overflow */
+    enum { chrome_dijkstra = 1 };
+    enum { widen_restabilize = 1 };
+    enum { special_assign = 1 };
+    enum { close_bounds_inline = 0 };	 
+    typedef int64_t Wt;
+    typedef crab::AdaptGraph<Wt> graph_t;
+  };
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
-  typedef SplitDBM<number_t, varname_t> BASE(split_dbm_domain_t);
+#ifdef USE_DBM_BIGNUM
+  typedef SplitDBM<number_t, varname_t, BigNumDBMParams> BASE(split_dbm_domain_t);
+#else
+#ifdef USE_DBM_SAFEINT
+  typedef SplitDBM<number_t, varname_t, SafeFastDBMParams> BASE(split_dbm_domain_t);
+#else
+  typedef SplitDBM<number_t, varname_t, FastDBMParams> BASE(split_dbm_domain_t);
+#endif
+#endif 
   /// -- Boxes using ldds
   typedef boxes_domain<number_t, varname_t> BASE(boxes_domain_t);
-  // typedef diff_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>,
-  // 		         boxes_domain<number_t, varname_t> > BASE(boxes_domain_t);
   /// -- Boxes using mdds
   typedef mdd_boxes_domain<number_t, varname_t> BASE(mdd_boxes_domain_t);  
   /// -- DisIntervals

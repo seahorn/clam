@@ -3,9 +3,6 @@
 /** Define whether llvm-dsa library is available */
 #cmakedefine HAVE_DSA ${HAVE_DSA}
 
-/** Define whether sea-dsa library is available */
-#cmakedefine HAVE_SEA_DSA ${HAVE_SEA_DSA}
-
 /** Define whether llvm-seahorn is available */
 #cmakedefine HAVE_LLVM_SEAHORN ${HAVE_LLVM_SEAHORN}
 
@@ -15,3 +12,13 @@
 /** Include inter-procedural analysis */
 #cmakedefine HAVE_INTER ${HAVE_INTER}
 
+/** Whether to use big numbers for representing weights in DBM-based domains **/
+#cmakedefine USE_DBM_BIGNUM ${USE_DBM_BIGNUM}
+
+/** Whether to use safe or unsafe for representing weights
+ ** in DBM-based domains. Only if USE_DBM_BIGNUM is disabled.  **/
+#cmakedefine USE_DBM_SAFEINT ${USE_DBM_SAFEINT}
+
+/** Use new top-down inter-procedural analysis.  Otherwise, it will
+    use the old bottom-up analysis */
+#cmakedefine TOP_DOWN_INTER_ANALYSIS ${TOP_DOWN_INTER_ANALYSIS}

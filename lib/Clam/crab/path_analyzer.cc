@@ -36,9 +36,10 @@ solve_path(const std::vector<basic_block_label_t>& path,
   bottom_block = path.size();
 
   AbsDom pre(m_init);
-  fwd_abs_tr_t abs_tr(&pre);
+  fwd_abs_tr_t abs_tr(std::move(pre));
   for(unsigned i=0, e=path.size(); i < e; ++i) {
-    if (pre.is_bottom()) {
+    AbsDom new_pre(std::move(abs_tr.get_abs_value()));
+    if (new_pre.is_bottom()) {
       if (!bottom_found) {
 	bottom_block = i; // update only the first time bottom is found
       }
@@ -50,7 +51,7 @@ solve_path(const std::vector<basic_block_label_t>& path,
     basic_block_label_t node = path[i];    
     auto it = m_fwd_dom_map.find (node);
     if (it == m_fwd_dom_map.end()) {
-      m_fwd_dom_map.insert(std::make_pair (node, pre));
+      m_fwd_dom_map.insert(std::make_pair (node, new_pre));
     }
 
     // compute strongest post-condition for one block
@@ -68,7 +69,8 @@ solve_path(const std::vector<basic_block_label_t>& path,
 	path_statements.push_back(crab::cfg::statement_wrapper(&s, node));
       }
       s.accept (&abs_tr);
-      if (pre.is_bottom()) {
+      AbsDom next_pre(std::move(abs_tr.get_abs_value()));      
+      if (next_pre.is_bottom()) {
 	break;
       } else {
 	bottom_stmt++;
@@ -355,7 +357,7 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
 	// check that what we get still implies bottom: it might not
 	// imply bottom because we only considered data dependencies.
 	AbsDom inv;
-	fwd_abs_tr_t abs_tr(&inv);        
+	fwd_abs_tr_t abs_tr(std::move(inv));        
 	bool is_bottom = false;
 	for (unsigned i=0, e=core.size(); i<e; ++i) {
 	  core[i].m_s->accept (&abs_tr);
@@ -378,16 +380,18 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
     std::vector<bool> enabled(core.size(), true);
     for (unsigned i=0; i < core.size (); ++i) {
       AbsDom inv;
-      fwd_abs_tr_t abs_tr(&inv);    
+      fwd_abs_tr_t abs_tr(std::move(inv));    
       for(unsigned j=0; j < core.size(); ++j) {
 	if (i != j && enabled[j]) {
 	  core[j].m_s->accept (&abs_tr);
-	  if (inv.is_bottom()) {
+	  AbsDom next_inv = std::move(abs_tr.get_abs_value());
+	  if (next_inv.is_bottom()) {
 	    break;
 	  }
 	}
       }
-      if (inv.is_bottom()) {
+      AbsDom next_inv = std::move(abs_tr.get_abs_value());
+      if (next_inv.is_bottom()) {
 	enabled[i] = false;
       }
     }
@@ -407,30 +411,26 @@ minimize_path(const std::vector<crab::cfg::statement_wrapper>& path,
       }
     }
   
-    
-    // sanity checks  
-    if (do_sanity_check) {
-      if (m_core.empty()) {
-	CRAB_ERROR("Abstract core cannot be empty");
+  if (do_sanity_check) { 
+    AbsDom inv;
+    fwd_abs_tr_t abs_tr(std::move(inv));        
+    bool is_bottom = false;
+    for (unsigned i=0, e=m_core.size(); i<e; ++i) {
+      m_core[i].m_s->accept (&abs_tr);
+      AbsDom next_inv = std::move(abs_tr.get_abs_value());
+      if (next_inv.is_bottom()) {
+	is_bottom=true;
+	break;
       }
-      AbsDom inv;
-      fwd_abs_tr_t abs_tr(&inv);        
-      bool is_bottom = false;
-      for (unsigned i=0, e=m_core.size(); i<e; ++i) {
-	m_core[i].m_s->accept (&abs_tr);
-	if (inv.is_bottom()) {
-	  is_bottom=true;
-	  break;
-	}
-      }
-      if (!is_bottom) {
-	CRAB_ERROR("Abstract core is not unsat!");
-      }
+    }
+    if (!is_bottom) {
+      CRAB_ERROR("Abstract core is not unsat!");
     }
   }
 }
 }
-}
+} // end namespace 
+} // end namespace
 
 #include <clam/crab/crab_domains.hh>
 #include <clam/crab/crab_cfg.hh>
