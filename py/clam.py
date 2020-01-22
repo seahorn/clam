@@ -148,7 +148,9 @@ def parseArgs(argv):
     p.add_argument ('-oll', '--oll', dest='asm_out_name', metavar='FILE',
                     help='Output analyzed bitecode')
     p.add_argument('--log', dest='log', default=None,
-                    metavar='STR', help='Log level')
+                    metavar='STR', help='Log level for clam')
+    p.add_argument('--sea-dsa-log', dest='dsa_log', default=None,
+                    metavar='STR', help='Log level for sea-dsa')    
     p.add_argument('-o', dest='out_name', metavar='FILE',
                     help='Output file name')
     p.add_argument("--save-temps", dest="save_temps",
@@ -663,6 +665,9 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append('--crab-externalize-addr-taken-funcs')
     if args.print_after_all: crabpp_args.append('--print-after-all')
     if args.debug_pass: crabpp_args.append('--debug-pass=Structure')        
+
+    if args.dsa_log is not None:
+        for l in args.dsa_log.split(':'): crabpp_args.extend(['-sea-dsa-log', l])
     
     crabpp_args.extend(extra_args)
     if verbose: print ' '.join(crabpp_args)
@@ -683,6 +688,9 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.log is not None:
         for l in args.log.split(':'): clam_args.extend(['-crab-log', l])
 
+    if args.dsa_log is not None:
+        for l in args.dsa_log.split(':'): clam_args.extend(['-sea-dsa-log', l])
+        
     # disable sinking instructions to end of basic block
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
@@ -810,7 +818,7 @@ def main(argv):
     if '--clang-version' in argv[1:] or '-clang-version' in argv[1:]:
         print "Clang version " + getClangVersion(getClang(False))
         return 0
-    
+
     args  = parseArgs(argv[1:])
     workdir = createWorkDir(args.temp_dir, args.save_temps)
     in_name = args.file
