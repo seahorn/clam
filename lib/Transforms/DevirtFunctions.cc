@@ -425,8 +425,10 @@ namespace clam {
       BasicBlock* BL = BasicBlock::Create (M->getContext(), FL->getName(), F);
       targets[FL] = BL;
       // Create the direct function call
+      CallingConv::ID cc = FL->getCallingConv();      
       CallInst* directCall = CallInst::Create (const_cast<Function*>(FL),
                                                fargs, "", BL);
+      directCall->setCallingConv(cc);      
       // TODO: update call graph
       // if (m_cg) {
       //   auto fl_cg = m_cg->getOrInsertFunction (const_cast<Function*> (FL));
