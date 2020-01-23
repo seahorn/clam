@@ -1436,22 +1436,28 @@ namespace clam {
   }
   
   void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.setPreservesAll();
+    bool runSeaDsa = false;
     
-    #ifdef HAVE_DSA
+    AU.setPreservesAll();
     if (!CrabMemShadows &&
 	CrabHeapAnalysis == heap_analysis_t::LLVM_DSA) {
-      // don't run llvm-dsa unless llvm-dsa is used
+#ifdef HAVE_DSA
       AU.addRequiredTransitive<SteensgaardDataStructures>();
+#else
+      runSeaDsa = true;
+#endif       
     }
-    #endif 
     AU.addRequired<TargetLibraryInfoWrapperPass>();
-    if (!CrabMemShadows &&
-	(CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
-	 CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA)) {
-      // don't run the pass unless sea-dsa uses it 
+
+    if (!runSeaDsa) {
+      runSeaDsa = (CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
+		   CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA);
+    }
+    
+    if (!CrabMemShadows && runSeaDsa) {
       AU.addRequired<sea_dsa::AllocWrapInfo>();
-    } 
+    }
+    
     if (CrabMemShadows) {
       AU.addRequired<sea_dsa::ShadowMemPass>();
     }

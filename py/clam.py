@@ -219,15 +219,16 @@ def parseArgs(argv):
                     help='Disable lowering of switch instructions',
                     dest='disable_lower_switch', default=False, action='store_true')
     p.add_argument('--devirt-functions',
-                    help="Resolve indirect calls:\n"
+                    help="Resolve indirect calls (needed for soundness):\n"
                     "- none : do not resolve indirect calls (default)\n"
                     "- types: select all functions with same type signature\n"
-                    "- dsa  : use Dsa analysis to select the callees\n",
+                    "- sea-dsa: use sea-dsa analysis to select the callees\n"
+                    "- dsa: use llvm-dsa analysis to select the callees (deprecated)\n",
                     dest='devirt',
-                    choices=['none','types','dsa'],
+                    choices=['none','types','sea-dsa','dsa'],
                     default='none')
     p.add_argument('--externalize-addr-taken-functions',
-                    help='Externalize uses of address-taken functions',
+                    help='Externalize uses of address-taken functions (potentially unsound)',
                     dest='enable_ext_funcs', default=False,
                     action='store_true')
     p.add_argument('--print-after-all',
@@ -658,7 +659,9 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.devirt is not 'none':
         crabpp_args.append('--crab-devirt')
         if args.devirt == 'types':
-            crabpp_args.append('--devirt-resolver=types')            
+            crabpp_args.append('--devirt-resolver=types')
+        elif args.devirt == 'sea-dsa':
+            crabpp_args.append('--devirt-resolver=sea-dsa')                        
         elif args.devirt == 'dsa':
             crabpp_args.append('--devirt-resolver=dsa')            
     if args.enable_ext_funcs:

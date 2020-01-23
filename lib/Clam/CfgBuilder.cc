@@ -2217,8 +2217,9 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
       // -- inline asm: do nothing
     } else {
       // -- unresolved indirect call
-      CLAM_WARNING(
-          "skipped indirect call. Enabling --devirt-functions might help.");
+      CLAM_WARNING("skipped indirect call. " <<
+		   "Either --devirt-functions was not used or " <<
+		   "indirect call cannot be resolved.");
 
       if (DoesCallSiteReturn(I, m_params) &&
           ShouldCallSiteReturn(I, m_params)) {

@@ -1,4 +1,5 @@
 // RUN: %clam -O0 --devirt-functions=dsa --crab-inter --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --devirt-functions=sea-dsa --crab-inter --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$

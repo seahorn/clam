@@ -12,34 +12,39 @@
 #ifdef HAVE_DSA
 #include "dsa/CallTargets.h"
 #endif 
+#include "sea_dsa/CompleteCallGraph.hh"
 
 llvm::cl::opt<clam::CallSiteResolverKind>
 DevirtResolver("devirt-resolver",
       llvm::cl::desc ("Method used to select potential callees"),
       llvm::cl::values 
-      (clEnumValN(clam::RESOLVER_TYPES, "types", "Callees with same type"),
-       clEnumValN(clam::RESOLVER_DSA  , "dsa"  , "DSA selects the potential callees")),
+      (clEnumValN(clam::RESOLVER_TYPES, "types",
+		  "Callees with same type"),
+       clEnumValN(clam::RESOLVER_DSA  , "dsa",
+		  "Llvm-Dsa selects the potential callees"),
+       clEnumValN(clam::RESOLVER_SEA_DSA  , "sea-dsa",
+		  "Sea-Dsa selects the potential callees")),
       llvm::cl::init(clam::RESOLVER_TYPES));
 		   
 static llvm::cl::opt<bool>
 AllowIndirectCalls("devirt-allow-indirect-calls",
-		   llvm::cl::desc("Allow creation of indirect calls "
-				  "during devirtualization "
-				  "(required for soundness)"),
-		   llvm::cl::init(false));
+      llvm::cl::desc("Allow creation of indirect calls "
+		     "during devirtualization "
+		     "(required for soundness)"),
+      llvm::cl::init(false));
 
-// Options for Dsa
+// Options for Dsa's analyses
 static llvm::cl::opt<bool>
 ResolveIncompleteCalls("devirt-resolve-incomplete-calls",
-		       llvm::cl::desc("Resolve indirect calls that might still require "
-				      "reasoning about other modules"
-				      "(required for soundness)"),
-		       llvm::cl::init(true));
+      llvm::cl::desc("Resolve indirect calls that might still require "
+		     "reasoning about other modules"
+		     "(required for soundness)"),
+      llvm::cl::init(true));
 
 static llvm::cl::opt<unsigned>
 MaxNumTargets("devirt-max-num-targets",
-	      llvm::cl::desc("Do not resolve if number of targets is greater than this number."),
-	      llvm::cl::init(9999));
+      llvm::cl::desc("Do not resolve if number of targets is greater than this number."),
+      llvm::cl::init(9999));
 
 using namespace llvm;
 
@@ -59,23 +64,31 @@ namespace clam {
       DevirtualizeFunctions DF(/*CG*/ nullptr, AllowIndirectCalls);
       std::unique_ptr<CallSiteResolver> CSR;
       switch(DevirtResolver) {
-#ifdef HAVE_DSA
       case RESOLVER_DSA: {
+#ifdef HAVE_DSA
 	// -- Access to analysis pass which finds targets of indirect function calls
 	using LlvmDsaResolver = dsa::CallTargetFinder<EQTDDataStructures>;
 	LlvmDsaResolver* CTF = &getAnalysis<LlvmDsaResolver>();
 	CSR.reset(new CallSiteResolverByDsa<LlvmDsaResolver>(M, *CTF,
 							     ResolveIncompleteCalls,
-							     MaxNumTargets));
-      }
+							     MaxNumTargets, DF.getStats()));
 	break;
-#endif 	
+#else
+	// go to next case
+#endif
+      }	
+      case RESOLVER_SEA_DSA: {
+	auto &CCG = getAnalysis<sea_dsa::CompleteCallGraph>();
+	CSR.reset(new CallSiteResolverByDsa<sea_dsa::CompleteCallGraph>
+		  (M, CCG, ResolveIncompleteCalls, MaxNumTargets, DF.getStats()));
+	break;	
+      }
       case RESOLVER_TYPES:
       default:
 	if (DevirtResolver == RESOLVER_DSA) {
 	  errs() << "WARNING: Dsa not available, using only types to resolve indirect calls\n";
 	}
-	CSR.reset(new CallSiteResolverByTypes(M));
+	CSR.reset(new CallSiteResolverByTypes(M, DF.getStats()));
 	break;
       }
       
@@ -84,11 +97,20 @@ namespace clam {
     }      
     
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-#ifdef HAVE_DSA      
+      bool runSeaDsa = false;
+      
       if (DevirtResolver == RESOLVER_DSA) {
+#ifdef HAVE_DSA      			
 	AU.addRequired<dsa::CallTargetFinder<EQTDDataStructures>>();
+#else
+	runSeaDsa = true;
+#endif
       }
-#endif       
+      
+      if (runSeaDsa || DevirtResolver == RESOLVER_SEA_DSA) {
+	AU.addRequired<sea_dsa::CompleteCallGraph>();
+      }
+      
       // AU.addRequired<CallGraphWrapperPass> ();
       // FIXME: DevirtualizeFunctions does not fully update the call
       // graph so we don't claim it is preserved.
