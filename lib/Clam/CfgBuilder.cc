@@ -3170,7 +3170,8 @@ CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManager &man)
                                 man.get_heap_abstraction(),
 				man.get_shadow_mem(),
 				&(man.get_tli()),
-                                man.get_cfg_builder_params())) {}
+                                man.get_cfg_builder_params())),
+      m_ls(nullptr) {}
 
 CfgBuilder::~CfgBuilder() {}
 
@@ -3192,6 +3193,34 @@ CfgBuilder::get_crab_basic_block(const llvm::BasicBlock *src,
 const llvm::Instruction *
 CfgBuilder::get_instruction(const statement_t &s) const {
   return m_impl->get_instruction(s);
+}
+
+void CfgBuilder::compute_live_symbols() {
+  if (!m_ls) {
+    auto &cfg = m_impl->get_cfg();
+    m_ls.reset(new liveness_t(cfg));
+    CRAB_VERBOSE_IF(1,
+		    auto fdecl = cfg.get_func_decl();            
+		    crab::get_msg_stream() << "Running liveness analysis for " 
+		                           << fdecl.get_func_name()
+		                           << "  ...\n";);
+    m_ls->exec();
+
+    unsigned total_live, avg_live_per_blk, max_live_per_blk;
+    m_ls->get_stats(total_live, max_live_per_blk, avg_live_per_blk);
+    CRAB_VERBOSE_IF(1, 
+		  crab::outs() << "-- Max number of out live vars per block=" 
+                               << max_live_per_blk << "\n"
+                               << "-- Avg number of out live vars per block=" 
+                               << avg_live_per_blk << "\n";);
+    crab::CrabStats::count_max("Liveness.count.maxOutVars",
+			       max_live_per_blk);
+    
+  }
+}
+
+const CfgBuilder::liveness_t* CfgBuilder::get_live_symbols() const {
+  return (m_ls ? &*m_ls: nullptr);
 }
 
 /* CFG Manager class */

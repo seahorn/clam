@@ -432,29 +432,16 @@ namespace clam {
 			                << m_fun.getName() << "\n");
 	return;
       }
-      
-      // -- run liveness
-      liveness_t live(get_cfg());
-      if (params.run_liveness || isRelationalDomain(params.dom)) {
-	CRAB_VERBOSE_IF(1,
-			auto fdecl = get_cfg().get_func_decl();            
-			crab::get_msg_stream() << "Running liveness analysis for " 
-			              << fdecl.get_func_name()
-		                      << "  ...\n";);
-	live.exec();
-	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished liveness analysis.\n");
-	// some stats
-	unsigned total_live, avg_live_per_blk, max_live_per_blk;
-	live.get_stats(total_live, max_live_per_blk, avg_live_per_blk);
-	CRAB_VERBOSE_IF(1, 
-		  crab::outs() << "-- Max number of out live vars per block=" 
-                               << max_live_per_blk << "\n"
-                               << "-- Avg number of out live vars per block=" 
-                               << avg_live_per_blk << "\n";);
-	crab::CrabStats::count_max("Liveness.count.maxOutVars",
-				    max_live_per_blk);
 
+      const liveness_t* live = nullptr;
+      if (params.run_liveness || isRelationalDomain(params.dom)) {
+	// -- run liveness
+	m_cfg_builder->compute_live_symbols();
 	if (isRelationalDomain(params.dom)) {
+	  live = m_cfg_builder->get_live_symbols();
+	  assert(live);	  
+	  unsigned total_live, avg_live_per_blk, max_live_per_blk;
+	  live->get_stats(total_live, max_live_per_blk, avg_live_per_blk);
 	  CRAB_VERBOSE_IF(1, 
 		    crab::outs() << "Max live per block: "
 		                 << max_live_per_blk << "\n"
@@ -475,14 +462,14 @@ namespace clam {
       
       if (intra_analyses.count(params.dom)) {
       	intra_analyses.at(params.dom).analyze(params, entry, assumptions,
-					    (params.run_liveness)? &live : nullptr,
+					    (params.run_liveness)? live : nullptr,
 					     results);
       } else {
       	crab::outs() << "Warning: abstract domain not found or enabled.\n"
 		     << "Compile with -DALL_DOMAINS=ON.\n";
 	// crab::outs() << "Running " << intra_analyses.at(INTERVALS).name << " ...\n"; 
       	// intra_analyses.at(INTERVALS).analyze(params, entry, assumptions,
-	// 				   (params.run_liveness)? &live : nullptr,
+	// 				   (params.run_liveness)? live : nullptr,
 	// 				    results);
       }
     }
@@ -535,7 +522,7 @@ namespace clam {
     template<typename Dom>
     void analyzeCfg(const AnalysisParams &params,
 		    const BasicBlock *entry,
-		    const assumption_map_t &assumptions, liveness_t *live,
+		    const assumption_map_t &assumptions, const liveness_t *live,
 		    AnalysisResults &results) {
       
       // -- we use the combined forward/backward analyzer
@@ -705,7 +692,7 @@ namespace clam {
       std::function<void(const AnalysisParams&,
 			 const BasicBlock*,
 			 const assumption_map_t&,
-			 liveness_t*,
+			 const liveness_t*,
 			 AnalysisResults&)> analyze;
       std::string name;
     };
@@ -877,28 +864,24 @@ namespace clam {
       
       /* Compute liveness information and choose statically the
 	 abstract domain */
+
       if (params.run_liveness || isRelationalDomain(absdom)) {
 	unsigned max_live_per_blk = 0;
 	for (auto cg_node: llvm::make_range(vertices(*m_cg))) {
-	  auto cfg_ref = cg_node.get_cfg();
-          CRAB_VERBOSE_IF(1,
-			  auto fdecl = cfg_ref.get_func_decl();            
-			  crab::get_msg_stream() << "Running liveness analysis for " 
-			                << fdecl.get_func_name() << "  ...\n";);
-	  liveness_t* live = new liveness_t(cfg_ref);
-          live->exec();
-          CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished liveness analysis.\n";);
-          // some stats
-          unsigned total_live, max_live_per_blk_, avg_live_per_blk;
-          live->get_stats(total_live, max_live_per_blk_, avg_live_per_blk);
-          max_live_per_blk = std::max(max_live_per_blk, max_live_per_blk_);
-          CRAB_VERBOSE_IF(1,
-		    crab::outs() << "-- Max number of out live vars per block=" 
-                                 << max_live_per_blk_ << "\n";
-		    crab::outs() << "-- Avg number of out live vars per block=" 
-                                 << avg_live_per_blk << "\n";);
-          crab::CrabStats::count_max("Liveness.count.maxOutVars",
-				      max_live_per_blk);
+	  const liveness_t* live = nullptr;
+
+	  // Get the cfg builder to run liveness
+	  if (const Function *fun = m_M.getFunction(cg_node.name())) {
+	    auto cfg_builder = m_crab_builder_man.get_cfg_builder(*fun);
+	    assert(cfg_builder);
+	    // run liveness
+	    cfg_builder->compute_live_symbols();
+	    live = cfg_builder->get_live_symbols();
+	    // update max number of live variables for whole cg
+	    unsigned total_live, max_live_per_blk_, avg_live_per_blk;
+	    live->get_stats(total_live, max_live_per_blk_, avg_live_per_blk);
+	    max_live_per_blk = std::max(max_live_per_blk, max_live_per_blk_);
+	  }
 
 	  if (isRelationalDomain(absdom)) {
 	    // FIXME: the selection of the final domain is fixed for the
@@ -911,19 +894,17 @@ namespace clam {
 		                   << max_live_per_blk << "\n"
 		                   << "Threshold: "
 		                   << params.relational_threshold << "\n");
-#ifdef HAVE_ALL_DOMAINS	  	    
+            #ifdef HAVE_ALL_DOMAINS	  	    
 	    if (max_live_per_blk > params.relational_threshold) {
 	      // default domain
 	      absdom = INTERVALS;
 	    }
-#endif 	    
+            #endif 	    
 	  }
 	  
 	  if (params.run_liveness) {
-	    m_live_map.insert(std::make_pair(cfg_ref, live));	    
-	  } else {
-	    delete live;
-	  }
+	    m_live_map.insert({cg_node.get_cfg(), live});	    
+	  } 
 	} // end for
       }
       
@@ -957,13 +938,6 @@ namespace clam {
 	  }
 	}
 #endif 	
-      }
-      
-      // free liveness map
-      if (params.run_liveness) {
-        for (auto &p : m_live_map) {
-          delete p.second;
-	}
       }
     }
     

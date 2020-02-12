@@ -9,6 +9,8 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 
+#include "crab/analysis/dataflow/liveness.hpp"
+
 #include <memory>
 
 // forward declarations
@@ -38,16 +40,20 @@ namespace clam {
 class CrabBuilderManager;
   
 class CfgBuilder {
-  
   friend class CrabBuilderManager;
   
+  // the actual cfg builder
   std::unique_ptr<CfgBuilderImpl> m_impl;
+  // live symbols
+  std::unique_ptr<crab::analyzer::liveness<cfg_ref_t>> m_ls;
   
   CfgBuilder(const llvm::Function& func, CrabBuilderManager& man);
   
   void build_cfg();
   
 public:
+
+  using liveness_t = crab::analyzer::liveness<cfg_ref_t>;
   
   CfgBuilder(const CfgBuilder& o) = delete;
   
@@ -57,6 +63,14 @@ public:
   
   // return crab control flow graph
   cfg_t& get_cfg();
+
+  // compute live symbols per block by running standard liveness
+  // analysis
+  void compute_live_symbols();
+  
+  // return live symbols for the whole cfg. Return nullptr if
+  // compute_live_symbols has not been called.
+  const liveness_t* get_live_symbols() const;
   
   // map a llvm basic block to a crab basic block label
   basic_block_label_t get_crab_basic_block(const llvm::BasicBlock *bb) const;
