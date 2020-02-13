@@ -38,9 +38,20 @@ namespace clam {
     Build a Crab CFG from LLVM Function
 **/
 class CrabBuilderManager;
-  
+class IntraClam_Impl;
+class InterClam_Impl;
+
 class CfgBuilder {
+public:
+
+  using liveness_t = crab::analyzer::liveness<cfg_ref_t>;
+  using varset = typename liveness_t::varset_domain_t;
+
+private:
+  
   friend class CrabBuilderManager;
+  friend class IntraClam_Impl;
+  friend class InterClam_Impl;
   
   // the actual cfg builder
   std::unique_ptr<CfgBuilderImpl> m_impl;
@@ -50,11 +61,14 @@ class CfgBuilder {
   CfgBuilder(const llvm::Function& func, CrabBuilderManager& man);
   
   void build_cfg();
+
+  // return live symbols for the whole cfg. Return nullptr if
+  // compute_live_symbols has not been called.
+  // Only IntraClam_Impl and InterClam_Impl should call this method.
+  const liveness_t* get_live_symbols() const;
   
 public:
 
-  using liveness_t = crab::analyzer::liveness<cfg_ref_t>;
-  
   CfgBuilder(const CfgBuilder& o) = delete;
   
   CfgBuilder& operator=(const CfgBuilder& o) = delete;
@@ -68,9 +82,9 @@ public:
   // analysis
   void compute_live_symbols();
   
-  // return live symbols for the whole cfg. Return nullptr if
+  // return live symbols at the end of block bb. Return None if
   // compute_live_symbols has not been called.
-  const liveness_t* get_live_symbols() const;
+  llvm::Optional<varset> get_live_symbols(const llvm::BasicBlock *bb) const;
   
   // map a llvm basic block to a crab basic block label
   basic_block_label_t get_crab_basic_block(const llvm::BasicBlock *bb) const;

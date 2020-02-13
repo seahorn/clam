@@ -3223,6 +3223,15 @@ const CfgBuilder::liveness_t* CfgBuilder::get_live_symbols() const {
   return (m_ls ? &*m_ls: nullptr);
 }
 
+Optional<CfgBuilder::varset> CfgBuilder::get_live_symbols(const BasicBlock *B) const {
+  if (!m_ls) {
+    return llvm::None;
+  } else {
+    basic_block_label_t bbl = get_crab_basic_block(B);
+    return m_ls->get(bbl);
+  }
+}
+
 /* CFG Manager class */
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        const llvm::TargetLibraryInfo &tli,
