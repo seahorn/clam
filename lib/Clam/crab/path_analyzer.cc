@@ -93,7 +93,8 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
     CRAB_WARN("Empty path: do nothing\n");
     return true;
   }
-    
+
+  #if 0
   if (do_sanity_check) {
     // Sanity checks
     basic_block_label_t first = path.front();
@@ -103,6 +104,7 @@ bool path_analyzer<CFG,AbsDom>::solve(const std::vector<basic_block_label_t>& pa
     if (m_cfg.has_exit() && (m_cfg.exit() != last))
       CRAB_ERROR("Last block of the path must be the exit block of the cfg");
   }
+  #endif
   
   if (path.size() > 1) {
     std::unordered_set<basic_block_label_t> visited;
