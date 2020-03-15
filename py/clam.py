@@ -552,6 +552,17 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
         clang_args.append('-fno-vectorize') ## disable loop vectorization
         clang_args.append('-fno-slp-vectorize') ## disable store/load vectorization
     
+    ## Hack for OSX Mojave that no longer exposes libc and libstd headers by default
+    osx_sdk_dirs = ['/Applications/Xcode.app/Contents/Developer/Platforms/' + \
+                    'MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk',
+                    '/Applications/Xcode.app/Contents/Developer/Platforms/' + \
+                    'MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk']
+
+    for osx_sdk_dir in osx_sdk_dirs:
+        if os.path.isdir(osx_sdk_dir):
+            clang_args.append('--sysroot=' + osx_sdk_dir)
+            break
+    
     if verbose: print ' '.join(clang_args)
     returnvalue, timeout, out_of_mem, segfault, unknown = \
         run_command_with_limits(clang_args, -1, -1)
@@ -667,7 +678,7 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         if args.devirt == 'types':
             crabpp_args.append('--devirt-resolver=types')
         elif args.devirt == 'sea-dsa':
-            crabpp_args.append('--devirt-resolver=sea-dsa')                        
+            crabpp_args.append('--devirt-resolver=sea-dsa')
         elif args.devirt == 'dsa':
             crabpp_args.append('--devirt-resolver=dsa')            
     if args.enable_ext_funcs:
