@@ -679,6 +679,7 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
             crabpp_args.append('--devirt-resolver=types')
         elif args.devirt == 'sea-dsa':
             crabpp_args.append('--devirt-resolver=sea-dsa')
+            crabpp_args.append('--sea-dsa-type-aware=true')            
         elif args.devirt == 'dsa':
             crabpp_args.append('--devirt-resolver=dsa')            
     if args.enable_ext_funcs:
