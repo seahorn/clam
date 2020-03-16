@@ -769,9 +769,14 @@ lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx,
     if (const GetElementPtrInst *GEPI = dyn_cast<GetElementPtrInst>(v)) {
       auto it = m_gep_map.find(GEPI);
       if (it == m_gep_map.end()) {
-	CLAM_ERROR("could not find shadow gep variable for ", *GEPI);
+	// TODO: Without sea-dsa shadow mem should not happen but
+	// otherwise it's possible because we don't currently extract
+	// regions from gep instructions.
+	CLAM_WARNING("could not find shadow gep variable for ", *GEPI);
+	return getUnconstrainedArrayIdxVar(vfac, 32);
+      } else {
+	return it->second;
       }
-      return it->second;
     } else {
       // we cannot infer statically the offset so we return an
       // unconstrained variable.

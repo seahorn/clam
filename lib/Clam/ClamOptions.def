@@ -218,6 +218,12 @@ CrabHeapAnalysis("crab-heap-analysis",
 
 // Specific llvm-dsa/sea-dsa options
 cl::opt<bool>
+CrabDsaDisambiguateForArraySmashing("crab-dsa-disambiguate-for-array-smashing",
+    cl::desc("Enable extra checks needed to ensure soundness of array smashing"), 
+    cl::init(true),
+    cl::Hidden);
+    
+cl::opt<bool>
 CrabDsaDisambiguateUnknown("crab-dsa-disambiguate-unknown",
     cl::desc("Disambiguate unknown pointers (unsound)"), 
     cl::init(false),

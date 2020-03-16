@@ -1274,7 +1274,7 @@ namespace clam {
         #ifdef HAVE_DSA
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);
 	mem.reset
-	  (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
+	  (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(), 
 				      CrabDsaDisambiguateUnknown,
 				      CrabDsaDisambiguatePtrCast,
 				      CrabDsaDisambiguateExternal));
@@ -1293,6 +1293,7 @@ namespace clam {
 	mem.reset
 	  (new LegacySeaDsaHeapAbstraction(M, cg, dl, tli, *allocWrapInfo,
 					   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
+					   CrabDsaDisambiguateForArraySmashing,
 					   CrabDsaDisambiguateUnknown,
 					   CrabDsaDisambiguatePtrCast,
 					   CrabDsaDisambiguateExternal));

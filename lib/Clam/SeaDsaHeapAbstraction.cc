@@ -100,6 +100,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodes(
       Cell c(const_cast<Node *>(n), kv.first);
       RegionInfo r_info =
 	DsaToRegion(c, m_dl, true /*split dsa nodes*/,
+		    m_disambiguate_for_array_smashing,
 		    m_disambiguate_unknown,
 		    m_disambiguate_ptr_cast, m_disambiguate_external);
 
@@ -178,6 +179,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
       Cell calleeC(const_cast<Node *>(n), kv.first);
       RegionInfo calleeRI =
 	DsaToRegion(calleeC, m_dl, true /*split_dsa_nodes*/,
+		    m_disambiguate_for_array_smashing,		    
 		    m_disambiguate_unknown,
 		    m_disambiguate_ptr_cast, m_disambiguate_external);
       
@@ -192,6 +194,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 
         RegionInfo callerRI = DsaToRegion(
             callerC, m_dl, true /*split_dsa_nodes*/,
+	    m_disambiguate_for_array_smashing,
 	    m_disambiguate_unknown, m_disambiguate_ptr_cast,
             m_disambiguate_external);
         /**
@@ -239,9 +242,10 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
     const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
     const llvm::TargetLibraryInfo &tli,
     const sea_dsa::AllocWrapInfo &alloc_info, bool is_context_sensitive,
-    bool disambiguate_unknown, bool disambiguate_ptr_cast,
-    bool disambiguate_external)
+    bool disambiguate_for_array_smashing, bool disambiguate_unknown,
+    bool disambiguate_ptr_cast, bool disambiguate_external)
     : m_m(M), m_dl(dl), m_dsa(nullptr), m_fac(nullptr), m_max_id(0),
+      m_disambiguate_for_array_smashing(disambiguate_for_array_smashing),
       m_disambiguate_unknown(disambiguate_unknown),
       m_disambiguate_ptr_cast(disambiguate_ptr_cast),
       m_disambiguate_external(disambiguate_external) {
@@ -457,6 +461,7 @@ Region LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
 
   RegionInfo r_info =
       DsaToRegion(c, m_dl, true /*split_dsa_nodes*/,
+		  m_disambiguate_for_array_smashing,
 		  m_disambiguate_unknown,
 		  m_disambiguate_ptr_cast, m_disambiguate_external);
 
