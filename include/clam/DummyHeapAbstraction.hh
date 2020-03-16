@@ -17,6 +17,10 @@ struct DummyHeapAbstraction: public HeapAbstraction {
   HeapAbstraction::ClassId getClassId() const {
     return HeapAbstraction::ClassId::DUMMY;
   }
+
+  bool isBasePtr(const llvm::Function &F, const llvm::Value *V) {
+    return false;
+  }
   
   Region getRegion(const llvm::Function&,
 		   const llvm::Instruction*, const llvm::Value*) {

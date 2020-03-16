@@ -76,9 +76,11 @@ public:
   HeapAbstraction::ClassId getClassId() const {
     return HeapAbstraction::ClassId::SEA_DSA;
   }
+
+  virtual bool isBasePtr(const llvm::Function &F, const llvm::Value *V) override;
   
   virtual Region getRegion(const llvm::Function &F,
-                             const llvm::Instruction *I, const llvm::Value *V) override;
+			   const llvm::Instruction *I, const llvm::Value *V) override;
 
   virtual RegionVec getAccessedRegions(const llvm::Function &F) override;
 
