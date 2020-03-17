@@ -13,12 +13,11 @@
 #include "crab/domains/elina_domains.hpp"
 #endif 
 #include "crab/domains/array_smashing.hpp"
+#include "crab/domains/array_adaptive.hpp"
 #include "crab/domains/term_equiv.hpp"
 #include "crab/domains/flat_boolean_domain.hpp"
 #include "crab/domains/combined_domains.hpp"
 #include "crab/domains/wrapped_interval_domain.hpp"
-//#include "crab/domains/array_sparse_graph.hpp"
-//#include "crab/domains/nullity.hpp"
 
 /*
    Definition of the abstract domains (no instantiation done here)
@@ -38,7 +37,7 @@ namespace clam {
     typedef array_smashing<flat_boolean_numerical_domain<BASE(DOM)>> DOM
   // Array functor domain where the base domain is DOM
   #define ARRAY_NUM(DOM) \
-    typedef array_smashing<BASE(DOM)> DOM;
+    typedef array_smashing<BASE(DOM)> DOM
   /* END MACROS only for internal use */
   
   //////
@@ -134,5 +133,9 @@ namespace clam {
   ARRAY_NUM(boxes_domain_t);
   /* domains that preserve machine arithmetic semantics */
   ARRAY_BOOL_NUM(wrapped_interval_domain_t);
-  
+
+  // Temporary
+  typedef array_adaptive_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>, \
+				array_adaptive_impl::DefaultParams> adapt_array_interval_domain_t;
+
 } // end namespace crab-llvm

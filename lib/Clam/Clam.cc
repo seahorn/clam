@@ -382,6 +382,8 @@ namespace clam {
     case OCT:                   return oct_domain_t::getDomainName();
     case PK:                    return pk_domain_t::getDomainName();
     case WRAPPED_INTERVALS:     return wrapped_interval_domain_t::getDomainName();
+    /* TEMPORARY */
+    case AA_INTERVALS:          return adapt_array_interval_domain_t::getDomainName();      
     default:                    return "none";
     }
   }
@@ -1134,7 +1136,10 @@ namespace clam {
       , { BOXES,
 	  { bind_this(this, &InterClam_Impl::analyzeCg<boxes_domain_t>), "boxes" }}
       , { PK,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<pk_domain_t>), "pk" }}	
+	  { bind_this(this, &InterClam_Impl::analyzeCg<pk_domain_t>), "pk" }}
+      /* TEMPORARY */
+      , { AA_INTERVALS,
+	  { bind_this(this, &InterClam_Impl::analyzeCg<adapt_array_interval_domain_t>), "aa-intervals" }}
       #endif
       #endif 	
     };    
@@ -1258,10 +1263,10 @@ namespace clam {
     
     CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
 			     CrabEnableUniqueScalars, CrabMemShadows, 
-			     CrabIncludeHavoc,
+			     CrabIncludeHavoc, CrabUseArraySmashing,
 			     CrabArrayInit, CrabUnsoundArrayInit,
 			     CrabEnableBignums, CrabPrintCFG);
-
+    
     auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
     /// Create the CFG builder manager
@@ -1293,7 +1298,7 @@ namespace clam {
 	mem.reset
 	  (new LegacySeaDsaHeapAbstraction(M, cg, dl, tli, *allocWrapInfo,
 					   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
-					   CrabDsaDisambiguateForArraySmashing,
+					   CrabUseArraySmashing,
 					   CrabDsaDisambiguateUnknown,
 					   CrabDsaDisambiguatePtrCast,
 					   CrabDsaDisambiguateExternal));

@@ -270,7 +270,7 @@ def parseArgs(argv):
                     choices=['int', 'ric', 'term-int',
                              'dis-int', 'term-dis-int', 'boxes',  
                              'zones', 'oct', 'pk', 'rtz',
-                             'w-int'],
+                             'w-int','aa-int'],
                     dest='crab_dom', default='zones')
     p.add_argument('--crab-widening-delay', 
                     type=int, dest='widening_delay', 
@@ -374,9 +374,9 @@ def parseArgs(argv):
     # Options that might affect soundness
     ######################################################################
     ## This might be unsound if disable and the abstract array domain is smashing
-    p.add_argument('--crab-dsa-disable-disambiguation-for-array-smashing',
+    p.add_argument('--crab-disable-array-smashing',
                     help=a.SUPPRESS,
-                    dest='crab_dsa_disable_for_smashing', default=False, action='store_true')
+                    dest='crab_disable_array_smashing', default=False, action='store_true')
     ## These might be unsound if enabled
     p.add_argument('--crab-dsa-disambiguate-unknown',
                     help=a.SUPPRESS,
@@ -787,8 +787,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     else:
         clam_args.append('--crab-store-invariants=false')    
     # begin hidden options
-    if args.crab_dsa_disable_for_smashing:
-        clam_args.append('--crab-dsa-disambiguate-for-array-smashing=false')
+    if args.crab_disable_array_smashing:
+        clam_args.append('--crab-use-array-smashing=false')
     if args.crab_dsa_unknown: clam_args.append('--crab-dsa-disambiguate-unknown')
     if args.crab_dsa_ptr_cast: clam_args.append('--crab-dsa-disambiguate-ptr-cast')
     if args.crab_dsa_external: clam_args.append('--crab-dsa-disambiguate-external')    

@@ -2304,24 +2304,24 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
           numElems = AT->getArrayNumElements();
         }
       }
-      #if 0  // Enable only if translation is meant for array smashing
-      if (elementTy && numElems > 0) {
-        m_init_regions.insert(r);
-	unsigned elemSize = storageSize(elementTy);
-	if (elemSize > 0) {
-	  /*
-	    XXX: arbitrary value: we choose zero because it has
-	    a valid interpretation whether it's integer,
-	    boolean or pointer.
-	  */
-	  number_t init_val(0);
-	  number_t lb_idx(0);
-	  number_t ub_idx((numElems * elemSize) - 1);
+      if (m_params.use_array_smashing) {
+	if (elementTy && numElems > 0) {
+	  m_init_regions.insert(r);
+	  unsigned elemSize = storageSize(elementTy);
+	  if (elemSize > 0) {
+	    /*
+	      XXX: arbitrary value: we choose zero because it has
+	      a valid interpretation whether it's integer,
+	      boolean or pointer.
+	    */
+	    number_t init_val(0);
+	    number_t lb_idx(0);
+	    number_t ub_idx((numElems * elemSize) - 1);
 	  m_bb.array_init(m_lfac.mkArrayVar(r), lb_idx, ub_idx, init_val,
 			  elemSize);
-        }
+	  }
+	}
       }
-      #endif 
     }
   }
 }
@@ -3277,6 +3277,7 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tmemory-ssa cfg: " << memory_ssa << "\n";
   o << "\tlower singleton aliases into scalars: " << lower_singleton_aliases
     << "\n";
+  o << "\tuse array smashing:" << use_array_smashing << "\n";
   o << "\tinitialize arrays: " << enabled_array_initialization() << "\n";
   o << "\tenable possibly unsound initialization of arrays: "
     << aggressive_initialize_arrays << "\n";

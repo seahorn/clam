@@ -149,7 +149,10 @@ ClamDomain("crab-dom",
        clEnumValN(TERMS_ZONES, "rtz",
 		   "Reduced product of term-dis-int and zones."),
        clEnumValN(WRAPPED_INTERVALS, "w-int",
-		  "Wrapped interval domain")),
+		  "Wrapped interval domain"),
+       // Temporary HACK: this option should be only for base (numerical domains)
+       clEnumValN(AA_INTERVALS, "aa-int",
+		   "Array adaptive domain with interval domain (experimental)")),
 #ifdef HAVE_ALL_DOMAINS
        cl::init(INTERVALS));
 #else
@@ -218,8 +221,8 @@ CrabHeapAnalysis("crab-heap-analysis",
 
 // Specific llvm-dsa/sea-dsa options
 cl::opt<bool>
-CrabDsaDisambiguateForArraySmashing("crab-dsa-disambiguate-for-array-smashing",
-    cl::desc("Enable extra checks needed to ensure soundness of array smashing"), 
+CrabUseArraySmashing("crab-use-array-smashing",
+    cl::desc("Tune translation for using array smashing"), 
     cl::init(true),
     cl::Hidden);
     
