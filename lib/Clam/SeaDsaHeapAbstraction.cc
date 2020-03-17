@@ -45,7 +45,7 @@ LegacySeaDsaHeapAbstraction::getId(const Cell &c) {
   if (it != m_node_ids.end()) {
     return it->second + offset;
   }
-  
+
   RegionId id = m_max_id;
   m_node_ids[n] = id;
 
@@ -55,6 +55,7 @@ LegacySeaDsaHeapAbstraction::getId(const Cell &c) {
   if (offset == 0 && n->getUniqueScalar()) {
     m_rev_node_ids[id] = n;
   }
+
   if (n->size() == 0) {
     ++m_max_id;
     return id;
@@ -139,6 +140,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 
   if (!CS.getCallee())
     return;
+
   // hook: skip shadow mem functions created by SeaHorn
   // We treat them as readnone functions
   if (CS.getCallee()->getName().startswith("shadow.mem"))

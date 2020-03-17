@@ -148,7 +148,9 @@ def parseArgs(argv):
     p.add_argument ('-oll', '--oll', dest='asm_out_name', metavar='FILE',
                     help='Output analyzed bitecode')
     p.add_argument('--log', dest='log', default=None,
-                    metavar='STR', help='Log level')
+                    metavar='STR', help='Log level for clam')
+    p.add_argument('--sea-dsa-log', dest='dsa_log', default=None,
+                    metavar='STR', help='Log level for sea-dsa')    
     p.add_argument('-o', dest='out_name', metavar='FILE',
                     help='Output file name')
     p.add_argument("--save-temps", dest="save_temps",
@@ -217,15 +219,16 @@ def parseArgs(argv):
                     help='Disable lowering of switch instructions',
                     dest='disable_lower_switch', default=False, action='store_true')
     p.add_argument('--devirt-functions',
-                    help="Resolve indirect calls:\n"
+                    help="Resolve indirect calls (needed for soundness):\n"
                     "- none : do not resolve indirect calls (default)\n"
                     "- types: select all functions with same type signature\n"
-                    "- dsa  : use Dsa analysis to select the callees\n",
+                    "- sea-dsa: use sea-dsa analysis to select the callees\n"
+                    "- dsa: use llvm-dsa analysis to select the callees (deprecated)\n",
                     dest='devirt',
-                    choices=['none','types','dsa'],
+                    choices=['none','types','sea-dsa','dsa'],
                     default='none')
     p.add_argument('--externalize-addr-taken-functions',
-                    help='Externalize uses of address-taken functions',
+                    help='Externalize uses of address-taken functions (potentially unsound)',
                     dest='enable_ext_funcs', default=False,
                     action='store_true')
     p.add_argument('--print-after-all',
@@ -284,7 +287,7 @@ def parseArgs(argv):
                    help='Track integers (num), num + pointer offsets (ptr), and num + memory contents (arr) via memory abstraction',
                    choices=['num', 'ptr', 'arr'], dest='track', default='num')
     p.add_argument('--crab-heap-analysis',
-                   help="Heap analysis used for memory disambiguation (i.e., --crab-track=arr):\n"
+                   help="Heap analysis used for memory disambiguation (if --crab-track=arr):\n"
                    "- llvm-dsa: context-insensitive llvm-dsa (deprecated) \n"
                    "- ci-sea-dsa: context-insensitive sea-dsa\n"
                    "- cs-sea-dsa: context-sensitive sea-dsa\n"
@@ -657,13 +660,18 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.devirt is not 'none':
         crabpp_args.append('--crab-devirt')
         if args.devirt == 'types':
-            crabpp_args.append('--devirt-resolver=types')            
+            crabpp_args.append('--devirt-resolver=types')
+        elif args.devirt == 'sea-dsa':
+            crabpp_args.append('--devirt-resolver=sea-dsa')                        
         elif args.devirt == 'dsa':
             crabpp_args.append('--devirt-resolver=dsa')            
     if args.enable_ext_funcs:
         crabpp_args.append('--crab-externalize-addr-taken-funcs')
     if args.print_after_all: crabpp_args.append('--print-after-all')
     if args.debug_pass: crabpp_args.append('--debug-pass=Structure')        
+
+    if args.dsa_log is not None:
+        for l in args.dsa_log.split(':'): crabpp_args.extend(['-sea-dsa-log', l])
     
     crabpp_args.extend(extra_args)
     if verbose: print ' '.join(crabpp_args)
@@ -684,6 +692,9 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.log is not None:
         for l in args.log.split(':'): clam_args.extend(['-crab-log', l])
 
+    if args.dsa_log is not None:
+        for l in args.dsa_log.split(':'): clam_args.extend(['-sea-dsa-log', l])
+        
     # disable sinking instructions to end of basic block
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
@@ -811,7 +822,7 @@ def main(argv):
     if '--clang-version' in argv[1:] or '-clang-version' in argv[1:]:
         print "Clang version " + getClangVersion(getClang(False))
         return 0
-    
+
     args  = parseArgs(argv[1:])
     workdir = createWorkDir(args.temp_dir, args.save_temps)
     in_name = args.file
