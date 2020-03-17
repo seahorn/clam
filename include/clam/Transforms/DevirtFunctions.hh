@@ -32,7 +32,26 @@ AliasSetId typeAliasId(llvm::CallSite &CS);
 
 enum CallSiteResolverKind {
    RESOLVER_TYPES
- , RESOLVER_DSA
+ , RESOLVER_DSA /* deprecated, for debugging purposes*/
+ , RESOLVER_SEA_DSA
+};
+
+struct DevirtStats {
+  // number of indirect calls
+  unsigned m_num_indirect_calls;
+  // number of calls resolved
+  unsigned m_num_resolved_calls;
+  // number of calls unresolved by Dsa
+  unsigned m_num_dsa_unresolved;
+  // number of calls which were resolved by Dsa but no consistent type
+  // signature was found
+  unsigned m_num_type_unresolved;
+
+  DevirtStats():
+    m_num_indirect_calls(0), m_num_resolved_calls(0),
+    m_num_dsa_unresolved(0), m_num_type_unresolved(0) {}
+
+  void dump() const;
 };
 
 /*
@@ -41,7 +60,10 @@ enum CallSiteResolverKind {
 class CallSiteResolver {
 protected:
   CallSiteResolverKind m_kind;
-  CallSiteResolver(CallSiteResolverKind kind) : m_kind(kind) {}
+  DevirtStats& m_stats;
+  
+  CallSiteResolver(CallSiteResolverKind kind, DevirtStats &stats)
+    : m_kind(kind), m_stats(stats) {}
 
 public:
   using AliasSetId = devirt_impl::AliasSetId;  
@@ -68,7 +90,7 @@ public:
   using AliasSetId = CallSiteResolver::AliasSetId;  
   using AliasSet = CallSiteResolver::AliasSet;
   
-  CallSiteResolverByTypes(llvm::Module &M);
+  CallSiteResolverByTypes(llvm::Module &M, DevirtStats &stats);
 
   virtual ~CallSiteResolverByTypes();
 
@@ -94,18 +116,24 @@ private:
 };
 
 /*
- * Resolve indirect call by using DSA pointer analysis
- * 
- * We use a template parameter for DSA so that in the future we can
- * replace llvm-dsa with sea-dsa.
+ * Resolve indirect call by using DSA pointer analysis.
  */
 template<typename Dsa>  
 class CallSiteResolverByDsa final: public CallSiteResolverByTypes {
+  /*
+    Assume that Dsa provides these methods:
+    - bool isComplete(CallSite&)
+    - iterator begin(CallSite&)
+    - iterator end(CallSite&) 
+    where each element of iterator is of type Function*
+  */
+  
 public:
   using AliasSetId = CallSiteResolverByTypes::AliasSetId;  
   using AliasSet = CallSiteResolverByTypes::AliasSet;
   
-  CallSiteResolverByDsa(llvm::Module& M, Dsa& dsa, bool incomplete, unsigned max_num_targets);
+  CallSiteResolverByDsa(llvm::Module& M, Dsa& dsa,
+			bool incomplete, unsigned max_num_targets, DevirtStats &stats);
     
   ~CallSiteResolverByDsa();
   
@@ -153,13 +181,10 @@ private:
   // allow creating of indirect calls during devirtualization
   // (required for soundness)
   bool m_allowIndirectCalls;
-
   // Worklist of call sites to transform
   llvm::SmallVector<llvm::Instruction *, 32> m_worklist;
-
-  // for stats
-  unsigned m_num_indirect_calls;
-  unsigned m_num_resolved_calls;
+  // For stats
+  DevirtStats m_stats;
   
   /// turn the indirect call-site into a direct one
   void mkDirectCall(llvm::CallSite CS, CallSiteResolver *CSR);
@@ -171,6 +196,10 @@ public:
   DevirtualizeFunctions(llvm::CallGraph *cg, bool allowIndirectCalls);
 
   ~DevirtualizeFunctions();
+
+  DevirtStats& getStats() { return m_stats;}
+
+  const DevirtStats& getStats() const { return m_stats; }
   
   // Resolve all indirect calls in the Module using a particular
   // callsite resolver.

@@ -2,6 +2,9 @@
 
 #include "clam/config.h"
 
+#include <climits>
+#include <string>
+
 namespace clam {
 
 ////
