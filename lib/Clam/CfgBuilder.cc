@@ -628,8 +628,8 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
      Try to figure out an arithmetic offset for load or store pointer operand.
    */
   lin_exp_t inferArrayIndex(Value *v, LLVMContext &ctx, llvm_variable_factory &vfac);
-  /* If all indices have the same integer bitwidth then return it. */
-  llvm::Optional<unsigned> getBitWidthFromGepIndexes(GetElementPtrInst &I);
+  
+  unsigned getMaxBitWidthFromGepIndexes(GetElementPtrInst &I);
   /*
    *  Insert key-value in the reverse map but only if no CFG
    *  simplifications enabled
@@ -649,7 +649,8 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   void doMemIntrinsic(MemIntrinsic &I);
   void doGlobalInitializer(CallInst &I);
   void doVerifierCall(CallInst &I);
-  void doGep(GetElementPtrInst &I, var_t lhs, llvm::Optional<var_t> base);
+  void doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
+	     var_t lhs, llvm::Optional<var_t> base);
   void doStoreInst(StoreInst &I, bool is_singleton,
 		   llvm::Optional<var_t> new_var, var_t old_var,
 		   crab_lit_ref_t val, Region reg);
@@ -722,28 +723,19 @@ var_t CrabInstVisitor::getUnconstrainedArrayIdxVar(
   return v;
 }
 
-llvm::Optional<unsigned> CrabInstVisitor::
-getBitWidthFromGepIndexes(GetElementPtrInst &I) {
+unsigned CrabInstVisitor::getMaxBitWidthFromGepIndexes(GetElementPtrInst &I) {
   unsigned bitwidth = 0; 
-  for (unsigned i = 1, e = I.getNumOperands(); i != e; ++i) {
-    if (IntegerType *ITY = cast<IntegerType>(I.getOperand(i)->getType())) {
-      if (i == 1) {
-	bitwidth = ITY->getBitWidth();
-      } else {
-	if (bitwidth != ITY->getBitWidth()) {
-	  CLAM_WARNING("skipped gep " << I
-		       << ". To translate a gep we require all integer indexes "
-		       << "with same bitwidth");
-	  return llvm::None;
-	}
-      }
+  for (unsigned i = 1, e = I.getNumOperands(); i < e; ++i) {
+    if (IntegerType *ITy = cast<IntegerType>(I.getOperand(i)->getType())) {
+      bitwidth = std::max(bitwidth, ITy->getBitWidth());
     } else {
-      CLAM_WARNING("skipped gep " << I
-		   << ". To translate a gep we require all integer indexes");
-      return llvm::None;
+      CLAM_ERROR("Expected gep instruction only with integer indexes: ", I);
     }
   }
-  return (bitwidth > 0 ? llvm::Optional<unsigned>(bitwidth) : llvm::None);
+  if (bitwidth == 0) {
+    CLAM_ERROR("Unexpected gep instruction without indexes: ", I);
+  }
+  return bitwidth;
 }
 
 Optional<z_number> CrabInstVisitor::evalOffset(Value &v, LLVMContext &ctx) {
@@ -760,7 +752,7 @@ Optional<z_number> CrabInstVisitor::evalOffset(Value &v, LLVMContext &ctx) {
 }
 
 lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx,
-					     llvm_variable_factory &vfac) {
+					   llvm_variable_factory &vfac) {
   auto offsetOpt = evalOffset(*v, ctx);
   if (offsetOpt.hasValue()) {
     // we were able to get the offset statically
@@ -1245,13 +1237,38 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
   }
 }
 
-/* verifier.zero_initializer(v) or verifier.int_initializer(v,k) */
+/* verifier.zero_initializer(v) or verifier.int_initializer(v,k) 
+
+   This special treatment for global initializers is mostly needed for
+   array smashing-like domains. zero_initializer for arrays is still
+   useful for other domains because it can avoid too many array stores
+   if the array to be initialized is large.
+*/
 void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
   CallSite CS(&I);
+
+  Function *callee = CS.getCalledFunction();
+  if (!callee) {
+    return;
+  }
+
+  if (!m_params.use_array_smashing && isIntInitializer(*callee)) {
+    // ignore the global initializer ...
+    return;
+  }
+  
   // v is either a global variable or a gep instruction that
   // indexes an address inside the global variable.
   Value *v = CS.getArgument(0);
   Type *ty = cast<PointerType>(v->getType())->getElementType();
+
+  if (!m_params.use_array_smashing && isZeroInitializer(*callee)) {
+    if (!isIntArray(*ty) && !isBoolArray(*ty)) {
+      // ignore the global initializer ...      
+      return;
+    }
+  }
+  
   auto sm = getShadowMem();
   auto r = get_region(m_mem, sm, *m_dl, &I, v);
   auto getShadowVar = [&sm](CallInst &I, Value* v) {
@@ -1301,9 +1318,19 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
       } else { /* unreachable*/
       }
     } else {
+
+      // Figure out the offsets ...
+      auto offsetOpt = evalOffset(*v, I.getContext());
+      if (!offsetOpt.hasValue()) {
+	// the offset should be always inferred statically
+	CLAM_WARNING("global initializer skipped because offset of " << *v <<
+		     " cannot be inferred statically");
+	return; 
+      } 
+
+      
       number_t init_val(0);
-      lin_exp_t lb_idx(number_t(0));
-      lin_exp_t ub_idx(number_t(0));
+      lin_exp_t lb_idx(offsetOpt.getValue());
       uint64_t elem_size = storageSize(ty);
       var_t a = (varShadowOpt.hasValue() ?
 		 m_lfac.mkArrayVar(r, varShadowOpt.getValue()) :
@@ -1326,7 +1353,8 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
       if (isInteger(ty) || isBool(ty)) {
         m_init_regions.insert(r);
 	IntegerType *int_ty = cast<IntegerType>(ty);
-	ub_idx = (isBool(ty) ? 0 : z_number((int_ty->getBitWidth() / 8) - 1));
+	lin_exp_t ub_idx = lb_idx +
+	  number_t((isBool(ty) ? 0 : z_number((int_ty->getBitWidth() / 8) - 1)));
 	m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
       } else if (isIntArray(*ty) || isBoolArray(*ty)) {
         if (cast<ArrayType>(ty)->getNumElements() == 0) {
@@ -1338,7 +1366,7 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
         } else {
           m_init_regions.insert(r);
 	  elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
-	  ub_idx = lin_exp_t(
+	  lin_exp_t ub_idx = lb_idx + lin_exp_t(
 			     cast<ArrayType>(ty)->getNumElements() * elem_size - 1);
 	  m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
         }
@@ -1811,7 +1839,7 @@ void CrabInstVisitor::visitSelectInst(SelectInst &I) {
 // key assumption is that the base pointer of GEP is zero. This must
 // be ensured by the caller. 
 // 
-void CrabInstVisitor::doGep(GetElementPtrInst &I,
+void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
 			    var_t lhs, llvm::Optional<var_t> base) {
   assert(!base.hasValue() || lhs.get_type() == PTR_TYPE);
   assert(lhs.get_type() == INT_TYPE || lhs.get_type() == PTR_TYPE);
@@ -1834,7 +1862,8 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
       } else {
 	// arithmetic
 	m_bb.assign(lhs, lin_exp_t(o));
-	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":=" << o << "\n");
+	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << ":="
+		                         << o << "\n");
       }
     }
     return;
@@ -1861,11 +1890,13 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
 	} else  {
 	  // arithmetic
 	  if (!already_assigned) {
-	    m_bb.assign(lhs, lin_exp_t(offset));
-	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << "=" << offset << "\n");
+	    m_bb.assign(lhs, offset);
+	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << "="
+		                             << offset << "\n");
 	  } else {
 	    m_bb.add(lhs, lhs, offset);
-	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << "+=" << offset << "\n"); 
+	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << "+="
+		                             << offset << "\n"); 
 	  }
 	}
         already_assigned = true;
@@ -1880,12 +1911,30 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
         if (ci->isZero())
           continue;
       }
+      
       crab_lit_ref_t idx = m_lfac.getLit(*GTI.getOperand());
       if (!idx || !idx->isInt()) {
         CLAM_ERROR("unexpected GEP index");
       }
-      lin_exp_t offset(m_lfac.getExp(idx) *
-                       number_t(storageSize(GTI.getIndexedType())));
+
+      // Signed-extension of the index if needed.
+      llvm::Optional<lin_exp_t> offsetOpt = llvm::None;
+      auto Iidx = std::static_pointer_cast<const crabIntLit>(idx);
+      if (Iidx->isVar()) {
+	unsigned w = Iidx->getVar().get_bitwidth();
+	assert(w <= max_index_bitwidth);
+	if (w < max_index_bitwidth) {
+	  var_t sext_idx = m_lfac.mkIntVar(max_index_bitwidth);
+	  m_bb.sext(Iidx->getVar(), sext_idx);
+	  offsetOpt = (sext_idx * number_t(storageSize(GTI.getIndexedType())));
+	}       
+      }
+      if (!offsetOpt.hasValue()) {
+	offsetOpt = (m_lfac.getExp(idx) *
+		     number_t(storageSize(GTI.getIndexedType())));
+      }
+
+      lin_exp_t offset = offsetOpt.getValue();
       if (base) {
 	// pointer arithmetic
 	m_bb.ptr_assign(lhs, (!already_assigned) ? *base : lhs, offset);
@@ -1899,10 +1948,12 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
 	// arithmetic
 	if (!already_assigned) {
 	  m_bb.assign(lhs, offset);
-	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << "=" << offset << "\n");
+	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth()
+		                           << "=" << offset << "\n");
 	} else {
 	  m_bb.assign(lhs, lhs + offset);
-	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << "+=" << offset << "\n"); 
+	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth()
+		                           << "+=" << offset << "\n"); 
 	}
       }
       already_assigned = true;
@@ -1915,12 +1966,26 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
  precision level is PTR or ARR. With PTR the translation should not
  lose precision. However, with ARR the translation is a best-effort
  thing since we need to know statically if the pointer operand points
- to the base address of the memory object.
+ to the base address of its memory object. The offset computation is
+ the same in both.
+
+ The offset computation is translated to a sequence of Crab linear
+ arithmetic operations. In Crab, an arithmetic operation is strongly
+ typed which means that all operands must have same bitwidth. GEP
+ indexes can have any bitwidth (although fields of struct and vector
+ must use always 32 bits). Our solution is to use the same bitwidth
+ for all variables in the whole sequence of arithmetic
+ operations. This bitwidth is the maximum bitwidth among all GEP
+ indices' bitwidths. To generate well-typed Crab operations some of
+ the variables are signed extended. If we wouldn't choose the maximum
+ bitwidth then we would have truncate operations which can
+ overflow. We try to avoid that.
 */
 
 void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
   CRAB_LOG("cfg-gep", llvm::errs() << "Translating " << I << "\n");
-  
+
+  unsigned bitwidth = getMaxBitWidthFromGepIndexes(I);
   if (m_params.precision_level == crab::cfg::PTR) {    
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
@@ -1936,7 +2001,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     }
     assert(ptr->isVar());
 
-    doGep(I, lhs->getVar(), ptr->getVar());
+    doGep(I, bitwidth, lhs->getVar(), ptr->getVar());
     
   } else if (m_params.precision_level == crab::cfg::ARR) {
     Region r = get_region(m_mem, getShadowMem(), *m_dl, &I, &I);
@@ -1956,14 +2021,6 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       return;
     }
 
-    auto bitwidthOpt = getBitWidthFromGepIndexes(I);
-    if (!bitwidthOpt.hasValue()) {
-      // For simplicity we require that all gep indices have the same
-      // integer bitwidth.  This is not always the case. A better
-      // solution is to add sext/trunc as needed during the
-      // translation.
-      return;
-    }
     
     Value *V = I.getPointerOperand();
     V = V->stripPointerCasts();
@@ -1975,21 +2032,24 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       } else {
 	// We ask the pointer analysis. That should allow us to
 	// translate also inside functions where the parameter is the
-	// address of a caller's alloca.
+	// address of a caller's alloca. 
 	isBasePtr =
 	  m_mem.isBasePtr(*(I.getParent()->getParent()), I.getPointerOperand());
       }
     }
 
     assert(m_gep_map.find(&I) == m_gep_map.end());
-    unsigned bitwidth = bitwidthOpt.getValue();
-    
+        
     if (isBasePtr) {
       var_t shadowV(m_lfac.get_vfac().get(), crab::INT_TYPE, bitwidth);
       m_gep_map.insert(std::make_pair(&I, shadowV));
-      doGep(I, shadowV, llvm::None);
+      doGep(I, bitwidth, shadowV, llvm::None);
     } else {
       var_t shadowV = getUnconstrainedArrayIdxVar(m_lfac.get_vfac(), bitwidth);      
+      CRAB_LOG("cfg-array-index",
+	       CLAM_WARNING("cannot infer statically base address of  " << *V
+			    << " at function " << I.getParent()->getParent()->getName()
+			    << ".\nUsing unconstrained crab variable " << shadowV.name().str()););
       m_gep_map.insert(std::make_pair(&I, shadowV));
     }
   }
