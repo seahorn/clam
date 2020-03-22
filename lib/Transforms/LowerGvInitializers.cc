@@ -82,8 +82,13 @@ namespace clam {
 			     const std::vector<APInt> &Indices,
 			     const ConstantInt &Val,
 			     IRBuilder<> &Builder) {
+      LOWERGV_LOG(errs() << "\tCreating Store with GEP with base=" << Base << " and indices=\n";
+		  for (unsigned i=0,sz=Indices.size();i<sz;++i) {
+		    errs() << "\t\t Bitwidth=" << Indices[i].getBitWidth()
+			   << " Val=" << Indices[i] << "\n";
+		  });      
+		  
       Value *Ptr = Builder.CreateInBoundsGEP(&Base, CreateGEPIndices(Indices));
-      LOWERGV_LOG(errs() << "Creating GEP " << *Ptr << "\n";);
       Builder.CreateAlignedStore(const_cast<ConstantInt*>(&Val), Ptr,
        				 m_dl->getABITypeAlignment(Val.getType()));
     }
@@ -119,6 +124,14 @@ namespace clam {
 				       IRBuilder<> &Builder,
 				       std::vector<Constant*> &LLVMUsed,
 				       Module &M) {
+
+      LOWERGV_LOG(errs() << "\tCreating zeroInitializer function: creating GEP with base="
+		         << base << " and indices=\n";
+		  for (unsigned i=0,sz=Indices.size();i<sz;++i) {
+		    errs() << "\t\t Bitwidth=" << Indices[i].getBitWidth()
+			   << " Val=" << Indices[i] << "\n";
+		  });      
+      
       Value *ptr = Builder.CreateInBoundsGEP(&base, CreateGEPIndices(Indices));
       Function *f = CreateZeroInitializerFunction(ptr, LLVMUsed, M);
       Builder.CreateCall(f, ptr);
@@ -169,45 +182,51 @@ namespace clam {
 				    std::vector<Constant*> &LLVMUsed,
 				    std::vector<APInt> &Indices) {
       bool change = false;
-      LOWERGV_LOG(errs () << "GEP " << base.getName() << " indices=";
+      LOWERGV_LOG(errs () << "ConstantAggregateZero with Base=" << base.getName() << " and Indices=";
 		  printIndices(Indices);
-		  errs () << "\nTYPE=" << *T << "\n";);
+		  errs () << " and Type=" << *T << "\n";);
 
       if (IntegerType *ITy = dyn_cast<IntegerType>(T)) {
-	// XXX: we choose to add both the special initialization
-	// function and the lowered Store instruction.
-	CreateZeroInitializerCallSite(base, Indices, Builder, LLVMUsed, M);
+	LOWERGV_LOG(errs() << "\tIntegerType " << *ITy << "\n";);
 	ConstantInt* Zero = ConstantInt::get(ITy, 0);
 	CreateStoreIntValue(base, Indices, *Zero, Builder);
+	
+	// HACK: useful for array smashing
+	CreateZeroInitializerCallSite(base, Indices, Builder, LLVMUsed, M);
 	change = true;
       } else if (StructType *STy = dyn_cast<StructType> (T)) {
+	LOWERGV_LOG(errs() << "\tStructType " << *STy << "\n";);
 	for (unsigned i=0; i < STy->getNumElements(); ++i) {
 	  Type* ETy = STy->getElementType(i);
-	  uint64_t ElementSize = m_dl->getTypeAllocSize(ETy);
-	  Indices.push_back(APInt(ElementSize*8, i));
+	  //uint64_t ElementSize = m_dl->getTypeAllocSize(ETy);
+	  //uint64_t IndexSize = ElementSize * 8;
+	  uint64_t IndexSize = 32;
+	  Indices.push_back(APInt(IndexSize, i));
 	  change |= LowerConstantAggregateZero(ETy, base, Builder, M, LLVMUsed, Indices);
 	  Indices.pop_back();
 	}
       } else if (ArrayType *ATy = dyn_cast<ArrayType> (T)) {
-	// XXX: we don't lower the array into individual stores.  we
-	//      add instead a special initialization function that the
-	//      analyzer can understand and hopefully be more
-	//      efficient.
-
-	#if 0
-	for (unsigned i=0; i < ATy->getNumElements(); ++i){
-	  uint64_t ElementSize = m_dl->getTypeAllocSize(ATy->getElementType());
-	  Indices.push_back(APInt(ElementSize*8, i));
-	  change |= LowerConstantAggregateZero(ATy->getElementType(), base, Builder, M,
-					       LLVMUsed, Indices);
-	  Indices.pop_back();	      
-	}
-	#endif
-	
+	LOWERGV_LOG(errs() << "\tArrayType " << *ATy << "\n";);
+		
 	if (ATy->getElementType()->isIntegerTy()) {
+	  // XXX: we don't lower the array into individual stores.  we
+	  //      add instead a special initialization function that the
+	  //      analyzer can understand and hopefully be more
+	  //      efficient.
 	  CreateZeroInitializerCallSite(base, Indices, Builder, LLVMUsed, M);
 	  change = true;
+	} else {
+	  for (unsigned i=0; i < ATy->getNumElements(); ++i){
+	    //uint64_t ElementSize = m_dl->getTypeAllocSize(ATy->getElementType());
+	    //uint64_t IndexSize = ElementSize * 8;
+	    uint64_t IndexSize = 32;
+	    Indices.push_back(APInt(IndexSize, i));
+	    change |= LowerConstantAggregateZero(ATy->getElementType(), base, Builder, M,
+						 LLVMUsed, Indices);
+	    Indices.pop_back();	      
+	  }
 	}
+	
       } else {
 	// ignore the rest of types
       }
@@ -230,48 +249,61 @@ namespace clam {
       } else if (const ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(C)) {
 	// ignore C strings
 	if (!(CDS->isString() || CDS->isCString())) {
-	  uint64_t ElementSize = CDS->getElementByteSize();
-	  LOWERGV_LOG(errs() << "\tCDS element size=" 
-		      << ElementSize << " num elements=" << CDS->getNumElements() << "\n";);
+	  //uint64_t ElementSize = CDS->getElementByteSize();
+	  //uint64_t IndexSize = ElementSize * 8;
+	  //LOWERGV_LOG(errs() << "\tCDS element size=" 
+	  //                   << ElementSize << " num elements=" << CDS->getNumElements() << "\n";);
+	  LOWERGV_LOG(errs() << "\ConstanttDataSequential=" << *CDS << "\n";);
+	  uint64_t IndexSize = 32;	  	  
 	  for (unsigned i=0, e = CDS->getNumElements(); i < e; ++i) {
-	    APInt Index(ElementSize*8, i);
+	    APInt Index(IndexSize, i);
 	    Indices.push_back(Index);
 	    change |= LowerInitializer(CDS->getElementAsConstant(i), Base,
 				       Builder, M, LLVMUsed, Indices);
 	  }
 	}
       } else if (const ConstantVector *CP = dyn_cast<ConstantVector>(C)) { 
-    	unsigned ElementSize = m_dl->getTypeAllocSize(CP->getType()->getElementType());
-	LOWERGV_LOG(errs() << "\tCV element size=" 
-		    << ElementSize << " num elements=" << CP->getNumOperands() << "\n";);
-	
+    	//unsigned ElementSize = m_dl->getTypeAllocSize(CP->getType()->getElementType());
+	//uint64_t IndexSize = ElementSize * 8;
+	// LOWERGV_LOG(errs() << "\tCV element size=" 
+	// 	    << ElementSize << " num elements=" << CP->getNumOperands() << "\n";);
+
+	LOWERGV_LOG(errs() << "\tConstantVector=" << *CP << "\n";);	
+	uint64_t IndexSize = 32;	
     	for (unsigned i = 0, e = CP->getNumOperands(); i < e; ++i) {
-	  APInt Index(ElementSize*8, i);
+	  APInt Index(IndexSize, i);
     	  Indices.push_back(Index);
     	  change |= LowerInitializer(CP->getOperand(i), Base, Builder, M, LLVMUsed, Indices);
     	}
       } else if (isa<ConstantAggregateZero>(C)) {
 	change |= LowerConstantAggregateZero(C->getType(), Base, Builder, M, LLVMUsed, Indices);
       } else if (const ConstantArray *CPA = dyn_cast<ConstantArray>(C)) {
-    	unsigned ElementSize = m_dl->getTypeAllocSize(CPA->getType()->getElementType());
-	LOWERGV_LOG(errs() << "\tCA element size=" 
-		    << ElementSize << " num elements=" << CPA->getNumOperands() << "\n";);
+    	//unsigned ElementSize = m_dl->getTypeAllocSize(CPA->getType()->getElementType());
+	//uint64_t IndexSize = ElementSize * 8;
+	// LOWERGV_LOG(errs() << "\tCA element size=" 
+	// 	    << ElementSize << " num elements=" << CPA->getNumOperands() << "\n";);
+
+	LOWERGV_LOG(errs() << "\tConstantArray=" << *CPA << "\n";);			
+	uint64_t IndexSize = 32;
     	for (unsigned i = 0, e = CPA->getNumOperands(); i < e; ++i) {
-	  APInt Index(ElementSize*8, i);
+	  APInt Index(IndexSize, i);
     	  Indices.push_back(Index);	  
     	  change |= LowerInitializer(CPA->getOperand(i), Base, Builder, M, LLVMUsed, Indices);
     	}
       } else if (const ConstantStruct *CPS = dyn_cast<ConstantStruct>(C)) {
+	LOWERGV_LOG(errs() << "\tConstantStruct= " << *CPS << "\n";);
+	
+	uint64_t IndexSize = 32;
     	const StructLayout *SL = m_dl->getStructLayout(cast<StructType>(CPS->getType()));
-	LOWERGV_LOG(errs() << "\tCS\n";);	
     	for (unsigned i = 0, e = CPS->getNumOperands(); i < e; ++i) {
-	  APInt Index(32, SL->getElementOffset(i));
+	  //APInt Index(IndexSize, SL->getElementOffset(i));
+	  APInt Index(IndexSize, i);
     	  Indices.push_back(Index);	  
     	  change |= LowerInitializer(CPS->getOperand(i), Base, Builder, M, LLVMUsed, Indices);
     	}
       } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(C)) {
 
-	LOWERGV_LOG(errs() << "Constant Integer " << *CI << " indices=";
+	LOWERGV_LOG(errs() << "ConstantInteger " << *CI << " indices=";
 		    printIndices(Indices);
 		    errs() << "\n";);
 	CreateStoreIntValue(Base, Indices, *CI, Builder);
@@ -368,8 +400,9 @@ namespace clam {
 
       std::vector<GlobalVariable*> gvs;
       for (GlobalVariable &gv: llvm::make_range(M.global_begin(), M.global_end())) {
-        if (gv.hasInitializer () && gv.getName() != "llvm.used")
+        if (gv.hasInitializer () && gv.getName() != "llvm.used") {	  
 	  gvs.push_back(&gv);
+	}
       }
       
       if (gvs.empty()) return false;
@@ -418,6 +451,7 @@ namespace clam {
 	// XXX: we choose to add both the special initialization
 	// function and the lowered Store instruction.
 	if (isa<ConstantInt>(gv->getInitializer())) {
+	  // HACK: useful only for array smashing-like domains
 	  CreateIntInitializerCallSite(*gv, Builder, MergedVars, M);
 	  change = true;
 	}	
