@@ -75,6 +75,11 @@ namespace clam {
     HeapAbstraction::ClassId getClassId() const {
       return HeapAbstraction::ClassId::LLVM_DSA;
     }
+
+    virtual bool isBasePtr(const llvm::Function &F, const llvm::Value *V) override {
+      // To be implemented
+      return false;
+    }
     
     virtual Region getRegion(const llvm::Function &F,
 			     const llvm::Instruction *I, const llvm::Value *V) override;

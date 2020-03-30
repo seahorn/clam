@@ -164,6 +164,7 @@ def parseArgs(argv):
                     help='Compile with debug information')
     p.add_argument('-m', type=int, dest='machine',
                     help='Machine architecture MACHINE:[32,64]', default=32)
+    p.add_argument ('-I', default=None, dest='include_dir', help='Include')
     p.add_argument("--no-preprocess", dest="preprocess", 
                     help='Skip compilation and preprocessing', action='store_false',
                     default=True)
@@ -212,6 +213,9 @@ def parseArgs(argv):
     p.add_argument('--disable-lower-gv',
                     help='Disable lowering of global variable initializers into main',
                     dest='disable_lower_gv', default=False, action='store_true')
+    p.add_argument('--disable-scalarize',
+                    help='Disable lowering of vector operations into scalar ones',
+                    dest='disable_scalarize', default=False, action='store_true')
     p.add_argument('--disable-lower-constant-expr',
                     help='Disable lowering of constant expressions to instructions',
                     dest='disable_lower_cst_expr', default=False, action='store_true')
@@ -370,7 +374,12 @@ def parseArgs(argv):
                     dest='crab_sanity_checks', default=False, action='store_true')    
     ######################################################################
     # Options that might affect soundness
-    ######################################################################    
+    ######################################################################
+    ## This might be unsound if disable and the abstract array domain is smashing
+    p.add_argument('--crab-disable-array-smashing',
+                    help=a.SUPPRESS,
+                    dest='crab_disable_array_smashing', default=False, action='store_true')
+    ## These might be unsound if enabled
     p.add_argument('--crab-dsa-disambiguate-unknown',
                     help=a.SUPPRESS,
                     dest='crab_dsa_unknown', default=False, action='store_true')
@@ -517,7 +526,7 @@ def _plus_plus_file(name):
     return ext == '.cpp' or ext == '.cc'
 
 # Run Clang
-def clang(in_name, out_name, arch=32, extra_args=[]):
+def clang(in_name, out_name, args, arch=32, extra_args=[]):
 
     if os.path.splitext(in_name)[1] == '.bc':
         if verbose:
@@ -545,9 +554,35 @@ def clang(in_name, out_name, arch=32, extra_args=[]):
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
 
+    if args.include_dir is not None:
+        if ':' in args.include_dir:
+            idirs = ["-I{}".format(x.strip())  \
+                for x in args.include_dir.split(":") if x.strip() != '']
+            clang_args.extend(idirs)
+        else:
+            clang_args.append ('-I' + args.include_dir)
+
+    include_dir = os.path.dirname (sys.argv[0])
+    include_dir = os.path.dirname (include_dir)
+    include_dir = os.path.join (include_dir, 'include')
+    clang_args.append ('-I' + include_dir)
+
+    
     # Disable always vectorization
-    clang_args.append('-fno-vectorize') ## disable loop vectorization
-    clang_args.append('-fno-slp-vectorize') ## disable store/load vectorization
+    if not args.disable_scalarize:
+        clang_args.append('-fno-vectorize') ## disable loop vectorization
+        clang_args.append('-fno-slp-vectorize') ## disable store/load vectorization
+    
+    ## Hack for OSX Mojave that no longer exposes libc and libstd headers by default
+    osx_sdk_dirs = ['/Applications/Xcode.app/Contents/Developer/Platforms/' + \
+                    'MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk',
+                    '/Applications/Xcode.app/Contents/Developer/Platforms/' + \
+                    'MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk']
+
+    for osx_sdk_dir in osx_sdk_dirs:
+        if os.path.isdir(osx_sdk_dir):
+            clang_args.append('--sysroot=' + osx_sdk_dir)
+            break
     
     if verbose: print ' '.join(clang_args)
     returnvalue, timeout, out_of_mem, segfault, unknown = \
@@ -649,6 +684,8 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         
     if args.disable_lower_gv:
         crabpp_args.append('--crab-lower-gv=false')
+    if args.disable_scalarize:
+        crabpp_args.append('--crab-scalarize=false')
     if args.disable_lower_cst_expr:
         crabpp_args.append('--crab-lower-constant-expr=false')
     if args.disable_lower_switch:
@@ -662,7 +699,8 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         if args.devirt == 'types':
             crabpp_args.append('--devirt-resolver=types')
         elif args.devirt == 'sea-dsa':
-            crabpp_args.append('--devirt-resolver=sea-dsa')                        
+            crabpp_args.append('--devirt-resolver=sea-dsa')
+            crabpp_args.append('--sea-dsa-type-aware=true')            
         elif args.devirt == 'dsa':
             crabpp_args.append('--devirt-resolver=dsa')            
     if args.enable_ext_funcs:
@@ -765,6 +803,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     else:
         clam_args.append('--crab-store-invariants=false')    
     # begin hidden options
+    if args.crab_disable_array_smashing:
+        clam_args.append('--crab-use-array-smashing=false')
     if args.crab_dsa_unknown: clam_args.append('--crab-dsa-disambiguate-unknown')
     if args.crab_dsa_ptr_cast: clam_args.append('--crab-dsa-disambiguate-ptr-cast')
     if args.crab_dsa_external: clam_args.append('--crab-dsa-disambiguate-external')    
@@ -833,7 +873,7 @@ def main(argv):
                 extra_args = []
                 if args.debug_info: extra_args.append('-g')
                 with stats.timer('Clang'):
-                    clang(in_name, bc_out, arch=args.machine, extra_args=extra_args)
+                    clang(in_name, bc_out, args, arch=args.machine, extra_args=extra_args)
                 #stat('Progress', 'Clang')
         in_name = bc_out
 

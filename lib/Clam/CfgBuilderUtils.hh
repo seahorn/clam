@@ -79,6 +79,10 @@ bool isErrorFn(const llvm::Function &F);
 
 bool isAssumeFn(const llvm::Function &F);
 
+bool isCrabIntrinsic(const llvm::Function &F);
+
+std::string getCrabIntrinsicName(const llvm::Function &F);  
+
 bool isNotAssumeFn(const llvm::Function &F);
 
 bool isVerifierCall(const llvm::Function &F);

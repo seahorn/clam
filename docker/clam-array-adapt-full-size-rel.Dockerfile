@@ -30,6 +30,7 @@ RUN cmake -GNinja \
           -DCMAKE_INSTALL_PREFIX=run \
           -DCMAKE_CXX_COMPILER=g++-5 \
           -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+	  -DCLAM_NEW_ARRAY_DOMAIN=ON \
           -DCRAB_USE_LDD=ON \
           -DCRAB_USE_APRON=ON \
           ../ && \
@@ -48,9 +49,10 @@ ENV PATH "/clam/build/run/bin:$PATH"
 
 # run tests
 RUN cmake --build . --target test-simple
+RUN cmake --build . --target test-array-adapt
 RUN cmake --build . --target test-readme
 RUN cmake --build . --target test-ssh-simplified
-RUN cmake --build . --target test-ntdrivers-simplified
+#RUN cmake --build . --target test-ntdrivers-simplified
 
 
 WORKDIR /clam

@@ -1135,7 +1135,7 @@ namespace clam {
       , { BOXES,
 	  { bind_this(this, &InterClam_Impl::analyzeCg<boxes_domain_t>), "boxes" }}
       , { PK,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<pk_domain_t>), "pk" }}	
+	  { bind_this(this, &InterClam_Impl::analyzeCg<pk_domain_t>), "pk" }}
       #endif
       #endif 	
     };    
@@ -1259,10 +1259,10 @@ namespace clam {
     
     CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
 			     CrabEnableUniqueScalars, CrabMemShadows, 
-			     CrabIncludeHavoc,
+			     CrabIncludeHavoc, CrabUseArraySmashing,
 			     CrabArrayInit, CrabUnsoundArrayInit,
 			     CrabEnableBignums, CrabPrintCFG);
-
+    
     auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
     /// Create the CFG builder manager
@@ -1275,7 +1275,7 @@ namespace clam {
         #ifdef HAVE_DSA
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started llvm-dsa analysis\n";);
 	mem.reset
-	  (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(),
+	  (new LlvmDsaHeapAbstraction(M,&getAnalysis<SteensgaardDataStructures>(), 
 				      CrabDsaDisambiguateUnknown,
 				      CrabDsaDisambiguatePtrCast,
 				      CrabDsaDisambiguateExternal));
@@ -1294,6 +1294,7 @@ namespace clam {
 	mem.reset
 	  (new LegacySeaDsaHeapAbstraction(M, cg, dl, tli, *allocWrapInfo,
 					   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
+					   CrabUseArraySmashing,
 					   CrabDsaDisambiguateUnknown,
 					   CrabDsaDisambiguatePtrCast,
 					   CrabDsaDisambiguateExternal));

@@ -65,6 +65,11 @@ LowerGv("crab-lower-gv",
 	 llvm::cl::init(true));
 
 static llvm::cl::opt<bool>
+Scalarize("crab-scalarize",
+	 llvm::cl::desc("Scalarize vector operations"),
+	 llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
 LowerInvoke("crab-lower-invoke",
 	 llvm::cl::desc("Lower invoke instructions"),
 	 llvm::cl::init(true));
@@ -331,6 +336,11 @@ int main(int argc, char **argv) {
   // -- remove unreachable blocks also dead cycles
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());
 
+  if (Scalarize) {
+    pass_manager.add(clam::createScalarizerPass());
+    pass_manager.add(llvm::createDeadCodeEliminationPass());
+  }
+  
   if (LowerSwitch) {
     // -- remove switch constructions
     pass_manager.add(llvm::createLowerSwitchPass());

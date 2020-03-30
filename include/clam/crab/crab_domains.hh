@@ -14,12 +14,11 @@
 #include "crab/domains/elina_domains.hpp"
 #endif 
 #include "crab/domains/array_smashing.hpp"
+#include "crab/domains/array_adaptive.hpp"
 #include "crab/domains/term_equiv.hpp"
 #include "crab/domains/flat_boolean_domain.hpp"
 #include "crab/domains/combined_domains.hpp"
 #include "crab/domains/wrapped_interval_domain.hpp"
-//#include "crab/domains/array_sparse_graph.hpp"
-//#include "crab/domains/nullity.hpp"
 
 /*
    Definition of the abstract domains (no instantiation done here)
@@ -30,16 +29,33 @@ namespace clam {
   using namespace crab::domains;
   using namespace ikos;
 
+#ifdef HAVE_ARRAY_ADAPT
+  class ArrayAdaptParams {
+  public:
+    /* options for array smashing */  
+    enum { is_smashable = 1 };
+    enum { smash_at_nonzero_offset = 1};
+    enum { max_smashable_cells = 64};
+    /* options for array expansion */  
+    enum { max_array_size = 512 };
+  };
+  template<class Dom>
+  using array_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;
+#else
+  template<class Dom>
+  using array_domain = array_smashing<Dom>;
+#endif   
+  
   /* BEGIN MACROS only for internal use */
   // The base numerical domain 
   #define BASE(DOM) base_ ## DOM
   // Array functor domain where the base domain is a reduced product
   // of a boolean domain with the numerical domain DOM.
   #define ARRAY_BOOL_NUM(DOM) \
-    typedef array_smashing<flat_boolean_numerical_domain<BASE(DOM)>> DOM
+    typedef array_domain<flat_boolean_numerical_domain<BASE(DOM)>> DOM
   // Array functor domain where the base domain is DOM
   #define ARRAY_NUM(DOM) \
-    typedef array_smashing<BASE(DOM)> DOM;
+    typedef array_domain<BASE(DOM)> DOM
   /* END MACROS only for internal use */
   
   //////
@@ -138,5 +154,5 @@ namespace clam {
   ARRAY_NUM(mdd_boxes_domain_t);  
   /* domains that preserve machine arithmetic semantics */
   ARRAY_BOOL_NUM(wrapped_interval_domain_t);
-  
+
 } // end namespace crab-llvm
