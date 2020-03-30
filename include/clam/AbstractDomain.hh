@@ -37,7 +37,7 @@ namespace llvm {
   DUMP_TO_LLVM_STREAM(clam::boxes_domain_t)
   DUMP_TO_LLVM_STREAM(clam::dis_interval_domain_t)
   DUMP_TO_LLVM_STREAM(clam::num_domain_t)
-
+  
   template <typename DomInfo>
   inline llvm::raw_ostream& operator<<(llvm::raw_ostream& o, 
                                        crab::domains::term_domain<DomInfo>& inv) {

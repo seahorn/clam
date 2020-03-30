@@ -3,6 +3,7 @@
 
 #include "clam/Support/Debug.hh"
 #include "llvm/IR/Value.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/ADT/Optional.h"
 
@@ -47,6 +48,21 @@ Value& getShadowMemUse(LoadInst &I, const sea_dsa::ShadowMem& sm){
   return *useV;
 }
 
+// Same definition than ShadowMem.cc
+static Value *getUniqueScalar(const sea_dsa::Cell &c) {
+  const sea_dsa::Node *n = c.getNode();
+  if (n && c.getOffset() == 0) {
+    Value *v = const_cast<llvm::Value *>(n->getUniqueScalar());
+    // -- a unique scalar is a single-cell global variable. We might be
+    // -- able to extend this to single-cell local pointers, but these
+    // -- are probably not very common.
+    if (auto *gv = llvm::dyn_cast_or_null<llvm::GlobalVariable>(v))
+      if (gv->getType()->getElementType()->isSingleValueType())
+	return v;
+  }
+  return nullptr;
+}
+
 const Value* getShadowMemUniqueScalar(StoreInst &I, const sea_dsa::ShadowMem &sm) {
   auto it =  I.getIterator();
   --it;
@@ -56,7 +72,7 @@ const Value* getShadowMemUniqueScalar(StoreInst &I, const sea_dsa::ShadowMem &sm
   auto cell_opt = sm.getShadowMemCell(ci);
   assert(cell_opt.hasValue());
   auto cell = cell_opt.getValue();
-  return cell.getNode()->getUniqueScalar();
+  return getUniqueScalar(cell);
 }
 
 const Value* getShadowMemUniqueScalar(LoadInst &I, const sea_dsa::ShadowMem &sm) {
@@ -68,7 +84,7 @@ const Value* getShadowMemUniqueScalar(LoadInst &I, const sea_dsa::ShadowMem &sm)
   auto cell_opt = sm.getShadowMemCell(ci);
   assert(cell_opt.hasValue());
   auto cell = cell_opt.getValue();
-  return cell.getNode()->getUniqueScalar();
+  return getUniqueScalar(cell);
 }
 
 // We cannot identify a shadow phi node by looking at the metadata.
@@ -106,6 +122,23 @@ llvm::Optional<sea_dsa::Cell> getShadowMemCell(const llvm::PHINode &phi,
   return llvm::None;
 }
 
+Region getShadowRegion(const sea_dsa::Cell &c,
+		       const llvm::DataLayout &dl,
+		       const sea_dsa::ShadowMem &sm) {
+  
+  auto cellIdOpt = sm.getCellId(c);
+  if (cellIdOpt.hasValue()) {
+    auto cellId = cellIdOpt.getValue();
+    auto ri = DsaToRegion(c, dl, sm.splitDsaNodes(),
+			  /* these should be user flags */
+			  true, false, false, false);
+    if (ri.get_type() != UNTYPED_REGION) {
+      return Region(cellId, ri, getUniqueScalar(c));
+    }
+  }
+  return Region();
+}
+
 Region getShadowRegion(llvm::CallInst &shadowInst,
 		       const llvm::DataLayout &dl,
 		       const sea_dsa::ShadowMem &sm) {
@@ -113,12 +146,7 @@ Region getShadowRegion(llvm::CallInst &shadowInst,
   auto cellOpt = sm.getShadowMemCell(shadowInst);
   if (cellOpt.hasValue()) {
     sea_dsa::Cell c = cellOpt.getValue();
-    auto id_opt = sm.getCellId(c);
-    if (id_opt.hasValue()) {
-      auto ri = DsaToRegion(c, dl, false, false, false);
-      if (ri.get_type() != UNTYPED_REGION)
-	return Region(id_opt.getValue(), ri, c.getNode()->getUniqueScalar());
-    }
+    return getShadowRegion(c, dl, sm);
   }
   return Region();
 }

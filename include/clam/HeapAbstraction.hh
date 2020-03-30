@@ -191,6 +191,9 @@ public:
   // XXX: ideally all these methods should be marked as const but
   // neither sea-dsa nor llvm-dsa provide APIs to allow that.
 
+  // return true if V points to the base address (zero offset).
+  virtual bool isBasePtr(const llvm::Function &F, const llvm::Value *V) = 0;
+  
   // fun is used to know in which function ptr lives.
   // If not null, i is the instruction that uses ptr.
   virtual Region getRegion(const llvm::Function &fun,

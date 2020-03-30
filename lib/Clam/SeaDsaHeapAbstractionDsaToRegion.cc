@@ -163,6 +163,8 @@ using namespace sea_dsa;
 
 // DsaToRegion succeeds if returned valued != UNTYPED_REGION
 RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
+		       bool split_dsa_nodes,
+		       bool disambiguate_for_array_smashing,
 		       bool disambiguate_unknown,
 		       bool disambiguate_ptr_cast,
 		       bool disambiguate_external) {
@@ -172,7 +174,10 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
 
   const Node *n = c.getNode();
   unsigned offset = c.getOffset();
-
+  if (!split_dsa_nodes) {
+    offset = 0;
+  }
+  
   CRAB_LOG("heap-abs", errs() << "*** Checking whether node at offset "
                               << offset << " can be converted to region ... \n"
                               << "\t" << *n << "\n";);
@@ -211,7 +216,8 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
   seadsa_heap_abs_impl::isInteger int_pred;
   if (isTypedCell(n, offset, int_pred) ||
       isTypedArrayCell(n, offset, int_pred)) {
-    if (isSafeForWeakArrayDomains(c, dl)) {
+    if (!disambiguate_for_array_smashing ||
+	isSafeForWeakArrayDomains(c, dl)) {
       CRAB_LOG("heap-abs", errs() << "\tDisambiguation succeed!\n"
                                   << "Found INT_REGION at offset " << offset
                                   << " with bitwidth=" << int_pred.m_bitwidth
@@ -228,7 +234,8 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
   seadsa_heap_abs_impl::isBool bool_pred;
   if (isTypedCell(n, offset, bool_pred) ||
       isTypedArrayCell(n, offset, bool_pred)) {
-    if (isSafeForWeakArrayDomains(c, dl)) {
+    if (!disambiguate_for_array_smashing ||
+	isSafeForWeakArrayDomains(c, dl)) {
       CRAB_LOG("heap-abs", errs() << "\tDisambiguation succeed!\n"
                                   << "Found BOOL_REGION at offset " << offset
                                   << " with bitwidth=1\n"

@@ -9,11 +9,15 @@
 
 using namespace llvm;
 
-//#define DEVIRT_LOG(...) __VA_ARGS__
-//#define DEVIRT_WARNING(...) __VA_ARGS__
+//#define DEBUG_DEVIRT
 
+#ifdef DEBUG_DEVIRT
+#define DEVIRT_LOG(...) __VA_ARGS__
+#define DEVIRT_WARNING(...) __VA_ARGS__
+#else
 #define DEVIRT_LOG(...)
 #define DEVIRT_WARNING(...)
+#endif 
 
 namespace clam {
   
@@ -108,8 +112,8 @@ namespace clam {
    * Begin specific callsites resolvers
    ***/
   
-  CallSiteResolverByTypes::CallSiteResolverByTypes(Module &M)
-    : CallSiteResolver(RESOLVER_TYPES)
+  CallSiteResolverByTypes::CallSiteResolverByTypes(Module &M, DevirtStats &stats)
+    : CallSiteResolver(RESOLVER_TYPES, stats)
     , m_M(M) {
     populateTypeAliasSets();
   }
@@ -177,8 +181,9 @@ namespace clam {
   
   template<typename Dsa>
   CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module& M, Dsa& dsa,
-						    bool incomplete, unsigned max_num_targets)
-    : CallSiteResolverByTypes(M)
+						    bool incomplete, unsigned max_num_targets,
+						    DevirtStats &stats)
+    : CallSiteResolverByTypes(M, stats)
     , m_M(M)
     , m_dsa(dsa)
     , m_allow_incomplete(incomplete)
@@ -193,7 +198,7 @@ namespace clam {
        - iterator end(CallSite&) 
        where each element of iterator is of type Function*
     */
-    
+
     // build the target map
     unsigned num_indirect_calls = 0;
     unsigned num_complete_calls = 0;
@@ -217,8 +222,10 @@ namespace clam {
 		AliasSet dsa_targets;
 		dsa_targets.append(m_dsa.begin(CS), m_dsa.end(CS));
 		if (dsa_targets.empty()) {
-		  DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): does not have any target for "
-				        << *(CS.getInstruction()) << "\n";);
+		  m_stats.m_num_dsa_unresolved++;
+		  DEVIRT_WARNING(errs()
+				 << "WARNING Devirt (dsa): does not have any target for "
+				 << *(CS.getInstruction()) << "\n";);
 		  continue;
 		}
 		// sort dsa_targets
@@ -229,12 +236,13 @@ namespace clam {
 			   for(auto F: dsa_targets) {
 			     errs() << "\t" << F->getName() << "::" << *(F->getType()) << "\n";
 			   });
-		
+
 		if (const AliasSet* types_targets = CallSiteResolverByTypes::getTargets(CS)) {
 
 		  DEVIRT_LOG(errs() << "Type-based targets: \n";
 			     for(auto F: *types_targets) {
-			       errs() << "\t" << F->getName() << "::" << *(F->getType()) << "\n";
+			       errs() << "\t" << F->getName() << "::" << *(F->getType())
+				      << "\n";
 			     });
 		  
 		  // --- We filter out those dsa targets whose signature do not match.
@@ -245,9 +253,10 @@ namespace clam {
 					types_targets->begin(), types_targets->end(),
 					std::back_inserter(refined_dsa_targets));
 		  if (refined_dsa_targets.empty()) {
+		    m_stats.m_num_type_unresolved++;		  		    
 		    DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): cannot resolve "
-				          << *(CS.getInstruction())
-				          << " after refining dsa targets with calsite type\n";);
+				   << *(CS.getInstruction())
+				   << " after refining dsa targets with callsite type\n";);
 		  } else {
 		    if (refined_dsa_targets.size() <= m_max_num_targets) {
 		      num_resolved_calls++;
@@ -255,9 +264,11 @@ namespace clam {
 		      DEVIRT_LOG(errs() << "Devirt (dsa) resolved " << *(CS.getInstruction())
 				        << " with targets=";
 				 for(auto F: refined_dsa_targets) {
-				   errs() << "\t" << F->getName() << "::" << *(F->getType()) << "\n";				   
+				   errs() << "\t" << F->getName() << "::"
+					  << *(F->getType()) << "\n";  
 				 });
 		    } else {
+		      m_stats.m_num_dsa_unresolved++;
 		      DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): unresolve "
 				            << *(CS.getInstruction())
 				            << " because the number of targets is greater than "
@@ -265,14 +276,16 @@ namespace clam {
 		    } 
 		  }
 		} else {
+		  m_stats.m_num_type_unresolved++;		  
 		  DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): cannot resolve "
-				        << *(CS.getInstruction())
-				        << " because there is no internal function with same callsite type\n";);
+				 << *(CS.getInstruction())
+				 << " because there is no function with same callsite type\n";);
 		}
 	      } else {
+		m_stats.m_num_dsa_unresolved++;
 		DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): cannot resolve "
-			              << *(CS.getInstruction())
-			              << " because the corresponding dsa node is not complete\n";);
+			       << *(CS.getInstruction())
+			       << " because the corresponding dsa node is not complete\n";);
 		
 		DEVIRT_LOG(AliasSet targets;
 			   targets.append(m_dsa.begin(CS), m_dsa.end(CS));
@@ -286,10 +299,6 @@ namespace clam {
 	}
       }
     }
-    // errs() << "=== DEVIRT (Dsa) stats===\n";
-    // errs() << "BRUNCH_STAT INDIRECT CALLS " << num_indirect_calls << "\n";
-    // errs() << "BRUNCH_STAT COMPLETE CALLS " << num_complete_calls << "\n";
-    // errs() << "BRUNCH_STAT RESOLVED CALLS " << num_resolved_calls << "\n";
   }
 
   template<typename Dsa>
@@ -342,14 +351,10 @@ namespace clam {
   DevirtualizeFunctions::DevirtualizeFunctions(llvm::CallGraph* /*cg*/,
 					       bool allowIndirectCalls)
     : //m_cg(nullptr) 
-      m_allowIndirectCalls(allowIndirectCalls)
-      , m_num_indirect_calls(0)
-      , m_num_resolved_calls(0) { }
+      m_allowIndirectCalls(allowIndirectCalls) { }
 
   DevirtualizeFunctions::~DevirtualizeFunctions() {
-    errs() << "=== Devirtualization stats===\n";
-    errs() << "BRUNCH_STAT INDIRECT CALLS " << m_num_indirect_calls << "\n";
-    errs() << "BRUNCH_STAT RESOLVED CALLS " << m_num_resolved_calls << "\n";
+    m_stats.dump();
   }
   
   Function* DevirtualizeFunctions::mkBounceFn(CallSite &CS, CallSiteResolver* CSR) {
@@ -420,8 +425,10 @@ namespace clam {
       BasicBlock* BL = BasicBlock::Create (M->getContext(), FL->getName(), F);
       targets[FL] = BL;
       // Create the direct function call
+      CallingConv::ID cc = FL->getCallingConv();      
       CallInst* directCall = CallInst::Create (const_cast<Function*>(FL),
                                                fargs, "", BL);
+      directCall->setCallingConv(cc);      
       // TODO: update call graph
       // if (m_cg) {
       //   auto fl_cg = m_cg->getOrInsertFunction (const_cast<Function*> (FL));
@@ -497,13 +504,13 @@ namespace clam {
 
 
   void DevirtualizeFunctions::mkDirectCall(CallSite CS, CallSiteResolver* CSR) {
-    m_num_indirect_calls++;
+    m_stats.m_num_indirect_calls++;
     
     const Function *bounceFn = mkBounceFn(CS, CSR);
     // -- something failed
     if (!bounceFn) return;
 
-    m_num_resolved_calls++;
+    m_stats.m_num_resolved_calls++;
     
     DEVIRT_LOG(errs() << "Callsite: " << *(CS.getInstruction()) << "\n";
 	       errs() << "Bounce function: " << bounceFn->getName() << ":: "
@@ -604,14 +611,30 @@ namespace clam {
     // -- Conservatively assume that we've changed one or more call
     // -- sites.
     return Changed;
-  }  
+  }
+
+  void DevirtStats::dump() const {
+    errs() << "=== Devirtualization stats===\n";
+    errs() << "BRUNCH_STAT INDIRECT CALLS " << m_num_indirect_calls << "\n";
+    errs() << "BRUNCH_STAT RESOLVED CALLS " << m_num_resolved_calls << "\n";
+    errs() << "BRUNCH_STAT UNRESOLVED BY DSA " << m_num_dsa_unresolved << "\n";
+    errs() << "BRUNCH_STAT UNRESOLVED BY TYPE SIGNATURE " << m_num_type_unresolved
+	   << "\n\n";
+  }
 } // end namespace
 
+/* Template instantiations */
+
 #ifdef HAVE_DSA
-/* Template instantiation */
 // llvm-dsa 
 #include "dsa/CallTargets.h"
 namespace clam {  
 template class CallSiteResolverByDsa<dsa::CallTargetFinder<EQTDDataStructures>>;
 } // end namespace
-#endif   
+#endif
+
+// sea-dsa
+#include "sea_dsa/CompleteCallGraph.hh"
+namespace clam {  
+template class CallSiteResolverByDsa<sea_dsa::CompleteCallGraph>;
+} // end namespace

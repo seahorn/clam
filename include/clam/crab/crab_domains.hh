@@ -13,12 +13,11 @@
 #include "crab/domains/elina_domains.hpp"
 #endif 
 #include "crab/domains/array_smashing.hpp"
+#include "crab/domains/array_adaptive.hpp"
 #include "crab/domains/term_equiv.hpp"
 #include "crab/domains/flat_boolean_domain.hpp"
 #include "crab/domains/combined_domains.hpp"
 #include "crab/domains/wrapped_interval_domain.hpp"
-//#include "crab/domains/array_sparse_graph.hpp"
-//#include "crab/domains/nullity.hpp"
 
 /*
    Definition of the abstract domains (no instantiation done here)
@@ -29,16 +28,33 @@ namespace clam {
   using namespace crab::domains;
   using namespace ikos;
 
+#ifdef HAVE_ARRAY_ADAPT
+  class ArrayAdaptParams {
+  public:
+    /* options for array smashing */  
+    enum { is_smashable = 1 };
+    enum { smash_at_nonzero_offset = 1};
+    enum { max_smashable_cells = 64};
+    /* options for array expansion */  
+    enum { max_array_size = 512 };
+  };
+  template<class Dom>
+  using array_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;
+#else
+  template<class Dom>
+  using array_domain = array_smashing<Dom>;
+#endif   
+  
   /* BEGIN MACROS only for internal use */
   // The base numerical domain 
   #define BASE(DOM) base_ ## DOM
   // Array functor domain where the base domain is a reduced product
   // of a boolean domain with the numerical domain DOM.
   #define ARRAY_BOOL_NUM(DOM) \
-    typedef array_smashing<flat_boolean_numerical_domain<BASE(DOM)>> DOM
+    typedef array_domain<flat_boolean_numerical_domain<BASE(DOM)>> DOM
   // Array functor domain where the base domain is DOM
   #define ARRAY_NUM(DOM) \
-    typedef array_smashing<BASE(DOM)> DOM;
+    typedef array_domain<BASE(DOM)> DOM
   /* END MACROS only for internal use */
   
   //////
@@ -47,17 +63,48 @@ namespace clam {
   
   /// -- Intervals
   typedef interval_domain<number_t, varname_t> BASE(interval_domain_t);
-  // // -- enable apron version for more precise backward operations
-  // typedef apron_domain<number_t, varname_t, apron_domain_id_t::APRON_INT>
-  // BASE(interval_domain_t);
   /// -- Wrapped interval domain (APLAS'12)
   typedef wrapped_interval_domain<number_t, varname_t> BASE(wrapped_interval_domain_t);
+  /// To choose DBM parameters
+  struct BigNumDBMParams{
+    /* This version uses unlimited integers so no overflow */
+    enum { chrome_dijkstra = 1 };
+    enum { widen_restabilize = 1 };
+    enum { special_assign = 1 };
+    enum { close_bounds_inline = 0 };	 
+    typedef ikos::z_number Wt;
+    typedef crab::SparseWtGraph<Wt> graph_t;
+  };
+  struct SafeFastDBMParams{
+    /* This version checks for overflow and raise error if detected*/
+    enum { chrome_dijkstra = 1 };
+    enum { widen_restabilize = 1 };
+    enum { special_assign = 1 };
+    enum { close_bounds_inline = 0 };	 
+    typedef crab::safe_i64 Wt;
+    typedef crab::AdaptGraph<Wt> graph_t;
+  };
+  struct FastDBMParams{
+    /* This version does not check for overflow */
+    enum { chrome_dijkstra = 1 };
+    enum { widen_restabilize = 1 };
+    enum { special_assign = 1 };
+    enum { close_bounds_inline = 0 };	 
+    typedef int64_t Wt;
+    typedef crab::AdaptGraph<Wt> graph_t;
+  };
   /// -- Zones using sparse DBMs in split normal form (SAS'16)
-  typedef SplitDBM<number_t, varname_t> BASE(split_dbm_domain_t);
+#ifdef USE_DBM_BIGNUM
+  typedef SplitDBM<number_t, varname_t, BigNumDBMParams> BASE(split_dbm_domain_t);
+#else
+#ifdef USE_DBM_SAFEINT
+  typedef SplitDBM<number_t, varname_t, SafeFastDBMParams> BASE(split_dbm_domain_t);
+#else
+  typedef SplitDBM<number_t, varname_t, FastDBMParams> BASE(split_dbm_domain_t);
+#endif
+#endif 
   /// -- Boxes
   typedef boxes_domain<number_t, varname_t> BASE(boxes_domain_t);
-  // typedef diff_domain<flat_boolean_numerical_domain<BASE(interval_domain_t)>,
-  // 		         boxes_domain<number_t, varname_t> > BASE(boxes_domain_t);
   /// -- DisIntervals
   typedef dis_interval_domain <number_t, varname_t> BASE(dis_interval_domain_t);
   #ifdef HAVE_APRON
@@ -103,5 +150,5 @@ namespace clam {
   ARRAY_NUM(boxes_domain_t);
   /* domains that preserve machine arithmetic semantics */
   ARRAY_BOOL_NUM(wrapped_interval_domain_t);
-  
+
 } // end namespace crab-llvm
