@@ -1,30 +1,31 @@
 language: cpp
+dist: trusty
+os: linux
 cache: apt
 branches:
   except:
   - mdd
   - soct
-env:
-  matrix:
-     - UBUNTU_DIST=xenial
-       BUILD_TYPE=MinSizeRel
-     #- UBUNTU_DIST=bionic
-     #  BUILD_TYPE=MinSizeRel
-              
+matrix:
+  include:
+  - env: UBUNTU_DIST=xenial
+         BUILD_TYPE=MinSizeRel
+         ARRAY_DOM=default
+    script:
+      - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} --build-arg BRANCH=$TRAVIS_BRANCH -t seahorn/clam_5.0:${UBUNTU_DIST} -f docker/clam-full-size-rel.Dockerfile .   
+      - |
+       if [ "$TRAVIS_EVENT_TYPE" = "cron" ]; then
+        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin &&
+        docker push seahorn/clam_5.0:${UBUNTU_DIST};       
+       fi
+  - env: UBUNTU_DIST=xenial
+         BUILD_TYPE=MinSizeRel
+         ARRAY_DOM=new
+    script:
+      - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} --build-arg BRANCH=$TRAVIS_BRANCH -t seahorn/clam_with_array_adapt_5.0:${UBUNTU_DIST} -f docker/clam-array-adapt-full-size-rel.Dockerfile . 
 services:
   - docker
-
 install: true
-
-script:
-  ### build and run tests with docker
-  - docker build --build-arg UBUNTU=${UBUNTU_DIST} --build-arg BUILD_TYPE=${BUILD_TYPE} -t seahorn/clam_5.0:${UBUNTU_DIST} -f docker/clam-full-size-rel.Dockerfile .
-  
-  - 'if [ "$TRAVIS_EVENT_TYPE" = "cron" ] ;
-        then echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          && docker push seahorn/clam_5.0:${UBUNTU_DIST};
-     fi '
-
 notifications:
    slack: seahornteam:NAUqZmZHFFviPH4ktQbJXgKu
    email:
@@ -32,5 +33,3 @@ notifications:
      - seahorn-build@googlegroups.com
      on_success: always
      on_failure: always
-
-

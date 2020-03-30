@@ -382,8 +382,6 @@ namespace clam {
     case OCT:                   return oct_domain_t::getDomainName();
     case PK:                    return pk_domain_t::getDomainName();
     case WRAPPED_INTERVALS:     return wrapped_interval_domain_t::getDomainName();
-    /* TEMPORARY */
-    case AA_INTERVALS:          return adapt_array_interval_domain_t::getDomainName();      
     default:                    return "none";
     }
   }
@@ -1137,9 +1135,6 @@ namespace clam {
 	  { bind_this(this, &InterClam_Impl::analyzeCg<boxes_domain_t>), "boxes" }}
       , { PK,
 	  { bind_this(this, &InterClam_Impl::analyzeCg<pk_domain_t>), "pk" }}
-      /* TEMPORARY */
-      , { AA_INTERVALS,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<adapt_array_interval_domain_t>), "aa-intervals" }}
       #endif
       #endif 	
     };    

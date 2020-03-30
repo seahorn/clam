@@ -149,10 +149,7 @@ ClamDomain("crab-dom",
        clEnumValN(TERMS_ZONES, "rtz",
 		   "Reduced product of term-dis-int and zones."),
        clEnumValN(WRAPPED_INTERVALS, "w-int",
-		  "Wrapped interval domain"),
-       // Temporary HACK: this option should be only for base (numerical domains)
-       clEnumValN(AA_INTERVALS, "aa-int",
-		   "Array adaptive domain with interval domain (experimental)")),
+		  "Wrapped interval domain")),
 #ifdef HAVE_ALL_DOMAINS
        cl::init(INTERVALS));
 #else

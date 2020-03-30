@@ -23,3 +23,5 @@
     use the old bottom-up analysis */
 #cmakedefine TOP_DOWN_INTER_ANALYSIS ${TOP_DOWN_INTER_ANALYSIS}
 
+/** Choose the array adaptive domain (default array smashing) */
+#cmakedefine HAVE_ARRAY_ADAPT ${HAVE_ARRAY_ADAPT}

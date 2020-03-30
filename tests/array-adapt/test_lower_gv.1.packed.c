@@ -1,15 +1,15 @@
-// RUN: %clam -m32 --crab-inter --crab-track=arr --crab-disable-array-smashing --crab-dom=aa-int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
-// RUN: %clam -m64 --crab-inter --crab-track=arr --crab-disable-array-smashing --crab-dom=aa-int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -m32 --crab-inter --crab-track=arr --crab-disable-array-smashing --crab-dom=int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -m64 --crab-inter --crab-track=arr --crab-disable-array-smashing --crab-dom=int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
- 
+
 //#include <stdio.h>
 
 extern int int_nd(void);
 extern void __CRAB_assume(int);
 extern void __CRAB_assert(int);
 
-typedef struct {
+typedef struct __attribute__((packed)) {
   char *name;
   char id;
 } S1;

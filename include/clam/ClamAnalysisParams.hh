@@ -26,8 +26,6 @@ enum CrabDomain
       , OCT
       , PK
       , WRAPPED_INTERVALS
-      /* TEMPORARY */
-      , AA_INTERVALS
   };
   
 ////

@@ -37,8 +37,6 @@ namespace llvm {
   DUMP_TO_LLVM_STREAM(clam::boxes_domain_t)
   DUMP_TO_LLVM_STREAM(clam::dis_interval_domain_t)
   DUMP_TO_LLVM_STREAM(clam::num_domain_t)
-  /* TEMPORARY */
-  DUMP_TO_LLVM_STREAM(clam::adapt_array_interval_domain_t)
   
   template <typename DomInfo>
   inline llvm::raw_ostream& operator<<(llvm::raw_ostream& o, 
@@ -161,9 +159,7 @@ namespace clam {
 		   boxes, dis_intv,
 		   oct, pk,
 		   num,
-		   w_intv,
-		   /* TEMPORARY*/
-		   aa_intv} id_t;
+		   w_intv} id_t;
     
     GenericAbsDomWrapper() { }
     
@@ -221,7 +217,5 @@ namespace clam {
    DEFINE_WRAPPER(OctApronDomainWrapper,oct_domain_t,oct)
    DEFINE_WRAPPER(PkApronDomainWrapper,pk_domain_t,pk)
    DEFINE_WRAPPER(NumDomainWrapper,num_domain_t,num)
-   /* TEMPORARY */
-   DEFINE_WRAPPER(AdaptArrayIntervalDomainWrapper,adapt_array_interval_domain_t,aa_intv)
 
 } // end namespace clam

@@ -164,6 +164,7 @@ def parseArgs(argv):
                     help='Compile with debug information')
     p.add_argument('-m', type=int, dest='machine',
                     help='Machine architecture MACHINE:[32,64]', default=32)
+    p.add_argument ('-I', default=None, dest='include_dir', help='Include')
     p.add_argument("--no-preprocess", dest="preprocess", 
                     help='Skip compilation and preprocessing', action='store_false',
                     default=True)
@@ -270,7 +271,7 @@ def parseArgs(argv):
                     choices=['int', 'ric', 'term-int',
                              'dis-int', 'term-dis-int', 'boxes',  
                              'zones', 'oct', 'pk', 'rtz',
-                             'w-int','aa-int'],
+                             'w-int'],
                     dest='crab_dom', default='zones')
     p.add_argument('--crab-widening-delay', 
                     type=int, dest='widening_delay', 
@@ -552,6 +553,20 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
 
+    if args.include_dir is not None:
+        if ':' in args.include_dir:
+            idirs = ["-I{}".format(x.strip())  \
+                for x in args.include_dir.split(":") if x.strip() != '']
+            clang_args.extend(idirs)
+        else:
+            clang_args.append ('-I' + args.include_dir)
+
+    include_dir = os.path.dirname (sys.argv[0])
+    include_dir = os.path.dirname (include_dir)
+    include_dir = os.path.join (include_dir, 'include')
+    clang_args.append ('-I' + include_dir)
+
+    
     # Disable always vectorization
     if not args.disable_scalarize:
         clang_args.append('-fno-vectorize') ## disable loop vectorization

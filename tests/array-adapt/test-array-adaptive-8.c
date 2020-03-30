@@ -1,12 +1,7 @@
-// RUN: %clam -m64 --crab-inter --crab-track=arr --crab-disable-array-smashing --crab-dom=aa-int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp --crab-widening-jump-set=20  --llvm-pp-loops "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -m32 --crab-inter --crab-track=arr --crab-disable-array-smashing --crab-dom=int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp --crab-widening-jump-set=20  --llvm-pp-loops "%s" 2>&1 | OutputCheck %s
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
-// XFAIL: *
-
-// With a relational domain we should be able to prove the property.
-// The problem is that after some LLVM optimizations we lose precision
-// after widening the variable "i" in the for loop in main.
-
+ 
 extern int int_nd(void);
 extern char* name_nd(void);
 

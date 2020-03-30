@@ -1,4 +1,4 @@
-// RUN: %clam -O0 --crab-inter --crab-track=arr --crab-disable-array-smashing --crab-dom=aa-int --crab-check=assert --crab-sanity-checks   "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --crab-inter --crab-track=arr --crab-disable-array-smashing --crab-dom=int --crab-check=assert --crab-sanity-checks   "%s" 2>&1 | OutputCheck %s
 // CHECK: ^4  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
 
