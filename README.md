@@ -455,11 +455,14 @@ Crab. Here some of them:
  
   Alternatively, points-to information can be provided to Clam by
   `llvm-dsa`/`sea-dsa` as a pre-analysis step if `--crab-track=arr`.
-  Clam uses this pre-analysis step to statically partition memory
-  into disjoint regions and then (under some conditions) translate
-  regions to Crab arrays. Then, Clam uses one of the Crab array
-  domains to reason about their contents. Currently, Clam only
-  supports array smashing but there are more precise array domains
-  implemented in Crab that just need to be integrated.
+  Clam uses this pre-analysis step to statically partition memory into
+  disjoint regions and then (under some conditions) translate regions
+  to Crab arrays. Then, Clam uses one of the Crab array domains to
+  reason about their contents. By default, Clam uses Crab _array
+  smashing_ domain which is fast but very imprecise. If compiled with
+  option `-DCLAM_NEW_ARRAY_DOMAIN=ON` then Clam will use a new Crab
+  array domain, called _array adaptive_ domain, which is more precise
+  but slower. The array adaptive domain will eventually replace array
+  smashing.
 	  
   

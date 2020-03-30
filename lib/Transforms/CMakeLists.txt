@@ -10,6 +10,7 @@ add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE}
   ExternalizeAddressTakenFunctions.cc
   PromoteAssume.cc  
   PromoteMalloc.cc
+  Scalarizer.cc
   )
 
 llvm_map_components_to_libnames(LLVM_LIBS

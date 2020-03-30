@@ -130,7 +130,8 @@ Region getShadowRegion(const sea_dsa::Cell &c,
   if (cellIdOpt.hasValue()) {
     auto cellId = cellIdOpt.getValue();
     auto ri = DsaToRegion(c, dl, sm.splitDsaNodes(),
-			  false, false, false);
+			  /* these should be user flags */
+			  true, false, false, false);
     if (ri.get_type() != UNTYPED_REGION) {
       return Region(cellId, ri, getUniqueScalar(c));
     }

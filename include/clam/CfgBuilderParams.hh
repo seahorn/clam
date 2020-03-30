@@ -18,6 +18,9 @@ struct CrabBuilderParams {
   bool memory_ssa;
   // Remove useless havoc operations 
   bool include_useless_havoc;
+  // Translation from pointers to Crab arrays must be more
+  // conservative if enabled
+  bool use_array_smashing;
   // Initialization of arrays for weak Crab array domains (e.g., smashing)
   bool initialize_arrays;
   // More aggressive initialization of arrays.
@@ -40,6 +43,7 @@ struct CrabBuilderParams {
     , lower_singleton_aliases(false)
     , memory_ssa(false)
     , include_useless_havoc(true)
+    , use_array_smashing(true)
     , initialize_arrays(true)
     , aggressive_initialize_arrays(false)
     , enable_bignums(false)
@@ -48,7 +52,8 @@ struct CrabBuilderParams {
   CrabBuilderParams(crab::cfg::tracked_precision _precision_level,
 		    bool _simplify, bool _interprocedural, bool _lower_singleton_aliases,
 		    bool _memory_ssa, 
-		    bool _include_useless_havoc, bool _initialize_arrays,
+		    bool _include_useless_havoc, bool _use_array_smashing,
+		    bool _initialize_arrays,
 		    bool _aggressive_initialize_arrays, bool _enable_bignums,
 		    bool _print_cfg):
     precision_level(_precision_level)
@@ -57,6 +62,7 @@ struct CrabBuilderParams {
     , lower_singleton_aliases(_lower_singleton_aliases)
     , memory_ssa(_memory_ssa)
     , include_useless_havoc(_include_useless_havoc)
+    , use_array_smashing(_use_array_smashing) 
     , initialize_arrays(_initialize_arrays)
     , aggressive_initialize_arrays(_aggressive_initialize_arrays)
     , enable_bignums(_enable_bignums)

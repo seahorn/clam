@@ -1,13 +1,16 @@
 /** 
- * Lower some global variable initializers into explicit
- * initialization code added in the entry block of main.
- *  
+ * Lower global variable initializers into explicit initialization
+ * code added inserted in the entry block of main. 
+ * 
+ * The initialization code mostly consists of a sequence of Store
+ * instructions. However, ConstantAggregateZero are treated specially.
+ *
  * Given a global variable with initializer like @g:
  * 
  *   %struct.gstate = type { i32, i32, [10 x i32] }
  *   @g = internal global %struct.gstate zeroinitializer, align 4
  * 
- * This pass inserts in the entry block of main :
+ * This option inserts in the entry block of main :
  * 
  * define i32 @main() {
  *   %_1 = getelementptr %struct.gstate* @g, i32 0, i32 0
@@ -18,13 +21,14 @@
  *   call void @verifier.zero_initializer.2([10 x i32]* _3)
  *   ...
  * }
- * 
- * Note: initializers can be partially lowered if they get too complex
- * for analysis.
- * 
+ *
+ * The reason to treat specially ConstantAggregateZero is to be able
+ * to model it in a concise way via special functions (understood by
+ * the analyzer) to avoid having too many Store instructions.
  */
 
 #include "llvm/Pass.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/DenseMap.h"
@@ -42,9 +46,8 @@
 
 using namespace llvm;
 
-//#define DEBUG_LOWER_GV
-
-#define DEBUG_TYPE "lower-gv"
+//#define LOWERGV_LOG(...) __VA_ARGS__
+#define LOWERGV_LOG(...)
 
 namespace clam {
 
@@ -52,19 +55,42 @@ namespace clam {
     
     static char ID;
 
-    template<typename S> 
-    SmallVector<Value*, 8> CreateGEPIndices(const S &stack){
-      // The first GEP index must be of pointer type.
-      // Struct fields can only be indexed by i32 integer constants.
-      // Array, pointers, and vectors can by indexed by any integer constant.
-      SmallVector<Value*, 8> indices;
-      for(unsigned i=0; i< stack.size(); i++){
-	if (i == 0)
-	  indices.push_back(ConstantInt::get(m_intptrty, stack[i]));
-	else
-	  indices.push_back(ConstantInt::get(m_intty, stack[i]));	  
+    // for debugging only
+    void printIndices(std::vector<APInt> &Indices) {
+      errs() << "[";
+      for(unsigned i=0,e=Indices.size();i<e;) {
+	errs() << Indices[i];
+	++i;
+	if (i < e) {
+	  errs() << ",";
+	}
       }
-      return indices;
+      errs() << "]";
+    }
+    
+    SmallVector<Value*, 8> CreateGEPIndices(const std::vector<APInt> &NIndices){
+      SmallVector<Value*, 8> Indices;
+      for(unsigned i=0; i< NIndices.size(); i++){
+	const APInt &Idx = NIndices[i];
+	IntegerType* ITy = IntegerType::get(*m_ctx, Idx.getBitWidth());	
+	Indices.push_back(ConstantInt::get(ITy, Idx.getZExtValue()));
+      }
+      return Indices;
+    }
+
+    void CreateStoreIntValue(Value &Base,
+			     const std::vector<APInt> &Indices,
+			     const ConstantInt &Val,
+			     IRBuilder<> &Builder) {
+      LOWERGV_LOG(errs() << "\tCreating Store with GEP with base=" << Base << " and indices=\n";
+		  for (unsigned i=0,sz=Indices.size();i<sz;++i) {
+		    errs() << "\t\t Bitwidth=" << Indices[i].getBitWidth()
+			   << " Val=" << Indices[i] << "\n";
+		  });      
+		  
+      Value *Ptr = Builder.CreateInBoundsGEP(&Base, CreateGEPIndices(Indices));
+      Builder.CreateAlignedStore(const_cast<ConstantInt*>(&Val), Ptr,
+       				 m_dl->getABITypeAlignment(Val.getType()));
     }
     
     Constant* getInitFn(Type *type, std::vector<Constant*> &LLVMUsed, Module &m) {
@@ -94,16 +120,22 @@ namespace clam {
       return fun;
     }
 
-    template<typename S>
-    void CreateZeroInitializerCallSite(Value &base, const S &stack,  
+    void CreateZeroInitializerCallSite(Value &base, const std::vector<APInt> &Indices,  
 				       IRBuilder<> &Builder,
 				       std::vector<Constant*> &LLVMUsed,
 				       Module &M) {
-      Value *ptr = Builder.CreateInBoundsGEP(&base, CreateGEPIndices(stack));
+
+      LOWERGV_LOG(errs() << "\tCreating zeroInitializer function: creating GEP with base="
+		         << base << " and indices=\n";
+		  for (unsigned i=0,sz=Indices.size();i<sz;++i) {
+		    errs() << "\t\t Bitwidth=" << Indices[i].getBitWidth()
+			   << " Val=" << Indices[i] << "\n";
+		  });      
+      
+      Value *ptr = Builder.CreateInBoundsGEP(&base, CreateGEPIndices(Indices));
       Function *f = CreateZeroInitializerFunction(ptr, LLVMUsed, M);
       Builder.CreateCall(f, ptr);
     }
-
 
     Constant* getIntInitFn(Type *ty,std::vector<Constant*> &LLVMUsed, Module &m) {
       assert(ty->isIntegerTy());
@@ -145,67 +177,143 @@ namespace clam {
       Builder.CreateCall(intfn, {&gv, gv.getInitializer()});
     }
 
-    template<typename S>
-    bool LowerZeroInitializer(Type* T, Value &base,
-			      IRBuilder<> &Builder, Module &M,
-			      std::vector<Constant*> &LLVMUsed,
-			      S &stack) {
+    bool LowerConstantAggregateZero(Type* T, Value &base,
+				    IRBuilder<> &Builder, Module &M,
+				    std::vector<Constant*> &LLVMUsed,
+				    std::vector<APInt> &Indices) {
       bool change = false;
-      if (isa<IntegerType> (T)) {
-	#ifdef DEBUG_LOWER_GV
-	IntegerType * IntTy = cast<IntegerType> (T);
-	llvm::errs () << "GEP " << base.getName() << " ";
-	for (unsigned j=0; j<stack.size();j++)
-	  llvm::errs () << stack[j] << " ";
-	llvm::errs () << "\n";
-	llvm::errs () << "TYPE=" << *IntTy << "\n";	  	
-	#endif
+      LOWERGV_LOG(errs () << "ConstantAggregateZero with Base=" << base.getName() << " and Indices=";
+		  printIndices(Indices);
+		  errs () << " and Type=" << *T << "\n";);
 
-	CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);
+      if (IntegerType *ITy = dyn_cast<IntegerType>(T)) {
+	LOWERGV_LOG(errs() << "\tIntegerType " << *ITy << "\n";);
+	ConstantInt* Zero = ConstantInt::get(ITy, 0);
+	CreateStoreIntValue(base, Indices, *Zero, Builder);
+	
+	// HACK: useful for array smashing
+	CreateZeroInitializerCallSite(base, Indices, Builder, LLVMUsed, M);
 	change = true;
       } else if (StructType *STy = dyn_cast<StructType> (T)) {
-	for (unsigned i=0; i < STy->getNumElements(); i++) {
+	LOWERGV_LOG(errs() << "\tStructType " << *STy << "\n";);
+	for (unsigned i=0; i < STy->getNumElements(); ++i) {
 	  Type* ETy = STy->getElementType(i);
-	  stack.push_back(i);
-	  change |= LowerZeroInitializer(ETy, base, Builder, M, LLVMUsed, stack);
+	  //uint64_t ElementSize = m_dl->getTypeAllocSize(ETy);
+	  //uint64_t IndexSize = ElementSize * 8;
+	  uint64_t IndexSize = 32;
+	  Indices.push_back(APInt(IndexSize, i));
+	  change |= LowerConstantAggregateZero(ETy, base, Builder, M, LLVMUsed, Indices);
+	  Indices.pop_back();
 	}
       } else if (ArrayType *ATy = dyn_cast<ArrayType> (T)) {
+	LOWERGV_LOG(errs() << "\tArrayType " << *ATy << "\n";);
+		
 	if (ATy->getElementType()->isIntegerTy()) {
-          #ifdef DEBUG_LOWER_GV
-	  llvm::errs () << "GEP " << base.getName() << " ";
-	  for (unsigned j=0; j<stack.size();j++)
-	    llvm::errs () << stack[j] << " ";
-	  llvm::errs () << "\n";
-	  llvm::errs () << "TYPE=" << *ATy << "\n";	  
-	  #endif
-
-	  CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);	  
+	  // XXX: we don't lower the array into individual stores.  we
+	  //      add instead a special initialization function that the
+	  //      analyzer can understand and hopefully be more
+	  //      efficient.
+	  CreateZeroInitializerCallSite(base, Indices, Builder, LLVMUsed, M);
 	  change = true;
 	} else {
-	  // CLAM_WARNING("skipped initialization of " << *ATy);
+	  for (unsigned i=0; i < ATy->getNumElements(); ++i){
+	    //uint64_t ElementSize = m_dl->getTypeAllocSize(ATy->getElementType());
+	    //uint64_t IndexSize = ElementSize * 8;
+	    uint64_t IndexSize = 32;
+	    Indices.push_back(APInt(IndexSize, i));
+	    change |= LowerConstantAggregateZero(ATy->getElementType(), base, Builder, M,
+						 LLVMUsed, Indices);
+	    Indices.pop_back();	      
+	  }
 	}
-      } else if (isa<PointerType> (T)) {
-        #ifdef DEBUG_LOWER_GV
-	PointerType *PTy = cast<PointerType> (T);
-	llvm::errs () << "GEP " << base.getName() << " ";
-	for (unsigned j=0; j<stack.size();j++)
-	  llvm::errs () << stack[j] << " ";
-	llvm::errs () << "\n";
-	llvm::errs () << "TYPE=" << *PTy << "\n";
-        #endif
-
-	// Note that we don't go recursively since it would require
-	// loading the pointer before continuing calculation.	
-	CreateZeroInitializerCallSite(base, stack, Builder, LLVMUsed, M);
-	change = true;
+	
       } else {
-	// CLAM_WARNING("skipped initialization of " << *T);
+	// ignore the rest of types
       }
 
-      stack.pop_back();	      
       return change;
     }
 
+    
+    bool LowerInitializer(const Constant *C, Value &Base, IRBuilder<> &Builder,
+			  Module &M, std::vector<Constant*> &LLVMUsed,
+    			  std::vector<APInt> &Indices) {
+      LOWERGV_LOG(errs() << "Lowering " << *C << " indices=";
+		  printIndices(Indices);
+		  errs() << "\n";);
+      bool change = false;      
+      if (isa<ConstantPointerNull>(C) ||
+	  isa<ConstantFP>(C) ||
+	  isa<UndefValue>(C)) {
+	// ignore these cases
+      } else if (const ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(C)) {
+	// ignore C strings
+	if (!(CDS->isString() || CDS->isCString())) {
+	  //uint64_t ElementSize = CDS->getElementByteSize();
+	  //uint64_t IndexSize = ElementSize * 8;
+	  //LOWERGV_LOG(errs() << "\tCDS element size=" 
+	  //                   << ElementSize << " num elements=" << CDS->getNumElements() << "\n";);
+	  LOWERGV_LOG(errs() << "\ConstanttDataSequential=" << *CDS << "\n";);
+	  uint64_t IndexSize = 32;	  	  
+	  for (unsigned i=0, e = CDS->getNumElements(); i < e; ++i) {
+	    APInt Index(IndexSize, i);
+	    Indices.push_back(Index);
+	    change |= LowerInitializer(CDS->getElementAsConstant(i), Base,
+				       Builder, M, LLVMUsed, Indices);
+	  }
+	}
+      } else if (const ConstantVector *CP = dyn_cast<ConstantVector>(C)) { 
+    	//unsigned ElementSize = m_dl->getTypeAllocSize(CP->getType()->getElementType());
+	//uint64_t IndexSize = ElementSize * 8;
+	// LOWERGV_LOG(errs() << "\tCV element size=" 
+	// 	    << ElementSize << " num elements=" << CP->getNumOperands() << "\n";);
+
+	LOWERGV_LOG(errs() << "\tConstantVector=" << *CP << "\n";);	
+	uint64_t IndexSize = 32;	
+    	for (unsigned i = 0, e = CP->getNumOperands(); i < e; ++i) {
+	  APInt Index(IndexSize, i);
+    	  Indices.push_back(Index);
+    	  change |= LowerInitializer(CP->getOperand(i), Base, Builder, M, LLVMUsed, Indices);
+    	}
+      } else if (isa<ConstantAggregateZero>(C)) {
+	change |= LowerConstantAggregateZero(C->getType(), Base, Builder, M, LLVMUsed, Indices);
+      } else if (const ConstantArray *CPA = dyn_cast<ConstantArray>(C)) {
+    	//unsigned ElementSize = m_dl->getTypeAllocSize(CPA->getType()->getElementType());
+	//uint64_t IndexSize = ElementSize * 8;
+	// LOWERGV_LOG(errs() << "\tCA element size=" 
+	// 	    << ElementSize << " num elements=" << CPA->getNumOperands() << "\n";);
+
+	LOWERGV_LOG(errs() << "\tConstantArray=" << *CPA << "\n";);			
+	uint64_t IndexSize = 32;
+    	for (unsigned i = 0, e = CPA->getNumOperands(); i < e; ++i) {
+	  APInt Index(IndexSize, i);
+    	  Indices.push_back(Index);	  
+    	  change |= LowerInitializer(CPA->getOperand(i), Base, Builder, M, LLVMUsed, Indices);
+    	}
+      } else if (const ConstantStruct *CPS = dyn_cast<ConstantStruct>(C)) {
+	LOWERGV_LOG(errs() << "\tConstantStruct= " << *CPS << "\n";);
+	
+	uint64_t IndexSize = 32;
+    	const StructLayout *SL = m_dl->getStructLayout(cast<StructType>(CPS->getType()));
+    	for (unsigned i = 0, e = CPS->getNumOperands(); i < e; ++i) {
+	  //APInt Index(IndexSize, SL->getElementOffset(i));
+	  APInt Index(IndexSize, i);
+    	  Indices.push_back(Index);	  
+    	  change |= LowerInitializer(CPS->getOperand(i), Base, Builder, M, LLVMUsed, Indices);
+    	}
+      } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(C)) {
+
+	LOWERGV_LOG(errs() << "ConstantInteger " << *CI << " indices=";
+		    printIndices(Indices);
+		    errs() << "\n";);
+	CreateStoreIntValue(Base, Indices, *CI, Builder);
+	change = true;
+      }
+
+      Indices.pop_back();      
+      return change;
+    }
+    
     /// C may have non-instruction users. Can all of those users be turned into
     /// instructions?
     static bool allNonInstructionUsersCanBeMadeInstructions(Constant *C) {
@@ -272,6 +380,7 @@ namespace clam {
     /** callgraph **/
     CallGraph *m_cg;
     const DataLayout *m_dl;
+    LLVMContext *m_ctx;
     
   public:
     
@@ -284,17 +393,16 @@ namespace clam {
       m_voidty = Type::getVoidTy(M.getContext());
       m_intptrty = cast<IntegerType>(m_dl->getIntPtrType(M.getContext(), 0));
       m_intty = IntegerType::get(M.getContext(), 32);      
-
-      //llvm::errs () << "IntegerPtrType:" << *m_intptrty << "\n";
-      //llvm::errs () << "IntegerType:" << *m_intty << "\n";      
+      m_ctx = &M.getContext();
       
       Function *f = M.getFunction ("main");
       if (!f) return false;
 
       std::vector<GlobalVariable*> gvs;
       for (GlobalVariable &gv: llvm::make_range(M.global_begin(), M.global_end())) {
-        if (gv.hasInitializer () && gv.getName() != "llvm.used")
+        if (gv.hasInitializer () && gv.getName() != "llvm.used") {	  
 	  gvs.push_back(&gv);
+	}
       }
       
       if (gvs.empty()) return false;
@@ -317,13 +425,9 @@ namespace clam {
       Builder.SetInsertPoint(&f->getEntryBlock(), f->getEntryBlock().begin ());
       bool change=false;
       for (GlobalVariable *gv : gvs) {
-	// -- We only lower ConstantAggregateZero and ConstantInt.
-	// 
-	// At some point we might want to lower also
-	// ConstantDataSequential constants. const char* are usually
-	// translated into that. We don't bother for now since
-	// crab-llvm does not focus on strings.
 	assert(gv->hasInitializer());
+
+	// Trivial case first
 	if (isa<ConstantInt>(gv->getInitializer())) {
 	  GlobalStatus GS;
 	  bool AddressTaken = GlobalStatus::analyzeGlobal(gv, GS);
@@ -339,15 +443,23 @@ namespace clam {
 	    makeAllConstantUsesInstructions(gv);
 	    gv->replaceAllUsesWith(Alloca);
 	    gv->eraseFromParent();
-	  } else {
-	    CreateIntInitializerCallSite(*gv, Builder, MergedVars, M);    
+	    change = true;
+	    continue;
 	  }
-	  change = true;
-	} else if (isa<ConstantAggregateZero>(gv->getInitializer())) {
-	  std::vector<uint64_t> stack = {0};
-	  change |= LowerZeroInitializer(gv->getInitializer()->getType(), *gv,
-					 Builder, M, MergedVars, stack);
 	}
+
+	// XXX: we choose to add both the special initialization
+	// function and the lowered Store instruction.
+	if (isa<ConstantInt>(gv->getInitializer())) {
+	  // HACK: useful only for array smashing-like domains
+	  CreateIntInitializerCallSite(*gv, Builder, MergedVars, M);
+	  change = true;
+	}	
+
+	APInt ZeroIdx = APInt(m_intptrty->getBitWidth(), 0);
+	std::vector<APInt> Indices = {ZeroIdx};
+	change |=
+	  LowerInitializer(gv->getInitializer(), *gv, Builder, M, MergedVars, Indices);
       }
 
 
