@@ -2449,8 +2449,8 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     return;
   }
 
-  if (callee->isDeclaration() || callee->isVarArg() ||
-      !m_params.interprocedural) {
+  bool is_external = callee->isDeclaration() || callee->isVarArg() || !m_params.interprocedural;
+  if (is_external && !isCrabIntrinsic(*callee)) {
     /**
      * If external or we don't perform inter-procedural reasoning
      * then we make sure all modified arrays and return value of
@@ -2489,7 +2489,7 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
   }
 
   /**
-   * Translate a LLVM callsite
+   * Translate a LLVM callsite or Crab intrinsic
    *     o := foo(i1,...,i_n)
    *
    * into a crab callsite
@@ -2597,8 +2597,13 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
       outputs.push_back(m_lfac.mkArrayVar(a));
     }
   }
-  // -- Finally, add the callsite
-  m_bb.callsite(callee->getName().str(), outputs, inputs);
+
+  // -- Finally, add the callsite or crab intrinsic
+  if (isCrabIntrinsic(*callee)) {
+    m_bb.intrinsic(getCrabIntrinsicName(*callee), outputs, inputs);
+  } else {
+    m_bb.callsite(callee->getName().str(), outputs, inputs);
+  }
 }
 
 void CrabInstVisitor::visitUnreachableInst(UnreachableInst &I) {

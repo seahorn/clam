@@ -201,6 +201,16 @@ bool isVerifierCall(const Function &F) {
           isSeaHornFail(F));
 }
 
+bool isCrabIntrinsic(const Function &F) {
+  return (F.getName().startswith("__CRAB_intrinsic_"));
+}
+
+std::string getCrabIntrinsicName(const Function &F) {
+  assert(isCrabIntrinsic(F));
+  StringRef res = F.getName().split("__CRAB_intrinsic_").second;
+  return res.str();
+}
+  
 bool isZeroInitializer(const Function &F) {
   return F.getName().startswith("verifier.zero_initializer");
 }
