@@ -83,10 +83,13 @@ namespace clam {
   typedef crab::cg::call_graph<cfg_ref_t> call_graph_t; 
   typedef crab::cg::call_graph_ref<call_graph_t> call_graph_ref_t;
   typedef std::unordered_map<cfg_ref_t, const liveness_t*> liveness_map_t;
-  typedef DenseMap<const BasicBlock*, lin_cst_sys_t> assumption_map_t;
   typedef typename IntraClam::wrapper_dom_ptr wrapper_dom_ptr;    
   typedef typename IntraClam::checks_db_t checks_db_t;
-  typedef typename IntraClam::invariant_map_t invariant_map_t;
+  typedef typename IntraClam::abs_dom_map_t abs_dom_map_t;
+  typedef typename IntraClam::lin_csts_map_t lin_csts_map_t;
+
+  //typedef typename IntraClam::assumption_map_t assumption_map_t;
+
   /** End typedefs **/
 
   #if 0
@@ -108,15 +111,15 @@ namespace clam {
   /** convenient wrapper for the analysis datastructures **/
   struct AnalysisResults {
     // invariants that hold at the entry of a block
-    invariant_map_t &premap;
+    abs_dom_map_t &premap;
     // invariants that hold at the exit of a block
-    invariant_map_t &postmap;
+    abs_dom_map_t &postmap;
     // infeasible edges 
     edges_set &infeasible_edges;
     // database with all the checks
     checks_db_t &checksdb;
 
-    AnalysisResults(invariant_map_t &pre, invariant_map_t &post,
+    AnalysisResults(abs_dom_map_t &pre, abs_dom_map_t &post,
 		    edges_set& false_edges,  checks_db_t &db)
       : premap(pre)
       , postmap(post)
@@ -125,7 +128,7 @@ namespace clam {
   };
 
   /** return invariant for block in table but filtering out shadow_varnames **/
-  static wrapper_dom_ptr lookup(const invariant_map_t &table,
+  static wrapper_dom_ptr lookup(const abs_dom_map_t &table,
 				const llvm::BasicBlock &block,
 				const std::vector<varname_t> &shadow_varnames) {
     auto it = table.find(&block);
@@ -149,7 +152,7 @@ namespace clam {
   }   
 
   /** update table with pre or post invariants **/
-  static bool update(invariant_map_t &table, 
+  static bool update(abs_dom_map_t &table, 
 		     const llvm::BasicBlock &block, wrapper_dom_ptr absval) {
     bool already = false;
     auto it = table.find(&block);
@@ -184,14 +187,14 @@ namespace clam {
     /** Annotation for invariants **/
     class invariant_annotation: public block_annotation {
     private:
-      const invariant_map_t &m_premap;
-      const invariant_map_t &m_postmap;
+      const abs_dom_map_t &m_premap;
+      const abs_dom_map_t &m_postmap;
       std::vector<varname_t> m_shadow_vars;
       
     public:
       invariant_annotation(const llvm_variable_factory &vfac,
-			   const invariant_map_t &premap,
-			   const invariant_map_t &postmap,
+			   const abs_dom_map_t &premap,
+			   const abs_dom_map_t &postmap,
 			   const bool keep_shadows)
 	: block_annotation(), m_premap(premap), m_postmap(postmap) {
 	if (keep_shadows) {
@@ -424,7 +427,10 @@ namespace clam {
 
     void Analyze(AnalysisParams &params,
 		 const llvm::BasicBlock *entry,
-		 const assumption_map_t &assumptions,
+		 // assumptions can be provided in abs_dom format or
+		 // as linear constraints.
+		 const abs_dom_map_t  &abs_dom_assumptions,
+		 const lin_csts_map_t &lin_csts_assumptions,
 		 AnalysisResults &results) {
 
       if (!m_cfg_builder) {
@@ -461,9 +467,10 @@ namespace clam {
       }
       
       if (intra_analyses.count(params.dom)) {
-      	intra_analyses.at(params.dom).analyze(params, entry, assumptions,
-					    (params.run_liveness)? live : nullptr,
-					     results);
+      	intra_analyses.at(params.dom).analyze(params, entry,
+					      abs_dom_assumptions, lin_csts_assumptions,
+					      (params.run_liveness)? live : nullptr,
+					      results);
       } else {
       	crab::outs() << "Warning: abstract domain not found or enabled.\n"
 		     << "Compile with -DALL_DOMAINS=ON.\n";
@@ -478,7 +485,7 @@ namespace clam {
 		     const std::vector<const llvm::BasicBlock*>& blocks,
 		     bool layered_solving, 
 		     std::vector<crab::cfg::statement_wrapper>& core,
-		     bool populate_inv_map, invariant_map_t& post) const { 
+		     bool populate_inv_map, abs_dom_map_t& post) const { 
 		     
       assert(m_cfg_builder);
 
@@ -522,7 +529,9 @@ namespace clam {
     template<typename Dom>
     void analyzeCfg(const AnalysisParams &params,
 		    const BasicBlock *entry,
-		    const assumption_map_t &assumptions, const liveness_t *live,
+		    const abs_dom_map_t &abs_dom_assumptions,
+		    const lin_csts_map_t &lin_csts_assumptions,
+		    const liveness_t *live,
 		    AnalysisResults &results) {
       
       // -- we use the combined forward/backward analyzer
@@ -542,9 +551,17 @@ namespace clam {
       // -- run intra-procedural analysis
       intra_analyzer_t analyzer(get_cfg());
       typename intra_analyzer_t::assumption_map_t crab_assumptions;
-      // reconstruct a crab assumption map from our assumption DenseMap
-      for (auto &kv: assumptions) {
-	Dom absval = Dom::top();
+
+      // Reconstruct a crab assumption map from an abs_dom_map_t
+      for (auto &kv: abs_dom_assumptions) {
+	Dom absval;
+	getAbsDomWrappee(kv.second, absval);
+	crab_assumptions.insert({m_cfg_builder->get_crab_basic_block(kv.first), absval});
+      }
+      
+      // Reconstruct a crab assumption map from a lin_csts_map_t
+      for (auto &kv: lin_csts_assumptions) {
+	Dom absval;
 	absval += kv.second;
 	crab_assumptions.insert({m_cfg_builder->get_crab_basic_block(kv.first), absval});
       }
@@ -663,7 +680,7 @@ namespace clam {
     void wrapperPathAnalyze(const std::vector<basic_block_label_t>& path,
 			    std::vector<crab::cfg::statement_wrapper>& core,
 			    bool layered_solving, bool populate_inv_map,
-			    invariant_map_t& post, bool &res) {
+			    abs_dom_map_t& post, bool &res) {
       using path_analyzer_t = path_analyzer<cfg_ref_t, AbsDom>;
       
       AbsDom init;
@@ -691,7 +708,8 @@ namespace clam {
     struct intra_analysis {
       std::function<void(const AnalysisParams&,
 			 const BasicBlock*,
-			 const assumption_map_t&,
+			 const abs_dom_map_t&,
+			 const lin_csts_map_t&,			 
 			 const liveness_t*,
 			 AnalysisResults&)> analyze;
       std::string name;
@@ -700,7 +718,7 @@ namespace clam {
     struct path_analysis {
       std::function<void(const std::vector<basic_block_label_t>&,
 			 std::vector<crab::cfg::statement_wrapper>&,
-			 bool, bool, invariant_map_t&,bool&)> analyze;
+			 bool, bool, abs_dom_map_t&,bool&)> analyze;
       std::string name;
     };
     
@@ -764,24 +782,44 @@ namespace clam {
   }
   
   void IntraClam::analyze(AnalysisParams &params,
-			  const assumption_map_t &assumptions) {    
+			  const abs_dom_map_t &assumptions) {    
     AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
-    m_impl->Analyze(params, &(m_fun.getEntryBlock()), assumptions, results);
+    lin_csts_map_t lin_csts_assumptions;
+    m_impl->Analyze(params, &(m_fun.getEntryBlock()),
+		    assumptions, lin_csts_assumptions, results);
   }
 
   void IntraClam::analyze(AnalysisParams &params,
 			  const llvm::BasicBlock *entry,
-			  const assumption_map_t &assumptions) {
+			  const abs_dom_map_t &assumptions) {
     AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
-    m_impl->Analyze(params, entry, assumptions, results);
+    lin_csts_map_t lin_csts_assumptions;    
+    m_impl->Analyze(params, entry,
+		    assumptions, lin_csts_assumptions, results);
   }
-  
+
+  void IntraClam::analyze(AnalysisParams &params,
+			  const lin_csts_map_t &assumptions) {    
+    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+    abs_dom_map_t abs_dom_assumptions;
+    m_impl->Analyze(params, &(m_fun.getEntryBlock()),
+		    abs_dom_assumptions, assumptions, results);
+  }
+
+  void IntraClam::analyze(AnalysisParams &params,
+			  const llvm::BasicBlock *entry,
+			  const lin_csts_map_t  &assumptions) {
+    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+    abs_dom_map_t abs_dom_assumptions;    
+    m_impl->Analyze(params, entry, abs_dom_assumptions, assumptions, results);
+  }
+
   template<>
   bool IntraClam::path_analyze(const AnalysisParams& params,
 			       const std::vector<const llvm::BasicBlock*>& path,
 			       bool layered_solving, 
 			       std::vector<crab::cfg::statement_wrapper>& core) const {
-    invariant_map_t post_conditions;
+    abs_dom_map_t post_conditions;
     return m_impl->pathAnalyze(params, path, layered_solving, core, false, post_conditions);
 			       
   }
@@ -791,7 +829,7 @@ namespace clam {
 			       const std::vector<const llvm::BasicBlock*>& path,
 			       bool layered_solving, 
 			       std::vector<crab::cfg::statement_wrapper>& core,
-			       invariant_map_t& post_conditions) const {
+			       abs_dom_map_t& post_conditions) const {
     return m_impl->pathAnalyze(params, path, layered_solving, core, true, post_conditions);
   }
 
@@ -855,7 +893,10 @@ namespace clam {
     }
     
     void Analyze(AnalysisParams &params,
-		 const assumption_map_t &/*assumptions*/ /*unused*/,
+		 // assumptions can be provided in abs_dom format or
+		 // as linear constraints.
+		 const abs_dom_map_t &abs_dom_assumptions /*unused*/,
+		 const lin_csts_map_t &lin_csts_assumptions /*unused*/,
 		 AnalysisResults &results) {
 
       // If the number of live variables per block is too high we
@@ -910,6 +951,9 @@ namespace clam {
       
       // -- run the interprocedural analysis
       if (!CrabBuildOnlyCFG) {
+	////
+	// TODO: pass assumptions to the inter-procedural analysis
+	/////
 #ifndef TOP_DOWN_INTER_ANALYSIS	
 	if (inter_analyses.count({params.sum_dom, params.dom})) {
 	  inter_analyses.at({params.sum_dom, params.dom}).analyze(params, results);
@@ -1045,9 +1089,9 @@ namespace clam {
 		#if 0
 		if (params.stats) {
 		  unsigned num_block_invars = 0;
-		  // TODO CRAB: for boxes we would like to use
-		  // to_disjunctive_linear_constraint_system() but it needs to
-		  // be exposed to all domains
+		  // XXX: for boxes we should use
+		  // to_disjunctive_linear_constraint_system() but it
+		  // can be very expensive.
 		  num_block_invars += pre.to_linear_constraint_system().size();
 		  num_invars += num_block_invars;
 		  if (num_block_invars > 0) num_nontrivial_blocks++;
@@ -1202,9 +1246,17 @@ namespace clam {
   }
   
   void InterClam::analyze(AnalysisParams &params,
-			      const assumption_map_t &assumptions) {
+			  const abs_dom_map_t &assumptions) {
     AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
-    m_impl->Analyze(params, assumptions, results);
+    lin_csts_map_t lin_csts_assumptions;
+    m_impl->Analyze(params, assumptions, lin_csts_assumptions, results);
+  }
+
+  void InterClam::analyze(AnalysisParams &params,
+			  const lin_csts_map_t &assumptions) {
+    AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+    abs_dom_map_t abs_dom_assumptions;
+    m_impl->Analyze(params, abs_dom_assumptions, assumptions, results);
   }
 
   wrapper_dom_ptr InterClam::get_pre(const llvm::BasicBlock *block,
@@ -1356,7 +1408,10 @@ namespace clam {
     if (CrabInter){
       InterClam_Impl inter_crab(M, *m_cfg_builder_man);
       AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
-      inter_crab.Analyze(m_params, assumption_map_t(), results);
+      /* -- empty assumptions */      
+      abs_dom_map_t abs_dom_assumptions;
+      lin_csts_map_t lin_csts_assumptions;      
+      inter_crab.Analyze(m_params, abs_dom_assumptions, lin_csts_assumptions, results);
     } else {
       unsigned fun_counter = 1;
       for (auto &F : M) {
@@ -1404,9 +1459,13 @@ namespace clam {
   }
 
   bool ClamPass::runOnFunction(Function &F) {
-    IntraClam_Impl crab(F, *m_cfg_builder_man);
+    IntraClam_Impl intra_crab(F, *m_cfg_builder_man);
     AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
-    crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
+    /* -- empty assumptions */
+    abs_dom_map_t abs_dom_assumptions;
+    lin_csts_map_t lin_csts_assumptions;          
+    intra_crab.Analyze(m_params, &F.getEntryBlock(),
+		       abs_dom_assumptions, lin_csts_assumptions, results);
     return false;
   }
   

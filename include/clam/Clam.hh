@@ -38,7 +38,7 @@ namespace clam {
    *    IntraClam ic(fun, man);
    * 
    *    AnalysisParams params;
-   *    ic.analyze(params, assumption_map_t());
+   *    ic.analyze(params);
    *    for (auto &b: fun) {
    *      if (auto dom_ptr = ic.get_pre(&b)) {
    *         crab::outs << *dom_ptr << "\n";
@@ -46,21 +46,23 @@ namespace clam {
    *    }
    **/ 
   class IntraClam {
-    
   public:
     
-    typedef std::shared_ptr<GenericAbsDomWrapper> wrapper_dom_ptr;
-    typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
-    typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
-    typedef crab::checker::checks_db checks_db_t;
+    using wrapper_dom_ptr = std::shared_ptr<GenericAbsDomWrapper>;;
+    using abs_dom_map_t = llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr>;
+    using lin_csts_map_t = llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t>;    
+    using checks_db_t = crab::checker::checks_db;
+    // for backward compatibility with SeaHorn
+    using invariant_map_t = abs_dom_map_t;
+    using assumption_map_t = lin_csts_map_t;
     
   private:
 
     std::unique_ptr<IntraClam_Impl> m_impl;
     CrabBuilderManager &m_builder_man;
     const llvm::Function &m_fun;
-    invariant_map_t m_pre_map;
-    invariant_map_t m_post_map;
+    abs_dom_map_t m_pre_map;
+    abs_dom_map_t m_post_map;
     edges_set m_infeasible_edges;    
     checks_db_t m_checks_db;
     
@@ -80,17 +82,28 @@ namespace clam {
 
     /* return the manager used to build all CFGs */
     CrabBuilderManager& get_cfg_builder_man();    
-    
+
     /**
      * Call crab analysis on the CFG under assumptions.
      **/    
-    void analyze(AnalysisParams &params, const assumption_map_t &assumptions);
+    void analyze(AnalysisParams &params, const abs_dom_map_t &assumptions = abs_dom_map_t());
 
     /**
      * Call crab analysis on the CFG under assumptions starting from entry
      **/    
     void analyze(AnalysisParams &params, const llvm::BasicBlock *entry,
-		 const assumption_map_t &assumptions);
+		 const abs_dom_map_t &assumptions);
+    
+    /**
+     * Call crab analysis on the CFG under assumptions.
+     **/    
+    void analyze(AnalysisParams &params, const lin_csts_map_t &assumptions);
+
+    /**
+     * Call crab analysis on the CFG under assumptions starting from entry
+     **/    
+    void analyze(AnalysisParams &params, const llvm::BasicBlock *entry,
+		 const lin_csts_map_t &assumptions);
     
     /**
      * Compute strongest post-condition of an acyclic path.
@@ -105,7 +118,7 @@ namespace clam {
 		      const std::vector<const llvm::BasicBlock*>& path,
 		      /* use gradually more expensive domains until unsat is proven*/
 		      bool layered_solving,
-		      std::vector<Statement>& core, invariant_map_t& post) const;
+		      std::vector<Statement>& core, abs_dom_map_t& post) const;
     
     template<typename Statement>
     bool path_analyze(const AnalysisParams& params,
@@ -141,18 +154,21 @@ namespace clam {
   class InterClam {
     
   public:
-    
-    typedef std::shared_ptr<GenericAbsDomWrapper> wrapper_dom_ptr;
-    typedef llvm::DenseMap<const llvm::BasicBlock*, wrapper_dom_ptr> invariant_map_t;
-    typedef llvm::DenseMap<const llvm::BasicBlock*, lin_cst_sys_t> assumption_map_t;
-    typedef crab::checker::checks_db checks_db_t;
+
+    using wrapper_dom_ptr = typename IntraClam::wrapper_dom_ptr;
+    using abs_dom_map_t = typename IntraClam::abs_dom_map_t;
+    using lin_csts_map_t = typename IntraClam::lin_csts_map_t;    
+    using checks_db_t = typename IntraClam::checks_db_t;
+    // for backward compatibility with SeaHorn
+    using invariant_map_t = abs_dom_map_t;
+    using assumption_map_t = lin_csts_map_t;    
     
   private:
 
     std::unique_ptr<InterClam_Impl> m_impl;
     CrabBuilderManager &m_builder_man;
-    invariant_map_t m_pre_map;
-    invariant_map_t m_post_map;
+    abs_dom_map_t m_pre_map;
+    abs_dom_map_t m_post_map;
     edges_set m_infeasible_edges;    
     checks_db_t m_checks_db;
     
@@ -176,8 +192,12 @@ namespace clam {
     /**
      * Call crab analysis on the call graph under assumptions.
      **/    
-    void analyze(AnalysisParams &params, const assumption_map_t &assumptions);
+    void analyze(AnalysisParams &params, const abs_dom_map_t &assumptions);
 
+    /**
+     * Call crab analysis on the call graph under assumptions.
+     **/    
+    void analyze(AnalysisParams &params, const lin_csts_map_t &assumptions);
     
     /**
      * Return invariants that hold at the entry of b
@@ -205,12 +225,12 @@ namespace clam {
    **/
   class ClamPass : public llvm::ModulePass {
 
-    typedef typename IntraClam::wrapper_dom_ptr wrapper_dom_ptr;
-    typedef typename IntraClam::invariant_map_t invariant_map_t;
-    typedef typename IntraClam::checks_db_t checks_db_t;
+    using wrapper_dom_ptr = typename IntraClam::wrapper_dom_ptr;
+    using abs_dom_map_t = typename IntraClam::abs_dom_map_t;
+    using checks_db_t = typename IntraClam::checks_db_t;
 
-    invariant_map_t m_pre_map;
-    invariant_map_t m_post_map;
+    abs_dom_map_t m_pre_map;
+    abs_dom_map_t m_post_map;
     edges_set m_infeasible_edges;
     std::unique_ptr<CrabBuilderManager> m_cfg_builder_man;
     checks_db_t m_checks_db; 
