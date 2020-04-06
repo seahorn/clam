@@ -605,8 +605,12 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   basic_block_t &m_bb;
   unsigned int m_object_id;
   bool m_has_seahorn_fail;
+  /**** 
+   * Here state that must survive to future invocations to
+   * CrabInstVisitor.
+   ****/
   // map gep to a crab variable
-  DenseMap<const GetElementPtrInst*, var_t> m_gep_map;
+  DenseMap<const GetElementPtrInst*, var_t> &m_gep_map;
   // reverse **partial** map from Crab statements to LLVM instructions
   DenseMap<const statement_t *, const Instruction *> &m_rev_map;
   // to initialize arrays
@@ -625,9 +629,11 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   /* Evaluate the offset of an object pointed to by v statically */
   Optional<z_number> evalOffset(Value &v, LLVMContext &ctx);
   /* 
-     Try to figure out an arithmetic offset for load or store pointer operand.
+   * Try extra a Crab arithmetic offset from load or store pointer
+   * operand.
    */
-  lin_exp_t inferArrayIndex(Value *v, LLVMContext &ctx, llvm_variable_factory &vfac);
+  lin_exp_t inferArrayIndex(Value *v, LLVMContext &ctx, Region reg,
+			    llvm_variable_factory &vfac);
   
   unsigned getMaxBitWidthFromGepIndexes(GetElementPtrInst &I);
   /*
@@ -672,7 +678,9 @@ public:
       crabLitFactory &lfac, HeapAbstraction &mem, sea_dsa::ShadowMem *sm,
       const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
-      std::set<Region> &init_regions, const CrabBuilderParams &params);
+      std::set<Region> &init_regions,
+      DenseMap<const GetElementPtrInst*, var_t> &gep_map,
+      const CrabBuilderParams &params);
 
   bool has_seahorn_fail() { return m_has_seahorn_fail; }
 
@@ -751,7 +759,7 @@ Optional<z_number> CrabInstVisitor::evalOffset(Value &v, LLVMContext &ctx) {
   return llvm::None;
 }
 
-lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx,
+lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx, Region reg,
 					   llvm_variable_factory &vfac) {
   auto offsetOpt = evalOffset(*v, ctx);
   if (offsetOpt.hasValue()) {
@@ -761,10 +769,10 @@ lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx,
     if (const GetElementPtrInst *GEPI = dyn_cast<GetElementPtrInst>(v)) {
       auto it = m_gep_map.find(GEPI);
       if (it == m_gep_map.end()) {
-	// TODO: Without sea-dsa shadow mem should not happen but
-	// otherwise it's possible because we don't currently extract
-	// regions from gep instructions.
-	CLAM_WARNING("could not find shadow gep variable for ", *GEPI);
+	if (!reg.isUnknown()) {
+	  // This is unexpected so we print a warning
+	  CLAM_WARNING("Could not find shadow gep variable for " << *GEPI);
+	}
 	return getUnconstrainedArrayIdxVar(vfac, 32);
       } else {
 	return it->second;
@@ -1485,9 +1493,11 @@ CrabInstVisitor::CrabInstVisitor(
     crabLitFactory &lfac, HeapAbstraction &mem, sea_dsa::ShadowMem *sm,
     const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
     llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
-    std::set<Region> &init_regions, const CrabBuilderParams &params)
+    std::set<Region> &init_regions,
+    DenseMap<const GetElementPtrInst*, var_t> &gep_map,
+    const CrabBuilderParams &params)
   : m_lfac(lfac), m_mem(mem), m_sm(sm), m_dl(dl), m_tli(tli), m_bb(bb), m_object_id(0),
-    m_has_seahorn_fail(false), m_rev_map(rev_map),
+    m_has_seahorn_fail(false), m_gep_map(gep_map), m_rev_map(rev_map),
     m_init_regions(init_regions), m_params(params) {}
 
 /// I is already translated if it is the condition of a branch or
@@ -2004,42 +2014,56 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     doGep(I, bitwidth, lhs->getVar(), ptr->getVar());
     
   } else if (m_params.precision_level == crab::cfg::ARR) {
-    Region r = get_region(m_mem, getShadowMem(), *m_dl, &I, &I);
+    /*
+      The goal is to compute an array index expression to be used by
+      some array read or write. It's not always possible to figure out
+      the array index expression because we need to know the base
+      address. We try the following:
 
-    if (r.isUnknown()) {
-      // we don't keep track of the memory region, we bail out ...
-      return;
-    }
-    if (get_singleton_value(r, m_params.lower_singleton_aliases)) {
-      // the memory region is a singleton, we bail out ...
-      return;
-    }
+      1. Ask LLVM MemoryBuiltins::ObjectSizeOffsetVisitor. LLVM will
+      succeed if the GEP is a constant value and the memory objects is
+      a global or alloca.
 
+      2. Ask sea-dsa the memory region associated to the GEP pointer
+      operand Ptr and see if Ptr points to a cell with zero offset and
+      the node is not collapsed and not a sequence either. If we
+      succeed then we can translate the pointer arithmetic part the of
+      GEP instruction (this is done by doGep).
+     */
+    
     if (evalOffset(I, I.getContext()).hasValue()) {
       // we can skip the GEP instruction because the offset is a known
-      // constant
+      // constant. The next Load or Store will call evalOffset again
+      // to obtain the constant index.
       return;
     }
 
+    Value *Ptr = I.getPointerOperand();
+    Ptr = Ptr->stripPointerCasts();
+    bool isBasePtr = isa<AllocaInst>(Ptr) || isa<GlobalVariable>(Ptr);
     
-    Value *V = I.getPointerOperand();
-    V = V->stripPointerCasts();
-    
-    bool isBasePtr = isa<AllocaInst>(V) || isa<GlobalVariable>(V);
     if (!isBasePtr) {
       if (auto sm = getShadowMem()) {
 	CLAM_WARNING("TODO: precise translation of GEP if shadow mem is used");
       } else {
+	Region r = get_region(m_mem, getShadowMem(), *m_dl, &I, &I);
+	if (r.isUnknown()) {
+	  // we don't keep track of the memory region, we bail out ...
+	  return;
+	}
+	if (get_singleton_value(r, m_params.lower_singleton_aliases)) {
+	  // the memory region is a singleton, we bail out ...
+	  return;
+	}
 	// We ask the pointer analysis. That should allow us to
 	// translate also inside functions where the parameter is the
 	// address of a caller's alloca. 
-	isBasePtr =
-	  m_mem.isBasePtr(*(I.getParent()->getParent()), I.getPointerOperand());
+	isBasePtr = m_mem.isBasePtr(*(I.getParent()->getParent()), Ptr);
       }
     }
-
+    
+    
     assert(m_gep_map.find(&I) == m_gep_map.end());
-        
     if (isBasePtr) {
       var_t shadowV(m_lfac.get_vfac().get(), crab::INT_TYPE, bitwidth);
       m_gep_map.insert(std::make_pair(&I, shadowV));
@@ -2047,7 +2071,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     } else {
       var_t shadowV = getUnconstrainedArrayIdxVar(m_lfac.get_vfac(), bitwidth);      
       CRAB_LOG("cfg-array-index",
-	       CLAM_WARNING("cannot infer statically base address of  " << *V
+	       CLAM_WARNING("cannot infer statically base address of  " << *Ptr
 			    << " at function " << I.getParent()->getParent()->getName()
 			    << ".\nUsing unconstrained crab variable " << shadowV.name().str()););
       m_gep_map.insert(std::make_pair(&I, shadowV));
@@ -2078,8 +2102,8 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
     } else { /* unreachable */ }
   } else {
     lin_exp_t idx = inferArrayIndex(I.getPointerOperand(),
-				      I.getContext(),
-				      m_lfac.get_vfac());
+				    I.getContext(),
+				    reg, m_lfac.get_vfac());
     /**
      * We can help the array domain if we know already that
      * the array store is a strong update.
@@ -2254,7 +2278,7 @@ void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton,
     }
     
     lin_exp_t idx = inferArrayIndex(I.getPointerOperand(),
-				    I.getContext(),
+				    I.getContext(), reg,
 				    m_lfac.get_vfac());
     
     auto const *crab_stmt = m_bb.array_load(
@@ -2954,7 +2978,9 @@ void CfgBuilderImpl::build_cfg() {
   bool has_seahorn_fail = false;
   // keep track of initialized regions
   std::set<Region> init_regions;
-
+  // For translation of gep if precision level is ARR
+  DenseMap<const GetElementPtrInst*, var_t> gep_map;
+  
   for (auto &B : m_func) {
     basic_block_t *bb = lookup(B);
     if (!bb)
@@ -2962,7 +2988,7 @@ void CfgBuilderImpl::build_cfg() {
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
     CrabInstVisitor v(m_lfac, m_mem, m_sm, m_dl, m_tli, *bb, m_rev_map,
-		      init_regions, m_params);
+		      init_regions, gep_map, m_params);
     v.visit(B);
     // hook for seahorn
     has_seahorn_fail |=
