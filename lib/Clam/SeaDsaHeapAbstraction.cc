@@ -238,34 +238,8 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   news_map[&I] = news;
 }
 
-LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
-    const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
-    const llvm::TargetLibraryInfo &tli,
-    const sea_dsa::AllocWrapInfo &alloc_info, bool is_context_sensitive,
-    bool disambiguate_for_array_smashing, bool disambiguate_unknown,
-    bool disambiguate_ptr_cast, bool disambiguate_external)
-    : m_m(M), m_dl(dl), m_dsa(nullptr), m_fac(nullptr), m_max_id(0),
-      m_disambiguate_for_array_smashing(disambiguate_for_array_smashing),
-      m_disambiguate_unknown(disambiguate_unknown),
-      m_disambiguate_ptr_cast(disambiguate_ptr_cast),
-      m_disambiguate_external(disambiguate_external) {
-
-  // The factory must be alive while sea_dsa is in use
-  m_fac = new SetFactory();
-
-  // -- Run sea-dsa
-  if (!is_context_sensitive) {
-    m_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(m_dl, tli, alloc_info,
-                                                          cg, *m_fac, false);
-  } else {
-    m_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(m_dl, tli, alloc_info,
-                                                        cg, *m_fac);
-  }
-
-  m_dsa->runOnModule(const_cast<Module &>(m_m));
-
-  // --- Pre-compute all the information per function and
-  //     callsites
+// Pre-compute all the information per function and callsites
+void LegacySeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 
   CRAB_LOG(
       "heap-abs", llvm::errs()
@@ -281,7 +255,7 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
   });
 
   callsite_map_t cs_accessed, cs_mods, cs_news;
-  for (auto const &F : m_m) {
+  for (auto const &F : M) {
     computeReadModNewNodes(F);
     auto InstIt = inst_begin(F), InstItEnd = inst_end(F);
     for (; InstIt != InstItEnd; ++InstIt) {
@@ -293,7 +267,7 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
     }
   }
 
-  for (auto const &F : m_m) {
+  for (auto const &F : M) {
     RegionVec &readsF = m_func_accessed[&F];
     RegionVec &modsF = m_func_mods[&F];
     RegionVec &newsF = m_func_news[&F];
@@ -401,11 +375,58 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
       m_callsite_news[CI] = newsC_out;
     }
   }
+
+}
+
+LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
+    const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
+    const llvm::TargetLibraryInfo &tli,
+    const sea_dsa::AllocWrapInfo &alloc_info, bool is_context_sensitive,
+    bool disambiguate_for_array_smashing, bool disambiguate_unknown,
+    bool disambiguate_ptr_cast, bool disambiguate_external)
+    : m_dsa(nullptr), m_fac(nullptr), m_dl(dl), m_max_id(0),
+      m_disambiguate_for_array_smashing(disambiguate_for_array_smashing),
+      m_disambiguate_unknown(disambiguate_unknown),
+      m_disambiguate_ptr_cast(disambiguate_ptr_cast),
+      m_disambiguate_external(disambiguate_external) {
+
+  // The factory must be alive while sea_dsa is in use
+  m_fac = new SetFactory();
+
+  // -- Run sea-dsa
+  if (!is_context_sensitive) {
+    m_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(m_dl, tli, alloc_info,
+                                                          cg, *m_fac, false);
+  } else {
+    m_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(m_dl, tli, alloc_info,
+                                                        cg, *m_fac);
+  }
+
+  m_dsa->runOnModule(const_cast<Module &>(M));
+  
+  initialize(M);
+}
+
+LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
+    const llvm::Module &M, const llvm::DataLayout &dl,
+    sea_dsa::GlobalAnalysis &dsa, 
+    bool disambiguate_for_array_smashing, bool disambiguate_unknown,
+    bool disambiguate_ptr_cast, bool disambiguate_external)
+    : m_dsa(&dsa), m_fac(nullptr), m_dl(dl), m_max_id(0),
+      m_disambiguate_for_array_smashing(disambiguate_for_array_smashing),
+      m_disambiguate_unknown(disambiguate_unknown),
+      m_disambiguate_ptr_cast(disambiguate_ptr_cast),
+      m_disambiguate_external(disambiguate_external) {
+
+  initialize(M);
 }
 
 LegacySeaDsaHeapAbstraction::~LegacySeaDsaHeapAbstraction() {
-  delete m_dsa;
-  delete m_fac;
+  if (m_fac) {
+    // if m_fac is not null we know that we own m_dsa
+    delete m_dsa;
+    delete m_fac;
+  }
 }
 
 bool LegacySeaDsaHeapAbstraction::isBasePtr(const llvm::Function &fn,
