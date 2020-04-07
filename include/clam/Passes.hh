@@ -10,7 +10,8 @@ namespace clam {
   llvm::Pass* createLowerGvInitializersPass ();
   llvm::Pass* createLowerSelectPass ();
   llvm::Pass* createLowerUnsignedICmpPass ();
-  llvm::Pass* createScalarizerPass();
+  // LLVM 8.0 has already this pass
+  //llvm::Pass* createScalarizerPass();
   llvm::Pass* createMarkInternalInlinePass ();
   llvm::Pass* createRemoveUnreachableBlocksPass ();
   llvm::Pass* createSimplifyAssumePass ();

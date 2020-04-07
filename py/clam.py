@@ -685,6 +685,9 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append('--crab-lower-gv=false')
     if args.disable_scalarize:
         crabpp_args.append('--crab-scalarize=false')
+    else:
+        # Force to scalarize everthing
+        crabpp_args.append('--scalarize-load-store=true')
     if args.disable_lower_cst_expr:
         crabpp_args.append('--crab-lower-constant-expr=false')
     if args.disable_lower_switch:
