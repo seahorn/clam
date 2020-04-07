@@ -9,7 +9,7 @@
 ARG UBUNTU
 
 # Pull base image.
-FROM seahorn/seahorn-build-llvm5:$UBUNTU
+FROM seahorn/crabllvm-build-llvm8:$UBUNTU
 
 # Needed to run clang with -m32
 RUN apt-get update && \
@@ -26,7 +26,7 @@ ARG BUILD_TYPE
 RUN cmake -GNinja \
           -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
           -DBOOST_ROOT=/deps/boost \
-          -DLLVM_DIR=/deps/LLVM-5.0.2-Linux/lib/cmake/llvm \
+          -DLLVM_DIR=/deps/LLVM-8.0.1-Linux/lib/cmake/llvm \
           -DCMAKE_INSTALL_PREFIX=run \
           -DCMAKE_CXX_COMPILER=g++-5 \
           -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
@@ -41,10 +41,10 @@ RUN cmake -GNinja \
     cmake --build . --target install
 
 # symlink clang (from base image)
-RUN ln -s /clang-5.0/bin/clang run/bin/clang
-RUN ln -s /clang-5.0/bin/clang++ run/bin/clang++
+RUN ln -s /clang-8.0/bin/clang run/bin/clang
+RUN ln -s /clang-8.0/bin/clang++ run/bin/clang++
 
-ENV PATH "/deps/LLVM-5.0.2-Linux/bin:$PATH"
+ENV PATH "/deps/LLVM-8.0.1-Linux/bin:$PATH"
 ENV PATH "/clam/build/run/bin:$PATH"
 
 # run tests
