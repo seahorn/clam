@@ -225,9 +225,19 @@ if (TopLevel)
   option(CLAM_REQUIRES_RTTI "Enable RTTI support" ON)
   option(CLAM_REQUIRES_EH "Enable Exceptions" ON)
 
+  set (LLVM_TAG "release_80" CACHE STRING "LLVM tag")  
+  add_custom_target (download-llvm-src
+    # HACK: remove all sources so that git-clone does not fail
+    # HACK: a proper solution is to work arround this as in ExternalProject
+    ${CMAKE_COMMAND} -E remove_directory ${CMAKE_SOURCE_DIR}/ext/llvm
+    COMMAND
+    ${GIT_EXECUTABLE} clone --depth=1 --branch=${LLVM_TAG}
+    http://llvm.org/git/llvm.git ${CMAKE_SOURCE_DIR}/ext/llvm)
+  
   # if top-level, offer to build llvm
   ExternalProject_Add (llvm
-    SVN_REPOSITORY http://llvm.org/svn/llvm-project/llvm/tags/RELEASE_800/final/
+    DEPENDS download-llvm-src
+    DOWNLOAD_COMMAND ""    
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/llvm
     INSTALL_DIR ${CMAKE_BINARY_DIR}/run
     CMAKE_ARGS
