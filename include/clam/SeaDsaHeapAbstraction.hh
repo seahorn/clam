@@ -46,6 +46,8 @@ private:
   Region mkRegion(const sea_dsa::Cell &c, RegionInfo ri);
   RegionId getId(const sea_dsa::Cell &c);
 
+  void initialize(const llvm::Module &M);
+  
   // compute and cache the set of read, mod and new nodes of a whole
   // function such that mod nodes are a subset of the read nodes and
   // the new nodes are disjoint from mod nodes.
@@ -62,6 +64,8 @@ private:
   const llvm::Value *getSingleton(RegionId region) const;
 
 public:
+  // This class creates and owns a sea-dsa GlobalAnalysis instance and
+  // run it on M.
   LegacySeaDsaHeapAbstraction(const llvm::Module &M, llvm::CallGraph &cg,
                               const llvm::DataLayout &dl,
                               const llvm::TargetLibraryInfo &tli,
@@ -72,6 +76,15 @@ public:
                               bool disambiguate_ptr_cast,
                               bool disambiguate_external);
 
+  // This class takes an existing sea-dsa Global Analysis instance.
+  // It doesn't own it.
+  LegacySeaDsaHeapAbstraction(const llvm::Module &M, const llvm::DataLayout &dl,
+			      sea_dsa::GlobalAnalysis &dsa,
+			      bool disambiguate_for_array_smashing,
+                              bool disambiguate_unknown,
+                              bool disambiguate_ptr_cast,
+                              bool disambiguate_external);
+  
   ~LegacySeaDsaHeapAbstraction();
 
   HeapAbstraction::ClassId getClassId() const {
@@ -104,10 +117,9 @@ public:
   }
 
 private:
-  const llvm::Module &m_m;
-  const llvm::DataLayout &m_dl;
   sea_dsa::GlobalAnalysis *m_dsa;
   SetFactory *m_fac;
+  const llvm::DataLayout &m_dl;
   /// map from Node to id
   llvm::DenseMap<const sea_dsa::Node *, RegionId> m_node_ids;
   /// reverse map
