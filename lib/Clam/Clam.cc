@@ -1695,3 +1695,4 @@ char clam::ClamPass::ID = 0;
 
 static RegisterPass<clam::ClamPass> X("clam", "Infer invariants using Crab",
                                       false, false);
+

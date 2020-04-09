@@ -1170,8 +1170,11 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
   if (MCI || MVI) {
     /**
      * TODO: to be more precise we need from crab something like
-     * array_copy and prove that source and destination do not overlap
-     * if memmove instruction.
+     * array_copy that copies len bytes from dst to src. We could use
+     * array_assign if we know statically that src and dst have the
+     * same size and the memory transfer function copies the entire
+     * memory region. For memmove, we would also need to prove that
+     * source and destination do not overlap.
      **/
     if (MCI)
       CLAM_WARNING("Skipped memcpy instruction");
@@ -1184,57 +1187,38 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
       crab_lit_ref_t len_ref = m_lfac.getLit(*(MSI->getLength()));
       crab_lit_ref_t val_ref = m_lfac.getLit(*(MSI->getValue()));
       if (len_ref && val_ref && len_ref->isInt()) {
-        lin_exp_t lb_idx(number_t(0));
-        lin_exp_t ub_idx(m_lfac.getExp(len_ref) - 1);
-        uint64_t elem_size = MSI->getDestAlignment(); /*double check this*/
-        if (val_ref->isInt()) {
-          if (val_ref->isVar()) {
-            if (m_params.enabled_aggressive_array_initialization() &&
-                is_uninit_region) {
-              crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx,
-                                          val_ref->getVar(), elem_size);
-            } else {
-              crab_stmt = m_bb.array_store_range(arr_var, lb_idx, ub_idx,
-                                                 val_ref->getVar(), elem_size);
-            }
-          } else {
-            if (m_params.enabled_aggressive_array_initialization() &&
-                is_uninit_region) {
-              crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx,
-                                          m_lfac.getIntCst(val_ref), elem_size);
-            } else {
-              crab_stmt =
-                  m_bb.array_store_range(arr_var, lb_idx, ub_idx,
-                                         m_lfac.getIntCst(val_ref), elem_size);
-            }
-          }
-        } else if (val_ref->isBool()) {
-          if (val_ref->isVar()) {
-            if (m_params.enabled_aggressive_array_initialization() &&
-                is_uninit_region) {
-              crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx,
-                                          val_ref->getVar(), elem_size);
-            } else {
-              crab_stmt = m_bb.array_store_range(arr_var, lb_idx, ub_idx,
-                                                 val_ref->getVar(), elem_size);
-            }
-          } else {
-            if (m_params.enabled_aggressive_array_initialization() &&
-                is_uninit_region) {
-              crab_stmt = m_bb.array_init(
-                  arr_var, lb_idx, ub_idx,
-                  m_lfac.isBoolTrue(val_ref) ? number_t(1) : number_t(0),
-                  elem_size);
-            } else {
-              crab_stmt = m_bb.array_store_range(
-                  arr_var, lb_idx, ub_idx,
-                  m_lfac.isBoolTrue(val_ref) ? number_t(1) : number_t(0),
-                  elem_size);
-            }
-          }
-        } else {
-          /* unreachable */
-        }
+	lin_exp_t lb_idx(number_t(0));
+	lin_exp_t ub_idx(m_lfac.getExp(len_ref) - 1);
+	// An aligment of x means that the address is multiple of x
+	// However, you can have an array of i32 and have aligment of 16.
+	//    @a = common global [5 x i32] zeroinitializer, align 16
+	uint64_t elem_size = MSI->getAlignment(); /*double check this*/
+
+	if (val_ref->isInt()) {
+	  if (val_ref->isVar()) {
+	    crab_stmt =
+	      m_bb.array_store_range(arr_var, lb_idx, ub_idx, val_ref->getVar(),
+				     elem_size);
+	  } else {
+	    crab_stmt =
+	      m_bb.array_store_range(arr_var, lb_idx, ub_idx,
+				     m_lfac.getIntCst(val_ref), elem_size);
+	  }
+	} else if (val_ref->isBool()) {
+	  if (val_ref->isVar()) {
+	    crab_stmt =
+	      m_bb.array_store_range(arr_var, lb_idx, ub_idx, val_ref->getVar(),
+				     elem_size);
+	  } else {
+	    crab_stmt =
+	      m_bb.array_store_range(arr_var, lb_idx, ub_idx,
+				     m_lfac.isBoolTrue(val_ref) ? number_t(1)
+				     : number_t(0),
+				     elem_size);
+	  }
+	} else {
+	  /* unreachable */
+	}
       }
     } else {
       CLAM_WARNING("Skipped memset instruction of non-integer type.");
@@ -2377,14 +2361,13 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
     m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
-  } else if (m_lfac.get_track() == ARR &&
-             m_params.enabled_array_initialization()) {
+  } else if (m_lfac.get_track() == ARR && m_params.use_array_smashing) { 
     Region r = get_region(m_mem, getShadowMem(), *m_dl, &I, &I);
     if (!r.isUnknown()) {
       // Nodes which do not have an explicit initialization are
       // initially undefined. Instead, we assume they are zero
-      // initialized so that Crab's array smashing can infer
-      // something meaningful.
+      // initialized so that Crab's array smashing can infer something
+      // meaningful.
       Type *elementTy = nullptr;
       unsigned numElems = 0;
       if (SequentialType *ST = dyn_cast<SequentialType>(I.getAllocatedType())) {
@@ -2397,22 +2380,22 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
         }
       }
       if (m_params.use_array_smashing) {
-        if (elementTy && numElems > 0) {
-          m_init_regions.insert(r);
-          unsigned elemSize = storageSize(elementTy);
-          if (elemSize > 0) {
-            /*
-              XXX: arbitrary value: we choose zero because it has
-              a valid interpretation whether it's integer,
-              boolean or pointer.
-            */
-            number_t init_val(0);
-            number_t lb_idx(0);
-            number_t ub_idx((numElems * elemSize) - 1);
-            m_bb.array_init(m_lfac.mkArrayVar(r), lb_idx, ub_idx, init_val,
-                            elemSize);
-          }
-        }
+	if (elementTy && numElems > 0) {
+	  m_init_regions.insert(r);
+	  unsigned elemSize = storageSize(elementTy);
+	  if (elemSize > 0) {
+	    /*
+	      XXX: arbitrary value: we choose zero because it has
+	      a valid interpretation whether it's integer,
+	      boolean or pointer.
+	    */
+	    number_t init_val(0);
+	    number_t lb_idx(0);
+	    number_t ub_idx((numElems * elemSize) - 1);
+	    m_bb.array_init(m_lfac.mkArrayVar(r), lb_idx, ub_idx, init_val,
+			    elemSize);
+	  }
+	}
       }
     }
   }
@@ -2460,8 +2443,7 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     return;
   }
 
-  if (m_params.enabled_array_initialization() &&
-      (isZeroInitializer(*callee) || isIntInitializer(*callee))) {
+  if (isZeroInitializer(*callee) || isIntInitializer(*callee)) {
     doGlobalInitializer(I);
     return;
   }
@@ -2501,6 +2483,8 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
       havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
     }
     // -- havoc all modified regions by the callee
+    // Note that even if the code is not available for the callee, the
+    // pointer analysis might be able to model its pointer semantics.
     if (m_lfac.get_track() == ARR) {
       RegionVec mods = get_modified_regions(m_mem, I);
       for (auto a : mods) {
@@ -2511,6 +2495,10 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
       }
     }
 
+    CLAM_WARNING("Call to external function " << callee->getName() << ". "  
+		 << "Havocing the return value and possibly its modified memory regions "
+		 << "if the pointer analysis models the external function");
+    
     // XXX: if we return here we skip the callsite. This is fine
     //      unless there exists an analysis which cares about
     //      external calls.
@@ -3379,10 +3367,7 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tmemory-ssa cfg: " << memory_ssa << "\n";
   o << "\tlower singleton aliases into scalars: " << lower_singleton_aliases
     << "\n";
-  o << "\tuse array smashing:" << use_array_smashing << "\n";
-  o << "\tinitialize arrays: " << enabled_array_initialization() << "\n";
-  o << "\tenable possibly unsound initialization of arrays: "
-    << aggressive_initialize_arrays << "\n";
+  o << "\ttuned translation for array smashing:"  << use_array_smashing << "\n";
   o << "\tenable big numbers: " << enable_bignums << "\n";
 }
 
