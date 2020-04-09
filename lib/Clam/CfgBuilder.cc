@@ -1240,24 +1240,12 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
   if (!callee) {
     return;
   }
-
-  if (!m_params.use_array_smashing && isIntInitializer(*callee)) {
-    // ignore the global initializer ...
-    return;
-  }
-  
+    
   // v is either a global variable or a gep instruction that
   // indexes an address inside the global variable.
   Value *v = CS.getArgument(0);
   Type *ty = cast<PointerType>(v->getType())->getElementType();
 
-  if (!m_params.use_array_smashing && isZeroInitializer(*callee)) {
-    if (!isIntArray(*ty) && !isBoolArray(*ty)) {
-      // ignore the global initializer ...      
-      return;
-    }
-  }
-  
   auto sm = getShadowMem();
   auto r = get_region(m_mem, sm, *m_dl, &I, v);
   auto getShadowVar = [&sm](CallInst &I, Value* v) {
@@ -1272,8 +1260,9 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
       return Optional<Value*>();
     }
   };
-  
+
   if (!r.isUnknown()) {
+    
     crab_lit_ref_t ref = nullptr;
     if (CS.arg_size() == 2) {
       ref = m_lfac.getLit(*(CS.getArgument(1)));
@@ -1316,7 +1305,6 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
 		     " cannot be inferred statically");
 	return; 
       } 
-
       
       number_t init_val(0);
       lin_exp_t lb_idx(offsetOpt.getValue());
@@ -1344,8 +1332,18 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
 	IntegerType *int_ty = cast<IntegerType>(ty);
 	lin_exp_t ub_idx = lb_idx +
 	  number_t((isBool(ty) ? 0 : z_number((int_ty->getBitWidth() / 8) - 1)));
-	m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
-      } else if (isIntArray(*ty) || isBoolArray(*ty)) {
+	if (m_params.use_array_smashing) {
+	  m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
+	} else {
+	  m_bb.array_store_range(a, lb_idx, ub_idx, init_val, elem_size);
+	}
+      } else if (ty->isArrayTy()) {
+
+	// We don't limit ourselves to isIntArray(*ty) or
+	// isBoolArray(*ty) since we can have array of structs with
+	// only one integer or boolean field which are equivalent
+	// memory-wise.
+	
         if (cast<ArrayType>(ty)->getNumElements() == 0) {
           // zero-length array are possible inside structs We
           // can simply make ub_idx > 0.  However, DSA is very
@@ -1357,7 +1355,11 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
 	  elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
 	  lin_exp_t ub_idx = lb_idx + lin_exp_t(
 			     cast<ArrayType>(ty)->getNumElements() * elem_size - 1);
-	  m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
+	  if (m_params.use_array_smashing) {	  
+	    m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
+	  } else {
+	    m_bb.array_store_range(a, lb_idx, ub_idx, init_val, elem_size);	    
+	  }
         }
       } else { /** unreachable **/
       }
@@ -2381,8 +2383,7 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
 	    number_t init_val(0);
 	    number_t lb_idx(0);
 	    number_t ub_idx((numElems * elemSize) - 1);
-	    m_bb.array_init(m_lfac.mkArrayVar(r), lb_idx, ub_idx, init_val,
-			    elemSize);
+	    m_bb.array_init(m_lfac.mkArrayVar(r), lb_idx, ub_idx, init_val, elemSize);
 	  }
 	}
       }
