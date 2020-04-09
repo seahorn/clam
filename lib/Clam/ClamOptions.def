@@ -39,30 +39,6 @@ CrabIncludeHavoc("crab-include-useless-havoc",
 		 cl::init(true),
 		 cl::Hidden);
 
-/**
- * Initialization of contents of allocation sites(e.g. alloca's and
- * global variables). This is sound but it might be imprecise.
- **/
-cl::opt<bool>
-CrabArrayInit("crab-arr-init",
-	cl::desc("Initialization of arrays for weak array domains (e.g., smashing)."), 
-	cl::init(true),
-	cl::Hidden);
-
-/**
- * Enable initialization of arrays that correspond to objects that may
- * contain an infinite number of memory locations.
- *
- * Initialization of allocation sites originated from calloc 
- * instructions may be unsound if it can be executed by more than one
- * execution.
-*/
-cl::opt<bool>
-CrabUnsoundArrayInit("crab-unsound-array-init",
-		     cl::desc("Potentially unsound initialization of arrays."), 
-		     cl::init(false),
-		     cl::Hidden);
-
 cl::opt<bool>
 CrabEnableBignums("crab-enable-bignums",
      cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."), 
@@ -219,7 +195,7 @@ CrabHeapAnalysis("crab-heap-analysis",
 // Specific llvm-dsa/sea-dsa options
 cl::opt<bool>
 CrabUseArraySmashing("crab-use-array-smashing",
-    cl::desc("Tune translation for using array smashing"), 
+    cl::desc("Tune translation for helping array smashing and make it sound"), 
     cl::init(true),
     cl::Hidden);
     

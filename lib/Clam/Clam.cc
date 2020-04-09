@@ -1311,7 +1311,6 @@ namespace clam {
     CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
 			     CrabEnableUniqueScalars, CrabMemShadows, 
 			     CrabIncludeHavoc, CrabUseArraySmashing,
-			     CrabArrayInit, CrabUnsoundArrayInit,
 			     CrabEnableBignums, CrabPrintCFG);
     
     auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();

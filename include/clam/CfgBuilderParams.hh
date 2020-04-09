@@ -18,17 +18,9 @@ struct CrabBuilderParams {
   bool memory_ssa;
   // Remove useless havoc operations 
   bool include_useless_havoc;
-  // Translation from pointers to Crab arrays must be more
-  // conservative if enabled
+  // Translation tuned for array smashing to be both sound and more
+  // precise.
   bool use_array_smashing;
-  // Initialization of arrays for weak Crab array domains (e.g., smashing)
-  bool initialize_arrays;
-  // More aggressive initialization of arrays.
-  // 
-  // Initialization of allocation sites originated from calloc or
-  // memset instructions may be unsound if it can be executed by
-  // more than one execution.
-  bool aggressive_initialize_arrays;
   // Translate bignums (> 64), otherwise operations with big numbers
   // are havoced.
   bool enable_bignums;
@@ -44,8 +36,6 @@ struct CrabBuilderParams {
     , memory_ssa(false)
     , include_useless_havoc(true)
     , use_array_smashing(true)
-    , initialize_arrays(true)
-    , aggressive_initialize_arrays(false)
     , enable_bignums(false)
     , print_cfg(false) {}
   
@@ -53,8 +43,7 @@ struct CrabBuilderParams {
 		    bool _simplify, bool _interprocedural, bool _lower_singleton_aliases,
 		    bool _memory_ssa, 
 		    bool _include_useless_havoc, bool _use_array_smashing,
-		    bool _initialize_arrays,
-		    bool _aggressive_initialize_arrays, bool _enable_bignums,
+		    bool _enable_bignums,
 		    bool _print_cfg):
     precision_level(_precision_level)
     , simplify(_simplify)
@@ -63,22 +52,11 @@ struct CrabBuilderParams {
     , memory_ssa(_memory_ssa)
     , include_useless_havoc(_include_useless_havoc)
     , use_array_smashing(_use_array_smashing) 
-    , initialize_arrays(_initialize_arrays)
-    , aggressive_initialize_arrays(_aggressive_initialize_arrays)
     , enable_bignums(_enable_bignums)
     , print_cfg(_print_cfg) {}
   
   bool track_pointers() const {
     return precision_level == crab::cfg::PTR;
-  }
-  
-  bool enabled_array_initialization() const {
-    return precision_level == crab::cfg::ARR && initialize_arrays;
-  }
-  
-  bool enabled_aggressive_array_initialization() const {
-    return (precision_level == crab::cfg::ARR && initialize_arrays &&
-	    aggressive_initialize_arrays);
   }
   
   /* Represent only booleans and integers */
@@ -94,7 +72,6 @@ struct CrabBuilderParams {
   /* Represent booleans, integers, and arrays of those types */
   void set_array_precision() {
     precision_level = crab::cfg::ARR;
-    initialize_arrays = true;
   }
 
   /* Produce all Crab CFGs in Memory SSA form */

@@ -388,9 +388,6 @@ def parseArgs(argv):
     p.add_argument('--crab-dsa-disambiguate-external',
                     help=a.SUPPRESS,
                     dest='crab_dsa_external', default=False, action='store_true')
-    p.add_argument('--crab-unsound-array-init',
-                    help=a.SUPPRESS,
-                    dest='crab_unsound_array_init', default=False, action='store_true')
     ######################################################################
     # Other hidden options
     ######################################################################
@@ -401,9 +398,6 @@ def parseArgs(argv):
     p.add_argument('--crab-keep-shadows',
                     help=a.SUPPRESS,
                     dest='crab_keep_shadows', default=False, action='store_true')
-    p.add_argument('--crab-unsigned-to-signed',
-                    help=a.SUPPRESS,
-                    dest='unsigned_to_signed', default=False, action='store_true')
     p.add_argument('--crab-enable-bignums',
                     help=a.SUPPRESS,
                     dest='crab_enable_bignums', default=False, action='store_true')
@@ -758,9 +752,10 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
     clam_args.append('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
     clam_args.append('--crab-relational-threshold={0}'.format(args.num_threshold))
-    if args.track == 'arr':    
+    if args.track == 'arr':        
         clam_args.append('--crab-track=arr')
-        clam_args.append('--crab-arr-init')
+        if args.crab_disable_array_smashing:
+            clam_args.append('--crab-use-array-smashing=false')
     else:
         clam_args.append('--crab-track={0}'.format(args.track))
     if args.crab_heap_analysis == 'none' or \
@@ -802,18 +797,14 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     else:
         clam_args.append('--crab-store-invariants=false')    
     # begin hidden options
-    if args.crab_disable_array_smashing:
-        clam_args.append('--crab-use-array-smashing=false')
     if args.crab_dsa_unknown: clam_args.append('--crab-dsa-disambiguate-unknown')
     if args.crab_dsa_ptr_cast: clam_args.append('--crab-dsa-disambiguate-ptr-cast')
     if args.crab_dsa_external: clam_args.append('--crab-dsa-disambiguate-external')    
-    if args.crab_unsound_array_init: clam_args.append('--crab-unsound-array-init') 
     if args.crab_keep_shadows: clam_args.append('--crab-keep-shadows')
     if args.crab_name_values:
         clam_args.append('--crab-name-values=true')
     else:
         clam_args.append('--crab-name-values=false')    
-    if args.unsigned_to_signed: clam_args.append('--crab-unsigned-to-signed')
     if args.crab_enable_bignums:
         clam_args.append('--crab-enable-bignums=true')
     else:
