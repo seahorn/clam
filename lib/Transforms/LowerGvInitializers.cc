@@ -233,14 +233,14 @@ namespace clam {
       } else if (ArrayType *ATy = dyn_cast<ArrayType> (T)) {
 	LOWERGV_LOG(errs() << "\tArrayType " << *ATy << "\n";);
 
-	#if 1
+	if (ATy->getElementType()->isIntegerTy()) {
 	  // XXX: we don't lower the array into individual stores.  we
 	  //      add instead a special initialization function that the
 	  //      analyzer can understand and hopefully be more
 	  //      efficient.	
 	  CreateZeroInitializerCallSite(base, Indices, Builder, LLVMUsed, M);
 	  change = true;
-	#else
+	} else {
 	  if (ATy->getNumElements() > MaxArraySize) {
 	    LOWERGV_WARNING("Array size of " << ATy->getNumElements() <<
 			    " is too large to be lowered. " <<
@@ -257,7 +257,7 @@ namespace clam {
 	      Indices.pop_back();	      
 	    }
 	  }
-	#endif 
+	}
       } else {
 	// ignore the rest of types
       }
