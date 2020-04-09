@@ -204,8 +204,8 @@ namespace clam {
                                   Module &M, std::vector<Constant *> &LLVMUsed,
 				    std::vector<APInt> &Indices) {
       bool change = false;
-    LOWERGV_LOG(errs() << "ConstantAggregateZero with Base=" << base.getName()
-                       << " and Indices=";
+      LOWERGV_LOG(errs () << "ConstantAggregateZero with Base=" << base.getName()
+		  << " and Indices=";
 		  printIndices(Indices);
 		  errs () << " and Type=" << *T << "\n";);
 
@@ -223,46 +223,46 @@ namespace clam {
 			  "Use option --crab-lower-gv-max-struct-size " <<
 			  "to allow larger sizes");
 	} else {
-	for (unsigned i=0; i < STy->getNumElements(); ++i) {
-	  Type* ETy = STy->getElementType(i);
-	  //uint64_t ElementSize = m_dl->getTypeAllocSize(ETy);
-	  //uint64_t IndexSize = ElementSize * 8;
-	  uint64_t IndexSize = 32;
-	  Indices.push_back(APInt(IndexSize, i));
+	  for (unsigned i=0; i < STy->getNumElements(); ++i) {
+	    Type* ETy = STy->getElementType(i);
+	    //uint64_t ElementSize = m_dl->getTypeAllocSize(ETy);
+	    //uint64_t IndexSize = ElementSize * 8;
+	    uint64_t IndexSize = 32;
+	    Indices.push_back(APInt(IndexSize, i));
         change |= LowerConstantAggregateZero(ETy, base, Builder, M, LLVMUsed,
                                              Indices);
-	  Indices.pop_back();
-	}
+	    Indices.pop_back();
+	  }
 	}
       } else if (ArrayType *ATy = dyn_cast<ArrayType> (T)) {
 	LOWERGV_LOG(errs() << "\tArrayType " << *ATy << "\n";);
-		
-	#if 1
+
+	if (ATy->getElementType()->isIntegerTy()) {
 	  // XXX: we don't lower the array into individual stores.  we
 	  //      add instead a special initialization function that the
 	  //      analyzer can understand and hopefully be more
-	  //      efficient.
+	  //      efficient.	
 	  CreateZeroInitializerCallSite(base, Indices, Builder, LLVMUsed, M);
 	  change = true;
-	#else
+	} else {
 	  if (ATy->getNumElements() > MaxArraySize) {
 	    LOWERGV_WARNING("Array size of " << ATy->getNumElements() <<
 			    " is too large to be lowered. " <<
 			    "Use option --crab-lower-gv-max-array-size " <<
 			    "to allow larger sizes");
-	} else {
-	  for (unsigned i=0; i < ATy->getNumElements(); ++i){
+	  } else {
+	    for (unsigned i=0; i < ATy->getNumElements(); ++i){
           // uint64_t ElementSize =
           // m_dl->getTypeAllocSize(ATy->getElementType()); uint64_t IndexSize =
           // ElementSize * 8;
-	    uint64_t IndexSize = 32;
-	    Indices.push_back(APInt(IndexSize, i));
+	      uint64_t IndexSize = 32;
+	      Indices.push_back(APInt(IndexSize, i));
           change |= LowerConstantAggregateZero(ATy->getElementType(), base,
                                                Builder, M, LLVMUsed, Indices);
-	    Indices.pop_back();	      
+	      Indices.pop_back();	      
+	    }
 	  }
 	}
-	#endif 
       } else {
 	// ignore the rest of types
       }
@@ -297,14 +297,14 @@ namespace clam {
 			    "Use option --crab-lower-gv-max-array-size " <<
 			    "to allow larger sizes");
 	  } else {
-	  uint64_t IndexSize = 32;	  	  
-	  for (unsigned i=0, e = CDS->getNumElements(); i < e; ++i) {
-	    APInt Index(IndexSize, i);
-	    Indices.push_back(Index);
-	    change |= LowerInitializer(CDS->getElementAsConstant(i), Base,
-				       Builder, M, LLVMUsed, Indices);
+	    uint64_t IndexSize = 32;	  	  
+	    for (unsigned i=0, e = CDS->getNumElements(); i < e; ++i) {
+	      APInt Index(IndexSize, i);
+	      Indices.push_back(Index);
+	      change |= LowerInitializer(CDS->getElementAsConstant(i), Base,
+					 Builder, M, LLVMUsed, Indices);
+	    }
 	  }
-	}
 	}
       } else if (const ConstantVector *CP = dyn_cast<ConstantVector>(C)) { 
       // unsigned ElementSize =
@@ -314,21 +314,21 @@ namespace clam {
       // 	    << ElementSize << " num elements=" << CP->getNumOperands()
       // << "\n";);
 
-	LOWERGV_LOG(errs() << "\tConstantVector=" << *CP << "\n";);	
+	LOWERGV_LOG(errs() << "\tConstantVector=" << *CP << "\n";);
 	if (CP->getNumOperands() > MaxArraySize) {
 	  LOWERGV_WARNING("Vector size of " << CP->getNumOperands() <<
 			  " is too large to be lowered. " <<
 			  "Use option --crab-lower-gv-max-array-size " <<
 			  "to allow larger sizes");
 	} else {
-	uint64_t IndexSize = 32;	
-    	for (unsigned i = 0, e = CP->getNumOperands(); i < e; ++i) {
-	  APInt Index(IndexSize, i);
-    	  Indices.push_back(Index);
+	  uint64_t IndexSize = 32;	
+	  for (unsigned i = 0, e = CP->getNumOperands(); i < e; ++i) {
+	    APInt Index(IndexSize, i);
+	    Indices.push_back(Index);
 	    change |= LowerInitializer(CP->getOperand(i), Base, Builder,
 				       M, LLVMUsed, Indices);
 	  }
-    	}
+	}
       } else if (isa<ConstantAggregateZero>(C)) {
       change |= LowerConstantAggregateZero(C->getType(), Base, Builder, M,
                                            LLVMUsed, Indices);
@@ -340,7 +340,7 @@ namespace clam {
       // 	    << ElementSize << " num elements=" << CPA->getNumOperands()
       // << "\n";);
 
-	LOWERGV_LOG(errs() << "\tConstantArray=" << *CPA << "\n";);			
+	LOWERGV_LOG(errs() << "\tConstantArray=" << *CPA << "\n";);
 
 	if (CPA->getNumOperands() > MaxArraySize) {
 	  LOWERGV_WARNING("Array size of " << CPA->getNumOperands() <<
@@ -348,34 +348,34 @@ namespace clam {
 			  "Use option --crab-lower-gv-max-array-size " <<
 			  "to allow larger sizes");
 	} else {
-	uint64_t IndexSize = 32;
-    	for (unsigned i = 0, e = CPA->getNumOperands(); i < e; ++i) {
-	  APInt Index(IndexSize, i);
+	  uint64_t IndexSize = 32;
+	  for (unsigned i = 0, e = CPA->getNumOperands(); i < e; ++i) {
+	    APInt Index(IndexSize, i);
     	  Indices.push_back(Index);	  
         change |= LowerInitializer(CPA->getOperand(i), Base, Builder, M,
                                    LLVMUsed, Indices);
-    	}
+	  }
 	}
       } else if (const ConstantStruct *CPS = dyn_cast<ConstantStruct>(C)) {
 	LOWERGV_LOG(errs() << "\tConstantStruct= " << *CPS << "\n";);
-	
+
 	if (CPS->getNumOperands() > MaxStructSize) {
 	  LOWERGV_WARNING("Struct size of " << CPS->getNumOperands() <<
 			  " is too large to be lowered. " <<
 			  "Use option --crab-lower-gv-max-struct-size " <<
 			  "to allow larger sizes");
 	} else {
-	uint64_t IndexSize = 32;
+	  uint64_t IndexSize = 32;
       const StructLayout *SL =
           m_dl->getStructLayout(cast<StructType>(CPS->getType()));
-    	for (unsigned i = 0, e = CPS->getNumOperands(); i < e; ++i) {
-	  //APInt Index(IndexSize, SL->getElementOffset(i));
-	  APInt Index(IndexSize, i);
-    	  Indices.push_back(Index);	  
+	  for (unsigned i = 0, e = CPS->getNumOperands(); i < e; ++i) {
+	    //APInt Index(IndexSize, SL->getElementOffset(i));
+	    APInt Index(IndexSize, i);
+	    Indices.push_back(Index);	  
         change |= LowerInitializer(CPS->getOperand(i), Base, Builder, M,
                                    LLVMUsed, Indices);
 	  }
-    	}
+	}
       } else if (const ConstantInt *CI = dyn_cast<ConstantInt>(C)) {
 
 	LOWERGV_LOG(errs() << "ConstantInteger " << *CI << " indices=";
