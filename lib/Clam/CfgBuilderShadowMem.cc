@@ -129,9 +129,9 @@ Region getShadowRegion(const sea_dsa::Cell &c,
   auto cellIdOpt = sm.getCellId(c);
   if (cellIdOpt.hasValue()) {
     auto cellId = cellIdOpt.getValue();
-    auto ri = DsaToRegion(c, dl, sm.splitDsaNodes(),
+    auto ri = DsaToRegion(c, dl, 
 			  /* these should be user flags */
-			  true, false, false, false);
+			  false, false, false);
     if (ri.get_type() != UNTYPED_REGION) {
       return Region(cellId, ri, getUniqueScalar(c));
     }

@@ -191,13 +191,6 @@ CrabHeapAnalysis("crab-heap-analysis",
      clEnumValN(heap_analysis_t::CS_SEA_DSA, "cs-sea-dsa",
                 "context-sensitive sea-dsa")),
    cl::init(heap_analysis_t::CI_SEA_DSA));
-
-// Specific llvm-dsa/sea-dsa options
-cl::opt<bool>
-CrabUseArraySmashing("crab-use-array-smashing",
-    cl::desc("Tune translation for helping array smashing and make it sound"), 
-    cl::init(true),
-    cl::Hidden);
     
 cl::opt<bool>
 CrabDsaDisambiguateUnknown("crab-dsa-disambiguate-unknown",

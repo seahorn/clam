@@ -1,6 +1,6 @@
-// RUN: %clam -O0 --crab-inter --crab-track=arr --crab-disable-array-smashing --crab-dom=int --crab-check=assert --crab-sanity-checks --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
-// CHECK: ^4  Number of total safe checks$
-// CHECK: ^2  Number of total warning checks$
+// RUN: %clam -O0 --crab-inter --crab-track=arr --crab-dom=int --crab-check=assert --crab-sanity-checks --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
+// CHECK: ^6  Number of total safe checks$
+// CHECK: ^0  Number of total warning checks$
 
 #include <stdint.h>
 
@@ -23,10 +23,8 @@ int32_t compute1(int32_t *t) {
   int i1 = nd();
   __CRAB_assume(i1 >= 0 && i1 < 16);
   __CRAB_assert(t[i1] >= 0);
-  // The assert causes the pointer analysis to lose precision so we
-  // cannot translate precisely pointer arithmetic in arrays. The
-  // best thing we can do is to assume that 1<= t[0] <= 16, ... 1 <=
-  // t[15] <= 16. Thus the return value is [4,64]
+  // Thanks to the pointer analysis we can translate pointer arithmetic precisely.
+  // Thus the return value is 32
   return t[2] + t[4] +  t[6] + t[15];
 }
 
@@ -34,10 +32,8 @@ int32_t compute2(uint32_t t[6][2]) {
   int i2 = nd();
   __CRAB_assume(i2 >= 0 && i2 < 6);
   __CRAB_assert(t[i2][1] <= 100);
-  // The assert causes the pointer analysis to lose precision so we
-  // cannot translate precisely pointer arithmetic in arrays. The
-  // best thing we can do is to assume that 10 <= t[0][1] <= 60,
-  // ... 10 <= t[5][1] <= 60. Thus the return value is [30,180]
+  // Thanks to the pointer analysis we can translate pointer arithmetic precisely.
+  // Thus the return value is 90
   return t[0][1] + t[1][1] + t[5][1];
 }
 

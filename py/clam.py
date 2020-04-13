@@ -210,9 +210,6 @@ def parseArgs(argv):
     p.add_argument('--lower-unsigned-icmp',
                     help='Lower ULT and ULE instructions',
                     dest='lower_unsigned_icmp', default=False, action='store_true')    
-    p.add_argument('--disable-lower-gv',
-                    help='Disable lowering of global variable initializers into main',
-                    dest='disable_lower_gv', default=False, action='store_true')
     p.add_argument('--disable-scalarize',
                     help='Disable lowering of vector operations into scalar ones',
                     dest='disable_scalarize', default=False, action='store_true')
@@ -374,10 +371,6 @@ def parseArgs(argv):
     ######################################################################
     # Options that might affect soundness
     ######################################################################
-    ## This might be unsound if disable and the abstract array domain is smashing
-    p.add_argument('--crab-disable-array-smashing',
-                    help=a.SUPPRESS,
-                    dest='crab_disable_array_smashing', default=False, action='store_true')
     ## These might be unsound if enabled
     p.add_argument('--crab-dsa-disambiguate-unknown',
                     help=a.SUPPRESS,
@@ -675,8 +668,6 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.undef_nondet:
         crabpp_args.append('--crab-turn-undef-nondet')
         
-    if args.disable_lower_gv:
-        crabpp_args.append('--crab-lower-gv=false')
     if args.disable_scalarize:
         crabpp_args.append('--crab-scalarize=false')
     if args.disable_lower_cst_expr:
@@ -754,8 +745,6 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args.append('--crab-relational-threshold={0}'.format(args.num_threshold))
     if args.track == 'arr':        
         clam_args.append('--crab-track=arr')
-        if args.crab_disable_array_smashing:
-            clam_args.append('--crab-use-array-smashing=false')
     else:
         clam_args.append('--crab-track={0}'.format(args.track))
     if args.crab_heap_analysis == 'none' or \

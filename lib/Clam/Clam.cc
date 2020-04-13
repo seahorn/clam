@@ -1307,10 +1307,16 @@ namespace clam {
   bool ClamPass::runOnModule(Module &M) {
 
     /// Translate the module to Crab CFGs
+#ifdef HAVE_ARRAY_ADAPT
+    bool useArraySmashing = false;
+#else
+    bool useArraySmashing = true;
+#endif     
     
     CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
 			     CrabEnableUniqueScalars, CrabMemShadows, 
-			     CrabIncludeHavoc, CrabUseArraySmashing,
+			     CrabIncludeHavoc,
+			     useArraySmashing,
 			     CrabEnableBignums, CrabPrintCFG);
     
     auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
@@ -1344,7 +1350,6 @@ namespace clam {
 	mem.reset
 	  (new LegacySeaDsaHeapAbstraction(M, cg, dl, tli, *allocWrapInfo,
 					   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
-					   CrabUseArraySmashing,
 					   CrabDsaDisambiguateUnknown,
 					   CrabDsaDisambiguatePtrCast,
 					   CrabDsaDisambiguateExternal));

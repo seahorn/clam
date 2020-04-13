@@ -6,12 +6,10 @@ short a[10];
 /* Example of converting non-array dsa node to an array node.
 
    The final dsa node looks like this:
-        types={0:i16,2:i16} flags=[AMR], size=4, links=[]
+        types={0:i16|i32,2:i16} flags=[AMR], size=4, links=[]
 
-   EXPECTED: no crab arrays produced because we have an array node
-   that can be accessed with multiple offsets. We could produce one
-   crab array domain if the array domain can safely reason about
-   pointer arithmetic.
+   EXPECTED: no crab arrays extracted from dsa node due to overlapping
+   cells.
  */
 int main() {
   int n=10;
