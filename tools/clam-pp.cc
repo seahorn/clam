@@ -61,11 +61,6 @@ Devirtualize("crab-devirt",
               llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-LowerGv("crab-lower-gv",
-	 llvm::cl::desc("Lower global initializers in main"),
-	 llvm::cl::init(true));
-
-static llvm::cl::opt<bool>
 Scalarize("crab-scalarize",
 	 llvm::cl::desc("Scalarize vector operations"),
 	 llvm::cl::init(true));
@@ -245,11 +240,6 @@ int main(int argc, char **argv) {
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());
   // -- global optimizations
   pass_manager.add(llvm::createGlobalOptimizerPass());
-
-  if (LowerGv) {
-    // -- lower initializers of global variables
-    pass_manager.add(clam::createLowerGvInitializersPass());   
-  }
 
   // -- SSA
   pass_manager.add(llvm::createPromoteMemoryToRegisterPass());

@@ -1,6 +1,5 @@
 add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   LowerCstExpr.cc
-  LowerGvInitializers.cc
   LowerSelect.cc
   LowerUnsignedICmp.cc
   RemoveUnreachableBlocksPass.cc

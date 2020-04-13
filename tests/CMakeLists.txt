@@ -17,6 +17,15 @@ if (CLAM_NEW_ARRAY_DOMAIN)
     PARAMS
     test_dir=${CMAKE_CURRENT_BINARY_DIR}/array-adapt
     DEPENDS clam)
+else()
+  # the array adaptive domain does not implement currently some
+  # operations needed by these tests.
+  add_lit_testsuite(test-shadow-memssa "Run tests for shadow memory ssa from sea-dsa"
+    -v
+    ${CMAKE_CURRENT_SOURCE_DIR}/shadow-memssa  ## where .cfg file is located
+    PARAMS
+  test_dir=${CMAKE_CURRENT_BINARY_DIR}/shadow-memssa
+  DEPENDS clam)  
 endif()  
 
 add_lit_testsuite(test-readme "Run README.md tests"

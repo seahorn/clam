@@ -48,7 +48,7 @@ private:
   RegionId getId(const seadsa::Cell &c);
 
   void initialize(const llvm::Module &M);
-
+  
   // compute and cache the set of read, mod and new nodes of a whole
   // function such that mod nodes are a subset of the read nodes and
   // the new nodes are disjoint from mod nodes.
@@ -61,28 +61,27 @@ private:
                                           callsite_map_t &accessed,
                                           callsite_map_t &mods,
                                           callsite_map_t &news);
-
+  
   const llvm::Value *getSingleton(RegionId region) const;
 
 public:
-  // This class creates and owns a sea-dsa GlobalAnalysis instance and
+  // This constructor creates and owns a sea-dsa GlobalAnalysis instance and
   // run it on M.
   LegacySeaDsaHeapAbstraction(
       const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
       llvm::TargetLibraryInfoWrapperPass &tli,
       const seadsa::AllocWrapInfo &alloc_wrap_info, bool is_context_sensitive,
-      bool disambiguate_for_array_smashing, bool disambiguate_unknown,
+      bool disambiguate_unknown,
       bool disambiguate_ptr_cast, bool disambiguate_external);
 
-  // This class takes an existing sea-dsa Global Analysis instance.
+  // This constructor takes an existing sea-dsa Global Analysis instance.
   // It doesn't own it.
   LegacySeaDsaHeapAbstraction(const llvm::Module &M, const llvm::DataLayout &dl,
                               seadsa::GlobalAnalysis &dsa,
-                              bool disambiguate_for_array_smashing,
                               bool disambiguate_unknown,
                               bool disambiguate_ptr_cast,
                               bool disambiguate_external);
-
+  
   ~LegacySeaDsaHeapAbstraction();
 
   HeapAbstraction::ClassId getClassId() const {
@@ -91,9 +90,17 @@ public:
 
   virtual bool isBasePtr(const llvm::Function &F,
                          const llvm::Value *V) override;
-
-  virtual Region getRegion(const llvm::Function &F, const llvm::Instruction *I,
+  
+  // Use F and V to get sea-dsa cell associated to it.
+  virtual Region getRegion(const llvm::Function &F,
+			   // user of V if it's an instruction (currently unused)
+			   const llvm::Instruction *I,
                            const llvm::Value *V) override;
+
+  // Use F and V to get the sea-dsa node associated to V and extracts
+  // the region associated to nodes's field offset if any.
+  Region getRegion(const llvm::Function &F, const llvm::Value &V,
+		   unsigned offset, const llvm::Type &AccessedType);
 
   virtual RegionVec getAccessedRegions(const llvm::Function &F) override;
 
@@ -124,7 +131,6 @@ private:
   /// reverse map
   std::unordered_map<RegionId, const seadsa::Node *> m_rev_node_ids;
   RegionId m_max_id;
-  bool m_disambiguate_for_array_smashing;
   bool m_disambiguate_unknown;
   bool m_disambiguate_ptr_cast;
   bool m_disambiguate_external;
