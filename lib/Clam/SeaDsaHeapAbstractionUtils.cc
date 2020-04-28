@@ -5,7 +5,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "sea_dsa/Graph.hh"
+#include "seadsa/Graph.hh"
 
 #include "SeaDsaHeapAbstractionUtils.hh"
 
@@ -14,11 +14,11 @@
 namespace clam {
 
 using namespace llvm;
-using namespace sea_dsa;
+using namespace seadsa;
 
 namespace seadsa_heap_abs_impl {
 
-bool NodeOrdering::operator()(const sea_dsa::Node *n1, const sea_dsa::Node *n2) const {
+bool NodeOrdering::operator()(const seadsa::Node *n1, const seadsa::Node *n2) const {
     return n1->getId() < n2->getId();
 }
 

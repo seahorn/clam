@@ -13,9 +13,9 @@
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "sea_dsa/AllocWrapInfo.hh"
-#include "sea_dsa/Global.hh"
-#include "sea_dsa/Graph.hh"
+#include "seadsa/AllocWrapInfo.hh"
+#include "seadsa/Global.hh"
+#include "seadsa/Graph.hh"
 
 #include "SeaDsaHeapAbstractionDsaToRegion.hh"
 #include "SeaDsaHeapAbstractionUtils.hh"
@@ -28,7 +28,7 @@
 
 namespace clam {
 
-using namespace sea_dsa;
+using namespace seadsa;
 using namespace llvm;
 
 Region LegacySeaDsaHeapAbstraction::mkRegion(const Cell &c, RegionInfo ri) {
@@ -381,7 +381,7 @@ void LegacySeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
     const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
     const llvm::TargetLibraryInfo &tli,
-    const sea_dsa::AllocWrapInfo &alloc_info, bool is_context_sensitive,
+    const seadsa::AllocWrapInfo &alloc_info, bool is_context_sensitive,
     bool disambiguate_for_array_smashing, bool disambiguate_unknown,
     bool disambiguate_ptr_cast, bool disambiguate_external)
     : m_dsa(nullptr), m_fac(nullptr), m_dl(dl), m_max_id(0),
@@ -390,15 +390,15 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
       m_disambiguate_ptr_cast(disambiguate_ptr_cast),
       m_disambiguate_external(disambiguate_external) {
 
-  // The factory must be alive while sea_dsa is in use
+  // The factory must be alive while seadsa is in use
   m_fac = new SetFactory();
 
   // -- Run sea-dsa
   if (!is_context_sensitive) {
-    m_dsa = new sea_dsa::ContextInsensitiveGlobalAnalysis(m_dl, tli, alloc_info,
+    m_dsa = new seadsa::ContextInsensitiveGlobalAnalysis(m_dl, tli, alloc_info,
                                                           cg, *m_fac, false);
   } else {
-    m_dsa = new sea_dsa::ContextSensitiveGlobalAnalysis(m_dl, tli, alloc_info,
+    m_dsa = new seadsa::ContextSensitiveGlobalAnalysis(m_dl, tli, alloc_info,
                                                         cg, *m_fac);
   }
 
@@ -409,7 +409,7 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
 
 LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
     const llvm::Module &M, const llvm::DataLayout &dl,
-    sea_dsa::GlobalAnalysis &dsa, 
+    seadsa::GlobalAnalysis &dsa, 
     bool disambiguate_for_array_smashing, bool disambiguate_unknown,
     bool disambiguate_ptr_cast, bool disambiguate_external)
     : m_dsa(&dsa), m_fac(nullptr), m_dl(dl), m_max_id(0),

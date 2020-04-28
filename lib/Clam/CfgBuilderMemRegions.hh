@@ -5,8 +5,8 @@
 
 #include "clam/HeapAbstraction.hh"
 #include "clam/Support/Debug.hh"
-#include "sea_dsa/ShadowMem.hh"
-#include "sea_dsa/Graph.hh"
+#include "seadsa/ShadowMem.hh"
+#include "seadsa/Graph.hh"
 
 #include "SeaDsaHeapAbstractionDsaToRegion.hh"
 #include "CfgBuilderUtils.hh"
@@ -23,7 +23,7 @@ typedef typename HeapAbstraction::RegionVec RegionVec;
 // "Switch" function that uses either ShadowMem (mem) or
 // HeapAbstraction (sm) to return the cell pointer a LLVM pointer.
 inline Region get_region(HeapAbstraction &mem,
-			 const sea_dsa::ShadowMem* sm,
+			 const seadsa::ShadowMem* sm,
 			 const llvm::DataLayout &dl,
 			 llvm::Instruction *user, llvm::Value *ptr) {
   if (sm) {

@@ -634,7 +634,7 @@ template class CallSiteResolverByDsa<dsa::CallTargetFinder<EQTDDataStructures>>;
 #endif
 
 // sea-dsa
-#include "sea_dsa/CompleteCallGraph.hh"
+#include "seadsa/CompleteCallGraph.hh"
 namespace clam {  
-template class CallSiteResolverByDsa<sea_dsa::CompleteCallGraph>;
+template class CallSiteResolverByDsa<seadsa::CompleteCallGraph>;
 } // end namespace

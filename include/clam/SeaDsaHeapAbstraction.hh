@@ -9,13 +9,13 @@
 #include <unordered_map>
 
 // forward declarations
-namespace sea_dsa {
+namespace seadsa {
 class GlobalAnalysis;
 class Node;
 class Cell;
 class AllocWrapInfo;
 class ShadowMem;
-} // namespace sea_dsa
+} // namespace seadsa
 
 namespace llvm {
 class DataLayout;
@@ -34,8 +34,8 @@ public:
   using typename HeapAbstraction::RegionVec;
 
 private:
-  // XXX: We should use sea_dsa::Graph::SetFactory.
-  // We copy here the definition of sea_dsa::Graph::SetFactory so
+  // XXX: We should use seadsa::Graph::SetFactory.
+  // We copy here the definition of seadsa::Graph::SetFactory so
   // that we don't need to include Graph.hh
   using Set = llvm::ImmutableSet<llvm::Type *>;
   using SetFactory = typename Set::Factory;
@@ -43,8 +43,8 @@ private:
   using callsite_map_t =
       llvm::DenseMap<const llvm::CallInst *, std::vector<region_bool_t>>;
 
-  Region mkRegion(const sea_dsa::Cell &c, RegionInfo ri);
-  RegionId getId(const sea_dsa::Cell &c);
+  Region mkRegion(const seadsa::Cell &c, RegionInfo ri);
+  RegionId getId(const seadsa::Cell &c);
 
   void initialize(const llvm::Module &M);
   
@@ -69,7 +69,7 @@ public:
   LegacySeaDsaHeapAbstraction(const llvm::Module &M, llvm::CallGraph &cg,
                               const llvm::DataLayout &dl,
                               const llvm::TargetLibraryInfo &tli,
-                              const sea_dsa::AllocWrapInfo &alloc_wrap_info,
+                              const seadsa::AllocWrapInfo &alloc_wrap_info,
                               bool is_context_sensitive,
 			      bool disambiguate_for_array_smashing,
                               bool disambiguate_unknown,
@@ -79,7 +79,7 @@ public:
   // This class takes an existing sea-dsa Global Analysis instance.
   // It doesn't own it.
   LegacySeaDsaHeapAbstraction(const llvm::Module &M, const llvm::DataLayout &dl,
-			      sea_dsa::GlobalAnalysis &dsa,
+			      seadsa::GlobalAnalysis &dsa,
 			      bool disambiguate_for_array_smashing,
                               bool disambiguate_unknown,
                               bool disambiguate_ptr_cast,
@@ -117,13 +117,13 @@ public:
   }
 
 private:
-  sea_dsa::GlobalAnalysis *m_dsa;
+  seadsa::GlobalAnalysis *m_dsa;
   SetFactory *m_fac;
   const llvm::DataLayout &m_dl;
   /// map from Node to id
-  llvm::DenseMap<const sea_dsa::Node *, RegionId> m_node_ids;
+  llvm::DenseMap<const seadsa::Node *, RegionId> m_node_ids;
   /// reverse map
-  std::unordered_map<RegionId, const sea_dsa::Node *> m_rev_node_ids;
+  std::unordered_map<RegionId, const seadsa::Node *> m_rev_node_ids;
   RegionId m_max_id;
   bool m_disambiguate_for_array_smashing;
   bool m_disambiguate_unknown;

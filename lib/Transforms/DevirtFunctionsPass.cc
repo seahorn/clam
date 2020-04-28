@@ -12,7 +12,7 @@
 #ifdef HAVE_DSA
 #include "dsa/CallTargets.h"
 #endif 
-#include "sea_dsa/CompleteCallGraph.hh"
+#include "seadsa/CompleteCallGraph.hh"
 
 llvm::cl::opt<clam::CallSiteResolverKind>
 DevirtResolver("devirt-resolver",
@@ -78,8 +78,8 @@ namespace clam {
 #endif
       }	
       case RESOLVER_SEA_DSA: {
-	auto &CCG = getAnalysis<sea_dsa::CompleteCallGraph>();
-	CSR.reset(new CallSiteResolverByDsa<sea_dsa::CompleteCallGraph>
+	auto &CCG = getAnalysis<seadsa::CompleteCallGraph>();
+	CSR.reset(new CallSiteResolverByDsa<seadsa::CompleteCallGraph>
 		  (M, CCG, ResolveIncompleteCalls, MaxNumTargets, DF.getStats()));
 	break;	
       }
@@ -108,7 +108,7 @@ namespace clam {
       }
       
       if (runSeaDsa || DevirtResolver == RESOLVER_SEA_DSA) {
-	AU.addRequired<sea_dsa::CompleteCallGraph>();
+	AU.addRequired<seadsa::CompleteCallGraph>();
       }
       
       // AU.addRequired<CallGraphWrapperPass> ();

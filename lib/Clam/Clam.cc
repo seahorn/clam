@@ -32,8 +32,8 @@
 #ifdef HAVE_DSA
 #include "dsa/Steensgaard.hh"
 #endif
-#include "sea_dsa/AllocWrapInfo.hh"
-#include "sea_dsa/ShadowMem.hh"
+#include "seadsa/AllocWrapInfo.hh"
+#include "seadsa/ShadowMem.hh"
 
 #include "crab/common/debug.hpp"
 #include "crab/common/stats.hpp"
@@ -1341,7 +1341,7 @@ namespace clam {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
 	CallGraph& cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();      
 	const DataLayout& dl = M.getDataLayout();
-	sea_dsa::AllocWrapInfo* allocWrapInfo = &getAnalysis<sea_dsa::AllocWrapInfo>();      
+	seadsa::AllocWrapInfo* allocWrapInfo = &getAnalysis<seadsa::AllocWrapInfo>();      
 	mem.reset
 	  (new LegacySeaDsaHeapAbstraction(M, cg, dl, tli, *allocWrapInfo,
 					   (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
@@ -1358,7 +1358,7 @@ namespace clam {
       }
       m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem))); 
     } else {
-      if (auto smp = getAnalysisIfAvailable<sea_dsa::ShadowMemPass>()) {
+      if (auto smp = getAnalysisIfAvailable<seadsa::ShadowMemPass>()) {
 	m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, smp->getShadowMem()));      
       } else {
 	std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());	
@@ -1489,11 +1489,11 @@ namespace clam {
     }
     
     if (!CrabMemShadows && runSeaDsa) {
-      AU.addRequired<sea_dsa::AllocWrapInfo>();
+      AU.addRequired<seadsa::AllocWrapInfo>();
     }
     
     if (CrabMemShadows) {
-      AU.addRequired<sea_dsa::ShadowMemPass>();
+      AU.addRequired<seadsa::ShadowMemPass>();
     }
     AU.addRequired<UnifyFunctionExitNodes>();
     AU.addRequired<clam::NameValues>();

@@ -122,7 +122,7 @@ struct CodeExpander {
     return ConstantInt::get(Type::getInt1Ty(ctx),(val) ? 1U : 0U);
   }
 
-  //! Generate llvm bitcode from a set of linear constraints    
+  //! Generate llvm bitcode from a set of linear constraints
   //  TODO: generate bitcode from disjunctive linear constraints.
   bool gen_code(lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
 		Function* assumeFn, CallGraph* cg, DominatorTree* DT,
@@ -135,9 +135,8 @@ struct CodeExpander {
 	change = true;
 	if (cg) {
 	  (*cg)[insertFun]->addCalledFunction
-	    (CallSite(ci),(*cg)[ci->getCalledFunction()]);
+	    (ci, (*cg)[ci->getCalledFunction()]);
 	}
-	       
       }
     }
     return change;
@@ -398,7 +397,7 @@ bool InsertInvariants::runOnModule(Module &M) {
     (M.getOrInsertFunction("verifier.assume", 
 			   as,
 			   Type::getVoidTy(ctx),
-			   Type::getInt1Ty(ctx)));
+                           Type::getInt1Ty(ctx)).getCallee());
     
   CallGraphWrapperPass *cgwp =getAnalysisIfAvailable<CallGraphWrapperPass>();
   if (CallGraph *cg = cgwp ? &cgwp->getCallGraph() : nullptr)

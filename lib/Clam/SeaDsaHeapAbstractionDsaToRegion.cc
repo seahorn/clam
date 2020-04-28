@@ -6,12 +6,12 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
 
-#include "sea_dsa/Graph.hh"
+#include "seadsa/Graph.hh"
 
 namespace {
 
 using namespace llvm;
-using namespace sea_dsa;
+using namespace seadsa;
 
 // return true if the cell (n,o) contains a value of a specified
 // type by is_typed
@@ -159,7 +159,7 @@ static bool isSafeForWeakArrayDomains(const Cell &c, const DataLayout &dl) {
 namespace clam {
 
 using namespace llvm;
-using namespace sea_dsa;
+using namespace seadsa;
 
 // DsaToRegion succeeds if returned valued != UNTYPED_REGION
 RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,

@@ -28,7 +28,7 @@ namespace clam {
   class CfgBuilderImpl;
 }
 
-namespace sea_dsa {
+namespace seadsa {
   class ShadowMem;
 }
 
@@ -126,7 +126,7 @@ public:
   // instructions to Crab arrays.
   CrabBuilderManager(CrabBuilderParams params,
 		     const llvm::TargetLibraryInfo &tli,
-		     sea_dsa::ShadowMem &sm);
+		     seadsa::ShadowMem &sm);
   
   ~CrabBuilderManager();
   
@@ -150,9 +150,9 @@ public:
   
   HeapAbstraction& get_heap_abstraction();
 
-  const sea_dsa::ShadowMem* get_shadow_mem() const;  
+  const seadsa::ShadowMem* get_shadow_mem() const;  
   
-  sea_dsa::ShadowMem* get_shadow_mem();
+  seadsa::ShadowMem* get_shadow_mem();
 
 private:
   
@@ -168,7 +168,7 @@ private:
   // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
   // Shadow memory (it can be null if not available)
-  sea_dsa::ShadowMem *m_sm;
+  seadsa::ShadowMem *m_sm;
 };
   
 } // end namespace clam

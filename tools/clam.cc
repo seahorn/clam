@@ -30,7 +30,7 @@
 #include "clam/Clam.hh"
 #include "clam/Transforms/InsertInvariants.hh"
 
-#include "sea_dsa/ShadowMem.hh"
+#include "seadsa/ShadowMem.hh"
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
@@ -252,7 +252,7 @@ int main(int argc, char **argv) {
 
   if (XMemShadows) {
     // XXX: it should preserve unifyFunctionExitNodes pass.
-    pass_manager.add(sea_dsa::createShadowMemPass());
+    pass_manager.add(seadsa::createShadowMemPass());
   }
   
   if (!NoCrab) {

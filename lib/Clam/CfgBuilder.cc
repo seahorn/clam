@@ -90,7 +90,7 @@
 #include "crab/common/stats.hpp"
 #include "crab/transforms/dce.hpp"
 
-#include "sea_dsa/ShadowMem.hh"
+#include "seadsa/ShadowMem.hh"
 
 #include <algorithm>
 #include <boost/functional/hash_fwd.hpp> // for hash_combine
@@ -363,7 +363,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 
   crabLitFactory &m_lfac;
   HeapAbstraction &m_mem;
-  sea_dsa::ShadowMem *m_sm;
+  seadsa::ShadowMem *m_sm;
   const DataLayout &m_dl;  
   // block where assignment will be inserted
   basic_block_t &m_bb;
@@ -372,7 +372,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
   // builder parameters
   const CrabBuilderParams &m_params;
 
-  const sea_dsa::ShadowMem* getShadowMem() const {
+  const seadsa::ShadowMem* getShadowMem() const {
     if (m_params.memory_ssa && m_sm) {
       assert(m_mem.getClassId() == HeapAbstraction::ClassId::DUMMY);
       return m_sm;
@@ -381,7 +381,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
     }
   }
   
-  CrabPhiVisitor(crabLitFactory &lfac, HeapAbstraction &mem, sea_dsa::ShadowMem *sm,
+  CrabPhiVisitor(crabLitFactory &lfac, HeapAbstraction &mem, seadsa::ShadowMem *sm,
 		 const DataLayout &dl, basic_block_t &bb, const BasicBlock &inc_BB,
 		 const CrabBuilderParams &params)
     : m_lfac(lfac), m_mem(mem), m_sm(sm), m_dl(dl), m_bb(bb),
@@ -394,10 +394,10 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
     // Map an PHI incoming value to a Crab variable
     DenseMap<const Value*, var_t> old_val_map;
     // Get shadow memory if available
-    const sea_dsa::ShadowMem *sm = getShadowMem();
+    const seadsa::ShadowMem *sm = getShadowMem();
     // map an PHI incoming value to a cell if the PHI node is a shadow
     // mem PHI node.
-    DenseMap<const Value*, std::pair<sea_dsa::Cell,Region>> sm_cell_map;
+    DenseMap<const Value*, std::pair<seadsa::Cell,Region>> sm_cell_map;
 
     
     if (sm) {
@@ -410,7 +410,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 	const Value &v = *phi.getIncomingValueForBlock(&m_inc_BB);
 	auto cellOpt = getShadowMemCell(phi, v, *sm);	
 	if (cellOpt.hasValue()) {	  
-	  sea_dsa::Cell cell = cellOpt.getValue();
+	  seadsa::Cell cell = cellOpt.getValue();
 	  Region reg = getShadowRegion(cell, m_dl, *sm);
 	  if (!reg.isUnknown()) {
 	    sm_cell_map.insert({&v, {cell, reg}});
@@ -599,7 +599,7 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   
   crabLitFactory &m_lfac;
   HeapAbstraction &m_mem;
-  sea_dsa::ShadowMem *m_sm;
+  seadsa::ShadowMem *m_sm;
   const DataLayout *m_dl;
   const TargetLibraryInfo *m_tli;
   basic_block_t &m_bb;
@@ -664,7 +664,7 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
 		  var_t lhs, var_t rhs,
 		  Region rhs_region);
   
-  const sea_dsa::ShadowMem* getShadowMem() const {
+  const seadsa::ShadowMem* getShadowMem() const {
     if (m_params.memory_ssa && m_sm) {
       assert(m_mem.getClassId() == HeapAbstraction::ClassId::DUMMY);
       return m_sm;
@@ -675,7 +675,7 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   
 public:
   CrabInstVisitor(
-      crabLitFactory &lfac, HeapAbstraction &mem, sea_dsa::ShadowMem *sm,
+      crabLitFactory &lfac, HeapAbstraction &mem, seadsa::ShadowMem *sm,
       const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       std::set<Region> &init_regions,
@@ -1490,7 +1490,7 @@ void CrabInstVisitor::doVerifierCall(CallInst &I) {
 }
 
 CrabInstVisitor::CrabInstVisitor(
-    crabLitFactory &lfac, HeapAbstraction &mem, sea_dsa::ShadowMem *sm,
+    crabLitFactory &lfac, HeapAbstraction &mem, seadsa::ShadowMem *sm,
     const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
     llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
     std::set<Region> &init_regions,
@@ -2652,7 +2652,7 @@ namespace clam {
 class CfgBuilderImpl {
 public:
   CfgBuilderImpl(const llvm::Function &func, llvm_variable_factory &vfac,
-                 HeapAbstraction &mem, sea_dsa::ShadowMem *sm,
+                 HeapAbstraction &mem, seadsa::ShadowMem *sm,
 		 const llvm::TargetLibraryInfo *tli,
 		 const CrabBuilderParams &params);
 
@@ -2714,7 +2714,7 @@ private:
   // heap analysis for array translation
   HeapAbstraction &m_mem;
   // shadow mem for memory ssa form
-  sea_dsa::ShadowMem *m_sm;
+  seadsa::ShadowMem *m_sm;
   // the crab CFG
   std::unique_ptr<cfg_t> m_cfg;
   // generate unique identifiers for crab basic block ids
@@ -2759,7 +2759,7 @@ private:
 
 CfgBuilderImpl::CfgBuilderImpl(const Function &func,
                                llvm_variable_factory &vfac,
-                               HeapAbstraction &mem, sea_dsa::ShadowMem *sm,
+                               HeapAbstraction &mem, seadsa::ShadowMem *sm,
                                const TargetLibraryInfo *tli,
                                const CrabBuilderParams &params)
     : m_is_cfg_built(false),
@@ -3458,7 +3458,7 @@ CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
 
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        const llvm::TargetLibraryInfo &tli,
-				       sea_dsa::ShadowMem &sm)
+				       seadsa::ShadowMem &sm)
   : m_params(params), m_tli(tli), m_mem(new DummyHeapAbstraction()), m_sm(&sm) {
   // This constructor enables memory ssa form.
   if (m_params.memory_ssa) {
@@ -3517,11 +3517,11 @@ const llvm::TargetLibraryInfo &CrabBuilderManager::get_tli() const {
 
 HeapAbstraction &CrabBuilderManager::get_heap_abstraction() { return *m_mem; }
 
-const sea_dsa::ShadowMem *CrabBuilderManager::get_shadow_mem() const {
+const seadsa::ShadowMem *CrabBuilderManager::get_shadow_mem() const {
   return m_sm;
 }
 
-sea_dsa::ShadowMem *CrabBuilderManager::get_shadow_mem() {
+seadsa::ShadowMem *CrabBuilderManager::get_shadow_mem() {
   return m_sm;
 }
   

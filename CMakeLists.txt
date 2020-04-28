@@ -310,7 +310,7 @@ if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-dsa AND
 endif()
 
 if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
-    EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/src/DsaAnalysis.cc)
+    EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/lib/seadsa/DsaAnalysis.cc)
   set (HAVE_SEA_DSA TRUE)
 else()
   message (WARNING "No SEA DSA found in ${CMAKE_SOURCE_DIR}/sea-dsa. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")

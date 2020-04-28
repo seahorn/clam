@@ -8,33 +8,33 @@ class Type;
 class Function;
 } // namespace llvm
 
-namespace sea_dsa {
+namespace seadsa {
 class Graph;
 class Node;
-} // namespace sea_dsa
+} // namespace seadsa
 
 namespace clam {
 namespace seadsa_heap_abs_impl {
 
 struct NodeOrdering {
-  bool operator()(const sea_dsa::Node *n1, const sea_dsa::Node *n2) const;
+  bool operator()(const seadsa::Node *n1, const seadsa::Node *n2) const;
 };
 
-using NodeSet = std::set<const sea_dsa::Node *, NodeOrdering>;
+using NodeSet = std::set<const seadsa::Node *, NodeOrdering>;
 
 void set_difference(NodeSet &s1, NodeSet &s2);
 
 void set_union(NodeSet &s1, NodeSet &s2);
 
-void markReachableNodes(const sea_dsa::Node *n, NodeSet &set);
+void markReachableNodes(const seadsa::Node *n, NodeSet &set);
 
-void reachableNodes(const llvm::Function &fn, sea_dsa::Graph &g,
+void reachableNodes(const llvm::Function &fn, seadsa::Graph &g,
                     NodeSet &inputReach, NodeSet &retReach);
 
 /// Computes Node reachable from the call arguments in the graph.
 /// reach - all reachable nodes
 /// outReach - subset of reach that is only reachable from the return node
-void argReachableNodes(const llvm::Function &fn, sea_dsa::Graph &G,
+void argReachableNodes(const llvm::Function &fn, seadsa::Graph &G,
                        NodeSet &reach, NodeSet &outReach);
 
 struct isInteger : std::unary_function<const llvm::Type *, bool> {

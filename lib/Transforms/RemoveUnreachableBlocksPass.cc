@@ -4,8 +4,8 @@
 
 #include "clam/config.h"
 
-#include "sea_dsa/ShadowMem.hh"
-#include "sea_dsa/DsaAnalysis.hh"
+#include "seadsa/ShadowMem.hh"
+#include "seadsa/DsaAnalysis.hh"
 
 #ifdef HAVE_DSA
 #include "dsa/DataStructure.h"
@@ -36,8 +36,8 @@ namespace clam
       AU.addPreservedID(SteensgaardDataStructuresID);
       #endif
       // Preserve Sea-DSA passes
-      AU.addPreservedID(sea_dsa::DsaAnalysis::ID);
-      AU.addPreservedID(sea_dsa::ShadowMemPass::ID);
+      AU.addPreservedID(seadsa::DsaAnalysis::ID);
+      AU.addPreservedID(seadsa::ShadowMemPass::ID);
     }
     
     virtual StringRef getPassName() const {

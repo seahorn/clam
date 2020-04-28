@@ -6,16 +6,16 @@ class DataLayout;
 class Value;
 } // namespace llvm
 
-namespace sea_dsa {
+namespace seadsa {
 class Cell;
 class Node;
-} // namespace sea_dsa
+} // namespace seadsa
 
 namespace clam {
 
 // Decide if a sea-dsa cell can be safely translated to a Crab
 // array. Succeeds if returned value != UNTYPED_REGION
-RegionInfo DsaToRegion(const sea_dsa::Cell &c,
+RegionInfo DsaToRegion(const seadsa::Cell &c,
 		       const llvm::DataLayout &dl,
 		       // field-sensitivity
 		       bool split_dsa_nodes,
