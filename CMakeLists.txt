@@ -180,14 +180,14 @@ if (GIT_FOUND)
     # set (SEAHORN_LLVM_REPO "https://github.com/seahorn/llvm-seahorn"
     #   CACHE STRING "seahorn-llvm repo")
 
-    add_custom_target (llvm-dsa-git
-      ${GIT_EXECUTABLE} clone -b llvm-8.0 ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
+    #add_custom_target (llvm-dsa-git
+    #  ${GIT_EXECUTABLE} clone -b llvm-8.0 ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
     add_custom_target (sea-dsa-git
-      ${GIT_EXECUTABLE} clone -b llvm-8.0 ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
+      ${GIT_EXECUTABLE} clone -b dev9 ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
     # add_custom_target (seahorn-llvm-git
     #   ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
     #add_custom_target (extra DEPENDS llvm-dsa-git sea-dsa-git seahorn-llvm-git)
-    add_custom_target (extra DEPENDS llvm-dsa-git sea-dsa-git)
+    add_custom_target (extra DEPENDS sea-dsa-git)
   endif ()
 
   set (CRAB_REPO "https://github.com/seahorn/crab.git" CACHE STRING "crab repo")
