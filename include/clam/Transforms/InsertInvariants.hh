@@ -1,6 +1,6 @@
 #pragma once
 
-/* 
+/*
  * Instrument LLVM bitecode by inserting invariants computed by
  * crab. The invariants are inserted as verifier.assume instructions.
  */
@@ -8,33 +8,31 @@
 #include "llvm/Pass.h"
 
 namespace llvm {
-  class Function;
-  class Module;
-  class CallGraph;
-}
+class Function;
+class Module;
+class CallGraph;
+} // namespace llvm
 
 namespace clam {
 
-  class InsertInvariants : public llvm::ModulePass {
+class InsertInvariants : public llvm::ModulePass {
 
-    llvm::Function* m_assumeFn;
+  llvm::Function *m_assumeFn;
 
-  public:
-    
-    static char ID;        
-    
-    InsertInvariants (): llvm::ModulePass (ID), m_assumeFn (0) {} 
+public:
+  static char ID;
 
-    virtual bool runOnModule (llvm::Module& M);
+  InsertInvariants() : llvm::ModulePass(ID), m_assumeFn(0) {}
 
-    virtual bool runOnFunction (llvm::Function &F);
+  virtual bool runOnModule(llvm::Module &M);
 
-    virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const ;
+  virtual bool runOnFunction(llvm::Function &F);
 
-    virtual llvm::StringRef getPassName () const {
-      return "Clam: insert invariants as verifier.assume instructions";
-    }
+  virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const;
 
-  };
+  virtual llvm::StringRef getPassName() const {
+    return "Clam: insert invariants as verifier.assume instructions";
+  }
+};
 
 } // end namespace clam

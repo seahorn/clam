@@ -18,8 +18,9 @@ using namespace seadsa;
 
 namespace seadsa_heap_abs_impl {
 
-bool NodeOrdering::operator()(const seadsa::Node *n1, const seadsa::Node *n2) const {
-    return n1->getId() < n2->getId();
+bool NodeOrdering::operator()(const seadsa::Node *n1,
+                              const seadsa::Node *n2) const {
+  return n1->getId() < n2->getId();
 }
 
 void set_difference(NodeSet &s1, NodeSet &s2) {

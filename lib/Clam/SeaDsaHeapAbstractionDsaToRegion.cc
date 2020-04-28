@@ -123,8 +123,9 @@ static bool isOverlappingCell(const Cell &c, const DataLayout &dl) {
 // Extra conditions required for array smashing-like abstractions
 static bool isSafeForWeakArrayDomains(const Cell &c, const DataLayout &dl) {
   if (isOverlappingCell(c, dl)) {
-    CRAB_LOG("heap-abs", errs() << "\tCannot be converted to region because overlaps "
-                                   "with other cells.\n";);
+    CRAB_LOG("heap-abs",
+             errs() << "\tCannot be converted to region because overlaps "
+                       "with other cells.\n";);
     return false;
   }
 
@@ -132,10 +133,8 @@ static bool isSafeForWeakArrayDomains(const Cell &c, const DataLayout &dl) {
   unsigned offset = c.getOffset();
 
   if (offset >= n->size()) {
-    CRAB_LOG(
-        "heap-abs",
-        errs()
-            << "\tCannot be converted to region because cell is out-of-bounds.\n";);
+    CRAB_LOG("heap-abs", errs() << "\tCannot be converted to region because "
+                                   "cell is out-of-bounds.\n";);
     return false;
   }
 
@@ -144,9 +143,10 @@ static bool isSafeForWeakArrayDomains(const Cell &c, const DataLayout &dl) {
                     [offset](const Node::accessed_types_type::value_type &kv) {
                       return (kv.first != offset);
                     })) {
-      CRAB_LOG("heap-abs",
-               errs() << "\tCannot be converted to region because cell's node is "
-                      << " an array accessed with different offsets\n";);
+      CRAB_LOG(
+          "heap-abs",
+          errs() << "\tCannot be converted to region because cell's node is "
+                 << " an array accessed with different offsets\n";);
       return false;
     }
   }
@@ -163,11 +163,10 @@ using namespace seadsa;
 
 // DsaToRegion succeeds if returned valued != UNTYPED_REGION
 RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
-		       bool split_dsa_nodes,
-		       bool disambiguate_for_array_smashing,
-		       bool disambiguate_unknown,
-		       bool disambiguate_ptr_cast,
-		       bool disambiguate_external) {
+                       bool split_dsa_nodes,
+                       bool disambiguate_for_array_smashing,
+                       bool disambiguate_unknown, bool disambiguate_ptr_cast,
+                       bool disambiguate_external) {
   if (c.isNull()) {
     return RegionInfo(UNTYPED_REGION, 0);
   }
@@ -177,7 +176,7 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
   if (!split_dsa_nodes) {
     offset = 0;
   }
-  
+
   CRAB_LOG("heap-abs", errs() << "*** Checking whether node at offset "
                               << offset << " can be converted to region ... \n"
                               << "\t" << *n << "\n";);
@@ -190,25 +189,25 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
   }
 
   if (n->isOffsetCollapsed()) {
-    CRAB_LOG(
-        "heap-abs",
-        errs() << "\tCannot be converted to region: node is already collapsed.\n";);
+    CRAB_LOG("heap-abs", errs() << "\tCannot be converted to region: node is "
+                                   "already collapsed.\n";);
     return RegionInfo(UNTYPED_REGION, 0);
   }
 
   if (n->isIntToPtr() || n->isPtrToInt()) {
     if (!disambiguate_ptr_cast) {
-      CRAB_LOG("heap-abs", errs()
-                               << "\tCannot be converted to region: node is casted "
-                               << "from/to an integer.\n";);
+      CRAB_LOG("heap-abs",
+               errs() << "\tCannot be converted to region: node is casted "
+                      << "from/to an integer.\n";);
       return RegionInfo(UNTYPED_REGION, 0);
     }
   }
 
   if (n->isExternal()) {
     if (!disambiguate_external) {
-      CRAB_LOG("heap-abs",
-               errs() << "\tCannot be converted to region: node is external.\n";);
+      CRAB_LOG(
+          "heap-abs",
+          errs() << "\tCannot be converted to region: node is external.\n";);
       return RegionInfo(UNTYPED_REGION, 0);
     }
   }
@@ -216,8 +215,7 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
   seadsa_heap_abs_impl::isInteger int_pred;
   if (isTypedCell(n, offset, int_pred) ||
       isTypedArrayCell(n, offset, int_pred)) {
-    if (!disambiguate_for_array_smashing ||
-	isSafeForWeakArrayDomains(c, dl)) {
+    if (!disambiguate_for_array_smashing || isSafeForWeakArrayDomains(c, dl)) {
       CRAB_LOG("heap-abs", errs() << "\tDisambiguation succeed!\n"
                                   << "Found INT_REGION at offset " << offset
                                   << " with bitwidth=" << int_pred.m_bitwidth
@@ -225,8 +223,9 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
                                   << "\t" << *n << "\n";);
       return RegionInfo(INT_REGION, int_pred.m_bitwidth);
     } else {
-      CRAB_LOG("heap-abs", errs() << "\tCannot be converted to region because it's "
-                                     "not safe weak array domains\n";);
+      CRAB_LOG("heap-abs",
+               errs() << "\tCannot be converted to region because it's "
+                         "not safe weak array domains\n";);
       return RegionInfo(UNTYPED_REGION, 0);
     }
   }
@@ -234,23 +233,24 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
   seadsa_heap_abs_impl::isBool bool_pred;
   if (isTypedCell(n, offset, bool_pred) ||
       isTypedArrayCell(n, offset, bool_pred)) {
-    if (!disambiguate_for_array_smashing ||
-	isSafeForWeakArrayDomains(c, dl)) {
+    if (!disambiguate_for_array_smashing || isSafeForWeakArrayDomains(c, dl)) {
       CRAB_LOG("heap-abs", errs() << "\tDisambiguation succeed!\n"
                                   << "Found BOOL_REGION at offset " << offset
                                   << " with bitwidth=1\n"
                                   << "\t" << *n << "\n";);
       return RegionInfo(BOOL_REGION, 1);
     } else {
-      CRAB_LOG("heap-abs", errs() << "\tCannot be converted to region because it's "
-                                     "not safe weak array domains\n";);
+      CRAB_LOG("heap-abs",
+               errs() << "\tCannot be converted to region because it's "
+                         "not safe weak array domains\n";);
       return RegionInfo(UNTYPED_REGION, 0);
     }
   }
 
   // TODO: modify here to consider cells containing pointers.
-  CRAB_LOG("heap-abs",
-           errs() << "\tCannot be converted to region: do not contain integer.\n";);
+  CRAB_LOG(
+      "heap-abs",
+      errs() << "\tCannot be converted to region: do not contain integer.\n";);
 
   return RegionInfo(UNTYPED_REGION, 0);
 }

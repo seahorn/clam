@@ -81,7 +81,7 @@ bool isAssumeFn(const llvm::Function &F);
 
 bool isCrabIntrinsic(const llvm::Function &F);
 
-std::string getCrabIntrinsicName(const llvm::Function &F);  
+std::string getCrabIntrinsicName(const llvm::Function &F);
 
 bool isNotAssumeFn(const llvm::Function &F);
 

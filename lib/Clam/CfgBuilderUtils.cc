@@ -89,8 +89,8 @@ bool isTrackedType(const Type &ty, const CrabBuilderParams &params) {
 
 bool isTracked(const Value &v, const CrabBuilderParams &params) {
   // -- ignore any shadow variable created by seahorn
-  //if (v.getName().startswith("shadow.mem"))
-  //return false;
+  // if (v.getName().startswith("shadow.mem"))
+  // return false;
 
   return isTrackedType(*v.getType(), params);
 }
@@ -210,7 +210,7 @@ std::string getCrabIntrinsicName(const Function &F) {
   StringRef res = F.getName().split("__CRAB_intrinsic_").second;
   return res.str();
 }
-  
+
 bool isZeroInitializer(const Function &F) {
   return F.getName().startswith("verifier.zero_initializer");
 }
@@ -218,7 +218,8 @@ bool isZeroInitializer(const Function &F) {
 bool isZeroInitializer(const CallInst &CI) {
   ImmutableCallSite CS(&CI);
   const Value *calleeV = CS.getCalledValue();
-  if (const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts())) {
+  if (const Function *callee =
+          dyn_cast<Function>(calleeV->stripPointerCasts())) {
     return isZeroInitializer(*callee);
   }
   return false;
@@ -231,7 +232,8 @@ bool isIntInitializer(const Function &F) {
 bool isIntInitializer(const CallInst &CI) {
   ImmutableCallSite CS(&CI);
   const Value *calleeV = CS.getCalledValue();
-  if (const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts())) {
+  if (const Function *callee =
+          dyn_cast<Function>(calleeV->stripPointerCasts())) {
     return isIntInitializer(*callee);
   }
   return false;
@@ -284,8 +286,8 @@ bool AllUsesAreVerifierCalls(Value &V) {
       CallSite CS(CI);
       const Value *calleeV = CS.getCalledValue();
       const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
-      if (callee &&
-          (isAssertFn(*callee) || isAssumeFn(*callee) || isNotAssumeFn(*callee))) {
+      if (callee && (isAssertFn(*callee) || isAssumeFn(*callee) ||
+                     isNotAssumeFn(*callee))) {
         continue;
       }
     }

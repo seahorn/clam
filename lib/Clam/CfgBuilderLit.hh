@@ -6,8 +6,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "clam/CfgBuilderParams.hh"
-#include "clam/crab/crab_cfg.hh"
 #include "clam/HeapAbstraction.hh"
+#include "clam/crab/crab_cfg.hh"
 
 #include <unordered_map>
 
@@ -170,7 +170,6 @@ typedef std::shared_ptr<crabLit> crab_lit_ref_t;
 /* Implementation of a factory to create literals */
 class crabLitFactoryImpl {
 public:
-  
   crabLitFactoryImpl(llvm_variable_factory &vfac,
                      const CrabBuilderParams &params);
 
@@ -226,7 +225,7 @@ private:
   llvm_variable_factory &m_vfac;
   const CrabBuilderParams &m_params;
   lit_cache_t m_lit_cache;
-  
+
   llvm::Optional<crabBoolLit> getBoolLit(const llvm::Value &v);
   llvm::Optional<crabIntLit> getIntLit(const llvm::Value &v);
   llvm::Optional<crabPtrLit> getPtrLit(const llvm::Value &v);
@@ -237,7 +236,6 @@ private:
  **/
 class crabLitFactory {
 public:
-  
   crabLitFactory(llvm_variable_factory &vfac, const CrabBuilderParams &params);
 
   ~crabLitFactory();
@@ -269,7 +267,7 @@ public:
   var_t mkArrayVar(Region r, const llvm::Value *name = nullptr);
 
   var_t mkArraySingletonVar(Region r, const llvm::Value *name = nullptr);
-  
+
   /** direct accessors to crabLit subclasses **/
   bool isBoolTrue(const crab_lit_ref_t ref) const;
 

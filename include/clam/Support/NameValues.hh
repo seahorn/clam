@@ -1,26 +1,23 @@
 #pragma once
 
-#include "llvm/Pass.h"
-#include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Pass.h"
 
 namespace clam {
 
-  class NameValues : public llvm::ModulePass {
-   public:
-    
-    static char ID;
+class NameValues : public llvm::ModulePass {
+public:
+  static char ID;
 
-    NameValues () : llvm::ModulePass (ID) {}
-    
-    virtual bool runOnModule (llvm::Module &M);
+  NameValues() : llvm::ModulePass(ID) {}
 
-    bool runOnFunction (llvm::Function &F);
+  virtual bool runOnModule(llvm::Module &M);
 
-    virtual void getAnalysisUsage (llvm::AnalysisUsage &AU) const;
-   
-    virtual llvm::StringRef getPassName() const {
-      return "Clam: Name values";
-    }
-  };
-} 
+  bool runOnFunction(llvm::Function &F);
+
+  virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const;
+
+  virtual llvm::StringRef getPassName() const { return "Clam: Name values"; }
+};
+} // namespace clam

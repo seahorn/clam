@@ -1,5 +1,8 @@
 #pragma once
 
+// AG: Something is wrong. Formatting breaks compilation
+// clang-format off
+
 #include "clam/crab/crab_cfg.hh"
 #include "crab/config.h"
 #include "crab/domains/linear_constraints.hpp"                     
@@ -152,3 +155,5 @@ namespace clam {
   ARRAY_BOOL_NUM(wrapped_interval_domain_t);
 
 } // end namespace crab-llvm
+
+// clang-format on

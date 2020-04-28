@@ -42,7 +42,7 @@
  *
  * Continue reading only if you are interested about preserving memory
  * SSA form during the translation to Crab.
- * 
+ *
  * The `HeapAnalysis` class is used to translate memory into Crab
  * arrays.  This translation is the default one and it is not in
  * memory SSA form. The particular Dsa-analysis can be chosen via the
@@ -55,7 +55,7 @@
  * memory SSA form. This translation can be useful when a very tight
  * cooperation between SeaHorn and Clam is desired. For now, the
  * translation only works for **inlined** programs.
- * 
+ *
  * To choose between one or the other, if you call `clam.py` then use
  * the options `--crab-heap-analysis=none --crab-memssa --inline` to
  * choose the memory-SSA form-based translation. When using directly
@@ -79,8 +79,8 @@
 
 #include "CfgBuilderLit.hh"
 #include "CfgBuilderMemRegions.hh"
-#include "CfgBuilderUtils.hh"
 #include "CfgBuilderShadowMem.hh"
+#include "CfgBuilderUtils.hh"
 
 #include "clam/CfgBuilder.hh"
 #include "clam/DummyHeapAbstraction.hh"
@@ -356,7 +356,7 @@ var_t normalizeFuncParamOrRet(Value &v, basic_block_t &bb,
     // clang complains otherwise
     abort();
   }
-} 
+}
 
 //! Translate PHI nodes
 struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
@@ -364,7 +364,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
   crabLitFactory &m_lfac;
   HeapAbstraction &m_mem;
   seadsa::ShadowMem *m_sm;
-  const DataLayout &m_dl;  
+  const DataLayout &m_dl;
   // block where assignment will be inserted
   basic_block_t &m_bb;
   // incoming block of the PHI instruction
@@ -372,7 +372,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
   // builder parameters
   const CrabBuilderParams &m_params;
 
-  const seadsa::ShadowMem* getShadowMem() const {
+  const seadsa::ShadowMem *getShadowMem() const {
     if (m_params.memory_ssa && m_sm) {
       assert(m_mem.getClassId() == HeapAbstraction::ClassId::DUMMY);
       return m_sm;
@@ -380,42 +380,41 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
       return nullptr;
     }
   }
-  
-  CrabPhiVisitor(crabLitFactory &lfac, HeapAbstraction &mem, seadsa::ShadowMem *sm,
-		 const DataLayout &dl, basic_block_t &bb, const BasicBlock &inc_BB,
-		 const CrabBuilderParams &params)
-    : m_lfac(lfac), m_mem(mem), m_sm(sm), m_dl(dl), m_bb(bb),
-      m_inc_BB(inc_BB), m_params(params) {}
+
+  CrabPhiVisitor(crabLitFactory &lfac, HeapAbstraction &mem,
+                 seadsa::ShadowMem *sm, const DataLayout &dl, basic_block_t &bb,
+                 const BasicBlock &inc_BB, const CrabBuilderParams &params)
+      : m_lfac(lfac), m_mem(mem), m_sm(sm), m_dl(dl), m_bb(bb),
+        m_inc_BB(inc_BB), m_params(params) {}
 
   void visitBasicBlock(BasicBlock &BB) {
     if (!isa<PHINode>(BB.begin()))
       return;
 
     // Map an PHI incoming value to a Crab variable
-    DenseMap<const Value*, var_t> old_val_map;
+    DenseMap<const Value *, var_t> old_val_map;
     // Get shadow memory if available
     const seadsa::ShadowMem *sm = getShadowMem();
     // map an PHI incoming value to a cell if the PHI node is a shadow
     // mem PHI node.
-    DenseMap<const Value*, std::pair<seadsa::Cell,Region>> sm_cell_map;
+    DenseMap<const Value *, std::pair<seadsa::Cell, Region>> sm_cell_map;
 
-    
     if (sm) {
       // We first identify all shadow mem PHI nodes
       auto curr = BB.begin();
       for (; isa<PHINode>(curr); ++curr) {
-	PHINode &phi = *cast<PHINode>(curr);
-	if (!isTracked(phi, m_lfac.get_cfg_builder_params()))
-	  continue;
-	const Value &v = *phi.getIncomingValueForBlock(&m_inc_BB);
-	auto cellOpt = getShadowMemCell(phi, v, *sm);	
-	if (cellOpt.hasValue()) {	  
-	  seadsa::Cell cell = cellOpt.getValue();
-	  Region reg = getShadowRegion(cell, m_dl, *sm);
-	  if (!reg.isUnknown()) {
-	    sm_cell_map.insert({&v, {cell, reg}});
-	  }
-      	}
+        PHINode &phi = *cast<PHINode>(curr);
+        if (!isTracked(phi, m_lfac.get_cfg_builder_params()))
+          continue;
+        const Value &v = *phi.getIncomingValueForBlock(&m_inc_BB);
+        auto cellOpt = getShadowMemCell(phi, v, *sm);
+        if (cellOpt.hasValue()) {
+          seadsa::Cell cell = cellOpt.getValue();
+          Region reg = getShadowRegion(cell, m_dl, *sm);
+          if (!reg.isUnknown()) {
+            sm_cell_map.insert({&v, {cell, reg}});
+          }
+        }
       }
     }
 
@@ -436,74 +435,78 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
         auto it = old_val_map.find(&v);
         if (it == old_val_map.end()) {
           if (crab_lit_ref_t phi_val_ref = m_lfac.getLit(v)) {
-	    auto sm_it = sm_cell_map.find(&v);
-	    if (sm_it != sm_cell_map.end()) {
-	      // shadow mem phi node: array
+            auto sm_it = sm_cell_map.find(&v);
+            if (sm_it != sm_cell_map.end()) {
+              // shadow mem phi node: array
               if (!phi_val_ref->isVar()) {
-		CLAM_ERROR("unexpected shadow PHI node");
-	      }
-	      Region reg = sm_it->second.second;
-	      bool lowerToScalar = get_singleton_value(reg, m_params.lower_singleton_aliases);
-	      if (reg.getRegionInfo().get_type() == BOOL_REGION) {
-		var_t lhs = (lowerToScalar ? m_lfac.mkBoolVar(): m_lfac.mkBoolArrayVar());
-		if (lowerToScalar) {
-		  m_bb.bool_assign(lhs, m_lfac.mkArraySingletonVar(reg, phi));
-		} else {
-		  m_bb.array_assign(lhs, m_lfac.mkArrayVar(reg, phi));
-		}
-		old_val_map.insert({&v, lhs});		  
-	      } else if (reg.getRegionInfo().get_type() == INT_REGION) {
-		var_t lhs = (lowerToScalar ?
-			     m_lfac.mkIntVar(reg.getRegionInfo().get_bitwidth()):
-			     m_lfac.mkIntArrayVar(reg.getRegionInfo().get_bitwidth()));
-		if (lowerToScalar) {
-		  m_bb.assign(lhs, m_lfac.mkArraySingletonVar(reg, phi));
-		} else {
-		  m_bb.array_assign(lhs, m_lfac.mkArrayVar(reg, phi));
-		}
-		old_val_map.insert({&v, lhs});		  
-	      } else {
-		CLAM_WARNING("Skipped shadow mem phi node" << *phi);
-	      }
-	    } else {
-	      // non-shadow mem phi node: bool, integer, or pointer
+                CLAM_ERROR("unexpected shadow PHI node");
+              }
+              Region reg = sm_it->second.second;
+              bool lowerToScalar =
+                  get_singleton_value(reg, m_params.lower_singleton_aliases);
+              if (reg.getRegionInfo().get_type() == BOOL_REGION) {
+                var_t lhs = (lowerToScalar ? m_lfac.mkBoolVar()
+                                           : m_lfac.mkBoolArrayVar());
+                if (lowerToScalar) {
+                  m_bb.bool_assign(lhs, m_lfac.mkArraySingletonVar(reg, phi));
+                } else {
+                  m_bb.array_assign(lhs, m_lfac.mkArrayVar(reg, phi));
+                }
+                old_val_map.insert({&v, lhs});
+              } else if (reg.getRegionInfo().get_type() == INT_REGION) {
+                var_t lhs =
+                    (lowerToScalar
+                         ? m_lfac.mkIntVar(reg.getRegionInfo().get_bitwidth())
+                         : m_lfac.mkIntArrayVar(
+                               reg.getRegionInfo().get_bitwidth()));
+                if (lowerToScalar) {
+                  m_bb.assign(lhs, m_lfac.mkArraySingletonVar(reg, phi));
+                } else {
+                  m_bb.array_assign(lhs, m_lfac.mkArrayVar(reg, phi));
+                }
+                old_val_map.insert({&v, lhs});
+              } else {
+                CLAM_WARNING("Skipped shadow mem phi node" << *phi);
+              }
+            } else {
+              // non-shadow mem phi node: bool, integer, or pointer
 
-	      if (phi->getName().startswith("shadow.mem")) {
-		// XXX: If clam is run from SeaHorn then the bitcode
-		// will be instrumented by ShadowMem. Here we try to
-		// identify PHI shadow mem instructions and ignore them.
-		continue;
-	      }
-	      
-	      if (phi_val_ref->isBool()) {
-		var_t lhs = m_lfac.mkBoolVar();
-		if (phi_val_ref->isVar()) {
-		  m_bb.bool_assign(lhs, phi_val_ref->getVar());
-		} else {
-		  m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref)
-				   ? lin_cst_t::get_true()
-				   : lin_cst_t::get_false());
-		}
-		old_val_map.insert({&v, lhs});
-	      } else if (phi_val_ref->isInt()) {
-		var_t lhs =
-		  m_lfac.mkIntVar(phi_v->getType()->getIntegerBitWidth());
-		m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
-		old_val_map.insert({&v, lhs});	     
-	      } else if (phi_val_ref->isPtr()) {
-		var_t lhs = m_lfac.mkPtrVar();
-		if (phi_val_ref->isVar()) {
-		  m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
-		} else {
-		  m_bb.ptr_null(lhs);
-		}
-		old_val_map.insert({&v, lhs});
-	      } else { 
-		/* unreachable */
-	      }
-	    }
-	  }
-	}
+              if (phi->getName().startswith("shadow.mem")) {
+                // XXX: If clam is run from SeaHorn then the bitcode
+                // will be instrumented by ShadowMem. Here we try to
+                // identify PHI shadow mem instructions and ignore them.
+                continue;
+              }
+
+              if (phi_val_ref->isBool()) {
+                var_t lhs = m_lfac.mkBoolVar();
+                if (phi_val_ref->isVar()) {
+                  m_bb.bool_assign(lhs, phi_val_ref->getVar());
+                } else {
+                  m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref)
+                                            ? lin_cst_t::get_true()
+                                            : lin_cst_t::get_false());
+                }
+                old_val_map.insert({&v, lhs});
+              } else if (phi_val_ref->isInt()) {
+                var_t lhs =
+                    m_lfac.mkIntVar(phi_v->getType()->getIntegerBitWidth());
+                m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
+                old_val_map.insert({&v, lhs});
+              } else if (phi_val_ref->isPtr()) {
+                var_t lhs = m_lfac.mkPtrVar();
+                if (phi_val_ref->isVar()) {
+                  m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
+                } else {
+                  m_bb.ptr_null(lhs);
+                }
+                old_val_map.insert({&v, lhs});
+              } else {
+                /* unreachable */
+              }
+            }
+          }
+        }
       }
     }
 
@@ -512,83 +515,84 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
       PHINode &phi = *cast<PHINode>(curr);
       if (!isTracked(phi, m_lfac.get_cfg_builder_params()))
         continue;
-      
+
       const Value &v = *phi.getIncomingValueForBlock(&m_inc_BB);
 
       auto sm_it = sm_cell_map.find(&v);
       if (sm_it != sm_cell_map.end()) {
-	/// Shadow mem PHI node: array 
-	Region reg  = sm_it->second.second;
-	bool lowerToScalar = get_singleton_value(reg, m_params.lower_singleton_aliases);	
-	if (lowerToScalar) {
-	  switch (reg.getRegionInfo().get_type()) {
-	  case BOOL_REGION:
-	    m_bb.bool_assign(m_lfac.mkArraySingletonVar(reg, &phi),
-			     m_lfac.mkArraySingletonVar(reg, &v));
-	    break;
-	  case INT_REGION:
-	    m_bb.assign(m_lfac.mkArraySingletonVar(reg, &phi),
-			m_lfac.mkArraySingletonVar(reg, &v));
-	    break;
-	  default:
-	    CLAM_WARNING("Skipped shadow mem phi node" << phi);	    
-	  }
-	} else {
-	  m_bb.array_assign(m_lfac.mkArrayVar(reg, &phi),
-			    m_lfac.mkArrayVar(reg, &v));
-	}
+        /// Shadow mem PHI node: array
+        Region reg = sm_it->second.second;
+        bool lowerToScalar =
+            get_singleton_value(reg, m_params.lower_singleton_aliases);
+        if (lowerToScalar) {
+          switch (reg.getRegionInfo().get_type()) {
+          case BOOL_REGION:
+            m_bb.bool_assign(m_lfac.mkArraySingletonVar(reg, &phi),
+                             m_lfac.mkArraySingletonVar(reg, &v));
+            break;
+          case INT_REGION:
+            m_bb.assign(m_lfac.mkArraySingletonVar(reg, &phi),
+                        m_lfac.mkArraySingletonVar(reg, &v));
+            break;
+          default:
+            CLAM_WARNING("Skipped shadow mem phi node" << phi);
+          }
+        } else {
+          m_bb.array_assign(m_lfac.mkArrayVar(reg, &phi),
+                            m_lfac.mkArrayVar(reg, &v));
+        }
       } else {
-	/// Regular PHI node: bool, integer, or pointer
+        /// Regular PHI node: bool, integer, or pointer
 
-	if (phi.getName().startswith("shadow.mem")) {
-	  // XXX: If clam is run from SeaHorn then the bitcode will be
-	  // instrumented by ShadowMem. Here we try to identify PHI
-	  // shadow mem instructions and ignore them.
-	  continue;
-	}
-	
-	crab_lit_ref_t lhs_ref = m_lfac.getLit(phi);
-	if (!lhs_ref || !lhs_ref->isVar()) {
-	  CLAM_ERROR("unexpected PHI instruction");
-	}
-	var_t lhs = lhs_ref->getVar();	
-	auto it = old_val_map.find(&v);
-	if (it != old_val_map.end()) {
-	  // -- use old version if exists
-	  if (isBool(phi)) {
-	    m_bb.bool_assign(lhs, it->second);
-	  } else if (phi.getType()->isIntegerTy()) {
-	    m_bb.assign(lhs, it->second);
-	  } else if (isPointer(phi, m_lfac.get_cfg_builder_params())) {
-	    m_bb.ptr_assign(lhs, it->second, number_t(0));
-	  }
-	} else {	
-	  if (crab_lit_ref_t phi_val_ref = m_lfac.getLit(v)) {
-	    if (phi_val_ref->isBool()) {
-	      if (phi_val_ref->isVar()) {
-		m_bb.bool_assign(lhs, phi_val_ref->getVar());
-	      } else {
-		m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref)
-				 ? lin_cst_t::get_true()
-				 : lin_cst_t::get_false());
-	      }
-	    } else if (phi_val_ref->isInt()) {
-	      m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
-	    } else if (phi_val_ref->isPtr()) {
-	      if (phi_val_ref->isVar()) {
-		m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
-	      } else {
-		m_bb.ptr_null(lhs);
-	      }
-	    } else {
-	      /* unreachable*/
-	    }
-	  } else {
-	    // we can be here if the incoming value is a bignum and we
-	    // don't allow bignums.
-	    m_bb.havoc(lhs);
-	  }
-	}
+        if (phi.getName().startswith("shadow.mem")) {
+          // XXX: If clam is run from SeaHorn then the bitcode will be
+          // instrumented by ShadowMem. Here we try to identify PHI
+          // shadow mem instructions and ignore them.
+          continue;
+        }
+
+        crab_lit_ref_t lhs_ref = m_lfac.getLit(phi);
+        if (!lhs_ref || !lhs_ref->isVar()) {
+          CLAM_ERROR("unexpected PHI instruction");
+        }
+        var_t lhs = lhs_ref->getVar();
+        auto it = old_val_map.find(&v);
+        if (it != old_val_map.end()) {
+          // -- use old version if exists
+          if (isBool(phi)) {
+            m_bb.bool_assign(lhs, it->second);
+          } else if (phi.getType()->isIntegerTy()) {
+            m_bb.assign(lhs, it->second);
+          } else if (isPointer(phi, m_lfac.get_cfg_builder_params())) {
+            m_bb.ptr_assign(lhs, it->second, number_t(0));
+          }
+        } else {
+          if (crab_lit_ref_t phi_val_ref = m_lfac.getLit(v)) {
+            if (phi_val_ref->isBool()) {
+              if (phi_val_ref->isVar()) {
+                m_bb.bool_assign(lhs, phi_val_ref->getVar());
+              } else {
+                m_bb.bool_assign(lhs, m_lfac.isBoolTrue(phi_val_ref)
+                                          ? lin_cst_t::get_true()
+                                          : lin_cst_t::get_false());
+              }
+            } else if (phi_val_ref->isInt()) {
+              m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
+            } else if (phi_val_ref->isPtr()) {
+              if (phi_val_ref->isVar()) {
+                m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
+              } else {
+                m_bb.ptr_null(lhs);
+              }
+            } else {
+              /* unreachable*/
+            }
+          } else {
+            // we can be here if the incoming value is a bignum and we
+            // don't allow bignums.
+            m_bb.havoc(lhs);
+          }
+        }
       }
     }
   }
@@ -596,7 +600,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 
 //! Translate the rest of instructions
 class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
-  
+
   crabLitFactory &m_lfac;
   HeapAbstraction &m_mem;
   seadsa::ShadowMem *m_sm;
@@ -605,12 +609,12 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   basic_block_t &m_bb;
   unsigned int m_object_id;
   bool m_has_seahorn_fail;
-  /**** 
+  /****
    * Here state that must survive to future invocations to
    * CrabInstVisitor.
    ****/
   // map gep to a crab variable
-  DenseMap<const GetElementPtrInst*, var_t> &m_gep_map;
+  DenseMap<const GetElementPtrInst *, var_t> &m_gep_map;
   // reverse **partial** map from Crab statements to LLVM instructions
   DenseMap<const statement_t *, const Instruction *> &m_rev_map;
   // to initialize arrays
@@ -625,16 +629,16 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
    *  integer offset of a pointer with respect to its memory object.
    */
   var_t getUnconstrainedArrayIdxVar(llvm_variable_factory &vfac,
-					       unsigned bitwidth);
+                                    unsigned bitwidth);
   /* Evaluate the offset of an object pointed to by v statically */
   Optional<z_number> evalOffset(Value &v, LLVMContext &ctx);
-  /* 
+  /*
    * Try extra a Crab arithmetic offset from load or store pointer
    * operand.
    */
   lin_exp_t inferArrayIndex(Value *v, LLVMContext &ctx, Region reg,
-			    llvm_variable_factory &vfac);
-  
+                            llvm_variable_factory &vfac);
+
   unsigned getMaxBitWidthFromGepIndexes(GetElementPtrInst &I);
   /*
    *  Insert key-value in the reverse map but only if no CFG
@@ -655,16 +659,15 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   void doMemIntrinsic(MemIntrinsic &I);
   void doGlobalInitializer(CallInst &I);
   void doVerifierCall(CallInst &I);
-  void doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
-	     var_t lhs, llvm::Optional<var_t> base);
+  void doGep(GetElementPtrInst &I, unsigned max_index_bitwidth, var_t lhs,
+             llvm::Optional<var_t> base);
   void doStoreInst(StoreInst &I, bool is_singleton,
-		   llvm::Optional<var_t> new_var, var_t old_var,
-		   crab_lit_ref_t val, Region reg);
-  void doLoadInst(LoadInst &I, bool is_singleton,
-		  var_t lhs, var_t rhs,
-		  Region rhs_region);
-  
-  const seadsa::ShadowMem* getShadowMem() const {
+                   llvm::Optional<var_t> new_var, var_t old_var,
+                   crab_lit_ref_t val, Region reg);
+  void doLoadInst(LoadInst &I, bool is_singleton, var_t lhs, var_t rhs,
+                  Region rhs_region);
+
+  const seadsa::ShadowMem *getShadowMem() const {
     if (m_params.memory_ssa && m_sm) {
       assert(m_mem.getClassId() == HeapAbstraction::ClassId::DUMMY);
       return m_sm;
@@ -672,14 +675,14 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
       return nullptr;
     }
   }
-  
+
 public:
   CrabInstVisitor(
       crabLitFactory &lfac, HeapAbstraction &mem, seadsa::ShadowMem *sm,
       const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       std::set<Region> &init_regions,
-      DenseMap<const GetElementPtrInst*, var_t> &gep_map,
+      DenseMap<const GetElementPtrInst *, var_t> &gep_map,
       const CrabBuilderParams &params);
 
   bool has_seahorn_fail() { return m_has_seahorn_fail; }
@@ -720,19 +723,19 @@ uint64_t CrabInstVisitor::storageSize(const Type *t) const {
   return clam::storageSize(t, *m_dl);
 }
 
-var_t CrabInstVisitor::getUnconstrainedArrayIdxVar(
-		       llvm_variable_factory &vfac, unsigned bitwidth) {
-  #if 0
+var_t CrabInstVisitor::getUnconstrainedArrayIdxVar(llvm_variable_factory &vfac,
+                                                   unsigned bitwidth) {
+#if 0
   static var_t v(vfac.get(), crab::INT_TYPE, bitwidth);
   m_bb.havoc(v);
-  #else
+#else
   var_t v(vfac.get(), crab::INT_TYPE, bitwidth);
-  #endif
+#endif
   return v;
 }
 
 unsigned CrabInstVisitor::getMaxBitWidthFromGepIndexes(GetElementPtrInst &I) {
-  unsigned bitwidth = 0; 
+  unsigned bitwidth = 0;
   for (unsigned i = 1, e = I.getNumOperands(); i < e; ++i) {
     if (IntegerType *ITy = cast<IntegerType>(I.getOperand(i)->getType())) {
       bitwidth = std::max(bitwidth, ITy->getBitWidth());
@@ -759,8 +762,9 @@ Optional<z_number> CrabInstVisitor::evalOffset(Value &v, LLVMContext &ctx) {
   return llvm::None;
 }
 
-lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx, Region reg,
-					   llvm_variable_factory &vfac) {
+lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx,
+                                           Region reg,
+                                           llvm_variable_factory &vfac) {
   auto offsetOpt = evalOffset(*v, ctx);
   if (offsetOpt.hasValue()) {
     // we were able to get the offset statically
@@ -769,13 +773,13 @@ lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx, Region re
     if (const GetElementPtrInst *GEPI = dyn_cast<GetElementPtrInst>(v)) {
       auto it = m_gep_map.find(GEPI);
       if (it == m_gep_map.end()) {
-	if (!reg.isUnknown()) {
-	  // This is unexpected so we print a warning
-	  CLAM_WARNING("Could not find shadow gep variable for " << *GEPI);
-	}
-	return getUnconstrainedArrayIdxVar(vfac, 32);
+        if (!reg.isUnknown()) {
+          // This is unexpected so we print a warning
+          CLAM_WARNING("Could not find shadow gep variable for " << *GEPI);
+        }
+        return getUnconstrainedArrayIdxVar(vfac, 32);
       } else {
-	return it->second;
+        return it->second;
       }
     } else {
       // we cannot infer statically the offset so we return an
@@ -784,7 +788,6 @@ lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx, Region re
     }
   }
 }
-
 
 void CrabInstVisitor::insertRevMap(const statement_t *s, Instruction &inst) {
   if (!m_params.simplify) {
@@ -798,18 +801,20 @@ bool CrabInstVisitor::AllUsesAreNonTrackMem(Value *V) const {
   for (auto &U : V->uses()) {
     if (StoreInst *SI = dyn_cast<StoreInst>(U.getUser())) {
       if (isa<Instruction>(V)) {
-        if (get_region(m_mem, getShadowMem(), *m_dl, 
-		       SI, SI->getPointerOperand()).isUnknown() &&
+        if (get_region(m_mem, getShadowMem(), *m_dl, SI,
+                       SI->getPointerOperand())
+                .isUnknown() &&
             (!SI->getValueOperand()->getType()->isPointerTy() ||
-             get_region(m_mem, getShadowMem(), *m_dl,
-			SI, SI->getValueOperand()).isUnknown()))
+             get_region(m_mem, getShadowMem(), *m_dl, SI, SI->getValueOperand())
+                 .isUnknown()))
           continue;
       }
       return false;
     } else if (LoadInst *LI = dyn_cast<LoadInst>(U.getUser())) {
       if (Instruction *I = dyn_cast<Instruction>(V)) {
-        if (get_region(m_mem, getShadowMem(), *m_dl,
-		       LI, LI->getPointerOperand()).isUnknown() &&
+        if (get_region(m_mem, getShadowMem(), *m_dl, LI,
+                       LI->getPointerOperand())
+                .isUnknown() &&
             (!I->getType()->isPointerTy() ||
              get_region(m_mem, getShadowMem(), *m_dl, LI, LI).isUnknown()))
           continue;
@@ -1149,11 +1154,11 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
     // XXX: memory intrinsics are currently only translated for ARR
     CLAM_WARNING("Skipped memory intrinsics " << I);
     return;
-  } 
+  }
 
   assert(m_lfac.get_track() == ARR);
-  
-  MemCpyInst  *MCI = dyn_cast<MemCpyInst>(&I);
+
+  MemCpyInst *MCI = dyn_cast<MemCpyInst>(&I);
   MemMoveInst *MVI = dyn_cast<MemMoveInst>(&I);
   Value *dst = I.getDest();
   Region dst_reg = get_region(m_mem, getShadowMem(), *m_dl, &I, dst);
@@ -1163,78 +1168,75 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
   var_t arr_var = m_lfac.mkArrayVar(dst_reg);
   const statement_t *crab_stmt = nullptr;
   if (MCI || MVI) {
-    /** 
+    /**
      * TODO: to be more precise we need from crab something like
      * array_copy and prove that source and destination do not overlap
      * if memmove instruction.
      **/
-    if (MCI)      
+    if (MCI)
       CLAM_WARNING("Skipped memcpy instruction");
-    else 
-      CLAM_WARNING("Skipped memmove instruction");        
-  } else if (MemSetInst  *MSI = dyn_cast<MemSetInst>(&I)) {
+    else
+      CLAM_WARNING("Skipped memmove instruction");
+  } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
     bool is_uninit_region = m_init_regions.insert(dst_reg).second;
     if (!m_params.memory_ssa && isInteger(*(MSI->getValue()))) {
       // TODOX: version for memory ssa form
       crab_lit_ref_t len_ref = m_lfac.getLit(*(MSI->getLength()));
       crab_lit_ref_t val_ref = m_lfac.getLit(*(MSI->getValue()));
       if (len_ref && val_ref && len_ref->isInt()) {
-	lin_exp_t lb_idx(number_t(0));
-	lin_exp_t ub_idx(m_lfac.getExp(len_ref) - 1);
-	uint64_t elem_size = MSI->getDestAlignment(); /*double check this*/
-	if (val_ref->isInt()) {
-	  if (val_ref->isVar()) {
-	    if (m_params.enabled_aggressive_array_initialization() &&
-		is_uninit_region) {
-	      crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx, val_ref->getVar(),
-					  elem_size);
-	    } else {
-	      crab_stmt =
-		m_bb.array_store_range(arr_var, lb_idx, ub_idx, val_ref->getVar(),
-				       elem_size);
+        lin_exp_t lb_idx(number_t(0));
+        lin_exp_t ub_idx(m_lfac.getExp(len_ref) - 1);
+        uint64_t elem_size = MSI->getDestAlignment(); /*double check this*/
+        if (val_ref->isInt()) {
+          if (val_ref->isVar()) {
+            if (m_params.enabled_aggressive_array_initialization() &&
+                is_uninit_region) {
+              crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx,
+                                          val_ref->getVar(), elem_size);
+            } else {
+              crab_stmt = m_bb.array_store_range(arr_var, lb_idx, ub_idx,
+                                                 val_ref->getVar(), elem_size);
             }
-	  } else {
-	    if (m_params.enabled_aggressive_array_initialization() &&
-		is_uninit_region) {
-	      crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx,
-					  m_lfac.getIntCst(val_ref), elem_size);
-	    } else {
-	      crab_stmt =
-		m_bb.array_store_range(arr_var, lb_idx, ub_idx,
-				       m_lfac.getIntCst(val_ref), elem_size);
-	    }
-	  }
-	} else if (val_ref->isBool()) {
-	  if (val_ref->isVar()) {
-	    if (m_params.enabled_aggressive_array_initialization() && 
-		is_uninit_region) {
-	      crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx, val_ref->getVar(),
-					  elem_size);
-	    } else {
-	      crab_stmt =
-		m_bb.array_store_range(arr_var, lb_idx, ub_idx, val_ref->getVar(),
-				       elem_size);
-	    }
-	  } else {
-	    if (m_params.enabled_aggressive_array_initialization() &&
-		is_uninit_region) {	      
-	      crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx,
-					  m_lfac.isBoolTrue(val_ref) ? number_t(1)
-					  : number_t(0),
-					  elem_size);
-	    } else {
-	      crab_stmt =
-		m_bb.array_store_range(arr_var, lb_idx, ub_idx,
-				       m_lfac.isBoolTrue(val_ref) ? number_t(1)
-				       : number_t(0),
-				       elem_size);
-	    }
-	  }
-	} else {
-	  /* unreachable */
-	}
+          } else {
+            if (m_params.enabled_aggressive_array_initialization() &&
+                is_uninit_region) {
+              crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx,
+                                          m_lfac.getIntCst(val_ref), elem_size);
+            } else {
+              crab_stmt =
+                  m_bb.array_store_range(arr_var, lb_idx, ub_idx,
+                                         m_lfac.getIntCst(val_ref), elem_size);
+            }
+          }
+        } else if (val_ref->isBool()) {
+          if (val_ref->isVar()) {
+            if (m_params.enabled_aggressive_array_initialization() &&
+                is_uninit_region) {
+              crab_stmt = m_bb.array_init(arr_var, lb_idx, ub_idx,
+                                          val_ref->getVar(), elem_size);
+            } else {
+              crab_stmt = m_bb.array_store_range(arr_var, lb_idx, ub_idx,
+                                                 val_ref->getVar(), elem_size);
+            }
+          } else {
+            if (m_params.enabled_aggressive_array_initialization() &&
+                is_uninit_region) {
+              crab_stmt = m_bb.array_init(
+                  arr_var, lb_idx, ub_idx,
+                  m_lfac.isBoolTrue(val_ref) ? number_t(1) : number_t(0),
+                  elem_size);
+            } else {
+              crab_stmt = m_bb.array_store_range(
+                  arr_var, lb_idx, ub_idx,
+                  m_lfac.isBoolTrue(val_ref) ? number_t(1) : number_t(0),
+                  elem_size);
+            }
+          }
+        } else {
+          /* unreachable */
+        }
       }
-    } else {      
+    } else {
       CLAM_WARNING("Skipped memset instruction of non-integer type.");
     }
   }
@@ -1245,7 +1247,7 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
   }
 }
 
-/* verifier.zero_initializer(v) or verifier.int_initializer(v,k) 
+/* verifier.zero_initializer(v) or verifier.int_initializer(v,k)
 
    This special treatment for global initializers is mostly needed for
    array smashing-like domains. zero_initializer for arrays is still
@@ -1264,7 +1266,7 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
     // ignore the global initializer ...
     return;
   }
-  
+
   // v is either a global variable or a gep instruction that
   // indexes an address inside the global variable.
   Value *v = CS.getArgument(0);
@@ -1272,26 +1274,26 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
 
   if (!m_params.use_array_smashing && isZeroInitializer(*callee)) {
     if (!isIntArray(*ty) && !isBoolArray(*ty)) {
-      // ignore the global initializer ...      
+      // ignore the global initializer ...
       return;
     }
   }
-  
+
   auto sm = getShadowMem();
   auto r = get_region(m_mem, sm, *m_dl, &I, v);
-  auto getShadowVar = [&sm](CallInst &I, Value* v) {
+  auto getShadowVar = [&sm](CallInst &I, Value *v) {
     if (sm) {
-      Value* shadowVar = nullptr;
+      Value *shadowVar = nullptr;
       if (CallInst *shadowCI = getShadowCIFromGvInitializer(*sm, I, *v)) {
-	auto defUsePair = sm->getShadowMemVars(*shadowCI);
-	shadowVar = defUsePair.first;
+        auto defUsePair = sm->getShadowMemVars(*shadowCI);
+        shadowVar = defUsePair.first;
       }
-      return Optional<Value*>(shadowVar);
+      return Optional<Value *>(shadowVar);
     } else {
-      return Optional<Value*>();
+      return Optional<Value *>();
     }
   };
-  
+
   if (!r.isUnknown()) {
     crab_lit_ref_t ref = nullptr;
     if (CS.arg_size() == 2) {
@@ -1306,12 +1308,12 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
       // something went wrong with shadow mem. Abort ...
       return;
     }
-    
+
     if (get_singleton_value(r, m_params.lower_singleton_aliases)) {
       // Promote the global to an integer/boolean scalar
-      var_t a = (varShadowOpt.hasValue() ?
-		 m_lfac.mkArraySingletonVar(r, varShadowOpt.getValue()) :
-		 m_lfac.mkArraySingletonVar(r));
+      var_t a = (varShadowOpt.hasValue()
+                     ? m_lfac.mkArraySingletonVar(r, varShadowOpt.getValue())
+                     : m_lfac.mkArraySingletonVar(r));
       if (isInteger(ty)) {
         number_t init_val =
             ((CS.arg_size() == 2) && !ref->isVar() ? m_lfac.getIntCst(ref)
@@ -1330,19 +1332,18 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
       // Figure out the offsets ...
       auto offsetOpt = evalOffset(*v, I.getContext());
       if (!offsetOpt.hasValue()) {
-	// the offset should be always inferred statically
-	CLAM_WARNING("global initializer skipped because offset of " << *v <<
-		     " cannot be inferred statically");
-	return; 
-      } 
+        // the offset should be always inferred statically
+        CLAM_WARNING("global initializer skipped because offset of "
+                     << *v << " cannot be inferred statically");
+        return;
+      }
 
-      
       number_t init_val(0);
       lin_exp_t lb_idx(offsetOpt.getValue());
       uint64_t elem_size = storageSize(ty);
-      var_t a = (varShadowOpt.hasValue() ?
-		 m_lfac.mkArrayVar(r, varShadowOpt.getValue()) :
-		 m_lfac.mkArrayVar(r));
+      var_t a = (varShadowOpt.hasValue()
+                     ? m_lfac.mkArrayVar(r, varShadowOpt.getValue())
+                     : m_lfac.mkArrayVar(r));
       /* verifier.int_initializer(v,k) */
       if (CS.arg_size() == 2) {
         if (ref->isInt()) {
@@ -1360,10 +1361,12 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
       /* verifier.zero_initializer(v) */
       if (isInteger(ty) || isBool(ty)) {
         m_init_regions.insert(r);
-	IntegerType *int_ty = cast<IntegerType>(ty);
-	lin_exp_t ub_idx = lb_idx +
-	  number_t((isBool(ty) ? 0 : z_number((int_ty->getBitWidth() / 8) - 1)));
-	m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
+        IntegerType *int_ty = cast<IntegerType>(ty);
+        lin_exp_t ub_idx =
+            lb_idx +
+            number_t(
+                (isBool(ty) ? 0 : z_number((int_ty->getBitWidth() / 8) - 1)));
+        m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
       } else if (isIntArray(*ty) || isBoolArray(*ty)) {
         if (cast<ArrayType>(ty)->getNumElements() == 0) {
           // zero-length array are possible inside structs We
@@ -1373,10 +1376,11 @@ void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
           CLAM_WARNING("translation skipped a zero-length array");
         } else {
           m_init_regions.insert(r);
-	  elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
-	  lin_exp_t ub_idx = lb_idx + lin_exp_t(
-			     cast<ArrayType>(ty)->getNumElements() * elem_size - 1);
-	  m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
+          elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
+          lin_exp_t ub_idx =
+              lb_idx +
+              lin_exp_t(cast<ArrayType>(ty)->getNumElements() * elem_size - 1);
+          m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
         }
       } else { /** unreachable **/
       }
@@ -1494,11 +1498,11 @@ CrabInstVisitor::CrabInstVisitor(
     const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
     llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
     std::set<Region> &init_regions,
-    DenseMap<const GetElementPtrInst*, var_t> &gep_map,
+    DenseMap<const GetElementPtrInst *, var_t> &gep_map,
     const CrabBuilderParams &params)
-  : m_lfac(lfac), m_mem(mem), m_sm(sm), m_dl(dl), m_tli(tli), m_bb(bb), m_object_id(0),
-    m_has_seahorn_fail(false), m_gep_map(gep_map), m_rev_map(rev_map),
-    m_init_regions(init_regions), m_params(params) {}
+    : m_lfac(lfac), m_mem(mem), m_sm(sm), m_dl(dl), m_tli(tli), m_bb(bb),
+      m_object_id(0), m_has_seahorn_fail(false), m_gep_map(gep_map),
+      m_rev_map(rev_map), m_init_regions(init_regions), m_params(params) {}
 
 /// I is already translated if it is the condition of a branch or
 /// a select's condition.  Here we cover cases where I is an
@@ -1841,20 +1845,19 @@ void CrabInstVisitor::visitSelectInst(SelectInst &I) {
   }
 }
 
-// 
+//
 // - If base is not None then GEP is translated as a Crab pointer
-// instruction. 
-// 
+// instruction.
+//
 // - Otherwise, it is translated as a Crab arithmetic instruction. A
 // key assumption is that the base pointer of GEP is zero. This must
-// be ensured by the caller. 
-// 
+// be ensured by the caller.
+//
 void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
-			    var_t lhs, llvm::Optional<var_t> base) {
+                            var_t lhs, llvm::Optional<var_t> base) {
   assert(!base.hasValue() || lhs.get_type() == PTR_TYPE);
   assert(lhs.get_type() == INT_TYPE || lhs.get_type() == PTR_TYPE);
- 
-  
+
   // -- translation if the GEP offset is constant
   unsigned bitwidth = m_dl->getPointerTypeSizeInBits(I.getType());
   APInt offset(bitwidth, 0);
@@ -1865,15 +1868,16 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
       m_bb.havoc(lhs);
     } else {
       if (base) {
-	// pointer arithmetic
-	m_bb.ptr_assign(lhs, *base, lin_exp_t(o));
-	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":=" << *base << "+"
+        // pointer arithmetic
+        m_bb.ptr_assign(lhs, *base, lin_exp_t(o));
+        CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":=" << *base << "+"
                                          << o << "\n");
       } else {
-	// arithmetic
-	m_bb.assign(lhs, lin_exp_t(o));
-	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << ":="
-		                         << o << "\n");
+        // arithmetic
+        m_bb.assign(lhs, lin_exp_t(o));
+        CRAB_LOG("cfg-gep", crab::outs()
+                                << "-- " << lhs << ":i" << lhs.get_bitwidth()
+                                << ":=" << o << "\n");
       }
     }
     return;
@@ -1888,27 +1892,28 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
       if (const ConstantInt *ci =
               dyn_cast<const ConstantInt>(GTI.getOperand())) {
         number_t offset(fieldOffset(st, ci->getZExtValue()));
-	if (base) {
-	  // pointer arithmetic
-	  m_bb.ptr_assign(lhs, (!already_assigned) ? *base : lhs, offset);
-	  CRAB_LOG("cfg-gep",
-		   if (!already_assigned) {
-		     crab::outs() << lhs << "=" << *base << "+" << offset << "\n";
-		   } else {
-		     crab::outs() << lhs << "+=" << offset << "\n";
-		   });
-	} else  {
-	  // arithmetic
-	  if (!already_assigned) {
-	    m_bb.assign(lhs, offset);
-	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << "="
-		                             << offset << "\n");
-	  } else {
-	    m_bb.add(lhs, lhs, offset);
-	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << "+="
-		                             << offset << "\n"); 
-	  }
-	}
+        if (base) {
+          // pointer arithmetic
+          m_bb.ptr_assign(lhs, (!already_assigned) ? *base : lhs, offset);
+          CRAB_LOG(
+              "cfg-gep",
+              if (!already_assigned) {
+                crab::outs() << lhs << "=" << *base << "+" << offset << "\n";
+              } else { crab::outs() << lhs << "+=" << offset << "\n"; });
+        } else {
+          // arithmetic
+          if (!already_assigned) {
+            m_bb.assign(lhs, offset);
+            CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i"
+                                             << lhs.get_bitwidth() << "="
+                                             << offset << "\n");
+          } else {
+            m_bb.add(lhs, lhs, offset);
+            CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i"
+                                             << lhs.get_bitwidth()
+                                             << "+=" << offset << "\n");
+          }
+        }
         already_assigned = true;
       } else {
         CLAM_ERROR("GEP index expected only to be an integer");
@@ -1921,7 +1926,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
         if (ci->isZero())
           continue;
       }
-      
+
       crab_lit_ref_t idx = m_lfac.getLit(*GTI.getOperand());
       if (!idx || !idx->isInt()) {
         CLAM_ERROR("unexpected GEP index");
@@ -1931,47 +1936,48 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
       llvm::Optional<lin_exp_t> offsetOpt = llvm::None;
       auto Iidx = std::static_pointer_cast<const crabIntLit>(idx);
       if (Iidx->isVar()) {
-	unsigned w = Iidx->getVar().get_bitwidth();
-	assert(w <= max_index_bitwidth);
-	if (w < max_index_bitwidth) {
-	  var_t sext_idx = m_lfac.mkIntVar(max_index_bitwidth);
-	  m_bb.sext(Iidx->getVar(), sext_idx);
-	  offsetOpt = (sext_idx * number_t(storageSize(GTI.getIndexedType())));
-	}       
+        unsigned w = Iidx->getVar().get_bitwidth();
+        assert(w <= max_index_bitwidth);
+        if (w < max_index_bitwidth) {
+          var_t sext_idx = m_lfac.mkIntVar(max_index_bitwidth);
+          m_bb.sext(Iidx->getVar(), sext_idx);
+          offsetOpt = (sext_idx * number_t(storageSize(GTI.getIndexedType())));
+        }
       }
       if (!offsetOpt.hasValue()) {
-	offsetOpt = (m_lfac.getExp(idx) *
-		     number_t(storageSize(GTI.getIndexedType())));
+        offsetOpt =
+            (m_lfac.getExp(idx) * number_t(storageSize(GTI.getIndexedType())));
       }
 
       lin_exp_t offset = offsetOpt.getValue();
       if (base) {
-	// pointer arithmetic
-	m_bb.ptr_assign(lhs, (!already_assigned) ? *base : lhs, offset);
-	CRAB_LOG("cfg-gep",
-		 if (!already_assigned) {
-		   crab::outs() << lhs << "=" << *base << "+" << offset << "\n";
-		 } else {
-		   crab::outs() << lhs << "+=" << offset << "\n";
-		 });
+        // pointer arithmetic
+        m_bb.ptr_assign(lhs, (!already_assigned) ? *base : lhs, offset);
+        CRAB_LOG(
+            "cfg-gep",
+            if (!already_assigned) {
+              crab::outs() << lhs << "=" << *base << "+" << offset << "\n";
+            } else { crab::outs() << lhs << "+=" << offset << "\n"; });
       } else {
-	// arithmetic
-	if (!already_assigned) {
-	  m_bb.assign(lhs, offset);
-	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth()
-		                           << "=" << offset << "\n");
-	} else {
-	  m_bb.assign(lhs, lhs + offset);
-	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth()
-		                           << "+=" << offset << "\n"); 
-	}
+        // arithmetic
+        if (!already_assigned) {
+          m_bb.assign(lhs, offset);
+          CRAB_LOG("cfg-gep", crab::outs()
+                                  << "-- " << lhs << ":i" << lhs.get_bitwidth()
+                                  << "=" << offset << "\n");
+        } else {
+          m_bb.assign(lhs, lhs + offset);
+          CRAB_LOG("cfg-gep", crab::outs()
+                                  << "-- " << lhs << ":i" << lhs.get_bitwidth()
+                                  << "+=" << offset << "\n");
+        }
       }
       already_assigned = true;
     }
   }
 }
 
-/* 
+/*
  The translation of GEP is different depending on whether the
  precision level is PTR or ARR. With PTR the translation should not
  lose precision. However, with ARR the translation is a best-effort
@@ -1996,7 +2002,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
   CRAB_LOG("cfg-gep", llvm::errs() << "Translating " << I << "\n");
 
   unsigned bitwidth = getMaxBitWidthFromGepIndexes(I);
-  if (m_params.precision_level == crab::cfg::PTR) {    
+  if (m_params.precision_level == crab::cfg::PTR) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
     crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
@@ -2012,7 +2018,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     assert(ptr->isVar());
 
     doGep(I, bitwidth, lhs->getVar(), ptr->getVar());
-    
+
   } else if (m_params.precision_level == crab::cfg::ARR) {
     /*
       The goal is to compute an array index expression to be used by
@@ -2030,7 +2036,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       succeed then we can translate the pointer arithmetic part the of
       GEP instruction (this is done by doGep).
      */
-    
+
     if (evalOffset(I, I.getContext()).hasValue()) {
       // we can skip the GEP instruction because the offset is a known
       // constant. The next Load or Store will call evalOffset again
@@ -2041,39 +2047,40 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     Value *Ptr = I.getPointerOperand();
     Ptr = Ptr->stripPointerCasts();
     bool isBasePtr = isa<AllocaInst>(Ptr) || isa<GlobalVariable>(Ptr);
-    
+
     if (!isBasePtr) {
       if (auto sm = getShadowMem()) {
-	CLAM_WARNING("TODO: precise translation of GEP if shadow mem is used");
+        CLAM_WARNING("TODO: precise translation of GEP if shadow mem is used");
       } else {
-	Region r = get_region(m_mem, getShadowMem(), *m_dl, &I, &I);
-	if (r.isUnknown()) {
-	  // we don't keep track of the memory region, we bail out ...
-	  return;
-	}
-	if (get_singleton_value(r, m_params.lower_singleton_aliases)) {
-	  // the memory region is a singleton, we bail out ...
-	  return;
-	}
-	// We ask the pointer analysis. That should allow us to
-	// translate also inside functions where the parameter is the
-	// address of a caller's alloca. 
-	isBasePtr = m_mem.isBasePtr(*(I.getParent()->getParent()), Ptr);
+        Region r = get_region(m_mem, getShadowMem(), *m_dl, &I, &I);
+        if (r.isUnknown()) {
+          // we don't keep track of the memory region, we bail out ...
+          return;
+        }
+        if (get_singleton_value(r, m_params.lower_singleton_aliases)) {
+          // the memory region is a singleton, we bail out ...
+          return;
+        }
+        // We ask the pointer analysis. That should allow us to
+        // translate also inside functions where the parameter is the
+        // address of a caller's alloca.
+        isBasePtr = m_mem.isBasePtr(*(I.getParent()->getParent()), Ptr);
       }
     }
-    
-    
+
     assert(m_gep_map.find(&I) == m_gep_map.end());
     if (isBasePtr) {
       var_t shadowV(m_lfac.get_vfac().get(), crab::INT_TYPE, bitwidth);
       m_gep_map.insert(std::make_pair(&I, shadowV));
       doGep(I, bitwidth, shadowV, llvm::None);
     } else {
-      var_t shadowV = getUnconstrainedArrayIdxVar(m_lfac.get_vfac(), bitwidth);      
+      var_t shadowV = getUnconstrainedArrayIdxVar(m_lfac.get_vfac(), bitwidth);
       CRAB_LOG("cfg-array-index",
-	       CLAM_WARNING("cannot infer statically base address of  " << *Ptr
-			    << " at function " << I.getParent()->getParent()->getName()
-			    << ".\nUsing unconstrained crab variable " << shadowV.name().str()););
+               CLAM_WARNING("cannot infer statically base address of  "
+                            << *Ptr << " at function "
+                            << I.getParent()->getParent()->getName()
+                            << ".\nUsing unconstrained crab variable "
+                            << shadowV.name().str()););
       m_gep_map.insert(std::make_pair(&I, shadowV));
     }
   }
@@ -2081,29 +2088,28 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
 
 /* Translate a StoreInt into a Crab array statement */
 void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
-				  llvm::Optional<var_t> new_v, var_t old_v,
-				  crab_lit_ref_t val, Region reg) {
-				  
+                                  llvm::Optional<var_t> new_v, var_t old_v,
+                                  crab_lit_ref_t val, Region reg) {
+
   if (is_singleton) {
     // Promote the global to an integer/boolean scalar
-    var_t v = (new_v.hasValue() ? new_v.getValue(): old_v);  
+    var_t v = (new_v.hasValue() ? new_v.getValue() : old_v);
     if (isInteger(*I.getValueOperand())) {
       assert(val->isInt());
       m_bb.assign(v, m_lfac.getExp(val));
     } else if (isBool(*I.getValueOperand())) {
       assert(val->isBool());
       if (!val->isVar()) {
-	m_bb.bool_assign(v,
-			 (m_lfac.isBoolTrue(val) ? lin_cst_t::get_true()
-			  : lin_cst_t::get_false()));
+        m_bb.bool_assign(v, (m_lfac.isBoolTrue(val) ? lin_cst_t::get_true()
+                                                    : lin_cst_t::get_false()));
       } else {
-	m_bb.bool_assign(v, val->getVar(), false);
+        m_bb.bool_assign(v, val->getVar(), false);
       }
-    } else { /* unreachable */ }
+    } else { /* unreachable */
+    }
   } else {
-    lin_exp_t idx = inferArrayIndex(I.getPointerOperand(),
-				    I.getContext(),
-				    reg, m_lfac.get_vfac());
+    lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), reg,
+                                    m_lfac.get_vfac());
     /**
      * We can help the array domain if we know already that
      * the array store is a strong update.
@@ -2111,10 +2117,10 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
     bool is_uninit_region = m_init_regions.insert(reg).second;
     Function &func = *(I.getParent()->getParent());
     bool is_strong_update =
-      reg.getSingleton() ||
-      (func.getName() == "main" &&
-       (&(func.getEntryBlock()) == I.getParent()) && is_uninit_region);
-    
+        reg.getSingleton() ||
+        (func.getName() == "main" &&
+         (&(func.getEntryBlock()) == I.getParent()) && is_uninit_region);
+
     Type *ty = I.getOperand(0)->getType();
     const statement_t *crab_stmt;
     if (val->isVar()) {
@@ -2123,53 +2129,58 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
       // that the region's bitwidth is smaller than value's
       // bitwidth.
       if (reg.getRegionInfo().get_bitwidth() < val->getVar().get_bitwidth()) {
-	temp_v = m_lfac.mkIntVar(reg.getRegionInfo().get_bitwidth());
-	// XXX: this truncate operation can overflow but the
-	// store instruction does not overflow
-	m_bb.truncate(val->getVar(), temp_v);
+        temp_v = m_lfac.mkIntVar(reg.getRegionInfo().get_bitwidth());
+        // XXX: this truncate operation can overflow but the
+        // store instruction does not overflow
+        m_bb.truncate(val->getVar(), temp_v);
       }
       if (new_v.hasValue()) {
-	// Memory SSA form
-	crab_stmt = m_bb.array_store(new_v.getValue(), old_v, idx, temp_v,  
-				     m_dl->getTypeAllocSize(ty), is_strong_update);
+        // Memory SSA form
+        crab_stmt =
+            m_bb.array_store(new_v.getValue(), old_v, idx, temp_v,
+                             m_dl->getTypeAllocSize(ty), is_strong_update);
       } else {
-	// Non-memory SSA form
-	crab_stmt = m_bb.array_store(old_v, idx, temp_v,  
-				     m_dl->getTypeAllocSize(ty), is_strong_update);
+        // Non-memory SSA form
+        crab_stmt = m_bb.array_store(
+            old_v, idx, temp_v, m_dl->getTypeAllocSize(ty), is_strong_update);
       }
     } else {
       if (val->isInt()) {
-	if (new_v.hasValue()) {
-	  // Memory SSA form
-	  crab_stmt = m_bb.array_store(new_v.getValue(), old_v, idx, m_lfac.getIntCst(val),   
-				       m_dl->getTypeAllocSize(ty), is_strong_update);
-	} else {
-	  // Non-memory SSA form
-	  crab_stmt = m_bb.array_store(old_v, idx, m_lfac.getIntCst(val),   
-				       m_dl->getTypeAllocSize(ty), is_strong_update);	  
-	}
+        if (new_v.hasValue()) {
+          // Memory SSA form
+          crab_stmt = m_bb.array_store(
+              new_v.getValue(), old_v, idx, m_lfac.getIntCst(val),
+              m_dl->getTypeAllocSize(ty), is_strong_update);
+        } else {
+          // Non-memory SSA form
+          crab_stmt =
+              m_bb.array_store(old_v, idx, m_lfac.getIntCst(val),
+                               m_dl->getTypeAllocSize(ty), is_strong_update);
+        }
       } else if (val->isBool()) {
-	if (new_v.hasValue()) {
-	  // Memory SSA form	
-	  crab_stmt = m_bb.array_store(new_v.getValue(), old_v, idx,
-				       m_lfac.isBoolTrue(val) ? number_t(1) : number_t(0),
-				       m_dl->getTypeAllocSize(ty), is_strong_update);
-	} else {
-	  // Non-memory SSA form
-	  crab_stmt = m_bb.array_store(old_v, idx,
-				       m_lfac.isBoolTrue(val) ? number_t(1) : number_t(0),
-				       m_dl->getTypeAllocSize(ty), is_strong_update);	  
-	} 
-      } else { /* unreachable */ }
+        if (new_v.hasValue()) {
+          // Memory SSA form
+          crab_stmt = m_bb.array_store(
+              new_v.getValue(), old_v, idx,
+              m_lfac.isBoolTrue(val) ? number_t(1) : number_t(0),
+              m_dl->getTypeAllocSize(ty), is_strong_update);
+        } else {
+          // Non-memory SSA form
+          crab_stmt = m_bb.array_store(
+              old_v, idx, m_lfac.isBoolTrue(val) ? number_t(1) : number_t(0),
+              m_dl->getTypeAllocSize(ty), is_strong_update);
+        }
+      } else { /* unreachable */
+      }
     }
     if (crab_stmt) {
       insertRevMap(crab_stmt, I);
     }
   }
 }
-  
+
 void CrabInstVisitor::visitStoreInst(StoreInst &I) {
-  /** 
+  /**
    * The LLVM store instruction will be translated to *either*: (a)
    * crab array store, or (b) crab pointer store, depending on the
    * precision level.
@@ -2180,7 +2191,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
    * value is a pointer. For the latter, to consider cases where the
    * stored value is an integer/boolean Crab would need to extend its
    * language.
-  **/
+   **/
 
   if (isa<ConstantExpr>(I.getPointerOperand()) ||
       isa<ConstantExpr>(I.getValueOperand())) {
@@ -2210,32 +2221,31 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
       // expressions are lowered.
       CLAM_ERROR("unexpected value operand of store instruction");
     }
-    Region r = get_region(m_mem, getShadowMem(), *m_dl,
-			  &I, I.getPointerOperand());
+    Region r =
+        get_region(m_mem, getShadowMem(), *m_dl, &I, I.getPointerOperand());
     if (!r.isUnknown()) {
-      bool lowerToScalar = get_singleton_value(r, m_params.lower_singleton_aliases);
+      bool lowerToScalar =
+          get_singleton_value(r, m_params.lower_singleton_aliases);
       if (auto sm = getShadowMem()) {
-	auto defUsePair = getShadowMemDefAndUse(I, *sm);
-	doStoreInst(I, lowerToScalar,
-		    // new array name
-		    (lowerToScalar ?
-		     m_lfac.mkArraySingletonVar(r, defUsePair.first):
-		     m_lfac.mkArrayVar(r, defUsePair.first)),
-		    // old array_name
-		    (lowerToScalar ?
-		     m_lfac.mkArraySingletonVar(r, defUsePair.second):
-		     m_lfac.mkArrayVar(r, defUsePair.second)),
-		    val, r);
-	
+        auto defUsePair = getShadowMemDefAndUse(I, *sm);
+        doStoreInst(
+            I, lowerToScalar,
+            // new array name
+            (lowerToScalar ? m_lfac.mkArraySingletonVar(r, defUsePair.first)
+                           : m_lfac.mkArrayVar(r, defUsePair.first)),
+            // old array_name
+            (lowerToScalar ? m_lfac.mkArraySingletonVar(r, defUsePair.second)
+                           : m_lfac.mkArrayVar(r, defUsePair.second)),
+            val, r);
+
       } else {
-	doStoreInst(I, lowerToScalar, llvm::None,
-		    (lowerToScalar ?
-		     m_lfac.mkArraySingletonVar(r):
-		     m_lfac.mkArrayVar(r)),
-		    val, r);
+        doStoreInst(I, lowerToScalar, llvm::None,
+                    (lowerToScalar ? m_lfac.mkArraySingletonVar(r)
+                                   : m_lfac.mkArrayVar(r)),
+                    val, r);
       }
     }
-  } else if (isPointer(*I.getValueOperand(), m_params)) { 
+  } else if (isPointer(*I.getValueOperand(), m_params)) {
     if (!val || !val->isPtr()) {
       CLAM_ERROR(
           "expecting a value operand of pointer type in store instruction");
@@ -2251,15 +2261,15 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
   }
 }
 
-/* 
+/*
  * Translate a LoadInst into a Crab array statement.
- * 
- * lhs_v and rhs_v are crab typed variables. 
+ *
+ * lhs_v and rhs_v are crab typed variables.
  * reg is the region associated with the load's pointer operand.
  */
-void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton,
-				 var_t lhs_v, var_t rhs_v, Region reg) {
-    
+void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton, var_t lhs_v,
+                                 var_t rhs_v, Region reg) {
+
   if (is_singleton) {
     // Promote the global to an integer/boolean scalar
     if (isInteger(I)) {
@@ -2274,17 +2284,16 @@ void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton,
     // that the region's bitwidth is smaller than lhs_v'
     // bitwidth.
     if (reg.getRegionInfo().get_bitwidth() < lhs_v.get_bitwidth()) {
-	lhs_v = m_lfac.mkIntVar(reg.getRegionInfo().get_bitwidth());
+      lhs_v = m_lfac.mkIntVar(reg.getRegionInfo().get_bitwidth());
     }
-    
-    lin_exp_t idx = inferArrayIndex(I.getPointerOperand(),
-				    I.getContext(), reg,
-				    m_lfac.get_vfac());
-    
-    auto const *crab_stmt = m_bb.array_load(
-	 lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()));
+
+    lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), reg,
+                                    m_lfac.get_vfac());
+
+    auto const *crab_stmt =
+        m_bb.array_load(lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()));
     insertRevMap(crab_stmt, I);
-    
+
     if (reg.getRegionInfo().get_bitwidth() < lhs_v.get_bitwidth()) {
       // XXX: not sure if signed extension is correct.
       // Regions are signed-agnostic so dont know what is the
@@ -2295,7 +2304,7 @@ void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton,
     }
   }
 }
-  
+
 void CrabInstVisitor::visitLoadInst(LoadInst &I) {
   /*
     This case is symmetric to StoreInst.
@@ -2331,23 +2340,22 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
     if (!lhs || !lhs->isVar()) {
       CLAM_ERROR("unexpected lhs of load instruction");
     }
-    Region r = get_region(m_mem, getShadowMem(), *m_dl,
-			  &I, I.getPointerOperand());
+    Region r =
+        get_region(m_mem, getShadowMem(), *m_dl, &I, I.getPointerOperand());
     if (!(r.isUnknown())) {
-      bool lowerToScalar = get_singleton_value(r, m_params.lower_singleton_aliases);
+      bool lowerToScalar =
+          get_singleton_value(r, m_params.lower_singleton_aliases);
       if (auto sm = getShadowMem()) {
-	Value &useV = getShadowMemUse(I, *sm);
-	doLoadInst(I, lowerToScalar, lhs->getVar(),
-		   (lowerToScalar ?
-		    m_lfac.mkArraySingletonVar(r, &useV):
-		    m_lfac.mkArrayVar(r, &useV)),
-		   r);
+        Value &useV = getShadowMemUse(I, *sm);
+        doLoadInst(I, lowerToScalar, lhs->getVar(),
+                   (lowerToScalar ? m_lfac.mkArraySingletonVar(r, &useV)
+                                  : m_lfac.mkArrayVar(r, &useV)),
+                   r);
       } else {
-	doLoadInst(I, lowerToScalar, lhs->getVar(),
-		   (lowerToScalar ?
-		    m_lfac.mkArraySingletonVar(r):
-		    m_lfac.mkArrayVar(r)),
-		   r);
+        doLoadInst(I, lowerToScalar, lhs->getVar(),
+                   (lowerToScalar ? m_lfac.mkArraySingletonVar(r)
+                                  : m_lfac.mkArrayVar(r)),
+                   r);
       }
       return;
     }
@@ -2370,7 +2378,7 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
     assert(lhs && lhs->isVar());
     m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
   } else if (m_lfac.get_track() == ARR &&
-	     m_params.enabled_array_initialization()) {
+             m_params.enabled_array_initialization()) {
     Region r = get_region(m_mem, getShadowMem(), *m_dl, &I, &I);
     if (!r.isUnknown()) {
       // Nodes which do not have an explicit initialization are
@@ -2389,22 +2397,22 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
         }
       }
       if (m_params.use_array_smashing) {
-	if (elementTy && numElems > 0) {
-	  m_init_regions.insert(r);
-	  unsigned elemSize = storageSize(elementTy);
-	  if (elemSize > 0) {
-	    /*
-	      XXX: arbitrary value: we choose zero because it has
-	      a valid interpretation whether it's integer,
-	      boolean or pointer.
-	    */
-	    number_t init_val(0);
-	    number_t lb_idx(0);
-	    number_t ub_idx((numElems * elemSize) - 1);
-	  m_bb.array_init(m_lfac.mkArrayVar(r), lb_idx, ub_idx, init_val,
-			  elemSize);
-	  }
-	}
+        if (elementTy && numElems > 0) {
+          m_init_regions.insert(r);
+          unsigned elemSize = storageSize(elementTy);
+          if (elemSize > 0) {
+            /*
+              XXX: arbitrary value: we choose zero because it has
+              a valid interpretation whether it's integer,
+              boolean or pointer.
+            */
+            number_t init_val(0);
+            number_t lb_idx(0);
+            number_t ub_idx((numElems * elemSize) - 1);
+            m_bb.array_init(m_lfac.mkArrayVar(r), lb_idx, ub_idx, init_val,
+                            elemSize);
+          }
+        }
       }
     }
   }
@@ -2420,9 +2428,9 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
       // -- inline asm: do nothing
     } else {
       // -- unresolved indirect call
-      CLAM_WARNING("skipped indirect call. " <<
-		   "Either --devirt-functions was not used or " <<
-		   "indirect call cannot be resolved.");
+      CLAM_WARNING("skipped indirect call. "
+                   << "Either --devirt-functions was not used or "
+                   << "indirect call cannot be resolved.");
 
       if (DoesCallSiteReturn(I, m_params) &&
           ShouldCallSiteReturn(I, m_params)) {
@@ -2473,13 +2481,14 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     return;
   }
 
-  bool is_external = callee->isDeclaration() || callee->isVarArg() || !m_params.interprocedural;
+  bool is_external = callee->isDeclaration() || callee->isVarArg() ||
+                     !m_params.interprocedural;
   if (is_external && !isCrabIntrinsic(*callee)) {
     /**
      * If external or we don't perform inter-procedural reasoning
      * then we make sure all modified arrays and return value of
      * the callsite are havoc'ed.
-     * 
+     *
      * TODOX: version for memory ssa form, otherwise results can be
      * unsound.  There is currently an implicit assumption that memory
      * ssa can be only used when the program has been fully inlined.
@@ -2653,8 +2662,8 @@ class CfgBuilderImpl {
 public:
   CfgBuilderImpl(const llvm::Function &func, llvm_variable_factory &vfac,
                  HeapAbstraction &mem, seadsa::ShadowMem *sm,
-		 const llvm::TargetLibraryInfo *tli,
-		 const CrabBuilderParams &params);
+                 const llvm::TargetLibraryInfo *tli,
+                 const CrabBuilderParams &params);
 
   void build_cfg();
 
@@ -2765,10 +2774,9 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func,
     : m_is_cfg_built(false),
       // HACK: it's safe to remove constness because we know that the
       // Builder never modifies the bitcode.
-      m_func(const_cast<Function &>(func)), m_lfac(vfac, params),
-      m_mem(mem), m_sm(sm),
-      m_cfg(nullptr), m_id(0), m_dl(&(func.getParent()->getDataLayout())),
-      m_tli(tli), m_params(params) {
+      m_func(const_cast<Function &>(func)), m_lfac(vfac, params), m_mem(mem),
+      m_sm(sm), m_cfg(nullptr), m_id(0),
+      m_dl(&(func.getParent()->getDataLayout())), m_tli(tli), m_params(params) {
   m_cfg.reset(new cfg_t(make_crab_basic_block_label(&m_func.getEntryBlock()),
                         m_params.precision_level));
 }
@@ -2979,8 +2987,8 @@ void CfgBuilderImpl::build_cfg() {
   // keep track of initialized regions
   std::set<Region> init_regions;
   // For translation of gep if precision level is ARR
-  DenseMap<const GetElementPtrInst*, var_t> gep_map;
-  
+  DenseMap<const GetElementPtrInst *, var_t> gep_map;
+
   for (auto &B : m_func) {
     basic_block_t *bb = lookup(B);
     if (!bb)
@@ -2988,7 +2996,7 @@ void CfgBuilderImpl::build_cfg() {
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
     CrabInstVisitor v(m_lfac, m_mem, m_sm, m_dl, m_tli, *bb, m_rev_map,
-		      init_regions, gep_map, m_params);
+                      init_regions, gep_map, m_params);
     v.visit(B);
     // hook for seahorn
     has_seahorn_fail |=
@@ -3031,8 +3039,8 @@ void CfgBuilderImpl::build_cfg() {
 
         // -- phi nodes in dst are translated into assignments in
         //    the predecessor
-        CrabPhiVisitor v(m_lfac, m_mem, m_sm, *m_dl,
-			 (mid_bb ? *mid_bb : *bb), B, m_params);
+        CrabPhiVisitor v(m_lfac, m_mem, m_sm, *m_dl, (mid_bb ? *mid_bb : *bb),
+                         B, m_params);
         v.visit(const_cast<BasicBlock &>(*dst));
       }
     }
@@ -3243,7 +3251,7 @@ void CfgBuilderImpl::build_cfg() {
      * TODO: we should havoc all inputs of the procedure to play safe
      * but we don't do it because the crab array domains doesn't need
      * that to be sound.
-    **/
+     **/
   }
 
   if (m_cfg->has_exit()) {
@@ -3379,8 +3387,7 @@ void CrabBuilderParams::write(raw_ostream &o) const {
 CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManager &man)
     : m_impl(new CfgBuilderImpl(func, man.get_var_factory(),
                                 man.get_heap_abstraction(),
-				man.get_shadow_mem(),
-				&(man.get_tli()),
+                                man.get_shadow_mem(), &(man.get_tli()),
                                 man.get_cfg_builder_params())),
       m_ls(nullptr) {}
 
@@ -3410,31 +3417,29 @@ void CfgBuilder::compute_live_symbols() {
   if (!m_ls) {
     auto &cfg = m_impl->get_cfg();
     m_ls.reset(new liveness_t(cfg));
-    CRAB_VERBOSE_IF(1,
-		    auto fdecl = cfg.get_func_decl();            
-		    crab::get_msg_stream() << "Running liveness analysis for " 
-		                           << fdecl.get_func_name()
-		                           << "  ...\n";);
+    CRAB_VERBOSE_IF(1, auto fdecl = cfg.get_func_decl();
+                    crab::get_msg_stream()
+                    << "Running liveness analysis for " << fdecl.get_func_name()
+                    << "  ...\n";);
     m_ls->exec();
 
     unsigned total_live, avg_live_per_blk, max_live_per_blk;
     m_ls->get_stats(total_live, max_live_per_blk, avg_live_per_blk);
-    CRAB_VERBOSE_IF(1, 
-		  crab::outs() << "-- Max number of out live vars per block=" 
-                               << max_live_per_blk << "\n"
-                               << "-- Avg number of out live vars per block=" 
-                               << avg_live_per_blk << "\n";);
-    crab::CrabStats::count_max("Liveness.count.maxOutVars",
-			       max_live_per_blk);
-    
+    CRAB_VERBOSE_IF(1, crab::outs()
+                           << "-- Max number of out live vars per block="
+                           << max_live_per_blk << "\n"
+                           << "-- Avg number of out live vars per block="
+                           << avg_live_per_blk << "\n";);
+    crab::CrabStats::count_max("Liveness.count.maxOutVars", max_live_per_blk);
   }
 }
 
-const CfgBuilder::liveness_t* CfgBuilder::get_live_symbols() const {
-  return (m_ls ? &*m_ls: nullptr);
+const CfgBuilder::liveness_t *CfgBuilder::get_live_symbols() const {
+  return (m_ls ? &*m_ls : nullptr);
 }
 
-Optional<CfgBuilder::varset> CfgBuilder::get_live_symbols(const BasicBlock *B) const {
+Optional<CfgBuilder::varset>
+CfgBuilder::get_live_symbols(const BasicBlock *B) const {
   if (!m_ls) {
     return llvm::None;
   } else {
@@ -3447,30 +3452,33 @@ Optional<CfgBuilder::varset> CfgBuilder::get_live_symbols(const BasicBlock *B) c
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        const llvm::TargetLibraryInfo &tli,
                                        std::unique_ptr<HeapAbstraction> mem)
-  : m_params(params), m_tli(tli), m_mem(std::move(mem)), m_sm(nullptr) {
+    : m_params(params), m_tli(tli), m_mem(std::move(mem)), m_sm(nullptr) {
   // This constructor cannot enable memory ssa form.
   if (m_params.memory_ssa) {
     CLAM_WARNING("Memory SSA needs ShadowMem");
-    m_params.memory_ssa  = false;
+    m_params.memory_ssa = false;
   }
   CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
 }
 
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        const llvm::TargetLibraryInfo &tli,
-				       seadsa::ShadowMem &sm)
-  : m_params(params), m_tli(tli), m_mem(new DummyHeapAbstraction()), m_sm(&sm) {
+                                       seadsa::ShadowMem &sm)
+    : m_params(params), m_tli(tli), m_mem(new DummyHeapAbstraction()),
+      m_sm(&sm) {
   // This constructor enables memory ssa form.
   if (m_params.memory_ssa) {
     if (params.interprocedural) {
       m_params.interprocedural = false;
-    } 
+    }
   }
   if (m_params.memory_ssa) {
-    CLAM_WARNING("Clam will try to preserve memory SSA form but it is work-in progress.\n"
-		 << "Currently, it only works if all functions have been inlined");
+    CLAM_WARNING(
+        "Clam will try to preserve memory SSA form but it is work-in "
+        "progress.\n"
+        << "Currently, it only works if all functions have been inlined");
   }
-  CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));  
+  CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
 }
 
 CrabBuilderManager::~CrabBuilderManager() {}
@@ -3521,8 +3529,6 @@ const seadsa::ShadowMem *CrabBuilderManager::get_shadow_mem() const {
   return m_sm;
 }
 
-seadsa::ShadowMem *CrabBuilderManager::get_shadow_mem() {
-  return m_sm;
-}
-  
+seadsa::ShadowMem *CrabBuilderManager::get_shadow_mem() { return m_sm; }
+
 } // end namespace clam

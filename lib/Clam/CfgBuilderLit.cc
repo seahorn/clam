@@ -70,13 +70,13 @@ var_t crabLitFactoryImpl::mkArrayVar(Region mem_region, const Value *name) {
     break;
   default:
     CLAM_ERROR("unsupported region type");
-  }  
-  auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.get_id()));  
+  }
+  auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.get_id()));
   return var_t(varname, type, bitwidth);
 }
 
 var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
-					      const Value *name) {
+                                              const Value *name) {
   crab::variable_type type = crab::UNK_TYPE;
   unsigned bitwidth = 0; /* unknown */
   if (const Value *v = mem_region.getSingleton()) {
@@ -189,11 +189,11 @@ Optional<crabBoolLit> crabLitFactoryImpl::getBoolLit(const Value &v) {
     } else if (!isa<ConstantExpr>(v)) {
       // -- boolean variable
       if (isa<UndefValue>(v)) {
-	// Create a fresh variable: this treats an undef value as a
-	// nondeterministic value.
-	return crabBoolLit(var_t(m_vfac.get(), BOOL_TYPE, 1));
+        // Create a fresh variable: this treats an undef value as a
+        // nondeterministic value.
+        return crabBoolLit(var_t(m_vfac.get(), BOOL_TYPE, 1));
       } else {
-	return crabBoolLit(var_t(m_vfac[&v], BOOL_TYPE, 1));
+        return crabBoolLit(var_t(m_vfac[&v], BOOL_TYPE, 1));
       }
     }
   }
@@ -206,13 +206,13 @@ Optional<crabPtrLit> crabLitFactoryImpl::getPtrLit(const Value &v) {
     return crabPtrLit();
   } else if (v.getType()->isPointerTy() && !isa<ConstantExpr>(v)) {
     // -- pointer variable
-      if (isa<UndefValue>(v)) {
-	// Create a fresh variable: this treats an undef value as a
-	// nondeterministic value.
-	return crabPtrLit(var_t(m_vfac.get(), PTR_TYPE));
-      } else {
-	return crabPtrLit(var_t(m_vfac[&v], PTR_TYPE));
-      }
+    if (isa<UndefValue>(v)) {
+      // Create a fresh variable: this treats an undef value as a
+      // nondeterministic value.
+      return crabPtrLit(var_t(m_vfac.get(), PTR_TYPE));
+    } else {
+      return crabPtrLit(var_t(m_vfac[&v], PTR_TYPE));
+    }
   }
   return None;
 }
@@ -230,11 +230,11 @@ Optional<crabIntLit> crabLitFactoryImpl::getIntLit(const Value &v) {
       // -- integer variable
       unsigned bitwidth = v.getType()->getIntegerBitWidth();
       if (isa<UndefValue>(v)) {
-	// Create a fresh variable: this treats an undef value as a
-	// nondeterministic value.
-	return crabIntLit(var_t(m_vfac.get(), INT_TYPE, bitwidth));
+        // Create a fresh variable: this treats an undef value as a
+        // nondeterministic value.
+        return crabIntLit(var_t(m_vfac.get(), INT_TYPE, bitwidth));
       } else {
-	return crabIntLit(var_t(m_vfac[&v], INT_TYPE, bitwidth));
+        return crabIntLit(var_t(m_vfac[&v], INT_TYPE, bitwidth));
       }
     }
   }

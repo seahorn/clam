@@ -2,27 +2,27 @@
 #include "SeaDsaHeapAbstractionDsaToRegion.hh"
 
 #include "clam/Support/Debug.hh"
-#include "llvm/IR/Value.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/ADT/Optional.h"
+#include "llvm/IR/Value.h"
 
-#include "seadsa/ShadowMem.hh"
 #include "seadsa/Graph.hh"
+#include "seadsa/ShadowMem.hh"
 
 namespace clam {
 
 using namespace llvm;
 
-const llvm::StringRef memTag    = "shadow.mem";
+const llvm::StringRef memTag = "shadow.mem";
 const llvm::StringRef memDefTag = "shadow.mem.def";
 const llvm::StringRef memUseTag = "shadow.mem.use";
 const llvm::StringRef memPhiTag = "shadow.mem.phi";
 
 // Helper to return the shadow Value *defined* and *used* by a StoreInst
-std::pair<Value*, Value*>
-getShadowMemDefAndUse(StoreInst &I, const seadsa::ShadowMem& sm){
-  auto it =  I.getIterator();
+std::pair<Value *, Value *> getShadowMemDefAndUse(StoreInst &I,
+                                                  const seadsa::ShadowMem &sm) {
+  auto it = I.getIterator();
   --it;
   CallInst &ci = *(cast<CallInst>(&*it));
   seadsa::ShadowMemInstOp op = sm.getShadowMemOp(ci);
@@ -34,8 +34,8 @@ getShadowMemDefAndUse(StoreInst &I, const seadsa::ShadowMem& sm){
 }
 
 // Helper to return the shadow Value *used* by a LoadInst
-Value& getShadowMemUse(LoadInst &I, const seadsa::ShadowMem& sm){
-  auto it =  I.getIterator();
+Value &getShadowMemUse(LoadInst &I, const seadsa::ShadowMem &sm) {
+  auto it = I.getIterator();
   --it;
   CallInst &ci = *(cast<CallInst>(&*it));
   seadsa::ShadowMemInstOp op = sm.getShadowMemOp(ci);
@@ -58,13 +58,14 @@ static Value *getUniqueScalar(const seadsa::Cell &c) {
     // -- are probably not very common.
     if (auto *gv = llvm::dyn_cast_or_null<llvm::GlobalVariable>(v))
       if (gv->getType()->getElementType()->isSingleValueType())
-	return v;
+        return v;
   }
   return nullptr;
 }
 
-const Value* getShadowMemUniqueScalar(StoreInst &I, const seadsa::ShadowMem &sm) {
-  auto it =  I.getIterator();
+const Value *getShadowMemUniqueScalar(StoreInst &I,
+                                      const seadsa::ShadowMem &sm) {
+  auto it = I.getIterator();
   --it;
   CallInst &ci = *(cast<CallInst>(&*it));
   seadsa::ShadowMemInstOp op = sm.getShadowMemOp(ci);
@@ -75,8 +76,9 @@ const Value* getShadowMemUniqueScalar(StoreInst &I, const seadsa::ShadowMem &sm)
   return getUniqueScalar(cell);
 }
 
-const Value* getShadowMemUniqueScalar(LoadInst &I, const seadsa::ShadowMem &sm) {
-  auto it =  I.getIterator();
+const Value *getShadowMemUniqueScalar(LoadInst &I,
+                                      const seadsa::ShadowMem &sm) {
+  auto it = I.getIterator();
   --it;
   CallInst &ci = *(cast<CallInst>(&*it));
   seadsa::ShadowMemInstOp op = sm.getShadowMemOp(ci);
@@ -91,9 +93,9 @@ const Value* getShadowMemUniqueScalar(LoadInst &I, const seadsa::ShadowMem &sm) 
 // We start from an incoming value and look at its users, stopping at
 // the first definition.
 llvm::Optional<seadsa::Cell> getShadowMemCell(const llvm::PHINode &phi,
-					       const llvm::Value &incVal,
-					       const seadsa::ShadowMem &sm) {
-  DenseSet<const Value *> visited;  
+                                              const llvm::Value &incVal,
+                                              const seadsa::ShadowMem &sm) {
+  DenseSet<const Value *> visited;
   SmallVector<const Value *, 8> worklist = {&incVal};
   while (!worklist.empty()) {
     const Value *current = worklist.pop_back_val();
@@ -105,14 +107,14 @@ llvm::Optional<seadsa::Cell> getShadowMemCell(const llvm::PHINode &phi,
 
     if (const CallInst *CI = dyn_cast<CallInst>(current)) {
       if (const MDNode *meta = CI->getMetadata(memDefTag)) {
-	auto cellOpt = sm.getShadowMemCell(*CI);
-	if (cellOpt.hasValue()) {
-	  return cellOpt.getValue();
-	}
-	return llvm::None;
+        auto cellOpt = sm.getShadowMemCell(*CI);
+        if (cellOpt.hasValue()) {
+          return cellOpt.getValue();
+        }
+        return llvm::None;
       }
     }
-    
+
     if (auto *phi = dyn_cast<PHINode>(current)) {
       for (const Value *v : llvm::reverse(phi->incoming_values()))
         worklist.push_back(v);
@@ -122,16 +124,15 @@ llvm::Optional<seadsa::Cell> getShadowMemCell(const llvm::PHINode &phi,
   return llvm::None;
 }
 
-Region getShadowRegion(const seadsa::Cell &c,
-		       const llvm::DataLayout &dl,
-		       const seadsa::ShadowMem &sm) {
-  
+Region getShadowRegion(const seadsa::Cell &c, const llvm::DataLayout &dl,
+                       const seadsa::ShadowMem &sm) {
+
   auto cellIdOpt = sm.getCellId(c);
   if (cellIdOpt.hasValue()) {
     auto cellId = cellIdOpt.getValue();
     auto ri = DsaToRegion(c, dl, sm.splitDsaNodes(),
-			  /* these should be user flags */
-			  true, false, false, false);
+                          /* these should be user flags */
+                          true, false, false, false);
     if (ri.get_type() != UNTYPED_REGION) {
       return Region(cellId, ri, getUniqueScalar(c));
     }
@@ -139,10 +140,9 @@ Region getShadowRegion(const seadsa::Cell &c,
   return Region();
 }
 
-Region getShadowRegion(llvm::CallInst &shadowInst,
-		       const llvm::DataLayout &dl,
-		       const seadsa::ShadowMem &sm) {
-  
+Region getShadowRegion(llvm::CallInst &shadowInst, const llvm::DataLayout &dl,
+                       const seadsa::ShadowMem &sm) {
+
   auto cellOpt = sm.getShadowMemCell(shadowInst);
   if (cellOpt.hasValue()) {
     seadsa::Cell c = cellOpt.getValue();
@@ -153,10 +153,10 @@ Region getShadowRegion(llvm::CallInst &shadowInst,
 
 // Find shadow mem instruction from a verifier.int_initializer or
 // verifier.zero_initializer call.
-CallInst* getShadowCIFromGvInitializer(const seadsa::ShadowMem &sm,
-				       llvm::Instruction &gvInitInst,
-				       llvm::Value &v) {
-  
+CallInst *getShadowCIFromGvInitializer(const seadsa::ShadowMem &sm,
+                                       llvm::Instruction &gvInitInst,
+                                       llvm::Value &v) {
+
   auto main = gvInitInst.getParent()->getParent();
   if (!main->getName().equals("main")) {
     return nullptr;
@@ -166,42 +166,39 @@ CallInst* getShadowCIFromGvInitializer(const seadsa::ShadowMem &sm,
     return nullptr;
   }
 
-  for (auto &I: *entry) {
+  for (auto &I : *entry) {
     if (llvm::CallInst *shadowCI = llvm::dyn_cast<llvm::CallInst>(&I)) {
       seadsa::ShadowMemInstOp op = sm.getShadowMemOp(*shadowCI);
-      CallSite CS(shadowCI);      
-      if (// shadow.mem.global.init used for non-scalar global variables
-	  (op == seadsa::ShadowMemInstOp::GLOBAL_INIT &&
-	   (&v == CS.getArgument(2)->stripPointerCasts())) ||
-	  (// shadow.mem.arg.init used for function inputs including
-	   // scalar global variables.
-	   op == seadsa::ShadowMemInstOp::ARG_INIT &&
-	   (&v == CS.getArgument(1)->stripPointerCasts()))) {
-	return shadowCI;
+      CallSite CS(shadowCI);
+      if ( // shadow.mem.global.init used for non-scalar global variables
+          (op == seadsa::ShadowMemInstOp::GLOBAL_INIT &&
+           (&v == CS.getArgument(2)->stripPointerCasts())) ||
+          ( // shadow.mem.arg.init used for function inputs including
+            // scalar global variables.
+              op == seadsa::ShadowMemInstOp::ARG_INIT &&
+              (&v == CS.getArgument(1)->stripPointerCasts()))) {
+        return shadowCI;
       }
     }
   }
   return nullptr;
 }
 
-
-
 Region getShadowRegionFromGvInitializer(const seadsa::ShadowMem &sm,
-					const llvm::DataLayout &dl,
-					llvm::Instruction &gvInitInst,
-					llvm::Value &v) {
-  
-  if (CallInst *shadowCI =
-      getShadowCIFromGvInitializer(sm, gvInitInst, v)) {
+                                        const llvm::DataLayout &dl,
+                                        llvm::Instruction &gvInitInst,
+                                        llvm::Value &v) {
+
+  if (CallInst *shadowCI = getShadowCIFromGvInitializer(sm, gvInitInst, v)) {
     return getShadowRegion(*shadowCI, dl, sm);
   } else {
     return Region();
   }
 }
-  
+
 Region getShadowRegionFromLoadOrStore(const seadsa::ShadowMem &sm,
-				      const llvm::DataLayout &dl,
-				      llvm::Instruction &loadOrStore) {
+                                      const llvm::DataLayout &dl,
+                                      llvm::Instruction &loadOrStore) {
   Region res;
   auto it = loadOrStore.getIterator();
   --it;
@@ -212,9 +209,9 @@ Region getShadowRegionFromLoadOrStore(const seadsa::ShadowMem &sm,
     case seadsa::ShadowMemInstOp::STORE:
       res = getShadowRegion(*shadowCI, dl, sm);
       break;
-    default:; 
-      //CLAM_ERROR("unreachable");
-    }       
+    default:;
+      // CLAM_ERROR("unreachable");
+    }
   }
   return res;
 }

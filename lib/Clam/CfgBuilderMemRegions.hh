@@ -5,12 +5,12 @@
 
 #include "clam/HeapAbstraction.hh"
 #include "clam/Support/Debug.hh"
-#include "seadsa/ShadowMem.hh"
 #include "seadsa/Graph.hh"
+#include "seadsa/ShadowMem.hh"
 
-#include "SeaDsaHeapAbstractionDsaToRegion.hh"
-#include "CfgBuilderUtils.hh"
 #include "CfgBuilderShadowMem.hh"
+#include "CfgBuilderUtils.hh"
+#include "SeaDsaHeapAbstractionDsaToRegion.hh"
 
 /**
  *  Convenient utilities to extract memory regions from LLVM
@@ -22,10 +22,9 @@ typedef typename HeapAbstraction::RegionVec RegionVec;
 
 // "Switch" function that uses either ShadowMem (mem) or
 // HeapAbstraction (sm) to return the cell pointer a LLVM pointer.
-inline Region get_region(HeapAbstraction &mem,
-			 const seadsa::ShadowMem* sm,
-			 const llvm::DataLayout &dl,
-			 llvm::Instruction *user, llvm::Value *ptr) {
+inline Region get_region(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
+                         const llvm::DataLayout &dl, llvm::Instruction *user,
+                         llvm::Value *ptr) {
   if (sm) {
     // Use ShadowMem (sm) to access to the cell pointed by the pointer.
     llvm::CallInst *CI = llvm::dyn_cast<llvm::CallInst>(user);
@@ -42,21 +41,21 @@ inline Region get_region(HeapAbstraction &mem,
     llvm::Function *fun = user->getParent()->getParent();
     Region res = mem.getRegion(*fun, user, ptr);
     if (res.getRegionInfo().get_type() == INT_REGION ||
-	res.getRegionInfo().get_type() == BOOL_REGION) {
+        res.getRegionInfo().get_type() == BOOL_REGION) {
       return res;
     }
   }
-  return Region();    
+  return Region();
 }
 
-// Return whether the region contains a singleton alias class. 
-inline const llvm::Value *
-get_singleton_value(Region r, bool enable_unique_scalars) {
+// Return whether the region contains a singleton alias class.
+inline const llvm::Value *get_singleton_value(Region r,
+                                              bool enable_unique_scalars) {
   if (enable_unique_scalars) {
     if (r.isUnknown())
       return nullptr;
     if (r.getRegionInfo().get_type() == INT_REGION ||
-	r.getRegionInfo().get_type() == BOOL_REGION) {
+        r.getRegionInfo().get_type() == BOOL_REGION) {
       if (const llvm::Value *v = r.getSingleton()) {
         return v;
       }
