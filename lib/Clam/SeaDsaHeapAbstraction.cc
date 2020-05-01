@@ -377,7 +377,8 @@ void LegacySeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 
 LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
     const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
-    const llvm::TargetLibraryInfo &tli, const seadsa::AllocWrapInfo &alloc_info,
+    llvm::TargetLibraryInfoWrapperPass &tli,
+    const seadsa::AllocWrapInfo &alloc_info,
     bool is_context_sensitive, bool disambiguate_for_array_smashing,
     bool disambiguate_unknown, bool disambiguate_ptr_cast,
     bool disambiguate_external)

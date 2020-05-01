@@ -17,6 +17,7 @@
 namespace llvm {
 class DataLayout;
 class TargetLibraryInfo;
+class TargetLibraryInfoWrapperPass;
 class BasicBlock;
 class Function;
 class Twine;
@@ -115,13 +116,13 @@ public:
   // This constructor will use HeapAbstraction to translate LLVM
   // memory instructions to Crab arrays.
   CrabBuilderManager(CrabBuilderParams params,
-                     const llvm::TargetLibraryInfo &tli,
+                     llvm::TargetLibraryInfoWrapperPass &tli,
                      std::unique_ptr<HeapAbstraction> mem);
 
   // This constructor will use ShadowMem to translate LLVM memory
   // instructions to Crab arrays.
   CrabBuilderManager(CrabBuilderParams params,
-                     const llvm::TargetLibraryInfo &tli, seadsa::ShadowMem &sm);
+                     llvm::TargetLibraryInfoWrapperPass &tli, seadsa::ShadowMem &sm);
 
   ~CrabBuilderManager();
 
@@ -141,7 +142,8 @@ public:
 
   const CrabBuilderParams &get_cfg_builder_params() const;
 
-  const llvm::TargetLibraryInfo &get_tli() const;
+  const llvm::TargetLibraryInfo &get_tli(const llvm::Function&) const;
+  llvm::TargetLibraryInfoWrapperPass &get_tli_wrapper() const;
 
   HeapAbstraction &get_heap_abstraction();
 
@@ -155,7 +157,7 @@ private:
   // Map LLVM function to Crab CfgBuilder
   llvm::DenseMap<const llvm::Function *, CfgBuilderPtr> m_cfg_builder_map;
   // Used for the translation from bitcode to Crab CFG
-  const llvm::TargetLibraryInfo &m_tli;
+  llvm::TargetLibraryInfoWrapperPass &m_tli;
   // All CFGs supervised by this manager are created using the same
   // variable factory.
   variable_factory_t m_vfac;

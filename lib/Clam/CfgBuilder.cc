@@ -2138,11 +2138,11 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
         // Memory SSA form
         crab_stmt =
             m_bb.array_store(new_v.getValue(), old_v, idx, temp_v,
-                             m_dl->getTypeAllocSize(ty), is_strong_update);
+                             m_dl->getTypeAllocSize(ty).getFixedSize(), is_strong_update);
       } else {
         // Non-memory SSA form
         crab_stmt = m_bb.array_store(
-            old_v, idx, temp_v, m_dl->getTypeAllocSize(ty), is_strong_update);
+            old_v, idx, temp_v, m_dl->getTypeAllocSize(ty).getFixedSize(), is_strong_update);
       }
     } else {
       if (val->isInt()) {
@@ -2150,12 +2150,12 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
           // Memory SSA form
           crab_stmt = m_bb.array_store(
               new_v.getValue(), old_v, idx, m_lfac.getIntCst(val),
-              m_dl->getTypeAllocSize(ty), is_strong_update);
+              m_dl->getTypeAllocSize(ty).getFixedSize(), is_strong_update);
         } else {
           // Non-memory SSA form
           crab_stmt =
               m_bb.array_store(old_v, idx, m_lfac.getIntCst(val),
-                               m_dl->getTypeAllocSize(ty), is_strong_update);
+                               m_dl->getTypeAllocSize(ty).getFixedSize(), is_strong_update);
         }
       } else if (val->isBool()) {
         if (new_v.hasValue()) {
@@ -2163,12 +2163,12 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
           crab_stmt = m_bb.array_store(
               new_v.getValue(), old_v, idx,
               m_lfac.isBoolTrue(val) ? number_t(1) : number_t(0),
-              m_dl->getTypeAllocSize(ty), is_strong_update);
+              m_dl->getTypeAllocSize(ty).getFixedSize(), is_strong_update);
         } else {
           // Non-memory SSA form
           crab_stmt = m_bb.array_store(
               old_v, idx, m_lfac.isBoolTrue(val) ? number_t(1) : number_t(0),
-              m_dl->getTypeAllocSize(ty), is_strong_update);
+              m_dl->getTypeAllocSize(ty).getFixedSize(), is_strong_update);
         }
       } else { /* unreachable */
       }
@@ -2291,7 +2291,7 @@ void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton, var_t lhs_v,
                                     m_lfac.get_vfac());
 
     auto const *crab_stmt =
-        m_bb.array_load(lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()));
+      m_bb.array_load(lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()).getFixedSize());
     insertRevMap(crab_stmt, I);
 
     if (reg.getRegionInfo().get_bitwidth() < lhs_v.get_bitwidth()) {
@@ -2662,7 +2662,7 @@ class CfgBuilderImpl {
 public:
   CfgBuilderImpl(const llvm::Function &func, llvm_variable_factory &vfac,
                  HeapAbstraction &mem, seadsa::ShadowMem *sm,
-                 const llvm::TargetLibraryInfo *tli,
+                 llvm::TargetLibraryInfoWrapperPass *tli,
                  const CrabBuilderParams &params);
 
   void build_cfg();
@@ -2741,7 +2741,7 @@ private:
   llvm::DenseMap<const statement_t *, const llvm::Instruction *> m_rev_map;
   // information about LLVM pointers
   const llvm::DataLayout *m_dl;
-  const llvm::TargetLibraryInfo *m_tli;
+  llvm::TargetLibraryInfoWrapperPass *m_tli;
   // cfg builder parameters
   const CrabBuilderParams &m_params;
 
@@ -2769,7 +2769,7 @@ private:
 CfgBuilderImpl::CfgBuilderImpl(const Function &func,
                                llvm_variable_factory &vfac,
                                HeapAbstraction &mem, seadsa::ShadowMem *sm,
-                               const TargetLibraryInfo *tli,
+                               TargetLibraryInfoWrapperPass *tli,
                                const CrabBuilderParams &params)
     : m_is_cfg_built(false),
       // HACK: it's safe to remove constness because we know that the
@@ -2989,13 +2989,16 @@ void CfgBuilderImpl::build_cfg() {
   // For translation of gep if precision level is ARR
   DenseMap<const GetElementPtrInst *, var_t> gep_map;
 
+  const TargetLibraryInfo *tli = nullptr;
+  if (m_tli) tli = &m_tli->getTLI(m_func);
+
   for (auto &B : m_func) {
     basic_block_t *bb = lookup(B);
     if (!bb)
       continue;
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
-    CrabInstVisitor v(m_lfac, m_mem, m_sm, m_dl, m_tli, *bb, m_rev_map,
+    CrabInstVisitor v(m_lfac, m_mem, m_sm, m_dl, tli, *bb, m_rev_map,
                       init_regions, gep_map, m_params);
     v.visit(B);
     // hook for seahorn
@@ -3387,7 +3390,7 @@ void CrabBuilderParams::write(raw_ostream &o) const {
 CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManager &man)
     : m_impl(new CfgBuilderImpl(func, man.get_var_factory(),
                                 man.get_heap_abstraction(),
-                                man.get_shadow_mem(), &(man.get_tli()),
+                                man.get_shadow_mem(), &(man.get_tli_wrapper()),
                                 man.get_cfg_builder_params())),
       m_ls(nullptr) {}
 
@@ -3450,7 +3453,7 @@ CfgBuilder::get_live_symbols(const BasicBlock *B) const {
 
 /* CFG Manager class */
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
-                                       const llvm::TargetLibraryInfo &tli,
+                                       llvm::TargetLibraryInfoWrapperPass &tli,
                                        std::unique_ptr<HeapAbstraction> mem)
     : m_params(params), m_tli(tli), m_mem(std::move(mem)), m_sm(nullptr) {
   // This constructor cannot enable memory ssa form.
@@ -3462,7 +3465,7 @@ CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
 }
 
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
-                                       const llvm::TargetLibraryInfo &tli,
+                                       llvm::TargetLibraryInfoWrapperPass &tli,
                                        seadsa::ShadowMem &sm)
     : m_params(params), m_tli(tli), m_mem(new DummyHeapAbstraction()),
       m_sm(&sm) {
@@ -3519,7 +3522,11 @@ const CrabBuilderParams &CrabBuilderManager::get_cfg_builder_params() const {
   return m_params;
 }
 
-const llvm::TargetLibraryInfo &CrabBuilderManager::get_tli() const {
+const llvm::TargetLibraryInfo &CrabBuilderManager::get_tli(const Function &F) const {
+  return m_tli.getTLI(F);
+}
+
+llvm::TargetLibraryInfoWrapperPass &CrabBuilderManager::get_tli_wrapper() const {
   return m_tli;
 }
 

@@ -649,7 +649,7 @@ private:
                      << "function " << m_fun.getName() << "\n";
       }
       if (params.print_invars) {
-        pool_annotations.emplace_back(make_unique<inv_annotation_t>(
+        pool_annotations.emplace_back(std::make_unique<inv_annotation_t>(
             m_vfac, results.premap, results.postmap, params.keep_shadow_vars));
       }
 
@@ -664,7 +664,7 @@ private:
       if (params.print_unjustified_assumptions) {
         // -- run first the analysis
         unjust_assumption_analyzer.exec();
-        pool_annotations.emplace_back(make_unique<unjust_assume_annotation_t>(
+        pool_annotations.emplace_back(std::make_unique<unjust_assume_annotation_t>(
             get_cfg(), &unjust_assumption_analyzer));
       }
 
@@ -817,7 +817,7 @@ private:
  **/
 IntraClam::IntraClam(const Function &fun, CrabBuilderManager &man)
     : m_impl(nullptr), m_fun(fun), m_builder_man(man) {
-  m_impl = make_unique<IntraClam_Impl>(m_fun, m_builder_man);
+  m_impl = std::make_unique<IntraClam_Impl>(m_fun, m_builder_man);
 }
 
 IntraClam::~IntraClam() {}
@@ -941,7 +941,7 @@ public:
     }
     // build call graph
     m_cg =
-        make_unique<call_graph_t>(cfg_ref_vector.begin(), cfg_ref_vector.end());
+        std::make_unique<call_graph_t>(cfg_ref_vector.begin(), cfg_ref_vector.end());
   }
 
   void Analyze(AnalysisParams &params,
@@ -1172,7 +1172,7 @@ private:
             std::vector<std::unique_ptr<pretty_printer_impl::block_annotation>>
                 annotations;
             annotations.emplace_back(
-                make_unique<pretty_printer_impl::invariant_annotation>(
+                std::make_unique<pretty_printer_impl::invariant_annotation>(
                     m_crab_builder_man.get_var_factory(), results.premap,
                     results.postmap, params.keep_shadow_vars));
             pretty_printer_impl::print_annotations(cfg, annotations);
@@ -1335,7 +1335,7 @@ private:
  **/
 InterClam::InterClam(const Module &module, CrabBuilderManager &man)
     : m_impl(nullptr), m_builder_man(man) {
-  m_impl = make_unique<InterClam_Impl>(module, m_builder_man);
+  m_impl = std::make_unique<InterClam_Impl>(module, m_builder_man);
 }
 
 InterClam::~InterClam() {}
@@ -1415,7 +1415,7 @@ bool ClamPass::runOnModule(Module &M) {
       CrabMemShadows, CrabIncludeHavoc, CrabUseArraySmashing, CrabArrayInit,
       CrabUnsoundArrayInit, CrabEnableBignums, CrabPrintCFG);
 
-  auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+  auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>();
 
   /// Create the CFG builder manager
   if (!CrabMemShadows) {

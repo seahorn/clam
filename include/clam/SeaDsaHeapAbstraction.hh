@@ -21,6 +21,7 @@ namespace llvm {
 class DataLayout;
 class CallGraph;
 class TargetLibraryInfo;
+class TargetLibraryInfoWrapperPass;
 } // namespace llvm
 
 namespace clam {
@@ -68,7 +69,7 @@ public:
   // run it on M.
   LegacySeaDsaHeapAbstraction(
       const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
-      const llvm::TargetLibraryInfo &tli,
+      llvm::TargetLibraryInfoWrapperPass &tli,
       const seadsa::AllocWrapInfo &alloc_wrap_info, bool is_context_sensitive,
       bool disambiguate_for_array_smashing, bool disambiguate_unknown,
       bool disambiguate_ptr_cast, bool disambiguate_external);
