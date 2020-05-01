@@ -1,4 +1,4 @@
-add_llvm_library (ClamAnalysis ${CLAM_LIBS_TYPE}
+add_llvm_library (ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CfgBuilder.cc
   CfgBuilderLit.cc
   CfgBuilderUtils.cc
@@ -16,6 +16,7 @@ llvm_map_components_to_libnames(LLVM_LIBS
   support core irreader bitwriter instrumentation ipo scalaropts codegen objcarcopts)
 
 target_link_libraries (ClamAnalysis
+  PRIVATE
   ${CRAB_LIBS}
   ## Needed if dynamic linking
   ${LLVM_LIBS}
@@ -39,6 +40,7 @@ add_library (ClamInstrumentation ${CLAM_LIBS_TYPE}
   )
 
 target_link_libraries(ClamInstrumentation
+  PRIVATE 
   ${CRAB_LIBS}
   ## Needed if dynamic linking
   ClamAnalysis

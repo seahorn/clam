@@ -257,7 +257,7 @@ if (TopLevel)
     LOG_BUILD 1
     LOG_INSTALL 1)
 
-  find_package (LLVM 8.0 CONFIG NO_DEFAULT_PATH)
+  find_package (LLVM 10 CONFIG)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})
