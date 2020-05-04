@@ -1,6 +1,8 @@
-// RUN: %clam -O0 --crab-inter --crab-track=arr --crab-dom=int --crab-check=assert --crab-sanity-checks --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O1 --crab-inter --crab-track=arr --crab-dom=int --crab-check=assert --crab-sanity-checks --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
 // CHECK: ^6  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
+
+// With -O0 the code gets harder to verify.
 
 #include <stdint.h>
 
