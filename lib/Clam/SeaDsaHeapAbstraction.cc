@@ -99,8 +99,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodes(
 
       Cell c(const_cast<Node *>(n), kv.first);
       RegionInfo r_info =
-	DsaToRegion(c, m_dl, true /*split dsa nodes*/,
-		    m_disambiguate_for_array_smashing,
+	DsaToRegion(c, m_dl, 
 		    m_disambiguate_unknown,
 		    m_disambiguate_ptr_cast, m_disambiguate_external);
 
@@ -178,8 +177,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 
       Cell calleeC(const_cast<Node *>(n), kv.first);
       RegionInfo calleeRI =
-	DsaToRegion(calleeC, m_dl, true /*split_dsa_nodes*/,
-		    m_disambiguate_for_array_smashing,		    
+	DsaToRegion(calleeC, m_dl, 	    
 		    m_disambiguate_unknown,
 		    m_disambiguate_ptr_cast, m_disambiguate_external);
       
@@ -193,8 +191,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
         }
 
         RegionInfo callerRI = DsaToRegion(
-            callerC, m_dl, true /*split_dsa_nodes*/,
-	    m_disambiguate_for_array_smashing,
+            callerC, m_dl, 
 	    m_disambiguate_unknown, m_disambiguate_ptr_cast,
             m_disambiguate_external);
         /**
@@ -248,6 +245,7 @@ void LegacySeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
   CRAB_VERBOSE_IF(3, for (auto &F
                           : M) {
     if (m_dsa->hasGraph(F)) {
+      errs() << "#### " << F.getName() << "####\n";
       auto &G = m_dsa->getGraph(F);
       G.write(errs());
       errs() << "\n";
@@ -382,10 +380,9 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
     const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
     const llvm::TargetLibraryInfo &tli,
     const sea_dsa::AllocWrapInfo &alloc_info, bool is_context_sensitive,
-    bool disambiguate_for_array_smashing, bool disambiguate_unknown,
+    bool disambiguate_unknown,
     bool disambiguate_ptr_cast, bool disambiguate_external)
     : m_dsa(nullptr), m_fac(nullptr), m_dl(dl), m_max_id(0),
-      m_disambiguate_for_array_smashing(disambiguate_for_array_smashing),
       m_disambiguate_unknown(disambiguate_unknown),
       m_disambiguate_ptr_cast(disambiguate_ptr_cast),
       m_disambiguate_external(disambiguate_external) {
@@ -410,10 +407,9 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
 LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
     const llvm::Module &M, const llvm::DataLayout &dl,
     sea_dsa::GlobalAnalysis &dsa, 
-    bool disambiguate_for_array_smashing, bool disambiguate_unknown,
+    bool disambiguate_unknown,
     bool disambiguate_ptr_cast, bool disambiguate_external)
-    : m_dsa(&dsa), m_fac(nullptr), m_dl(dl), m_max_id(0),
-      m_disambiguate_for_array_smashing(disambiguate_for_array_smashing),
+    : m_dsa(&dsa), m_fac(nullptr), m_dl(dl), m_max_id(0),      
       m_disambiguate_unknown(disambiguate_unknown),
       m_disambiguate_ptr_cast(disambiguate_ptr_cast),
       m_disambiguate_external(disambiguate_external) {
@@ -447,7 +443,7 @@ bool LegacySeaDsaHeapAbstraction::isBasePtr(const llvm::Function &fn,
   }
 
   Node *N = c.getNode();
-  if (N->isOffsetCollapsed() || N->isArray() || N->isIntToPtr() || N->isPtrToInt()) {
+  if (N->isOffsetCollapsed() || N->isIntToPtr() || N->isPtrToInt()) {
     return false;
   }
   
@@ -455,6 +451,10 @@ bool LegacySeaDsaHeapAbstraction::isBasePtr(const llvm::Function &fn,
     return false;
   }
 
+  // Important: note that if the program takes the address of a
+  // non-zero index of an array then the corresponding sea-dsa is
+  // **collapsed**.
+  
   return true;
   
   // auto &allocSites = N->getAllocSites();
@@ -481,8 +481,7 @@ Region LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
   }
 
   RegionInfo r_info =
-      DsaToRegion(c, m_dl, true /*split_dsa_nodes*/,
-		  m_disambiguate_for_array_smashing,
+      DsaToRegion(c, m_dl, 
 		  m_disambiguate_unknown,
 		  m_disambiguate_ptr_cast, m_disambiguate_external);
 
@@ -491,6 +490,33 @@ Region LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
   } else {
     return mkRegion(c, r_info);
   }
+}
+
+Region LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn, const llvm::Value &V,
+					      unsigned offset, const Type &AccessedType) {
+
+  if (!m_dsa || !m_dsa->hasGraph(fn)) {
+    return Region();
+  }
+
+  Graph &G = m_dsa->getGraph(fn);
+  if (!G.hasCell(V)) {
+    return Region();
+  }
+
+  if (Node *n = G.getCell(V).getNode()) {
+    if (n->hasAccessedType(offset)) {
+      Cell c(n, offset);
+      RegionInfo r_info = DsaToRegion(c, m_dl, 
+				      m_disambiguate_unknown,
+				      m_disambiguate_ptr_cast,
+				      m_disambiguate_external);
+      if (r_info.get_type() != UNTYPED_REGION) {
+	return mkRegion(c, r_info);
+      }
+    }
+  }
+  return Region();
 }
 
 const llvm::Value *

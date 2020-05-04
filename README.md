@@ -308,10 +308,13 @@ abstraction of the translation. The possible values of `VAL` are:
     partition the heap into disjoint regions using a pointer
     analysis. Each region is mapped to a Crab array, and each LLVM
     load and store is translated to an array read and write operation,
-    respectively. Then, it will use an array domain provided by Crab
-    whose base domain is the one selected by option
-    `--crab-domain`. If option `--crab-singleton-aliases` is enabled
-    then Clam translates global singleton regions to scalar variables.
+    respectively. Currently, we choose to consider a region only if
+    its element type is an integer but it can be extended to pointers
+    if we would interested in e.g., nullity analysis. Then, it will
+    use an array domain provided by Crab whose base domain is the one
+    selected by option `--crab-domain`. If option
+    `--crab-singleton-aliases` is enabled then Clam translates global
+    singleton regions to scalar variables.
 
 By default, all the analyses are run in an intra-procedural
 manner. Whenever possible, we recommend to run Clam with option

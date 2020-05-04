@@ -7,7 +7,6 @@ namespace clam {
 
   // Preprocessor passes
   llvm::Pass* createLowerCstExprPass ();
-  llvm::Pass* createLowerGvInitializersPass ();
   llvm::Pass* createLowerSelectPass ();
   llvm::Pass* createLowerUnsignedICmpPass ();
   // LLVM 8.0 has already this pass

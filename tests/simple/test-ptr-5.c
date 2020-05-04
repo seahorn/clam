@@ -10,8 +10,7 @@ char a[40];
 
    EXPECTED: we do not produce an array because we might have
    overlapping cells. Even if we would replace a[3] with a[4] we would
-   not generate an array because of multiple accesses with different
-   offsets.
+   not generate an array.
  */
 int main() {
   int n=10;
