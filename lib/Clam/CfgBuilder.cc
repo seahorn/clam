@@ -3083,22 +3083,28 @@ void CfgBuilderImpl::build_cfg() {
       if (!isTracked(arg, m_params))
         continue;
 
+      /** Make sure the assignments are inserted before a return
+       *  instruction in case the entry and the exit blocks are the
+       *  same.
+       **/
+      entry.set_insert_point_front();
+
       crab_lit_ref_t i = m_lfac.getLit(arg);
       assert(i && i->isVar());
       if (!ret_val.is_null() && i->getVar() == ret_val.get()) {
         // rename i to avoid having same name as output (crab requirement)
         if (i->isBool()) {
           var_t fresh_i = m_lfac.mkBoolVar();
-          entry.bool_assign(fresh_i, i->getVar());
+	  entry.bool_assign(i->getVar(), fresh_i);
           inputs.push_back(fresh_i);
         } else if (i->isInt()) {
           unsigned bitwidth = arg.getType()->getIntegerBitWidth();
           var_t fresh_i = m_lfac.mkIntVar(bitwidth);
-          entry.assign(fresh_i, i->getVar());
+	  entry.assign(i->getVar(), fresh_i);
           inputs.push_back(fresh_i);
         } else if (i->isPtr()) {
           var_t fresh_i = m_lfac.mkPtrVar();
-          entry.ptr_assign(fresh_i, i->getVar(), number_t(0));
+	  entry.ptr_assign(i->getVar(), fresh_i, number_t(0));
           inputs.push_back(fresh_i);
         } else {
           CLAM_ERROR("unexpected function parameter type");
