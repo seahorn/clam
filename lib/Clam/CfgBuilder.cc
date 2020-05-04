@@ -10,32 +10,48 @@
  * is pretty straightforward.  LLVM branches are translated to Crab
  * assume and goto statements. The translation also removes phi nodes.
  *
- * If tracked precision is PTR then LLVM pointer operations are
+ * If tracked precision = PTR then LLVM pointer operations are
  * translated to Crab pointer operations. This translation is almost
  * one-to-one, except some unsupported cases (see below limitations).
  *
- * If tracked precision is ARR then the translation is more
- * complex. We use a heap analysis to partition statically memory into
- * disjoint regions. Then, each memory region is mapped to a Crab
- * array and LLVM load/store are translated to array read/write. Some
- * memory regions might not be mapped to Crab arrays because
- * otherwise, the Crab array domains wouldn't be sound.
+ * If tracked precision = ARR then the translation is more complex. We
+ * use a heap analysis to partition statically memory into disjoint
+ * regions. Then, each memory region is mapped to a Crab array and
+ * LLVM load/store are translated to array read/write. Some memory
+ * regions might not be mapped to Crab arrays because otherwise, the
+ * Crab array domains wouldn't be sound. The hard part is to infer
+ * statically pointer offsets. We use the heap analysis for it. In any
+ * case, this translation should be sound but it's a best effort so
+ * some operations might not be precisely translated.
  *
- * The translation of function calls is also straigthforward except if
+ * The translation of function calls is also straightforward except if
  * tracked precision = ARR. In that case, all functions are
  * _purified_. That is, the translation ensures that functions have no
  * side-effects.
+ *
+ * In summary, Clam translates memory operations in two different
+ * modes: a straightforward translation (tracked precision = PTR)
+ * which maps each integer and memory LLVM instruction to an
+ * boolean/integer and pointer Crab statement, respectively; and a
+ * more complex translation that translates memory LLVM instructions
+ * into Crab array statements. The former delegates all the work to
+ * the Crab abstract domain. The latter frees Crab abstract domains
+ * from reasoning about aliasing since arrays are disjoint.
+ * 
+ * Currently, Crab does not have a precise memory analysis for tracked
+ * precision = PTR, so there is not actually a choice (i.e., tracked
+ * precision = ARR should be always used) but we plan to have one.
  *
  * Known limitations of the translation:
  *
  * - Ignore floating point instructions.
  * - Ignore inttoptr/ptrtoint instructions.
  * - Almost ignore memset/memmove/memcpy.
- * - Only if PTR precision: if a `LoadInst`'s lhs (`StoreInst` value
- *   operand) is not a pointer then the translation ignores safely the
- *   LLVM instruction and hence, it won't add the corresponding Crab
- *   pointer statement `ptr_load` (`ptr_store`).
- * - Only if ARR precision: if a `LoadInst`'s lhs (`StoreInst` value
+ * - Only if tracked precision = PTR: if a `LoadInst`'s lhs
+ *   (`StoreInst` value operand) is not a pointer then the translation
+ *   ignores safely the LLVM instruction and hence, it won't add the
+ *   corresponding Crab pointer statement `ptr_load` (`ptr_store`).
+ * - Only if tracked precision = ARR: if a `LoadInst`'s lhs (`StoreInst` value
  *   operand) is a pointer then the translation ignores safely the
  *   LLVM instruction and hence, it won't add the corresponding Crab
  *   array statement `array_load` (`array_store`).
@@ -811,7 +827,7 @@ public:
       DenseMap<const GetElementPtrInst*, var_t> &gep_map,
       const CrabBuilderParams &params);
 
-  bool has_seahorn_fail() { return m_has_seahorn_fail; }
+  bool hasSeaHornFail() { return m_has_seahorn_fail; }
 
   /// skip PHI nodes (processed elsewhere)
   void visitPHINode(PHINode &I) {}
@@ -888,6 +904,10 @@ Optional<z_number> CrabInstVisitor::evalOffset(Value &v, LLVMContext &ctx) {
   return llvm::None;
 }
 
+// This method is key for precision for memory operations.
+// 
+// v is a pointer operand. It tries to figure out its numerical
+// offset. If it can it returns an unconstrained variable.
 lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx, Region reg,
 					   llvm_variable_factory &vfac) {
   auto offsetOpt = evalOffset(*v, ctx);
@@ -906,9 +926,21 @@ lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx, Region re
       } else {
 	return it->second;
       }
+    } else if (const Argument *Arg = dyn_cast<Argument>(v)) {
+      const Function &F = *(Arg->getParent());
+      if (m_mem.isBasePtr(F, Arg)) {
+	return number_t(0);
+      } else {
+	CRAB_LOG("cfg-gep",
+		 CLAM_WARNING("cannot infer statically base address of formal input " << *Arg
+			      << " at function " << F.getName()));
+	return getUnconstrainedArrayIdxVar(vfac, 32);	
+      }
     } else {
       // we cannot infer statically the offset so we return an
       // unconstrained variable.
+      CRAB_LOG("cfg-gep",
+	       CLAM_WARNING("cannot infer statically base address of  " << *v));      
       return getUnconstrainedArrayIdxVar(vfac, 32);
     }
   }
@@ -2500,10 +2532,11 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
     // smashing can infer something meaningful. Even Crab's array
     // adaptive domain may benefit from this in case an array is
     // initialized in a loop.
-    //
-    // REVISIT/TODO: A better solution for array adaptive is to unroll
-    // loops one iteration.
-    
+    // 
+    // REVISIT/TODO: this can generate two consecutive array store if
+    // the alloca instruction is followed by an array store.  A
+    // better solution for array adaptive is to unroll loops one
+    // iteration.
     Function *parentF = I.getParent()->getParent();
     MemoryInitializer MI(m_lfac, m_mem, m_sm, *m_dl, m_params, *parentF, m_bb);
     Type *ATy = I.getAllocatedType();
@@ -3105,7 +3138,7 @@ void CfgBuilderImpl::build_cfg() {
     v.visit(B);
     // hook for seahorn
     has_seahorn_fail |=
-        (v.has_seahorn_fail() && m_func.getName().equals("main"));
+        (v.hasSeaHornFail() && m_func.getName().equals("main"));
 
     if (ReturnInst *RI = dyn_cast<ReturnInst>(B.getTerminator())) {
       // -- process the exit block of the function and its returned value.      

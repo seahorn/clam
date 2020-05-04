@@ -11,7 +11,7 @@
 #include "crab/domains/apron_domains.hpp"
 #else 
 #include "crab/domains/elina_domains.hpp"
-#endif 
+#endif
 #include "crab/domains/array_smashing.hpp"
 #include "crab/domains/array_adaptive.hpp"
 #include "crab/domains/term_equiv.hpp"
@@ -34,9 +34,9 @@ namespace clam {
     /* options for array smashing */  
     enum { is_smashable = 1 };
     enum { smash_at_nonzero_offset = 1};
-    enum { max_smashable_cells = 64};
+    enum { max_smashable_cells = 1024};
     /* options for array expansion */  
-    enum { max_array_size = 512 };
+    enum { max_array_size = 1024 };
   };
   template<class Dom>
   using array_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;
@@ -44,7 +44,7 @@ namespace clam {
   template<class Dom>
   using array_domain = array_smashing<Dom>;
 #endif   
-  
+
   /* BEGIN MACROS only for internal use */
   // The base numerical domain 
   #define BASE(DOM) base_ ## DOM

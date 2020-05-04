@@ -1,4 +1,4 @@
-// RUN: %clam -O0 --lower-unsigned-icmp --crab-dom=int --crab-widening-delay=3 --crab-check=assert "%s"  2>&1 | OutputCheck %s
+// RUN: %clam -O0 --crab-track=arr --lower-unsigned-icmp --crab-dom=int --crab-widening-delay=3 --crab-check=assert "%s"  2>&1 | OutputCheck %s
 
 // CHECK: ^3  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
