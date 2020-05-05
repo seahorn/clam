@@ -800,8 +800,8 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   void doAllocFn(Instruction &I);
   void doMemIntrinsic(MemIntrinsic &I);
   void doVerifierCall(CallInst &I);
-  void doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
-	     var_t lhs, llvm::Optional<var_t> base);
+  void doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
+	     unsigned max_index_bitwidth, var_t lhs, llvm::Optional<var_t> base);
   void doStoreInst(StoreInst &I, bool is_singleton,
 		   llvm::Optional<var_t> new_var, var_t old_var,
 		   crab_lit_ref_t val, Region reg);
@@ -1998,15 +1998,14 @@ void CrabInstVisitor::visitSelectInst(SelectInst &I) {
 }
 
 // 
-// - If base is not None then GEP is translated as a Crab pointer
-// instruction. 
+// - If translateAsPtrStmt is true then GEP is translated as a Crab
+//   pointer statement.
 // 
-// - Otherwise, it is translated as a Crab arithmetic instruction. A
-// key assumption is that the base pointer of GEP is zero. This must
-// be ensured by the caller. 
-// 
-void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
-			    var_t lhs, llvm::Optional<var_t> base) {
+// - Otherwise, it is translated as a Crab arithmetic statement to be
+//   used by a Crab array statement. If base.hasValue() is false then
+//   the base pointer of GEP is zero.
+void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
+			    unsigned max_index_bitwidth, var_t lhs, llvm::Optional<var_t> base) {
   assert(!base.hasValue() || lhs.get_type() == PTR_TYPE);
   assert(lhs.get_type() == INT_TYPE || lhs.get_type() == PTR_TYPE);
  
@@ -2020,16 +2019,25 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
     if (is_bignum) {
       m_bb.havoc(lhs);
     } else {
-      if (base) {
-	// pointer arithmetic
-	m_bb.ptr_assign(lhs, *base, lin_exp_t(o));
-	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":=" << *base << "+"
-                                         << o << "\n");
+      if (translateAsPtrStmt) {
+	// pointer arithmetic	
+	if (!base.hasValue()) {
+	  CRAB_ERROR("doGEP expects a base pointer");
+	}
+	m_bb.ptr_assign(lhs, base.getValue(), lin_exp_t(o));
+	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":=" << base.getValue() << "+"
+	                        	 << o << "\n");
       } else {
-	// arithmetic
-	m_bb.assign(lhs, lin_exp_t(o));
-	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << ":="
-		                         << o << "\n");
+	//arithmetic
+	if (base.hasValue()) {
+	  m_bb.assign(lhs, base.getValue() + lin_exp_t(o));
+	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << ":="
+		                           << base.getValue() << "+" <<  o << "\n");
+	} else {
+	  m_bb.assign(lhs, lin_exp_t(o));
+	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << ":="
+		                           << o << "\n");
+	}
       }
     }
     return;
@@ -2044,21 +2052,31 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
       if (const ConstantInt *ci =
               dyn_cast<const ConstantInt>(GTI.getOperand())) {
         number_t offset(fieldOffset(st, ci->getZExtValue()));
-	if (base) {
+	if (translateAsPtrStmt) {
 	  // pointer arithmetic
-	  m_bb.ptr_assign(lhs, (!already_assigned) ? *base : lhs, offset);
+	  if (!(already_assigned || base.hasValue())) {
+	    CRAB_ERROR("doGEP expects a base pointer");
+	  }
+	  m_bb.ptr_assign(lhs, (!already_assigned) ? base.getValue() : lhs, offset);
 	  CRAB_LOG("cfg-gep",
 		   if (!already_assigned) {
-		     crab::outs() << lhs << "=" << *base << "+" << offset << "\n";
+		     crab::outs() << lhs << "=" << base.getValue() << "+" << offset << "\n";
 		   } else {
 		     crab::outs() << lhs << "+=" << offset << "\n";
 		   });
-	} else  {
-	  // arithmetic
+
+	} else {
+	  // arithmetic 
 	  if (!already_assigned) {
-	    m_bb.assign(lhs, offset);
-	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << "="
-		                             << offset << "\n");
+	    if (base.hasValue()) {
+	      m_bb.assign(lhs, base.getValue() + offset);
+	      CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << "="
+		                               << base.getValue() << "+" << offset << "\n");	      
+	    } else {
+	      m_bb.assign(lhs, offset);
+	      CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << "="
+		                               << offset << "\n");
+	    }
 	  } else {
 	    m_bb.add(lhs, lhs, offset);
 	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << "+="
@@ -2101,21 +2119,30 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, unsigned max_index_bitwidth,
       }
 
       lin_exp_t offset = offsetOpt.getValue();
-      if (base) {
+      if (translateAsPtrStmt) {
 	// pointer arithmetic
-	m_bb.ptr_assign(lhs, (!already_assigned) ? *base : lhs, offset);
+	if (!(already_assigned || base.hasValue())) {
+	  CRAB_ERROR("doGEP expects a base pointer");
+	}
+	m_bb.ptr_assign(lhs, (!already_assigned) ? base.getValue() : lhs, offset);
 	CRAB_LOG("cfg-gep",
 		 if (!already_assigned) {
-		   crab::outs() << lhs << "=" << *base << "+" << offset << "\n";
+		   crab::outs() << lhs << "=" << base.getValue() << "+" << offset << "\n";
 		 } else {
 		   crab::outs() << lhs << "+=" << offset << "\n";
 		 });
       } else {
 	// arithmetic
 	if (!already_assigned) {
-	  m_bb.assign(lhs, offset);
-	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth()
-		                           << "=" << offset << "\n");
+	  if (base.hasValue()) {
+	    m_bb.assign(lhs, base.getValue() + offset);
+	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth()
+		                             << "=" << base.getValue() << "+" << offset << "\n");
+	  } else {
+	    m_bb.assign(lhs, offset);
+	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth()
+	 	                             << "=" << offset << "\n");
+	  }
 	} else {
 	  m_bb.assign(lhs, lhs + offset);
 	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth()
@@ -2167,7 +2194,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     }
     assert(ptr->isVar());
 
-    doGep(I, bitwidth, lhs->getVar(), ptr->getVar());
+    doGep(I, true /*translateAsPtrStmt*/, bitwidth, lhs->getVar(), ptr->getVar());    
     
   } else if (m_params.precision_level == crab::cfg::ARR) {
     /*
@@ -2218,20 +2245,30 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       }
     }
     
-    
-    assert(m_gep_map.find(&I) == m_gep_map.end());
+
     if (isBasePtr) {
       var_t shadowV(m_lfac.get_vfac().get(), crab::INT_TYPE, bitwidth);
       m_gep_map.insert(std::make_pair(&I, shadowV));
-      doGep(I, bitwidth, shadowV, llvm::None);
+      doGep(I, false /*translateAsPtrStmt*/, bitwidth, shadowV, llvm::None);
     } else {
+      if (GetElementPtrInst *GepPtr = dyn_cast<GetElementPtrInst>(Ptr)) {
+	auto it = m_gep_map.find(GepPtr);
+	if (it != m_gep_map.end()) {
+	  var_t shadowV(m_lfac.get_vfac().get(), crab::INT_TYPE, bitwidth);
+	  m_gep_map.insert(std::make_pair(&I, shadowV));
+	  doGep(I, false /*translateAsPtrStmt*/, bitwidth, shadowV, it->second);
+	  return;
+	}
+      }
+      // default case: we give up and translate the GEP to an
+      // unconstrained Crab variable
       var_t shadowV = getUnconstrainedArrayIdxVar(m_lfac.get_vfac(), bitwidth);      
       CRAB_LOG("cfg-gep",
 	       CLAM_WARNING("cannot infer statically base address of  " << *Ptr
 			    << " at function " << I.getParent()->getParent()->getName()
 			    << ".\nUsing unconstrained crab variable " << shadowV.name().str()););
       m_gep_map.insert(std::make_pair(&I, shadowV));
-    }
+    }    
   }
 }
 
