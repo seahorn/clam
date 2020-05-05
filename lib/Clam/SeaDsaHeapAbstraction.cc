@@ -447,7 +447,7 @@ bool LegacySeaDsaHeapAbstraction::isBasePtr(const llvm::Function &fn,
     return false;
   }
   
-  if (c.getOffset() != 0) {
+  if (N->isArray() || c.getOffset() != 0) {    
     return false;
   }
 
