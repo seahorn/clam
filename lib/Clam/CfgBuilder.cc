@@ -16,9 +16,10 @@
  *
  * If tracked precision = ARR then the translation is more complex. We
  * use a heap analysis to partition statically memory into disjoint
- * regions. Then, each memory region is mapped to a Crab array and
- * LLVM load/store are translated to array read/write. Some memory
- * regions might not be mapped to Crab arrays because otherwise, the
+ * regions. Then, each memory region's _field_ (i.e., Burstall's
+ * memory model) is mapped to a Crab array and LLVM load/store are
+ * translated to array read/write statements. Some memory regions'
+ * fields might not be mapped to Crab arrays because otherwise, the
  * Crab array domains wouldn't be sound. The hard part is to infer
  * statically pointer offsets. We use the heap analysis for it. In any
  * case, this translation should be sound but it's a best effort so
@@ -29,32 +30,32 @@
  * _purified_. That is, the translation ensures that functions have no
  * side-effects.
  *
- * In summary, Clam translates memory operations in two different
+ * In summary, Clam translates memory operations using two different
  * modes: a straightforward translation (tracked precision = PTR)
  * which maps each integer and memory LLVM instruction to an
  * boolean/integer and pointer Crab statement, respectively; and a
  * more complex translation that translates memory LLVM instructions
- * into Crab array statements. The former delegates all the work to
- * the Crab abstract domain. The latter frees Crab abstract domains
- * from reasoning about aliasing since arrays are disjoint.
+ * into Crab array statements using the Burstall's memory model. The
+ * former delegates all the work to the Crab abstract domain. The
+ * latter frees Crab abstract domains from reasoning about aliasing
+ * since arrays are disjoint.
  * 
- * Currently, Crab does not have a precise memory analysis for tracked
- * precision = PTR, so there is not actually a choice (i.e., tracked
- * precision = ARR should be always used) but we plan to have one.
+ * Currently, Crab does not have a precise memory abstract domain for
+ * tracked precision = PTR, so there is not actually a choice (i.e.,
+ * tracked precision = ARR should be always used) but we plan to have
+ * one.
  *
  * Known limitations of the translation:
  *
  * - Ignore floating point instructions.
  * - Ignore inttoptr/ptrtoint instructions.
  * - Almost ignore memset/memmove/memcpy.
- * - Only if tracked precision = PTR: if a `LoadInst`'s lhs
- *   (`StoreInst` value operand) is not a pointer then the translation
+ * - Only if tracked precision = ARR: if a `LoadInst`'s lhs
+ *   (`StoreInst` value operand) is a pointer then the translation
  *   ignores safely the LLVM instruction and hence, it won't add the
- *   corresponding Crab pointer statement `ptr_load` (`ptr_store`).
- * - Only if tracked precision = ARR: if a `LoadInst`'s lhs (`StoreInst` value
- *   operand) is a pointer then the translation ignores safely the
- *   LLVM instruction and hence, it won't add the corresponding Crab
- *   array statement `array_load` (`array_store`).
+ *   corresponding Crab array statement `array_load`
+ *   (`array_store`). This means that Clam's reasoning about memory
+ *   contents is only for integers and booleans.
  *
  * Continue reading only if you are interested about preserving memory
  * SSA form during the translation to Crab.
@@ -2026,26 +2027,26 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
       m_bb.havoc(lhs);
     } else {
       if (translateAsPtrStmt) {
-	// pointer arithmetic
+	// pointer arithmetic	
 	if (!base.hasValue()) {
 	  CRAB_ERROR("doGEP expects a base pointer");
 	}
 	m_bb.ptr_assign(lhs, base.getValue(), lin_exp_t(o));
 	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":=" << base.getValue() << "+"
-                                         << o << "\n");
+	                        	 << o << "\n");
       } else {
-	// arithmetic
+	//arithmetic
 	if (base.hasValue()) {
 	  m_bb.assign(lhs, base.getValue() + lin_exp_t(o));
 	  CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << ":="
 		                           << base.getValue() << "+" <<  o << "\n");
 	} else {
-	m_bb.assign(lhs, lin_exp_t(o));
+	  m_bb.assign(lhs, lin_exp_t(o));
         CRAB_LOG("cfg-gep", crab::outs()
                                 << "-- " << lhs << ":i" << lhs.get_bitwidth()
                                 << ":=" << o << "\n");
+	}
       }
-    }
     }
     return;
   }
@@ -2071,18 +2072,18 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
 		     crab::outs() << lhs << "=" << base.getValue() << "+" << offset << "\n";
               } else { crab::outs() << lhs << "+=" << offset << "\n"; });
 
-	} else  {
-	  // arithmetic
+	} else {
+	  // arithmetic 
 	  if (!already_assigned) {
 	    if (base.hasValue()) {
 	      m_bb.assign(lhs, base.getValue() + offset);
 	      CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth() << "="
 		                               << base.getValue() << "+" << offset << "\n");	      
 	    } else {
-	    m_bb.assign(lhs, offset);
+	      m_bb.assign(lhs, offset);
             CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i"
                                              << lhs.get_bitwidth() << "="
-		                             << offset << "\n");
+		                               << offset << "\n");
 	    }
 	  } else {
 	    m_bb.add(lhs, lhs, offset);
@@ -2146,10 +2147,10 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
 	    CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":i" << lhs.get_bitwidth()
 		                             << "=" << base.getValue() << "+" << offset << "\n");
 	  } else {
-	  m_bb.assign(lhs, offset);
+	    m_bb.assign(lhs, offset);
           CRAB_LOG("cfg-gep", crab::outs()
                                   << "-- " << lhs << ":i" << lhs.get_bitwidth()
-		                           << "=" << offset << "\n");
+	 	                             << "=" << offset << "\n");
 	  }
 	} else {
 	  m_bb.assign(lhs, lhs + offset);
@@ -2279,7 +2280,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
                             << ".\nUsing unconstrained crab variable "
                             << shadowV.name().str()););
       m_gep_map.insert(std::make_pair(&I, shadowV));
-    }
+    }    
   }
 }
 
@@ -2383,11 +2384,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
    * precision level.
    *
    * TODO: In the case of an array store, we only consider the cases
-   * where the stored value is integer or boolean. In the case of a
-   * crab pointer store we consider only the cases where the stored
-   * value is a pointer. For the latter, to consider cases where the
-   * stored value is an integer/boolean Crab would need to extend its
-   * language.
+   * where the stored value is integer or boolean. 
   **/
 
   if (isa<ConstantExpr>(I.getPointerOperand()) ||
@@ -2442,18 +2439,35 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
 		    val, r);
       }
     }
-  } else if (isPointer(*I.getValueOperand(), m_params)) { 
-    if (!val || !val->isPtr()) {
-      CLAM_ERROR(
-          "expecting a value operand of pointer type in store instruction");
+  } else if (m_lfac.get_track() == PTR) {
+    if (!val) {
+      CLAM_ERROR("unexpected value operand of store instruction");
     }
-
-    if (!m_lfac.isPtrNull(val)) {
-      // XXX: we ignore the case if we store a null pointer. In
+    if (val->isPtr() && m_lfac.isPtrNull(val)) {
+      // TODO: we ignore for now the case if we store a null pointer. In
       // most cases, it will be fine since typical pointer
       // analyses ignore that case but it might be imprecise with
       // certain analyses.
-      m_bb.ptr_store(ptr->getVar(), val->getVar());
+      return;
+    }
+    uint64_t elem_size = clam::storageSize(I.getValueOperand()->getType(), *m_dl);
+    assert(elem_size > 0);
+    if (val->isVar()) {
+      m_bb.ptr_store(ptr->getVar(), val->getVar(), elem_size);
+    } else {
+      if (val->isBool()) {
+	var_t normalized_val = m_lfac.mkBoolVar();
+	m_bb.bool_assign(normalized_val, m_lfac.isBoolTrue(val)
+			 ? lin_cst_t::get_true()
+			 : lin_cst_t::get_false());
+	m_bb.ptr_store(ptr->getVar(), normalized_val, elem_size);	
+      } else if (val->isInt()) {
+	var_t normalized_val =
+	  m_lfac.mkIntVar(I.getValueOperand()->getType()->getIntegerBitWidth());
+	m_bb.assign(normalized_val, m_lfac.getIntCst(val));
+	m_bb.ptr_store(ptr->getVar(), normalized_val, elem_size);	
+      } else { /* unreachable because we cover null constants above*/
+      }
     }
   }
 }
@@ -2512,7 +2526,9 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
   }
 
   crab_lit_ref_t lhs = m_lfac.getLit(I);
-  assert(lhs);
+  if (!lhs || !lhs->isVar()) {
+    CLAM_ERROR("unexpected lhs of load instruction");
+  }
 
   if (isa<ConstantExpr>(I.getPointerOperand())) {
     // We don't handle constant expressions.
@@ -2534,9 +2550,6 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
 
   if (m_lfac.get_track() == ARR && (isInteger(I) || isBool(I))) {
     // -- lhs is an integer/bool -> add array statement
-    if (!lhs || !lhs->isVar()) {
-      CLAM_ERROR("unexpected lhs of load instruction");
-    }
     Region r =
         get_region(m_mem, getShadowMem(), *m_dl, &I, I.getPointerOperand());
     if (!(r.isUnknown())) {
@@ -2556,12 +2569,10 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
       }
       return;
     }
-  } else if (isPointer(I, m_params)) {
-    if (!lhs || !lhs->isVar()) {
-      CLAM_ERROR("unexpected lhs of load instruction");
-    }
-
-    m_bb.ptr_load(lhs->getVar(), ptr->getVar());
+  } else if (m_lfac.get_track() == PTR) {
+    uint64_t elem_size = clam::storageSize(I.getPointerOperand()->getType(), *m_dl);
+    assert(elem_size > 0);
+    m_bb.ptr_load(lhs->getVar(), ptr->getVar(), elem_size);
     return;
   }
 
