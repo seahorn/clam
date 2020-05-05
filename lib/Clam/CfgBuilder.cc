@@ -802,7 +802,7 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   void doMemIntrinsic(MemIntrinsic &I);
   void doVerifierCall(CallInst &I);
   void doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
-	     unsigned max_index_bitwidth, var_t lhs, llvm::Optional<var_t> base);
+	     unsigned bitwidth, var_t lhs, llvm::Optional<var_t> base);
   void doStoreInst(StoreInst &I, bool is_singleton,
 		   llvm::Optional<var_t> new_var, var_t old_var,
 		   crab_lit_ref_t val, Region reg);
@@ -2009,7 +2009,8 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
 			    unsigned max_index_bitwidth, var_t lhs, llvm::Optional<var_t> base) {
   assert(!base.hasValue() || lhs.get_type() == PTR_TYPE);
   assert(lhs.get_type() == INT_TYPE || lhs.get_type() == PTR_TYPE);
- 
+  assert(max_index_bitwidth == lhs.get_bitwidth());  
+  assert(!base.hasValue() || (lhs.get_bitwidth() == base.getValue().get_bitwidth()));
   
   // -- translation if the GEP offset is constant
   unsigned bitwidth = m_dl->getPointerTypeSizeInBits(I.getType());
@@ -2255,9 +2256,20 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       if (GetElementPtrInst *GepPtr = dyn_cast<GetElementPtrInst>(Ptr)) {
 	auto it = m_gep_map.find(GepPtr);
 	if (it != m_gep_map.end()) {
+	  var_t gep_var = it->second;
+	  // Adjust the bitwdith of gep_var wrt bitwitdh which is the
+	  // max bitwidth of all the GEP's indices.
+	  if (bitwidth < gep_var.get_bitwidth()) {
+	    bitwidth = gep_var.get_bitwidth();
+	  } else if (bitwidth > gep_var.get_bitwidth()) {
+	    var_t sext_gep_var =  m_lfac.mkIntVar(bitwidth);
+	    m_bb.sext(gep_var, sext_gep_var);
+	    gep_var = sext_gep_var;
+	  }
+	  
 	  var_t shadowV(m_lfac.get_vfac().get(), crab::INT_TYPE, bitwidth);
 	  m_gep_map.insert(std::make_pair(&I, shadowV));
-	  doGep(I, false /*translateAsPtrStmt*/, bitwidth, shadowV, it->second);
+	  doGep(I, false /*translateAsPtrStmt*/, bitwidth, shadowV, gep_var);
 	  return;
 	}
       }
