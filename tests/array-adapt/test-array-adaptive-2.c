@@ -1,8 +1,6 @@
-// RUN: %clam -O1 --crab-inter --crab-track=arr --crab-dom=int --crab-check=assert --crab-sanity-checks --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
-// CHECK: ^6  Number of total safe checks$
-// CHECK: ^0  Number of total warning checks$
-
-// With -O0 the code gets harder to verify.
+// RUN: %clam -O0 --crab-inter --crab-track=arr --crab-dom=int --crab-check=assert --crab-sanity-checks --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
+// CHECK: ^4  Number of total safe checks$
+// CHECK: ^2  Number of total warning checks$
 
 #include <stdint.h>
 
@@ -25,8 +23,12 @@ int32_t compute1(int32_t *t) {
   int i1 = nd();
   __CRAB_assume(i1 >= 0 && i1 < 16);
   __CRAB_assert(t[i1] >= 0);
-  // Thanks to the pointer analysis we can translate pointer arithmetic precisely.
-  // Thus the return value is 32
+  // The pointer analysis cannot tell that the accesses are wrt to the
+  // base address of the memory region because the memory region is
+  // marked as "sequence" by sea-dsa. Thus, the indexes are not
+  // translated precisely to Crab.
+  
+  // The return value is [4,64]
   return t[2] + t[4] +  t[6] + t[15];
 }
 
@@ -34,8 +36,9 @@ int32_t compute2(uint32_t t[6][2]) {
   int i2 = nd();
   __CRAB_assume(i2 >= 0 && i2 < 6);
   __CRAB_assert(t[i2][1] <= 100);
-  // Thanks to the pointer analysis we can translate pointer arithmetic precisely.
-  // Thus the return value is 90
+  // Same than above.
+  
+  // The return value is [30, 180]
   return t[0][1] + t[1][1] + t[5][1];
 }
 
