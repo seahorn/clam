@@ -96,10 +96,10 @@ class LowerGvInitializers : public ModulePass {
                       Module &m) {
     Constant *res = m_initfn[type];
     if (res == NULL) {
-      res = m.getOrInsertFunction(
+      res = dyn_cast<Constant>(m.getOrInsertFunction(
           boost::str(boost::format("verifier.zero_initializer.%d") %
                      m_initfn.size()),
-          m_voidty, type);
+          m_voidty, type).getCallee());
       m_initfn[type] = res;
 
       Type *i8PTy = Type::getInt8PtrTy(m.getContext());
@@ -146,10 +146,10 @@ class LowerGvInitializers : public ModulePass {
 
     Constant *res = m_initfn[ty];
     if (res == NULL) {
-      res = m.getOrInsertFunction(
+      res = dyn_cast<Constant>(m.getOrInsertFunction(
           boost::str(boost::format("verifier.int_initializer.%d") %
                      m_initfn.size()),
-          m_voidty, ty->getPointerTo(), ty);
+          m_voidty, ty->getPointerTo(), ty).getCallee());
       m_initfn[ty] = res;
       Type *i8PTy = Type::getInt8PtrTy(m.getContext());
       LLVMUsed.push_back(ConstantExpr::getBitCast(res, i8PTy));
