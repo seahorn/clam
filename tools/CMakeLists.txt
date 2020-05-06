@@ -11,15 +11,15 @@ set(LLVM_LINK_COMPONENTS
   codegen 
   objcarcopts)
 
-add_executable(clam-pp clam-pp.cc)
+add_llvm_executable(clam-pp DISABLE_LLVM_LINK_LLVM_DYLIB clam-pp.cc)
 target_link_libraries (clam-pp PUBLIC
   LlvmPasses
   ${LLVM_SEAHORN_LIBS}
  )
-llvm_config (clam-pp ${LLVM_LINK_COMPONENTS})
+#llvm_config (clam-pp ${LLVM_LINK_COMPONENTS})
 install(TARGETS clam-pp RUNTIME DESTINATION bin)
 
-add_executable(clam clam.cc)
+add_llvm_executable(clam DISABLE_LLVM_LINK_LLVM_DYLIB clam.cc)
 target_link_libraries (clam PUBLIC
   ClamAnalysis 
   ClamInstrumentation 
@@ -28,7 +28,7 @@ target_link_libraries (clam PUBLIC
   ${DSA_LIBS}
   ${SEA_DSA_LIBS}
 )
-llvm_config (clam ${LLVM_LINK_COMPONENTS})
+#llvm_config (clam ${LLVM_LINK_COMPONENTS})
 install(TARGETS clam RUNTIME DESTINATION bin)
 
 if (CLAM_STATIC_EXE)
