@@ -1,3 +1,4 @@
+#include "llvm/Pass.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -64,7 +65,9 @@ public:
           continue;
         }
 
-        Builder.SetInsertPoint(I.getParent(), BasicBlock::iterator(I));
+	/* insert after verifier.assume, otherwise, verifier assume
+           might get simplified away */	
+        Builder.SetInsertPoint(I.getParent(), ++BasicBlock::iterator(I));
         if (fn->getName().equals("verifier.assume.not")) {
           arg = Builder.CreateNot(arg);
         }
@@ -74,7 +77,7 @@ public:
            mark this assumption so that we know who inserted it
            use c->getMetadata(crallvm) to test.
         */
-        c->setMetadata(F.getParent()->getMDKindID("crabllvm"),
+        c->setMetadata(F.getParent()->getMDKindID("clam"),
                        MDNode::get(ctx, None));
 
         /*
@@ -109,4 +112,4 @@ FunctionPass *createPromoteAssumePass() { return new PromoteAssume(); }
 } // namespace clam
 
 static llvm::RegisterPass<clam::PromoteAssume>
-    X("promote-assume", "Promote crab assume to llvm assume intrinsic");
+    X("promote-assume", "Promote verifier.assume to llvm.assume intrinsic");
