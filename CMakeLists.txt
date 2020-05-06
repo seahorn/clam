@@ -143,6 +143,7 @@ if (NOT CMAKE_INSTALL_RPATH)
 endif ()
 
 if (TopLevel)
+  
   set (CUSTOM_BOOST_ROOT "" CACHE PATH "Path to custom boost installation.")
   if (CUSTOM_BOOST_ROOT)
     set (BOOST_ROOT ${CUSTOM_BOOST_ROOT})
@@ -153,10 +154,14 @@ if (TopLevel)
   
   if (NOT CLAM_BUILD_LIBS_SHARED)  
     set (Boost_USE_STATIC_LIBS ON)
-  endif ()  
-  find_package (Boost 1.55)
+  endif ()
+
+  find_package (Boost 1.65 REQUIRED)
   if (Boost_FOUND)
     include_directories (${Boost_INCLUDE_DIRS})
+    if(NOT LLVM_ENABLE_EH)
+      add_definitions(-DBOOST_NO_EXCEPTIONS)
+    endif()
   endif ()
 endif ()
 
@@ -173,21 +178,16 @@ find_package (Git)
 
 if (GIT_FOUND)
   if (TopLevel)
-    set (LLVM_DSA_REPO "https://github.com/seahorn/llvm-dsa"
-        CACHE STRING "llvm-dsa repo")
     set (SEA_DSA_REPO "https://github.com/seahorn/sea-dsa"
-         CACHE STRING "sea-dsa repo")
-    # set (SEAHORN_LLVM_REPO "https://github.com/seahorn/llvm-seahorn"
-    #   CACHE STRING "seahorn-llvm repo")
+      CACHE STRING "sea-dsa repo")
+    set (SEAHORN_LLVM_REPO "https://github.com/seahorn/llvm-seahorn"
+      CACHE STRING "seahorn-llvm repo")
 
-    #add_custom_target (llvm-dsa-git
-    #  ${GIT_EXECUTABLE} clone -b llvm-8.0 ${LLVM_DSA_REPO} ${CMAKE_SOURCE_DIR}/llvm-dsa)
     add_custom_target (sea-dsa-git
-      ${GIT_EXECUTABLE} clone -b dev9 ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
-    # add_custom_target (seahorn-llvm-git
-    #   ${GIT_EXECUTABLE} clone -b llvm-5.0 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
-    #add_custom_target (extra DEPENDS llvm-dsa-git sea-dsa-git seahorn-llvm-git)
-    add_custom_target (extra DEPENDS sea-dsa-git)
+      ${GIT_EXECUTABLE} clone -b dev10 ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
+    add_custom_target (seahorn-llvm-git
+      ${GIT_EXECUTABLE} clone -b dev10 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
+    add_custom_target (extra DEPENDS sea-dsa-git seahorn-llvm-git)
   endif ()
 
   set (CRAB_REPO "https://github.com/seahorn/crab.git" CACHE STRING "crab repo")
@@ -222,10 +222,7 @@ endif()
 #### end crab stuff ####
 
 if (TopLevel)
-  option(CLAM_REQUIRES_RTTI "Enable RTTI support" ON)
-  option(CLAM_REQUIRES_EH "Enable Exceptions" ON)
-
-  set (LLVM_TAG "release_80" CACHE STRING "LLVM tag")  
+  set (LLVM_TAG "release_100" CACHE STRING "LLVM tag")  
   add_custom_target (download-llvm-src
     # HACK: remove all sources so that git-clone does not fail
     # HACK: a proper solution is to work arround this as in ExternalProject
@@ -246,7 +243,7 @@ if (TopLevel)
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
     -DLLVM_TARGETS_TO_BUILD:STRING=X86 -DWITH_POLY:BOOL=OFF
     -DLLVM_ENABLE_PEDANTIC=OFF 
-    -DLLVM_ENABLE_PIC=ON -DLLVM_REQUIRES_RTTI:BOOL=${CLAM_REQUIRES_RTTI}
+    -DLLVM_ENABLE_PIC=ON 
     -DLLVM_BUILD_LLVM_DYLIB:BOOL=${CLAM_BUILD_LIBS_SHARED}
     -DLLVM_INCLUDE_TESTS:BOOL=OFF
     -DLLVM_INCLUDE_GO_TESTS=OFF
@@ -282,27 +279,41 @@ if (TopLevel)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
 
-  set(LLVM_REQUIRES_RTTI ${CLAM_REQUIRES_RTTI})
-  set(LLVM_REQUIRES_EH ${CLAM_REQUIRES_EH})
-  
   include_directories(${LLVM_INCLUDE_DIRS})
   link_directories(${LLVM_LIBRARY_DIRS})
   add_definitions(${LLVM_DEFINITIONS})
+
+  if (NOT LLVM_BUILD_TYPE STREQUAL CMAKE_BUILD_TYPE)
+    message(WARNING
+      "LLVM_BUILD_TYPE and CMAKE_BUILD_TYPE differ:\n"
+      "\tLLMV_BUILD_TYPE=${LLVM_BUILD_TYPE}\n"
+      "\tCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}\n"
+      "Runtime errors might occur.")
+    if (LLVM_BUILD_TYPE MATCHES "Release|RelWithDebInfo" AND 
+        CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
+      message(STATUS "Assuming that mixing Release and RelWithDebInfo is allowed.")
+    else()
+      message(FATAL_ERROR "Incompatible mix of LLVM_BUILD_TYPE and CMAKE_BUILD_TYPE")
+    endif()
+  endif()
 endif()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+## LLVM 10 requires c++14
+set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-redeclared-class-member")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sometimes-uninitialized")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
-if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedefs")  
-  else ()
-  if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedef")
-     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-inconsistent-missing-override")
-  endif ()
-endif ()
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-redeclared-class-member")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sometimes-uninitialized")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
+# if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedefs")  
+#   else ()
+#   if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+#      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedef")
+#      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-inconsistent-missing-override")
+#   endif ()
+# endif ()
 
 if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-dsa AND
     EXISTS ${CMAKE_SOURCE_DIR}/llvm-dsa/lib/DSA/Steensgaard.cpp)
