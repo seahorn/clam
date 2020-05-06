@@ -2,12 +2,13 @@
 // clam-pp -- LLVM bitcode Pre-Processor for static analysis
 ///
 
-#include "llvm/LinkAllPasses.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/LinkAllPasses.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -195,6 +196,8 @@ int main(int argc, char **argv) {
 
   llvm::legacy::PassManager pass_manager;
   llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
+  llvm::initializeCore(Registry);
+  llvm::initializeTransformUtils(Registry);  
   llvm::initializeAnalysis(Registry);
 
   /// call graph and other IPA passes
@@ -209,8 +212,7 @@ int main(int argc, char **argv) {
       
   // add an appropriate DataLayout instance for the module
   const llvm::DataLayout *dl = &module->getDataLayout();
-  if (!dl && !DefaultDataLayout.empty())
-  {
+  if (!dl && !DefaultDataLayout.empty()) {
     module->setDataLayout(DefaultDataLayout);
     dl = &module->getDataLayout();
   }
