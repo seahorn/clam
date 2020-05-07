@@ -4,7 +4,6 @@ add_llvm_library (ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CfgBuilderUtils.cc
   CfgBuilderShadowMem.cc  
   Clam.cc
-  LlvmDsaHeapAbstraction.cc
   SeaDsaHeapAbstraction.cc
   SeaDsaHeapAbstractionUtils.cc
   SeaDsaHeapAbstractionDsaToRegion.cc
@@ -21,11 +20,6 @@ target_link_libraries (ClamAnalysis
   ## Needed if dynamic linking
   ${LLVM_LIBS}
   ${SEA_DSA_LIBS})
-if (HAVE_DSA)
-  ## Needed if dynamic linking
-  add_definitions(-Wno-undefined-var-template)
-  target_link_libraries(ClamAnalysis ${DSA_LIBS})
-endif()
 
 if (USE_COTIRE)
   cotire(ClamAnalysis)

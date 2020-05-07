@@ -120,7 +120,7 @@ if (NOT CLAM_BUILD_LIBS_SHARED)
 endif ()   
 
 if (CLAM_BUILD_LIBS_SHARED)
-  message (STATUS "Clam libraries are built dynamically but not llvm, sea-dsa, llvm-dsa, and llvm-seahorn")
+  message (STATUS "Clam libraries are built dynamically but not llvm, sea-dsa, and llvm-seahorn")
   set(CLAM_LIBS_TYPE SHARED)
   ## To build crab dynamically
   set(CRAB_BUILD_LIBS_SHARED ON)
@@ -315,11 +315,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 #   endif ()
 # endif ()
 
-if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-dsa AND
-    EXISTS ${CMAKE_SOURCE_DIR}/llvm-dsa/lib/DSA/Steensgaard.cpp)
-  set (HAVE_DSA TRUE)
-endif()
-
 if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
     EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/lib/seadsa/DsaAnalysis.cc)
   set (HAVE_SEA_DSA TRUE)
@@ -334,16 +329,6 @@ if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND
 endif()
 
 if (TopLevel)
-  if (HAVE_DSA)
-    include_directories (AFTER llvm-dsa/include)
-    add_subdirectory (llvm-dsa/lib/AssistDS)
-    add_subdirectory (llvm-dsa/lib/DSA)
-    set (DSA_LIBS DSA AssistDS)
-    set (HAVE_DSA TRUE)
-  else()
-    set (DSA_LIBS "")
-  endif()
-
   if (HAVE_SEA_DSA)
     include_directories (BEFORE sea-dsa/include)
     add_subdirectory (${CMAKE_SOURCE_DIR}/sea-dsa)
@@ -361,14 +346,11 @@ if (TopLevel)
     set (LLVM_SEAHORN_LIBS SeaInstCombine SeaLoops SeaInstNondet)
   endif()
 
-  if ((NOT HAVE_DSA) OR (NOT HAVE_SEA_DSA) OR (NOT HAVE_LLVM_SEAHORN))
+  if ((NOT HAVE_SEA_DSA) OR (NOT HAVE_LLVM_SEAHORN))
     set(EXTRA_MSG  "")
     if (NOT HAVE_SEA_DSA)
       message(WARNING "The sea-dsa package cannot be found.\nRun cmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")      
     endif()    
-    if (NOT HAVE_DSA)
-      set(EXTRA_MSG "${EXTRA_MSG}\n - No LLVM-DSA in ${CMAKE_SOURCE_DIR}/llvm-dsa.")
-    endif()
     if (NOT HAVE_LLVM_SEAHORN)
       set(EXTRA_MSG "${EXTRA_MSG}\n - No LLVM-SEAHORN in ${CMAKE_SOURCE_DIR}/llvm-seahorn.")
     endif()

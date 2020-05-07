@@ -1,8 +1,5 @@
 #pragma once
 
-/** Define whether llvm-dsa library is available */
-#cmakedefine HAVE_DSA ${HAVE_DSA}
-
 /** Define whether llvm-seahorn is available */
 #cmakedefine HAVE_LLVM_SEAHORN ${HAVE_LLVM_SEAHORN}
 

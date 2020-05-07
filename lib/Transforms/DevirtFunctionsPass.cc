@@ -9,9 +9,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
-#ifdef HAVE_DSA
-#include "dsa/CallTargets.h"
-#endif
 #include "seadsa/CompleteCallGraph.hh"
 
 llvm::cl::opt<clam::CallSiteResolverKind> DevirtResolver(
@@ -19,8 +16,6 @@ llvm::cl::opt<clam::CallSiteResolverKind> DevirtResolver(
     llvm::cl::desc("Method used to select potential callees"),
     llvm::cl::values(clEnumValN(clam::RESOLVER_TYPES, "types",
                                 "Callees with same type"),
-                     clEnumValN(clam::RESOLVER_DSA, "dsa",
-                                "Llvm-Dsa selects the potential callees"),
                      clEnumValN(clam::RESOLVER_SEA_DSA, "sea-dsa",
                                 "Sea-Dsa selects the potential callees")),
     llvm::cl::init(clam::RESOLVER_TYPES));
@@ -63,19 +58,6 @@ public:
     DevirtualizeFunctions DF(/*CG*/ nullptr, AllowIndirectCalls);
     std::unique_ptr<CallSiteResolver> CSR;
     switch (DevirtResolver) {
-    case RESOLVER_DSA: {
-#ifdef HAVE_DSA
-      // -- Access to analysis pass which finds targets of indirect function
-      // calls
-      using LlvmDsaResolver = dsa::CallTargetFinder<EQTDDataStructures>;
-      LlvmDsaResolver *CTF = &getAnalysis<LlvmDsaResolver>();
-      CSR.reset(new CallSiteResolverByDsa<LlvmDsaResolver>(
-          M, *CTF, ResolveIncompleteCalls, MaxNumTargets, DF.getStats()));
-      break;
-#else
-      // go to next case
-#endif
-    }
     case RESOLVER_SEA_DSA: {
       auto &CCG = getAnalysis<seadsa::CompleteCallGraph>();
       CSR.reset(new CallSiteResolverByDsa<seadsa::CompleteCallGraph>(
@@ -97,17 +79,7 @@ public:
   }
 
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
-    bool runSeaDsa = false;
-
-    if (DevirtResolver == RESOLVER_DSA) {
-#ifdef HAVE_DSA
-      AU.addRequired<dsa::CallTargetFinder<EQTDDataStructures>>();
-#else
-      runSeaDsa = true;
-#endif
-    }
-
-    if (runSeaDsa || DevirtResolver == RESOLVER_SEA_DSA) {
+    if (DevirtResolver == RESOLVER_SEA_DSA) {
       AU.addRequired<seadsa::CompleteCallGraph>();
     }
 

@@ -192,7 +192,7 @@ int main(int argc, char **argv) {
   /**
    * Here only passes that are strictly necessary to avoid crashes or
    * useless results. Passes that are only for improving precision
-   * should be run in crabllvm-pp.
+   * should be run in clam-pp.
    **/
     
   // kill unused internal global    

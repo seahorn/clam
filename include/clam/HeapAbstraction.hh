@@ -28,8 +28,6 @@ namespace clam {
 enum class heap_analysis_t {
   // disable heap analysis
   NONE,
-  // use llvm-dsa (only context-insensitive)
-  LLVM_DSA,
   // use context-insensitive sea-dsa
   CI_SEA_DSA,
   // use context-sensitive sea-dsa

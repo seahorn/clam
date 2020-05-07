@@ -223,10 +223,9 @@ def parseArgs(argv):
                     help="Resolve indirect calls (needed for soundness):\n"
                     "- none : do not resolve indirect calls (default)\n"
                     "- types: select all functions with same type signature\n"
-                    "- sea-dsa: use sea-dsa analysis to select the callees\n"
-                    "- dsa: use llvm-dsa analysis to select the callees (deprecated)\n",
+                    "- sea-dsa: use sea-dsa analysis to select the callees\n",
                     dest='devirt',
-                    choices=['none','types','sea-dsa','dsa'],
+                    choices=['none','types','sea-dsa'],
                     default='none')
     p.add_argument('--externalize-addr-taken-functions',
                     help='Externalize uses of address-taken functions (potentially unsound)',
@@ -288,17 +287,13 @@ def parseArgs(argv):
                    choices=['num', 'ptr', 'arr'], dest='track', default='num')
     p.add_argument('--crab-heap-analysis',
                    help="Heap analysis used for memory disambiguation (if --crab-track=arr):\n"
-                   "- llvm-dsa: context-insensitive llvm-dsa (deprecated) \n"
                    "- ci-sea-dsa: context-insensitive sea-dsa\n"
                    "- cs-sea-dsa: context-sensitive sea-dsa\n"
                    "- ci-sea-dsa-types: context-insensitive sea-dsa with types (default)\n"
                    "- cs-sea-dsa-types: context-sensitive sea-dsa with types\n",
-                   choices=['none',
-                            'llvm-dsa',
-                            'ci-sea-dsa', 'cs-sea-dsa',
-                            'ci-sea-dsa-types', 'cs-sea-dsa-types'],                   
-                    dest='crab_heap_analysis',
-                    default='ci-sea-dsa-types')
+                   choices=['none', 'ci-sea-dsa', 'cs-sea-dsa', 'ci-sea-dsa-types', 'cs-sea-dsa-types'],
+                   dest='crab_heap_analysis',
+                   default='ci-sea-dsa-types')
     p.add_argument('--crab-singleton-aliases',
                     help='Translate singleton alias sets (mostly globals) as scalar values',
                     dest='crab_singleton_aliases', default=False, action='store_true')
@@ -751,7 +746,6 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     else:
         clam_args.append('--crab-track={0}'.format(args.track))
     if args.crab_heap_analysis == 'none' or \
-       args.crab_heap_analysis == 'llvm-dsa' or \
        args.crab_heap_analysis == 'ci-sea-dsa' or \
        args.crab_heap_analysis == 'cs-sea-dsa':
         clam_args.append('--crab-heap-analysis={0}'.format(args.crab_heap_analysis))

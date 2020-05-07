@@ -20,11 +20,6 @@ target_link_libraries(LlvmPasses
   ## Needed if dynamic linking
   ${LLVM_LIBS})
 
-if (HAVE_DSA)
-  add_definitions(-Wno-undefined-var-template)
-  target_link_libraries(LlvmPasses ${DSA_LIBS})
-endif()
-
 target_link_libraries(LlvmPasses ${SEA_DSA_LIBS})
 
 install(TARGETS LlvmPasses 

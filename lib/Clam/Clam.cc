@@ -27,11 +27,7 @@
 #include "clam/config.h"
 /** Wrappers for pointer analyses **/
 #include "clam/DummyHeapAbstraction.hh"
-#include "clam/LlvmDsaHeapAbstraction.hh"
 #include "clam/SeaDsaHeapAbstraction.hh"
-#ifdef HAVE_DSA
-#include "dsa/Steensgaard.hh"
-#endif
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/ShadowMem.hh"
 
@@ -1429,21 +1425,6 @@ ClamPass::ClamPass() : llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {}
       // If CrabMemShadows is enabled then we don't run any heap
       // analysis.
       switch(CrabHeapAnalysis) {
-      case heap_analysis_t::LLVM_DSA:
-        #ifdef HAVE_DSA
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                             << "Started llvm-dsa analysis\n";);
-      mem.reset(new LlvmDsaHeapAbstraction(
-          M, &getAnalysis<SteensgaardDataStructures>(),
-          CrabDsaDisambiguateUnknown, CrabDsaDisambiguatePtrCast,
-				      CrabDsaDisambiguateExternal));
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                             << "Finished llvm-dsa analysis\n";);
-	break;
-        #else
-	CLAM_WARNING("llvm-dsa heap analysis is not available. Running sea-dsa");
-	// execute CI_SEA_DSA
-        #endif      
       case heap_analysis_t::CI_SEA_DSA:
       case heap_analysis_t::CS_SEA_DSA: {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream()
@@ -1465,15 +1446,14 @@ ClamPass::ClamPass() : llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {}
       default:
 	CLAM_WARNING("running clam without heap analysis");
       }
-    m_cfg_builder_man.reset(
-        new CrabBuilderManager(params, tli, std::move(mem)));
+      m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem)));
     } else {
-    if (auto smp = getAnalysisIfAvailable<seadsa::ShadowMemPass>()) {
-      m_cfg_builder_man.reset(
+      if (auto smp = getAnalysisIfAvailable<seadsa::ShadowMemPass>()) {
+	m_cfg_builder_man.reset(
           new CrabBuilderManager(params, tli, smp->getShadowMem()));
       } else {
 	std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());	
-      m_cfg_builder_man.reset(
+	m_cfg_builder_man.reset(
           new CrabBuilderManager(params, tli, std::move(mem)));
 	if (CrabMemShadows) 
 	  CLAM_WARNING("getAnalysisIfAvailable<ShadowMemPass> returned null");
@@ -1574,40 +1554,29 @@ ClamPass::ClamPass() : llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {}
 
   bool ClamPass::runOnFunction(Function &F) {
     IntraClam_Impl intra_crab(F, *m_cfg_builder_man);
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
-                             m_checks_db};
+    AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                               m_checks_db};
     /* -- empty assumptions */
     abs_dom_map_t abs_dom_assumptions;
     lin_csts_map_t lin_csts_assumptions;          
-  intra_crab.Analyze(m_params, &F.getEntryBlock(), abs_dom_assumptions,
-                     lin_csts_assumptions, results);
+    intra_crab.Analyze(m_params, &F.getEntryBlock(), abs_dom_assumptions,
+                       lin_csts_assumptions, results);
     return false;
   }
   
   void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
-    bool runSeaDsa = false;
-    
     AU.setPreservesAll();
-  if (!CrabMemShadows && CrabHeapAnalysis == heap_analysis_t::LLVM_DSA) {
-#ifdef HAVE_DSA
-      AU.addRequiredTransitive<SteensgaardDataStructures>();
-#else
-      runSeaDsa = true;
-#endif       
-    }
     AU.addRequired<TargetLibraryInfoWrapperPass>();
 
-    if (!runSeaDsa) {
-      runSeaDsa = (CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
-		   CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA);
-    }
+    bool runSeaDsa = (CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
+		      CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA);
     
     if (!CrabMemShadows && runSeaDsa) {
-    AU.addRequired<seadsa::AllocWrapInfo>();
+      AU.addRequired<seadsa::AllocWrapInfo>();
     }
     
     if (CrabMemShadows) {
-    AU.addRequired<seadsa::ShadowMemPass>();
+      AU.addRequired<seadsa::ShadowMemPass>();
     }
     AU.addRequired<UnifyFunctionExitNodes>();
     AU.addRequired<clam::NameValues>();

@@ -637,15 +637,6 @@ void DevirtStats::dump() const {
 } // namespace clam
 
 /* Template instantiations */
-
-#ifdef HAVE_DSA
-// llvm-dsa
-#include "dsa/CallTargets.h"
-namespace clam {
-template class CallSiteResolverByDsa<dsa::CallTargetFinder<EQTDDataStructures>>;
-} // namespace clam
-#endif
-
 // sea-dsa
 #include "seadsa/CompleteCallGraph.hh"
 namespace clam {
