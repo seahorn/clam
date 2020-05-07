@@ -1,22 +1,21 @@
 # Clam: Crab for Llvm Abstraction Manager #
 
-<a href="https://travis-ci.org/seahorn/crab-llvm"><img src="https://travis-ci.org/seahorn/crab-llvm.svg?branch=llvm-8.0" title="Ubuntu 16.04 LTS 64bit, g++-5"/></a>
+<a href="https://travis-ci.org/seahorn/crab-llvm"><img src="https://travis-ci.org/seahorn/crab-llvm.svg?branch=llvm10" title="Ubuntu 18.04 LTS 64bit, g++-5"/></a>
 
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /><img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
 Clam is a static analyzer that computes inductive invariants for
 LLVM-based languages based on
 the [Crab](https://github.com/seahorn/crab) library. This branch
-supports LLVM 8.0. However, the external package `llvm-seahorn` cannot
-be used because it has not been ported yet to LLVM 8.0.
+supports LLVM 10.
 
 # Requirements #
 
 Clam is written in C++ and uses heavily the Boost library. The
 main requirements are:
 
-- Modern C++ compiler supporting c++11
-- Boost >= 1.62
+- Modern C++ compiler supporting c++14 
+- Boost >= 1.65
 - GMP 
 - MPFR (if `-DCRAB_USE_APRON=ON` or `-DCRAB_USE_ELINA=ON`)
 
@@ -46,30 +45,21 @@ The basic compilation steps are:
 Clam provides several components that are installed via the `extra`
 target. These components can be used by other projects outside of
 Clam. 
-
-* [llvm-dsa](https://github.com/seahorn/llvm-dsa): ``` git clone https://github.com/seahorn/llvm-dsa.git ```
-
-  `llvm-dsa` is the legacy DSA implementation
-  from [PoolAlloc](https://llvm.org/svn/llvm-project/poolalloc/). DSA
-  (Data Structure Analysis) is a heap analysis
-  described
-  [here](http://llvm.org/pubs/2003-11-15-DataStructureAnalysisTR.ps)
-  and it is used by Clam to disambiguate the heap (*Deprecated*)
   
 * [sea-dsa](https://github.com/seahorn/sea-dsa): ```git clone https://github.com/seahorn/sea-dsa.git```
 
-  `sea-dsa` is a new DSA-based heap analysis more precise than
-  `llvm-dsa`. Details can be
-  found [here](https://jorgenavas.github.io/papers/sea-dsa-SAS17.pdf).
+  `sea-dsa` is the heap analysis used to translate LLVM memory
+  instructions. Details can be
+  found [here](https://jorgenavas.github.io/papers/sea-dsa-SAS17.pdf)
+  and [here](https://jorgenavas.github.io/papers/tea-dsa-fmcad19.pdf).
   
 * [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
 
    `llvm-seahorn` provides specialized versions of `InstCombine` and
    `IndVarSimplify` LLVM passes as well as a LLVM pass to convert undefined values into nondeterministic calls.
 
-The component `sea-dsa` is mandatory, `llvm-dsa` is deprecated, and
-`llvm-seahorn` is highly recommended. To include these external
-components, type instead:
+The component `sea-dsa` is mandatory and `llvm-seahorn` is highly
+recommended. To include these external components, type instead:
 
      mkdir build && cd build
      cmake -DCMAKE_INSTALL_PREFIX=_DIR_ ../
@@ -114,7 +104,7 @@ To run some regression tests:
 
 You can get the latest binary from docker hub using the command:
 
-     docker pull seahorn/clam_llvm_8.0:latest
+     docker pull seahorn/clam_llvm_10:latest
 	 
 # Clam architecture #
 
@@ -154,7 +144,7 @@ Clam provides a Python script called `clam.py`. Type the command:
 
 **Important:** the first thing that `clam.py` does is to compile
   the C program into LLVM bitcode by using Clang. Since Crab-llvm is
-  based on LLVM 8.0, the version of clang must be 8.0 as well. 
+  based on LLVM 10, the version of clang must be 10 as well. 
 
 
 If the above command succeeds, then the output should be something
@@ -457,15 +447,15 @@ Crab. Here some of them:
   little reasoning about pointer operations can be currently done.
  
   Alternatively, points-to information can be provided to Clam by
-  `llvm-dsa`/`sea-dsa` as a pre-analysis step if `--crab-track=arr`.
-  Clam uses this pre-analysis step to statically partition memory into
-  disjoint regions and then (under some conditions) translate regions
-  to Crab arrays. Then, Clam uses one of the Crab array domains to
-  reason about their contents. By default, Clam uses Crab _array
-  smashing_ domain which is fast but very imprecise. If compiled with
-  option `-DCLAM_NEW_ARRAY_DOMAIN=ON` then Clam will use a new Crab
-  array domain, called _array adaptive_ domain, which is more precise
-  but slower. The array adaptive domain will eventually replace array
+  `sea-dsa` as a pre-analysis step if `--crab-track=arr`.  Clam uses
+  this pre-analysis step to statically partition memory into disjoint
+  regions and then (under some conditions) translate regions to Crab
+  arrays. Then, Clam uses one of the Crab array domains to reason
+  about their contents. By default, Clam uses Crab _array smashing_
+  domain which is fast but very imprecise. If compiled with option
+  `-DCLAM_NEW_ARRAY_DOMAIN=ON` then Clam will use a new Crab array
+  domain, called _array adaptive_ domain, which is more precise but
+  slower. The array adaptive domain will eventually replace array
   smashing.
 	  
   
