@@ -32,6 +32,7 @@
 #include "clam/Transforms/InsertInvariants.hh"
 
 #include "seadsa/ShadowMem.hh"
+#include "seadsa/InitializePasses.hh"
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
@@ -179,7 +180,10 @@ int main(int argc, char **argv) {
   llvm::initializeCallGraphViewerPass(Registry);
   // XXX: not sure if needed anymore
   llvm::initializeGlobalsAAWrapperPassPass(Registry);
-    
+
+  llvm::initializeDsaAnalysisPass(Registry);
+  llvm::initializeAllocSiteInfoPass(Registry);
+  
   // add an appropriate DataLayout instance for the module
   const llvm::DataLayout *dl = &module->getDataLayout();
   if (!dl && !DefaultDataLayout.empty()) {
