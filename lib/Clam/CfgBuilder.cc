@@ -102,8 +102,8 @@
 #include "clam/CfgBuilder.hh"
 #include "clam/HeapAbstraction.hh" // temporary
 #include "clam/SeaDsaHeapAbstraction.hh" // temporary
-#include "sea_dsa/Graph.hh" // temporary
-#include "sea_dsa/Global.hh" // temporary
+#include "seadsa/Graph.hh" // temporary
+#include "seadsa/Global.hh" // temporary
 #include "clam/DummyHeapAbstraction.hh"
 #include "clam/Support/CFG.hh"
 #include "clam/Support/Debug.hh"
@@ -623,7 +623,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 class MemoryInitializer {
   crabLitFactory &m_lfac;
   HeapAbstraction &m_mem;
-  sea_dsa::ShadowMem *m_sm;
+  seadsa::ShadowMem *m_sm;
   const DataLayout &m_dl;
   const CrabBuilderParams &m_params;
 
@@ -637,7 +637,7 @@ class MemoryInitializer {
   unsigned m_max_stores;
   
 public:
-  MemoryInitializer(crabLitFactory &lfac, HeapAbstraction &mem, sea_dsa::ShadowMem *sm,
+  MemoryInitializer(crabLitFactory &lfac, HeapAbstraction &mem, seadsa::ShadowMem *sm,
 		    const DataLayout &dl, const CrabBuilderParams &params,
 		    Function &fun, basic_block_t &bb, unsigned max_stores = -1)
 		    
@@ -1355,7 +1355,7 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
 	// An aligment of x means that the address is multiple of x
 	// However, you can have an array of i32 and have aligment of 16.
 	//    @a = common global [5 x i32] zeroinitializer, align 16
-	uint64_t elem_size = MSI->getAlignment(); /*double check this*/
+	uint64_t elem_size = MSI->getDestAlignment(); /*double check this*/
 
 	if (val_ref->isInt()) {
 	  if (val_ref->isVar()) {
@@ -1394,155 +1394,6 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
   }
 }
 
-/* verifier.zero_initializer(v) or verifier.int_initializer(v,k) 
-
-   This special treatment for global initializers is mostly needed for
-   array smashing-like domains. 
-*/
-// void CrabInstVisitor::doGlobalInitializer(CallInst &I) {
-//   CallSite CS(&I);
-
-//   Function *callee = CS.getCalledFunction();
-//   if (!callee) {
-//     return;
-//   }
-    
-//   // v is either a global variable or a gep instruction that
-//   // indexes an address inside the global variable.
-//   Value *v = CS.getArgument(0);
-//   Type *ty = cast<PointerType>(v->getType())->getElementType();
-
-//   auto sm = getShadowMem();
-//   auto r = get_region(m_mem, sm, *m_dl, &I, v);
-//   auto getShadowVar = [&sm](CallInst &I, Value* v) {
-//     if (sm) {
-//       Value* shadowVar = nullptr;
-//       if (CallInst *shadowCI = getShadowCIFromGvInitializer(*sm, I, *v)) {
-// 	auto defUsePair = sm->getShadowMemVars(*shadowCI);
-// 	shadowVar = defUsePair.first;
-//       }
-//       return Optional<Value*>(shadowVar);
-//     } else {
-//       return Optional<Value*>();
-//     }
-//   };
-
-//   if (!r.isUnknown()) {
-    
-//     crab_lit_ref_t ref = nullptr;
-//     if (CS.arg_size() == 2) {
-//       ref = m_lfac.getLit(*(CS.getArgument(1)));
-//       if (!ref) { // this can happen if k is bignum and bignums are not allowed
-//         return;
-//       }
-//     }
-
-//     auto varShadowOpt = getShadowVar(I, v);
-//     if (varShadowOpt.hasValue() && !varShadowOpt.getValue()) {
-//       // something went wrong with shadow mem. Abort ...
-//       return;
-//     }
-    
-//     if (get_singleton_value(r, m_params.lower_singleton_aliases)) {
-//       // Promote the global to an integer/boolean scalar
-//       var_t a = (varShadowOpt.hasValue() ?
-// 		 m_lfac.mkArraySingletonVar(r, varShadowOpt.getValue()) :
-// 		 m_lfac.mkArraySingletonVar(r));
-//       if (isInteger(ty)) {
-//         number_t init_val =
-//             ((CS.arg_size() == 2) && !ref->isVar() ? m_lfac.getIntCst(ref)
-//                                                    : number_t(0));
-//         m_bb.assign(a, init_val);
-//       } else if (isBool(ty)) {
-//         lin_cst_t init_val =
-//             ((CS.arg_size() == 2) && !ref->isVar() && m_lfac.isBoolTrue(ref)
-//                  ? lin_cst_t::get_true()
-//                  : lin_cst_t::get_false());
-//         m_bb.bool_assign(a, init_val);
-//       } else { /* unreachable*/
-//       }
-//     } else {
-
-//       // Figure out the offsets ...
-//       auto offsetOpt = evalOffset(*v, I.getContext());
-//       if (!offsetOpt.hasValue()) {
-// 	// the offset should be always inferred statically
-// 	CLAM_WARNING("global initializer skipped because offset of " << *v <<
-// 		     " cannot be inferred statically");
-// 	return; 
-//       } 
-      
-//       number_t init_val(0);
-//       lin_exp_t lb_idx(offsetOpt.getValue());
-//       uint64_t elem_size = storageSize(ty);
-//       var_t a = (varShadowOpt.hasValue() ?
-// 		 m_lfac.mkArrayVar(r, varShadowOpt.getValue()) :
-// 		 m_lfac.mkArrayVar(r));
-//       /* 
-//        * verifier.int_initializer(v,k) 
-//        * 
-//        * The type of v should be either integer or bool.
-//        */
-//       if (CS.arg_size() == 2) {
-//         if (ref->isInt()) {
-//           init_val = m_lfac.getIntCst(ref);
-//         } else if (ref->isBool()) {
-//           if (m_lfac.isBoolTrue(ref))
-//             init_val = number_t(1);
-//         } else {
-//           // unreachable
-//           CLAM_ERROR("second argument of verifier.int_initializer must be int "
-//                      "or bool");
-//         }
-//       }
-
-//       /* verifier.zero_initializer(v) 
-//        * 
-//        * The type of v should be either integer/bool or an array of
-//        * integers/bools. UPDATE: it should be only integer or bool.
-//        */
-//       if (isInteger(ty) || isBool(ty)) {
-//         m_init_regions.insert(r);
-// 	IntegerType *int_ty = cast<IntegerType>(ty);
-// 	lin_exp_t ub_idx = lb_idx +
-// 	  number_t((isBool(ty) ? 0 : z_number((int_ty->getBitWidth() / 8) - 1)));
-// 	if (m_params.use_array_smashing) {
-// 	  m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
-// 	} else {
-// 	  m_bb.array_store_range(a, lb_idx, ub_idx, init_val, elem_size);
-// 	}
-//       } else if (isIntArray(*ty) || isBoolArray(*ty)) {
-// 	// TODO: since we follow Burstall's memory model where each
-// 	// sea-dsa cell is translated to a Crab array, for a given
-// 	// LLVM array, sea-dsa can either produce one single
-// 	// "sequence" cell or it could produce one cell per array
-// 	// index depending on how the LLVM array is used. In the
-// 	// latter case, the code below loses precision because the
-// 	// array store is on "a" which represents only the cell at
-// 	// offset 0.
-// 	// 
-//         // if (cast<ArrayType>(ty)->getNumElements() == 0) {
-//         //   // zero-length array are possible inside structs We
-//         //   // can simply make ub_idx > 0.  However, DSA is very
-//         //   // likely that it will collapse anyway so the fact we skip
-//         //   // the translation won't make any difference.
-//         //   CLAM_WARNING("translation skipped a zero-length array");
-//         // } else {
-//         //   m_init_regions.insert(r);
-// 	//   elem_size = storageSize(cast<ArrayType>(ty)->getElementType());
-// 	//   lin_exp_t ub_idx = lb_idx + lin_exp_t(
-// 	// 		     cast<ArrayType>(ty)->getNumElements() * elem_size - 1);
-// 	//   if (m_params.use_array_smashing) {	  
-// 	//     m_bb.array_init(a, lb_idx, ub_idx, init_val, elem_size);
-// 	//   } else {
-// 	//     m_bb.array_store_range(a, lb_idx, ub_idx, init_val, elem_size);	    
-// 	//   }
-//         // }
-//       } else { /** unreachable **/
-//       }
-//     }
-//   }
-// }
 
 /* special functions for verification */
 void CrabInstVisitor::doVerifierCall(CallInst &I) {
@@ -2170,8 +2021,8 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
  precision level is PTR or ARR. With PTR the translation should not
  lose precision. However, with ARR the translation is a best-effort
  thing since we need to know statically if the pointer operand points
- to the base address of its memory object. The offset computation is
- the same in both.
+ to the base address of its memory object or to the result of another
+ GEP. The offset computation is the same in both.
 
  The offset computation is translated to a sequence of Crab linear
  arithmetic operations. In Crab, an arithmetic operation is strongly
