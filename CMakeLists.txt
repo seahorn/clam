@@ -1,11 +1,20 @@
-project(Clam)
-
 cmake_minimum_required(VERSION 3.3)
 
-set (Clam_VERSION_MAJOR 0)
-set (Clam_VERSION_MINOR 1)
+project(Clam)
+set (Clam_VERSION_MAJOR 10)
+set (Clam_VERSION_MINOR 0)
 set (Clam_VERSION_PATCH 0)
-#set (Clam_VERSION_TWEAK "rc1")
+set (Clam_VERSION_TWEAK "rc0")
+
+if(CMAKE_VERSION VERSION_GREATER "3.13.0")
+cmake_policy(SET CMP0074 NEW)
+cmake_policy(SET CMP0077 NEW)
+endif()
+
+## LLVM 10 requires c++14
+set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+set(CMAKE_CXX_EXTENSIONS NO)
 
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
   message (FATAL_ERROR
@@ -222,7 +231,11 @@ endif()
 #### end crab stuff ####
 
 if (TopLevel)
-  set (LLVM_TAG "release_100" CACHE STRING "LLVM tag")  
+  ## FIX: we want llvm10 but it's not available yet in
+  ## http://llvm.org/git/llvm.git a release_xx branch.
+  #set (LLVM_TAG "release_80" CACHE STRING "LLVM tag")
+  # We use master for now.
+  set (LLVM_TAG "master" CACHE STRING "LLVM tag")  
   add_custom_target (download-llvm-src
     # HACK: remove all sources so that git-clone does not fail
     # HACK: a proper solution is to work arround this as in ExternalProject
@@ -254,7 +267,19 @@ if (TopLevel)
     LOG_BUILD 1
     LOG_INSTALL 1)
 
-  find_package (LLVM 10 CONFIG)
+  ## We check if LLVM_DIR is already set to the directory used to
+  ## install llvm from sources.  If it is then we do not try to find
+  ## llvm in the rest of the system. This allows us, for instance, to
+  ## install a debug build from sources even if a release build is
+  ## already found in the system.
+  if (NOT LLVM_DIR MATCHES "${LLVM_ROOT}/lib/cmake/llvm")
+    ## Search for llvm10 in the whole system
+    find_package(LLVM 10 CONFIG)
+  else()
+    ## Search for llvm10 only in "${LLVM_ROOT}/lib/cmake/llvm"
+    find_package(LLVM 10 CONFIG PATHS "${LLVM_ROOT}/lib/cmake/llvm" NO_DEFAULT_PATH)
+  endif()
+  
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})
@@ -293,15 +318,16 @@ if (TopLevel)
         CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
       message(STATUS "Assuming that mixing Release and RelWithDebInfo is allowed.")
     else()
-      message(FATAL_ERROR "Incompatible mix of LLVM_BUILD_TYPE and CMAKE_BUILD_TYPE")
+      ExternalProject_Get_Property (llvm INSTALL_DIR)
+      set (LLVM_ROOT ${INSTALL_DIR})
+      set (LLVM_DIR ${LLVM_ROOT}/lib/cmake/llvm CACHE PATH
+	"Forced location of LLVM cmake config" FORCE)
+      message (WARNING "Incompatible mix of LLVM_BUILD_TYPE and CMAKE_BUILD_TYPE. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
+      return()
     endif()
   endif()
 endif()
 
-## LLVM 10 requires c++14
-set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
-set(CMAKE_CXX_STANDARD_REQUIRED YES)
-set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-redeclared-class-member")
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sometimes-uninitialized")
@@ -319,7 +345,7 @@ if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
     EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/lib/seadsa/DsaAnalysis.cc)
   set (HAVE_SEA_DSA TRUE)
 else()
-  message (WARNING "No SEA DSA found in ${CMAKE_SOURCE_DIR}/sea-dsa. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
+  message (WARNING "SeaDsa is required but not found in ${CMAKE_SOURCE_DIR}/sea-dsa. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
   return()
 endif()
 
