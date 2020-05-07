@@ -27,7 +27,6 @@ target_link_libraries (clam PUBLIC
   ClamSupport  
   LlvmPasses
   ${LLVM_SEAHORN_LIBS}
-  ${DSA_LIBS}
   ${SEA_DSA_LIBS}
 )
 #llvm_config (clam ${LLVM_LINK_COMPONENTS})
