@@ -69,7 +69,7 @@ public:
   // run it on M.
   LegacySeaDsaHeapAbstraction(
       const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
-      llvm::TargetLibraryInfoWrapperPass &tli,
+      const llvm::TargetLibraryInfoWrapperPass &tli,
       const seadsa::AllocWrapInfo &alloc_wrap_info, bool is_context_sensitive,
       bool disambiguate_unknown,
       bool disambiguate_ptr_cast, bool disambiguate_external);
