@@ -329,7 +329,6 @@ int main(int argc, char **argv) {
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());
 
   if (Scalarize) {
-    //pass_manager.add(clam::createScalarizerPass());
     pass_manager.add(llvm::createScalarizerPass());
     pass_manager.add(llvm::createDeadCodeEliminationPass());
   }
