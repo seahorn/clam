@@ -23,10 +23,6 @@
 #include "llvm/IR/Verifier.h"
 #include "clam/config.h"
 
-#ifdef HAVE_LLVM_SEAHORN
-#include "llvm_seahorn/Transforms/Scalar.h"
-#endif 
-
 #include "clam/Passes.hh"
 #include "clam/Clam.hh"
 #include "clam/Transforms/InsertInvariants.hh"
@@ -205,12 +201,10 @@ int main(int argc, char **argv) {
 
   // -- promote alloca's to registers
   pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
-  #ifdef HAVE_LLVM_SEAHORN
   if (TurnUndefNondet) {
     // -- Turn undef into nondet
-    pass_manager.add(llvm_seahorn::createNondetInitPass());
+    pass_manager.add(clam::createNondetInitPass());
   }
-  #endif
   if (LowerInvoke) {
     // -- lower invoke's
     pass_manager.add(llvm::createLowerInvokePass());
@@ -233,11 +227,9 @@ int main(int argc, char **argv) {
     // cleanup after lowering constant expressions
     pass_manager.add(llvm::createDeadCodeEliminationPass());
   }
-  #ifdef HAVE_LLVM_SEAHORN
   if (TurnUndefNondet) {
-    pass_manager.add(llvm_seahorn::createDeadNondetElimPass());
+    pass_manager.add(clam::createDeadNondetElimPass());
   }
-  #endif 
   
   // -- lower ULT and ULE instructions  
   if(LowerUnsignedICmp) {
@@ -275,11 +267,7 @@ int main(int argc, char **argv) {
     // -- assume instructions
     pass_manager.add(new clam::InsertInvariants());
     // -- simplify invariants added in the bytecode.
-    #ifdef HAVE_LLVM_SEAHORN
-    pass_manager.add(llvm_seahorn::createInstructionCombiningPass());
-    #else
-    pass_manager.add(llvm::createInstructionCombiningPass());
-    #endif
+    pass_manager.add(clam::createInstCombine());
     if (PromoteAssume) {
       // -- promote verifier.assume to llvm.assume intrinsics
       pass_manager.add(clam::createPromoteAssumePass());

@@ -369,7 +369,7 @@ if (TopLevel)
     add_subdirectory(llvm-seahorn/lib)
     add_subdirectory(llvm-seahorn/tools)
     set (HAVE_LLVM_SEAHORN TRUE)
-    set (LLVM_SEAHORN_LIBS SeaInstCombine SeaLoops SeaInstNondet)
+    set (LLVM_SEAHORN_LIBS SeaInstCombine SeaLoops)
   endif()
 
   if ((NOT HAVE_SEA_DSA) OR (NOT HAVE_LLVM_SEAHORN))

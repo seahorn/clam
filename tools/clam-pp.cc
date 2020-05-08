@@ -29,6 +29,8 @@
 #include "llvm_seahorn/Transforms/Scalar.h"
 #endif 
 
+#include "seadsa/InitializePasses.hh"
+
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
               llvm::cl::Required, llvm::cl::value_desc("filename"));
@@ -115,19 +117,15 @@ std::string getFileName(const std::string &str) {
 }
 
 void breakAllocas(llvm::legacy::PassManager &pass_manager) {
-  #ifdef HAVE_LLVM_SEAHORN
-  // -- can remove bitcast from bitcast(alloca(...))
-  pass_manager.add (llvm_seahorn::createInstructionCombiningPass ());
-  #endif     
-  pass_manager.add (clam::createRemoveUnreachableBlocksPass ());
+  // -- can remove bitcast from bitcast(alloca(...))  
+  pass_manager.add(clam::createInstCombine());
+  pass_manager.add(clam::createRemoveUnreachableBlocksPass());
   // -- break alloca's into scalars
   pass_manager.add(llvm::createSROAPass());    
-  #ifdef HAVE_LLVM_SEAHORN
   if (TurnUndefNondet) {
     // -- Turn undef into nondet (undef are created by SROA when it calls mem2reg)
-    pass_manager.add (llvm_seahorn::createNondetInitPass ());
+    pass_manager.add(clam::createNondetInitPass ());
   }
-  #endif
 }
 
 int main(int argc, char **argv) {
@@ -204,7 +202,10 @@ int main(int argc, char **argv) {
   llvm::initializeCallGraphViewerPass(Registry);
   // XXX: not sure if needed anymore
   llvm::initializeGlobalsAAWrapperPassPass(Registry);
-      
+
+  // seadsa
+  llvm::initializeCompleteCallGraphPass(Registry);
+  
   // add an appropriate DataLayout instance for the module
   const llvm::DataLayout *dl = &module->getDataLayout();
   if (!dl && !DefaultDataLayout.empty()) {
@@ -243,17 +244,13 @@ int main(int argc, char **argv) {
 
   // -- SSA
   pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
-  #ifdef HAVE_LLVM_SEAHORN
   if (TurnUndefNondet) {
     // -- Turn undef into nondet
-    pass_manager.add(llvm_seahorn::createNondetInitPass());
+    pass_manager.add(clam::createNondetInitPass());
   }
-  #endif 
 
   // -- cleanup after SSA
-  #ifdef HAVE_LLVM_SEAHORN
-  pass_manager.add(llvm_seahorn::createInstructionCombiningPass());
-  #endif 
+  pass_manager.add(clam::createInstCombine());
   pass_manager.add (llvm::createCFGSimplificationPass ());
   breakAllocas(pass_manager);
 
@@ -261,17 +258,13 @@ int main(int argc, char **argv) {
   pass_manager.add(llvm::createGVNPass());
   
   // -- cleanup after break aggregates
-  #ifdef HAVE_LLVM_SEAHORN
-  pass_manager.add(llvm_seahorn::createInstructionCombiningPass());
-  #endif 
+  pass_manager.add(clam::createInstCombine());  
   pass_manager.add(llvm::createCFGSimplificationPass());
   
-  #ifdef HAVE_LLVM_SEAHORN
   if (TurnUndefNondet) {
      // eliminate unused calls to verifier.nondet() functions
-     pass_manager.add(llvm_seahorn::createDeadNondetElimPass());
+     pass_manager.add(clam::createDeadNondetElimPass());
   }
-  #endif 
 
   if (LowerInvoke) {
     // -- lower invoke's
