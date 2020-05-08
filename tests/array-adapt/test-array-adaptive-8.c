@@ -1,20 +1,6 @@
 // RUN: %clam -m32 --crab-inter --crab-track=arr --crab-dom=int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp --crab-widening-jump-set=20  --llvm-pp-loops "%s" 2>&1 | OutputCheck %s
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
-// XFAIL: *
-
-// We need here llvm-seahorn. The problem is that "i" (the loop
-// counter of the for loop) is unsigned. --lower-unsigned-icmp creates
-// complex code at the loop header:
-//
-//   b1 := i>=0;
-//   b2 := i<=3;
-//   b3 = ite(b1, b2, true);
-//   goto next;
-// next:
-//   assume(b3);
-//
-//
 
 extern int int_nd(void);
 extern char* name_nd(void);
