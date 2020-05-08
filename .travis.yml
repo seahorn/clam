@@ -16,9 +16,9 @@ matrix:
         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin &&
         docker push seahorn/clam-llvm10:latest;       
        fi
-  - env: ARRAY_DOM=new
-    script:
-      - docker build --build-arg BRANCH=$TRAVIS_BRANCH -t seahorn/clam-array-adapt-llvm10:latest -f docker/clam.array-adapt.Dockerfile . 
+#  - env: ARRAY_DOM=new
+#    script:
+#      - docker build --build-arg BRANCH=$TRAVIS_BRANCH -t seahorn/clam-array-adapt-llvm10:latest -f docker/clam.array-adapt.Dockerfile . 
 services:
   - docker
 install: true
