@@ -9,6 +9,7 @@ add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   ExternalizeAddressTakenFunctions.cc
   PromoteAssume.cc  
   PromoteMalloc.cc
+  NondetInit.cc
   )
 
 llvm_map_components_to_libnames(LLVM_LIBS
