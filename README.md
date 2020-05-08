@@ -104,7 +104,7 @@ To run some regression tests:
 
 You can get the latest binary from docker hub using the command:
 
-     docker pull seahorn/clam_llvm_10:latest
+     docker pull seahorn/clam-llvm10:latest
 	 
 # Clam architecture #
 
