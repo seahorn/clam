@@ -26,23 +26,27 @@ namespace clam {
 
     // the new block represents that the control is at b
     llvm_basic_block_wrapper(const llvm::BasicBlock *b, std::size_t id)
-      : m_bb(b), m_edge(nullptr, nullptr), m_name(b->getName()), m_id(id) {
+      : m_name(std::make_shared<std::string>(b->getName())),
+        m_bb(b), m_edge(nullptr, nullptr), m_id(id) {
       assert(b->hasName());
     }
 
     // the new block represents that the control goes from src to dst
     llvm_basic_block_wrapper(const llvm::BasicBlock *src, const llvm::BasicBlock *dst,
 			     std::string name, std::size_t id)
-      : m_bb(nullptr), m_edge(src, dst), m_name(name), m_id(id) {}
+      : m_name(std::make_shared<std::string>(std::move(name))),
+        m_bb(nullptr), m_edge(src, dst), m_id(id) {}
 
     llvm_basic_block_wrapper()
-      : m_bb(nullptr), m_edge(nullptr, nullptr), m_name(""), m_id(0) {}
+      : m_name(std::make_shared<std::string>("")),
+        m_bb(nullptr), m_edge(nullptr, nullptr), m_id(0) {}
 
     // for boost bgl
     llvm_basic_block_wrapper(std::nullptr_t)
-      : m_bb(nullptr), m_edge(nullptr, nullptr), m_name(""), m_id(0) {}
+      : m_name(std::make_shared<std::string>("")),
+        m_bb(nullptr), m_edge(nullptr, nullptr), m_id(0) {}
     
-    std::string get_name() const { return m_name; }
+    std::string get_name() const { return *m_name; }
 
     bool is_edge() const {
       return !m_bb && (m_edge.first && m_edge.second);
@@ -58,16 +62,16 @@ namespace clam {
     }
 
     bool operator==(const llvm_basic_block_wrapper &other) const
-    { return m_name == other.m_name; }
+    { return m_id == other.m_id; }
     
     bool operator!=(const llvm_basic_block_wrapper &other) const
     { return !(this->operator==(other)); }
     
     bool operator<(const llvm_basic_block_wrapper &other) const
-    { return m_name < other.m_name; }
+    { return m_id < other.m_id; }
 
     std::size_t hash() const {
-      return std::hash<std::string>{}(m_name);
+      return std::hash<int>{}(m_id);
     }
 
     // used by some crab datastructures
@@ -81,12 +85,12 @@ namespace clam {
     // block or edge, but not both.
     // 
     
+    // basic block name
+    std::shared_ptr<std::string> m_name;
     // the block wrapper corresponds to a llvm basic block
     const llvm::BasicBlock *m_bb;
     // the block wrapper corresponds to a llvm edge
     std::pair<const llvm::BasicBlock *, const llvm::BasicBlock *> m_edge;
-    // block wrapper name
-    std::string m_name;
     // block wrapper unique identifier
     std::size_t m_id;
   };
