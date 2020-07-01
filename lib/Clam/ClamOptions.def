@@ -45,15 +45,13 @@ CrabEnableBignums("crab-enable-bignums",
      cl::init(false));
 
 namespace clam {
-bool XMemShadows;
+bool XShadowMem;
 }
 
 cl::opt<bool, true>
-CrabMemShadows("crab-memssa",
-    cl::desc("Instrument each memory instruction with shadow.mem functions "
-    	     "to convert the program into memory SSA form, and translate to Crab "
-	     "preserving memory SSA form"),
-    cl::location(clam::XMemShadows), cl::init(false), llvm::cl::Hidden);
+CrabShadowMem("crab-use-shadow-mem",
+    cl::desc("Use seadsa shadow.mem functions to translate memory operations to Crab"),
+    cl::location(clam::XShadowMem), cl::init(false), llvm::cl::Hidden);
 
 /*** Crab Analysis Options ***/
 
@@ -102,35 +100,68 @@ CrabWideningJumpSet("crab-widening-jump-set",
                     cl::desc("Size of the jump set used for widening"),
                     cl::init(0));
 
-cl::opt<CrabDomain>
+struct CrabDomainParser : public cl::parser<CrabDomain::Type> {
+  CrabDomainParser(cl::Option &O): cl::parser<CrabDomain::Type>(O) {}
+
+  void addLiteralOption(StringRef Name, const unsigned &V, StringRef HelpStr) {
+    CrabDomain::Type TV;
+    bool found = false;
+    for (auto t : CrabDomain::List) {
+       if (t.value() == V) {
+          TV = t;
+	  found = true;
+	  break;
+       }
+    }
+    if (found) {
+      OptionInfo X(Name, TV, HelpStr);
+      Values.push_back(X);
+      AddLiteralOption(Owner, Name);
+    } else {
+      // TODO: ERROR
+    }
+  }
+
+  // parse - Return true on error.
+  bool parse(cl::Option &O, StringRef ArgName, const std::string &ArgValue,
+             CrabDomain::Type &Val) {
+    bool found = false;
+    for (auto t : CrabDomain::List) {
+       if (t.name() == ArgValue) {
+          Val = t;
+	  found = true;
+	  break;
+       }
+    }
+    return !found;
+  }
+};
+
+cl::opt<CrabDomain::Type, false, CrabDomainParser>
 ClamDomain("crab-dom",
       cl::desc("Crab numerical abstract domain used to infer invariants"),
       cl::values 
-      (clEnumValN(INTERVALS, "int",
+      (clEnumValN(CrabDomain::INTERVALS, "int",
 		   "Classical interval domain (default)"),
-       clEnumValN(TERMS_INTERVALS, "term-int",
+       clEnumValN(CrabDomain::TERMS_INTERVALS, "term-int",
 		   "Intervals with uninterpreted functions."),       
-       clEnumValN(INTERVALS_CONGRUENCES, "ric",
+       clEnumValN(CrabDomain::INTERVALS_CONGRUENCES, "ric",
 		   "Reduced product of intervals with congruences"),
-       clEnumValN(DIS_INTERVALS, "dis-int",
+       clEnumValN(CrabDomain::DIS_INTERVALS, "dis-int",
 		   "Disjunctive intervals based on Clousot's DisInt domain"),
-       clEnumValN(TERMS_DIS_INTERVALS, "term-dis-int",
+       clEnumValN(CrabDomain::TERMS_DIS_INTERVALS, "term-dis-int",
 		   "Disjunctive Intervals with uninterpreted functions."),
-       clEnumValN(BOXES, "boxes",
+       clEnumValN(CrabDomain::BOXES, "boxes",
 		   "Disjunctive intervals based on ldds"),
-       clEnumValN(ZONES_SPLIT_DBM, "zones",
+       clEnumValN(CrabDomain::ZONES_SPLIT_DBM, "zones",
 		   "Zones domain with Sparse DBMs in Split Normal Form"),
-       clEnumValN(OCT, "oct", "Octagons domain"),
-       clEnumValN(PK, "pk", "Polyhedra domain"),
-       clEnumValN(TERMS_ZONES, "rtz",
+       clEnumValN(CrabDomain::OCT, "oct", "Octagons domain"),
+       clEnumValN(CrabDomain::PK, "pk", "Polyhedra domain"),
+       clEnumValN(CrabDomain::TERMS_ZONES, "rtz",
 		   "Reduced product of term-dis-int and zones."),
-       clEnumValN(WRAPPED_INTERVALS, "w-int",
+       clEnumValN(CrabDomain::WRAPPED_INTERVALS, "w-int",
 		  "Wrapped interval domain")),
-#ifdef HAVE_ALL_DOMAINS
-       cl::init(INTERVALS));
-#else
-       cl::init(ZONES_SPLIT_DBM));
-#endif 
+       cl::init(CrabDomain::INTERVALS));
 
 cl::opt<bool>
 CrabBackward("crab-backward", 

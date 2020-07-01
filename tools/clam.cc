@@ -93,7 +93,7 @@ PromoteAssume("crab-promote-assume",
 	       llvm::cl::init(false));
 
 namespace clam {
-extern bool XMemShadows;
+extern bool XShadowMem;
 }
 
 using namespace clam;
@@ -248,7 +248,7 @@ int main(int argc, char **argv) {
   // LowerUnsignedIcmpPass and LowerSelect can add multiple returns.
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
 
-  if (XMemShadows) {
+  if (XShadowMem) {
     // XXX: it should preserve unifyFunctionExitNodes pass.
     pass_manager.add(seadsa::createShadowMemPass());
   }

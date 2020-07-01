@@ -49,8 +49,8 @@ public:
 
 private:
   friend class CrabBuilderManager;
-  friend class IntraClam_Impl;
-  friend class InterClam_Impl;
+  friend class IntraClamImpl;
+  friend class InterClamImpl;
 
   // the actual cfg builder
   std::unique_ptr<CfgBuilderImpl> m_impl;

@@ -4,11 +4,13 @@ add_llvm_library (ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CfgBuilderUtils.cc
   CfgBuilderShadowMem.cc  
   Clam.cc
+  NameValues.cc  
   SeaDsaHeapAbstraction.cc
   SeaDsaHeapAbstractionUtils.cc
   SeaDsaHeapAbstractionDsaToRegion.cc
-  NameValues.cc
-  #crab/path_analyzer.cc    
+  RegisterAnalysis.cc  
+  crab/path_analyzer.cc
+  crab/printer.cc
   )
 
 llvm_map_components_to_libnames(LLVM_LIBS

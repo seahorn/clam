@@ -51,7 +51,7 @@ public:
     } else {
       // everything after the block where bottom was inferred is
       // bottom.
-      return abs_dom_t::bottom();
+      return m_init.make_bottom();
     }
   }
 

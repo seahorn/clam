@@ -123,9 +123,9 @@ public:
   llvm_variable_factory() : variable_factory_t() {}
 };
   
+/** Define a Crab CFG and call graph over integers **/
 using variable_factory_t = llvm_variable_factory;
 using varname_t = typename variable_factory_t::varname_t;
-/** Define a Crab CFG and call graph over integers **/
 using number_t = ikos::z_number;
 using var_t = crab::variable<number_t, varname_t>;
 using basic_block_label_t = llvm_basic_block_wrapper;

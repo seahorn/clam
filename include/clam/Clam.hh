@@ -17,8 +17,8 @@
 
 // forward declarations
 namespace clam {
-class IntraClam_Impl;
-class InterClam_Impl;
+class IntraClamImpl;
+class InterClamImpl;
 class CrabBuilderManager;
 } // namespace clam
 
@@ -57,7 +57,7 @@ public:
   using checks_db_t = crab::checker::checks_db;
 
 private:
-  std::unique_ptr<IntraClam_Impl> m_impl;
+  std::unique_ptr<IntraClamImpl> m_impl;
   CrabBuilderManager &m_builder_man;
   const llvm::Function &m_fun;
   abs_dom_map_t m_pre_map;
@@ -153,7 +153,7 @@ public:
   using checks_db_t = typename IntraClam::checks_db_t;
 
 private:
-  std::unique_ptr<InterClam_Impl> m_impl;
+  std::unique_ptr<InterClamImpl> m_impl;
   CrabBuilderManager &m_builder_man;
   abs_dom_map_t m_pre_map;
   abs_dom_map_t m_post_map;

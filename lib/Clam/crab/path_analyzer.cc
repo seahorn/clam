@@ -1,5 +1,8 @@
 #include "path_analyzer.hpp"
+#include "clam/crab/crab_lang.hh"
+
 #include <crab/domains/killgen_domain.hpp>
+
 #include <unordered_set>
 
 namespace crab {
@@ -112,8 +115,8 @@ bool path_analyzer<CFG, AbsDom>::solve(
       if (i < path.size() - 1) {
         if (!has_kid(path[i], path[i + 1])) {
           CRAB_WARN("There is no an edge from ",
-                    cfg_impl::get_label_str(path[i]), " to ",
-                    cfg_impl::get_label_str(path[i + 1]));
+                    crab::basic_block_traits<clam::basic_block_t>::to_string(path[i]), " to ",
+                    crab::basic_block_traits<clam::basic_block_t>::to_string(path[i + 1]));
           return true;
         }
       }
@@ -210,7 +213,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
       auto assume = static_cast<assume_t *>(&s);
       if (assume->constraint().is_contradiction()) {
         core.clear();
-        core.push_back(typename crab::cfg::statement_wrapper(&s, parent_label));
+        core.push_back(&s);
         return true;
       }
     }
@@ -218,7 +221,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
 
   // Find the statement where bottom was first detected. We just need
   // to look at the last block.
-  stmt_t *last_stmt = nullptr;
+  statement_t *last_stmt = nullptr;
   unsigned i = 0;
   for (auto it = parent_bb->begin(), et = parent_bb->end(); it != et; ++it) {
     auto &s = *it;
@@ -238,7 +241,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   // until last_stmt is found.
   int j = size - 1;
   for (int i = size - 1; i >= 0; --i) {
-    stmt_t &s = *(core[i]);
+    statement_t &s = *(core[i]);
     if (last_stmt == &s) {
       break;
     } else {
@@ -268,9 +271,9 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   std::vector<bool> enabled(size, false);
   enabled[j] = true; // marked last_stmt
   for (int i = j - 1; i >= 0; --i) {
-    stmt_t &s = *(core[i]);
+    statement_t &s = *(core[i]);
     var_dom_t uses, defs;
-    const typename stmt_t::live_t &ls = s.get_live();
+    const typename statement_t::live_t &ls = s.get_live();
     for (auto it = ls.uses_begin(), et = ls.uses_end(); it != et; ++it) {
       uses += *it;
     }
@@ -299,7 +302,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   if (do_debugging) {
     crab::outs() << "SYNTACTIC UNSAT CORE PATH:\n";
   }
-  std::vector<crab::cfg::statement_wrapper> res;
+  std::vector<statement_t*> res;
   res.reserve(size);
   for (unsigned i = 0; i < size; ++i) {
     if (enabled[i]) {
@@ -427,14 +430,5 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
     }
   }
 }
-} // namespace analyzer
-} // namespace crab
-
-#include <clam/crab/crab_lang.hh>
-#include <clam/crab/crab_domains.hh>
-namespace crab {
-namespace analyzer {
-// explicit instantiation
-template class path_analyzer<clam::cfg_ref_t, clam::clam_abstract_domain>;
 } // namespace analyzer
 } // namespace crab
