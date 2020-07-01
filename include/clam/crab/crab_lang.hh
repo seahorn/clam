@@ -1,26 +1,29 @@
 #pragma once
 
 /*
- * Definition of the Crab CFG language with llvm::Value* as variables
- * and llvm::BasicBlock* as basic block labels.
+ * Definition of Crab Control Flow Graph (CFG) and Call Graph using
+ * const llvm::Value* as variable names and const llvm::BasicBlock* as
+ * basic block labels.
  */
-
-#include "crab/cfg/cfg.hpp"
-#include "crab/cfg/var_factory.hpp"
 
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <crab/cfg/basic_block_traits.hpp>
+#include "crab/cfg/cfg.hpp"
+#include "crab/cg/cg.hpp"
+#include "crab/types/indexable.hpp"
+#include "crab/types/varname_factory.hpp"
 
 #include <functional>
 #include <memory>
 
 namespace clam {
 
-// This wrapper is needed because we can have crab blocks which do
-// not correspond to llvm blocks.
-class llvm_basic_block_wrapper {
-
+// This wrapper is needed because we can have crab blocks which do not
+// correspond to llvm blocks.
+class llvm_basic_block_wrapper: public crab::indexable {
 public:
   // the new block represents that the control is at b
   llvm_basic_block_wrapper(const llvm::BasicBlock *b, std::size_t id)
@@ -67,7 +70,7 @@ public:
   std::size_t hash() const { return std::hash<std::string>{}(m_name); }
 
   // used by some crab datastructures
-  std::size_t index() const { return m_id; }
+  ikos::index_t index() const { return m_id; }
 
 private:
   //
@@ -106,62 +109,38 @@ template <> struct hash<clam::llvm_basic_block_wrapper> {
 };
 } // namespace std
 
-namespace crab {
-namespace cfg {
-namespace var_factory_impl {
-namespace indexed_string_impl {
-// To print variable names
-template <> inline std::string get_str(const llvm::Value *v) {
-  return v->getName().str();
-}
-} // namespace indexed_string_impl
-} // namespace var_factory_impl
-} // namespace cfg
-namespace cfg_impl {
-// To print basic block labels
-template <> inline std::string get_label_str(clam::llvm_basic_block_wrapper b) {
-  return b.get_name();
-}
-
-} // namespace cfg_impl
-} // namespace crab
-
 namespace clam {
-
-// Variable factory from llvm::Value's
+/** Variable factory from llvm::Value's **/
 class llvm_variable_factory
-    : public crab::cfg::var_factory_impl::variable_factory<
+    : public crab::var_factory_impl::variable_factory<
           const llvm::Value *> {
-  typedef crab::cfg::var_factory_impl::variable_factory<const llvm::Value *>
-      variable_factory_t;
-
+  using variable_factory_t = crab::var_factory_impl::variable_factory<const llvm::Value *>;
+  
 public:
   typedef variable_factory_t::varname_t varname_t;
   typedef variable_factory_t::const_var_range const_var_range;
 
   llvm_variable_factory() : variable_factory_t() {}
 };
-
-typedef llvm_variable_factory variable_factory_t;
-typedef typename variable_factory_t::varname_t varname_t;
-
-// CFG over integers
-typedef ikos::z_number number_t;
-typedef ikos::variable<number_t, varname_t> var_t;
-typedef ikos::variable_ref<number_t, varname_t> var_ref_t;
-typedef llvm_basic_block_wrapper basic_block_label_t;
-typedef crab::cfg::cfg<basic_block_label_t, varname_t, number_t> cfg_t;
-typedef std::shared_ptr<cfg_t> cfg_ptr_t;
-typedef crab::cfg::cfg_ref<cfg_t> cfg_ref_t;
-typedef cfg_t::basic_block_t basic_block_t;
-typedef typename cfg_t::basic_block_t::statement_t statement_t;
-typedef typename cfg_t::basic_block_t::lin_exp_t lin_exp_t;
-typedef typename cfg_t::basic_block_t::lin_cst_t lin_cst_t;
-typedef ikos::linear_constraint_system<number_t, varname_t> lin_cst_sys_t;
-typedef ikos::disjunctive_linear_constraint_system<number_t, varname_t>
-    disj_lin_cst_sys_t;
-typedef crab::pointer_constraint<var_t> ptr_cst_t;
-
+  
+using variable_factory_t = llvm_variable_factory;
+using varname_t = typename variable_factory_t::varname_t;
+/** Define a Crab CFG and call graph over integers **/
+using number_t = ikos::z_number;
+using var_t = crab::variable<number_t, varname_t>;
+using basic_block_label_t = llvm_basic_block_wrapper;
+using cfg_t = crab::cfg::cfg<basic_block_label_t, varname_t, number_t>;
+using cfg_ref_t = crab::cfg::cfg_ref<cfg_t>;
+using basic_block_t = cfg_t::basic_block_t;
+using statement_t = typename cfg_t::basic_block_t::statement_t;
+using lin_exp_t = typename cfg_t::basic_block_t::lin_exp_t;
+using lin_cst_t = typename cfg_t::basic_block_t::lin_cst_t;
+using ref_cst_t = crab::reference_constraint<number_t, varname_t>;  
+using lin_cst_sys_t = ikos::linear_constraint_system<number_t, varname_t>;
+using disj_lin_cst_sys_t = ikos::disjunctive_linear_constraint_system<number_t, varname_t>;
+using cg_t = crab::cg::call_graph<cfg_ref_t>;
+using cg_ref_t = crab::cg::call_graph_ref<cg_t>;  
+  
 using lin_exp_unordered_set =
     ikos::linear_expression_unordered_set<number_t, varname_t>;
 using lin_cst_unordered_set =
@@ -172,31 +151,34 @@ using lin_exp_unordered_map =
 template <typename Value>
 using lin_cst_unordered_map =
     ikos::linear_constraint_unordered_map<number_t, varname_t, Value>;
-
 } // end namespace clam
 
 namespace crab {
-namespace cfg {
-// Convenient wrapper to relate crab statement with its parent
-// FIXME: crab should provide this.
-class statement_wrapper {
+template<>
+class variable_name_traits<const llvm::Value*> {
 public:
-  typedef typename clam::cfg_ref_t::statement_t statement_t;
-  typedef typename clam::cfg_ref_t::basic_block_label_t basic_block_label_t;
-
-  statement_wrapper(statement_t *s, basic_block_label_t bb)
-      : m_s(s), m_parent(bb) {}
-
-  friend crab::crab_os &operator<<(crab::crab_os &o, statement_wrapper &s) {
-    o << *(s.m_s);
-    return o;
+  static std::string to_string(const llvm::Value* v) {
+    return v->getName().str();
   }
-
-  statement_t *m_s;
-  basic_block_label_t m_parent;
 };
-} // namespace cfg
-} // namespace crab
+
+template<>
+class variable_name_traits<std::string> {
+public:
+  static std::string to_string(std::string v) {
+    return v;
+  }
+};
+  
+template<>
+class basic_block_traits<clam::basic_block_t> {
+public:
+  using basic_block_label_t = clam::basic_block_t::basic_block_label_t;
+  static std::string to_string(const basic_block_label_t &bbl) {
+    return bbl.get_name();
+  }
+};
+} // end namespace crab
 
 namespace {
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &o,

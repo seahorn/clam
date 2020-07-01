@@ -4,10 +4,11 @@
 
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/Optional.h"
 
 #include "clam/CfgBuilderParams.hh"
 #include "clam/HeapAbstraction.hh"
-#include "clam/crab/crab_cfg.hh"
+#include "clam/crab/crab_lang.hh"
 
 #include <unordered_map>
 
@@ -51,22 +52,22 @@ inline crab::crab_os &operator<<(crab::crab_os &out, const crabLit &l) {
 class crabBoolLit : public crabLit {
   friend class crabLitFactoryImpl;
 
-  bool m_cst; // only considered if m_var.is_null()
-  var_ref_t m_var;
+  bool m_cst; // only considered if !m_var.hasValue()
+  llvm::Optional<var_t> m_var;
 
   crabBoolLit(bool cst) : crabLit(CRAB_LITERAL_BOOL), m_cst(cst) {}
 
   crabBoolLit(var_t var) : crabLit(CRAB_LITERAL_BOOL), m_var(var) {}
 
 public:
-  bool isVar() const override { return (!m_var.is_null()); }
+  bool isVar() const override { return (m_var.hasValue()); }
 
   var_t getVar() const override {
     assert(isVar());
-    return m_var.get();
+    return m_var.getValue();
   }
 
-  bool isConst() const { return (m_var.is_null()); }
+  bool isConst() const { return !isVar(); }
 
   bool isTrue() const {
     if (!isConst())
@@ -95,20 +96,21 @@ public:
 class crabPtrLit : public crabLit {
   friend class crabLitFactoryImpl;
 
-  var_ref_t m_lit; // if m_lit.is_null() then the literal represents null
+  // if !m_lit.hasValue() then the literal represents null
+  llvm::Optional<var_t> m_lit; 
 
   crabPtrLit() : crabLit(CRAB_LITERAL_PTR) {} // null
   crabPtrLit(var_t v) : crabLit(CRAB_LITERAL_PTR), m_lit(v) {}
 
 public:
-  bool isVar() const override { return !m_lit.is_null(); }
+  bool isVar() const override { return m_lit.hasValue(); }
 
   var_t getVar() const override {
     assert(isVar());
-    return m_lit.get();
+    return m_lit.getValue();
   }
 
-  bool isNull() const { return m_lit.is_null(); }
+  bool isNull() const { return !isVar(); }
 
   void write(crab::crab_os &out) const override {
     if (isVar()) {
@@ -123,8 +125,8 @@ public:
 class crabIntLit : public crabLit {
   friend class crabLitFactoryImpl;
 
-  number_t m_num; // only considered if m_var.is_null();
-  var_ref_t m_var;
+  number_t m_num; // only considered if !m_var.hasValue()
+  llvm::Optional<var_t> m_var;
 
   // If z_number != number_t we assume that number_t has a
   // constructor for z_number.
@@ -133,14 +135,14 @@ class crabIntLit : public crabLit {
   explicit crabIntLit(var_t v) : crabLit(CRAB_LITERAL_INT), m_var(v) {}
 
 public:
-  bool isVar() const override { return !m_var.is_null(); }
+  bool isVar() const override { return m_var.hasValue(); }
 
   var_t getVar() const override {
     assert(isVar());
-    return m_var.get();
+    return m_var.getValue();
   }
 
-  bool isInt() const { return m_var.is_null(); }
+  bool isInt() const { return !isVar(); }
 
   number_t getInt() const {
     assert(isInt());
@@ -242,7 +244,7 @@ public:
 
   llvm_variable_factory &get_vfac();
 
-  crab::cfg::tracked_precision get_track() const;
+  CrabBuilderPrecision get_track() const;
 
   const CrabBuilderParams &get_cfg_builder_params() const;
 

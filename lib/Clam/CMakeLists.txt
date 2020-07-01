@@ -8,7 +8,7 @@ add_llvm_library (ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   SeaDsaHeapAbstractionUtils.cc
   SeaDsaHeapAbstractionDsaToRegion.cc
   NameValues.cc
-  crab/path_analyzer.cc    
+  #crab/path_analyzer.cc    
   )
 
 llvm_map_components_to_libnames(LLVM_LIBS
@@ -29,23 +29,23 @@ install(TARGETS ClamAnalysis
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
 
-add_llvm_library (ClamInstrumentation ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
-  InsertInvariants.cc
-  )
+# add_llvm_library (ClamInstrumentation ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
+#   InsertInvariants.cc
+#   )
 
-target_link_libraries(ClamInstrumentation
-  PRIVATE 
-  ${CRAB_LIBS}
-  ## Needed if dynamic linking
-  ClamAnalysis
-  ${LLVM_LIBS})
+# target_link_libraries(ClamInstrumentation
+#   PRIVATE 
+#   ${CRAB_LIBS}
+#   ## Needed if dynamic linking
+#   ClamAnalysis
+#   ${LLVM_LIBS})
 
-if (USE_COTIRE)
-  cotire(ClamInstrumentation)  
-endif ()
+# if (USE_COTIRE)
+#   cotire(ClamInstrumentation)  
+# endif ()
 
-install(TARGETS ClamInstrumentation 
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib)
+# install(TARGETS ClamInstrumentation 
+#   ARCHIVE DESTINATION lib
+#   LIBRARY DESTINATION lib)
 
 

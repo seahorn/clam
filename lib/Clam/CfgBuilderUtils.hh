@@ -1,7 +1,7 @@
 #pragma once
 
 #include "clam/CfgBuilderParams.hh"
-#include "clam/crab/crab_cfg.hh"
+#include "clam/crab/crab_lang.hh"
 
 namespace llvm {
 class Type;

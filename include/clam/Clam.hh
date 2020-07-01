@@ -5,17 +5,18 @@
  */
 
 #include "clam/ClamAnalysisParams.hh"
-#include "clam/crab/crab_cfg.hh"
+#include "clam/crab/crab_lang.hh"
 #include "crab/checkers/base_property.hpp"
+#include "crab/domains/generic_abstract_domain.hpp"
+
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/Pass.h"
 
 #include <memory>
 
 // forward declarations
-
 namespace clam {
-struct GenericAbsDomWrapper;
 class IntraClam_Impl;
 class InterClam_Impl;
 class CrabBuilderManager;
@@ -23,9 +24,10 @@ class CrabBuilderManager;
 
 namespace clam {
 
-using edges_set =
-    std::set<std::pair<const llvm::BasicBlock *, const llvm::BasicBlock *>>;
+// A wrapper for an arbitrary abstract domain, cheap to copy  
+using clam_abstract_domain = crab::domains::abstract_domain_ref<var_t>;
 
+  
 /**
  * Intra-procedural analysis of a function
  *
@@ -48,16 +50,11 @@ using edges_set =
  **/
 class IntraClam {
 public:
-  using wrapper_dom_ptr = std::shared_ptr<GenericAbsDomWrapper>;
-  ;
   using abs_dom_map_t =
-      llvm::DenseMap<const llvm::BasicBlock *, wrapper_dom_ptr>;
+      llvm::DenseMap<const llvm::BasicBlock *, clam_abstract_domain>;
   using lin_csts_map_t =
       llvm::DenseMap<const llvm::BasicBlock *, lin_cst_sys_t>;
   using checks_db_t = crab::checker::checks_db;
-  // for backward compatibility with SeaHorn
-  using invariant_map_t = abs_dom_map_t;
-  using assumption_map_t = lin_csts_map_t;
 
 private:
   std::unique_ptr<IntraClam_Impl> m_impl;
@@ -65,7 +62,6 @@ private:
   const llvm::Function &m_fun;
   abs_dom_map_t m_pre_map;
   abs_dom_map_t m_post_map;
-  edges_set m_infeasible_edges;
   checks_db_t m_checks_db;
 
 public:
@@ -115,38 +111,30 @@ public:
    * If it returns false then:
    *   - core is a minimal subset of statements that implies false
    **/
-  template <typename Statement>
   bool
   path_analyze(const AnalysisParams &params,
                const std::vector<const llvm::BasicBlock *> &path,
                /* use gradually more expensive domains until unsat is proven*/
-               bool layered_solving, std::vector<Statement> &core,
+               bool layered_solving, std::vector<statement_t*> &core,
                abs_dom_map_t &post) const;
 
-  template <typename Statement>
   bool
   path_analyze(const AnalysisParams &params,
                const std::vector<const llvm::BasicBlock *> &path,
                /* use gradually more expensive domains until unsat is proven*/
-               bool layered_solving, std::vector<Statement> &core) const;
+               bool layered_solving, std::vector<statement_t*> &core) const;
 
   /**
    * Return invariants that hold at the entry of b
    **/
-  wrapper_dom_ptr get_pre(const llvm::BasicBlock *b,
-                          bool keep_shadows = false) const;
+  llvm::Optional<clam_abstract_domain> get_pre(const llvm::BasicBlock *b,
+					       bool keep_shadows = false) const;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  wrapper_dom_ptr get_post(const llvm::BasicBlock *b,
-                           bool keep_shadows = false) const;
-
-  /**
-   * Return true if there might be a feasible edge between b1 and b2
-   **/
-  bool has_feasible_edge(const llvm::BasicBlock *b1,
-                         const llvm::BasicBlock *b2) const;
+  llvm::Optional<clam_abstract_domain> get_post(const llvm::BasicBlock *b,
+						bool keep_shadows = false) const;
 
   /**
    * Return a database with all checks.
@@ -160,20 +148,15 @@ public:
 class InterClam {
 
 public:
-  using wrapper_dom_ptr = typename IntraClam::wrapper_dom_ptr;
   using abs_dom_map_t = typename IntraClam::abs_dom_map_t;
   using lin_csts_map_t = typename IntraClam::lin_csts_map_t;
   using checks_db_t = typename IntraClam::checks_db_t;
-  // for backward compatibility with SeaHorn
-  using invariant_map_t = abs_dom_map_t;
-  using assumption_map_t = lin_csts_map_t;
 
 private:
   std::unique_ptr<InterClam_Impl> m_impl;
   CrabBuilderManager &m_builder_man;
   abs_dom_map_t m_pre_map;
   abs_dom_map_t m_post_map;
-  edges_set m_infeasible_edges;
   checks_db_t m_checks_db;
 
 public:
@@ -205,20 +188,14 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  wrapper_dom_ptr get_pre(const llvm::BasicBlock *b,
-                          bool keep_shadows = false) const;
-
+  llvm::Optional<clam_abstract_domain> get_pre(const llvm::BasicBlock *b,
+					       bool keep_shadows = false) const;
+  
   /**
    * Return invariants that hold at the exit of b
    **/
-  wrapper_dom_ptr get_post(const llvm::BasicBlock *b,
-                           bool keep_shadows = false) const;
-
-  /**
-   * Return true if there might be a feasible edge between b1 and b2
-   **/
-  bool has_feasible_edge(const llvm::BasicBlock *b1,
-                         const llvm::BasicBlock *b2) const;
+  llvm::Optional<clam_abstract_domain> get_post(const llvm::BasicBlock *b,
+						bool keep_shadows = false) const;
 
   /**
    * Return a database with all checks.
@@ -231,13 +208,11 @@ public:
  **/
 class ClamPass : public llvm::ModulePass {
 
-  using wrapper_dom_ptr = typename IntraClam::wrapper_dom_ptr;
   using abs_dom_map_t = typename IntraClam::abs_dom_map_t;
   using checks_db_t = typename IntraClam::checks_db_t;
 
   abs_dom_map_t m_pre_map;
   abs_dom_map_t m_post_map;
-  edges_set m_infeasible_edges;
   std::unique_ptr<CrabBuilderManager> m_cfg_builder_man;
   checks_db_t m_checks_db;
   AnalysisParams m_params;
@@ -276,20 +251,14 @@ public:
   /**
    * return invariants that hold at the entry of BB
    **/
-  wrapper_dom_ptr get_pre(const llvm::BasicBlock *BB,
-                          bool KeepShadows = false) const;
+  llvm::Optional<clam_abstract_domain> get_pre(const llvm::BasicBlock *BB,
+					       bool KeepShadows = false) const;
 
   /**
    * return invariants that hold at the exit of BB
    **/
-  wrapper_dom_ptr get_post(const llvm::BasicBlock *BB,
-                           bool KeepShadows = false) const;
-
-  /**
-   * Return true if there might be a feasible edge between b1 and b2
-   **/
-  bool has_feasible_edge(const llvm::BasicBlock *b1,
-                         const llvm::BasicBlock *b2) const;
+  llvm::Optional<clam_abstract_domain> get_post(const llvm::BasicBlock *BB,
+						bool KeepShadows = false) const;
 
   /**
    * To query and view the analysis results

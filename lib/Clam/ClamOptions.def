@@ -1,13 +1,13 @@
 /*** Translation LLVM to Crab Parameters ***/
 
-cl::opt<enum tracked_precision>
+cl::opt<CrabBuilderPrecision>
 CrabTrackLev("crab-track",
    cl::desc("Track abstraction level of the Crab Cfg"),
    cl::values
-    (clEnumValN(NUM, "num", "Integer and Boolean registers only"),
-     clEnumValN(PTR, "ptr", "num + pointer offsets"),
-     clEnumValN(ARR, "arr", "num + memory contents via array abstraction")),
-   cl::init(tracked_precision::NUM));
+    (clEnumValN(CrabBuilderPrecision::NUM, "num", "Integer and Boolean registers only"),
+     clEnumValN(CrabBuilderPrecision::ARR, "arr", "num + some memory contents via array abstraction"),
+     clEnumValN(CrabBuilderPrecision::REF, "ref", "num + all memory contents")),
+   cl::init(CrabBuilderPrecision::NUM));
 
 cl::opt<bool>
 CrabCFGSimplify("crab-cfg-simplify",
@@ -158,25 +158,11 @@ CrabInter("crab-inter",
            cl::desc("Crab Inter-procedural analysis"), 
            cl::init(false));
 
-#ifdef TOP_DOWN_INTER_ANALYSIS
 cl::opt<unsigned>
 CrabInterMaxSummaries("crab-inter-max-summaries", 
 	 cl::desc("Maximum number of summaries per function tracked by "
-		  "the top-down interprocedural analysis"),
+		  "the interprocedural analysis"),
 	 cl::init(UINT_MAX));
-#else 	 
-// It does not make much sense to have non-relational domains here.
-cl::opt<CrabDomain>
-CrabSummDomain("crab-inter-sum-dom",
-    cl::desc("Crab relational domain to generate function summaries"),
-    cl::values 
-    (clEnumValN(ZONES_SPLIT_DBM, "zones",
-		 "Zones domain with sparse DBMs in Split Normal Form"),
-     clEnumValN(OCT, "oct", "Octagons domain"),
-     clEnumValN(TERMS_ZONES, "rtz",
-		 "Reduced product of term-dis-int and zones.")),
-    cl::init(ZONES_SPLIT_DBM));
-#endif
 
 cl::opt<heap_analysis_t>
 CrabHeapAnalysis("crab-heap-analysis",

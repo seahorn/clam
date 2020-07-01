@@ -25,7 +25,7 @@
 
 #include "clam/Passes.hh"
 #include "clam/Clam.hh"
-#include "clam/Transforms/InsertInvariants.hh"
+//#include "clam/Transforms/InsertInvariants.hh"
 
 #include "seadsa/ShadowMem.hh"
 #include "seadsa/InitializePasses.hh"
@@ -51,7 +51,7 @@ DefaultDataLayout("default-data-layout",
                   llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
 static llvm::cl::opt<bool>
-NoCrab("no-crab", 
+DisableCrab("no-crab", 
         llvm::cl::desc("Output preprocessed bitcode but disabling Crab analysis"),
         llvm::cl::init(false),
         llvm::cl::Hidden);
@@ -253,7 +253,7 @@ int main(int argc, char **argv) {
     pass_manager.add(seadsa::createShadowMemPass());
   }
   
-  if (!NoCrab) {
+  if (!DisableCrab) {
     /// -- run the crab analyzer
     pass_manager.add(new clam::ClamPass());
   }
@@ -261,8 +261,10 @@ int main(int argc, char **argv) {
   if(!AsmOutputFilename.empty()) {
     pass_manager.add(createPrintModulePass(asmOutput->os()));    
   }
- 
-  if (!NoCrab) {
+
+  /* TO_BE_UPDATED */
+  #if 0
+  if (!DisableCrab) {
     // -- perform dead code elimination and insert invariants as
     // -- assume instructions
     pass_manager.add(new clam::InsertInvariants());
@@ -273,7 +275,9 @@ int main(int argc, char **argv) {
       pass_manager.add(clam::createPromoteAssumePass());
     }    
   }
-      
+  #endif
+
+  
   if (!OutputFilename.empty()) {
     if (OutputAssembly)
       pass_manager.add(createPrintModulePass(output->os()));

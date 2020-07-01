@@ -1,25 +1,25 @@
 #pragma once
 
-#include <clam/crab/crab_cfg.hh>
 #include <crab/analysis/abs_transformer.hpp>
-
 #include <unordered_map>
+
+/* This code might go to Crab in the future */
 
 namespace crab {
 namespace analyzer {
-
 /**
  ** Compute the strongest post-condition over a single path given as
  ** an ordered sequence of connected basic blocks.
  **/
 template <typename CFG, typename AbsDom> class path_analyzer {
 private:
-  typedef typename CFG::statement_t stmt_t;
-  typedef typename CFG::basic_block_label_t basic_block_label_t;
-  typedef AbsDom abs_dom_t;
-  typedef std::unordered_map<stmt_t *, AbsDom> stmt_to_dom_map_t;
-  typedef std::unordered_map<basic_block_label_t, abs_dom_t> bb_to_dom_map_t;
-  typedef intra_abs_transformer<AbsDom> fwd_abs_tr_t;
+  using basic_block_t = typename CFG::basic_block_t ;  
+  using basic_block_label_t = typename CFG::basic_block_label_t ;
+  using statement_t = typename CFG::statement_t;  
+  using abs_dom_t = AbsDom;
+  using stmt_to_dom_map_t = std::unordered_map<statement_t *, AbsDom> ;
+  using bb_to_dom_map_t = std::unordered_map<basic_block_label_t, abs_dom_t>;
+  using fwd_abs_tr_t = intra_abs_transformer<basic_block_t, AbsDom>;
 
 public:
   // precondition: cfg is well typed.
@@ -55,22 +55,22 @@ public:
     }
   }
 
-  void get_unsat_core(std::vector<crab::cfg::statement_wrapper> &core) const {
+  void get_unsat_core(std::vector<statement_t*> &core) const {
     core.clear();
     core.assign(m_core.begin(), m_core.end());
   }
 
 private:
   bool has_kid(basic_block_label_t b1, basic_block_label_t b2);
-  void minimize_path(const std::vector<crab::cfg::statement_wrapper> &path,
+  void minimize_path(const std::vector<statement_t*> &path,
                      unsigned bottom_stmt);
   bool
-  remove_irrelevant_statements(std::vector<crab::cfg::statement_wrapper> &path,
+  remove_irrelevant_statements(std::vector<statement_t*> &path,
                                unsigned bottom_stmt,
                                bool only_data_dependencies);
   bool solve_path(const std::vector<basic_block_label_t> &path,
                   const bool only_bool_reasoning,
-                  std::vector<typename crab::cfg::statement_wrapper> &stmts,
+                  std::vector<statement_t*> &stmts,
                   unsigned &bottom_block, unsigned &bottom_stmt);
 
   // the cfg from which all paths are originated
@@ -81,7 +81,7 @@ private:
   bb_to_dom_map_t m_fwd_dom_map;
   // minimal subset of statements that explains path unsatisfiability
   // (only if solver return false (i.e., bottom)
-  std::vector<crab::cfg::statement_wrapper> m_core;
+  std::vector<statement_t*> m_core;
 };
 
 } // namespace analyzer

@@ -1,11 +1,11 @@
 #pragma once
 
 /*
- * Translate a LLVM function to a Crab control-flow graph.
+ * Translate a LLVM function to a Crab CFG.
  */
 
 #include "clam/CfgBuilderParams.hh"
-#include "clam/crab/crab_cfg.hh"
+#include "clam/crab/crab_lang.hh"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 
@@ -44,7 +44,7 @@ class InterClam_Impl;
 
 class CfgBuilder {
 public:
-  using liveness_t = crab::analyzer::liveness<cfg_ref_t>;
+  using liveness_t = crab::analyzer::live_and_dead_analysis<cfg_ref_t>;
   using varset = typename liveness_t::varset_domain_t;
 
 private:
@@ -54,8 +54,8 @@ private:
 
   // the actual cfg builder
   std::unique_ptr<CfgBuilderImpl> m_impl;
-  // live symbols
-  std::unique_ptr<crab::analyzer::liveness<cfg_ref_t>> m_ls;
+  // live and dead symbols
+  std::unique_ptr<liveness_t> m_ls;
 
   CfgBuilder(const llvm::Function &func, CrabBuilderManager &man);
 
@@ -158,9 +158,12 @@ private:
   llvm::DenseMap<const llvm::Function *, CfgBuilderPtr> m_cfg_builder_map;
   // Used for the translation from bitcode to Crab CFG
   llvm::TargetLibraryInfoWrapperPass &m_tli;
-  // All CFGs supervised by this manager are created using the same
+  // All CFGs created by this manager are created using the same
   // variable factory.
   variable_factory_t m_vfac;
+
+  /// TODOX: hide details whether we use HeabAbstraction or ShadowMem.
+  
   // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
   // Shadow memory (it can be null if not available)

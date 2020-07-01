@@ -1,7 +1,7 @@
 #pragma once
 
 #include "llvm/Support/raw_ostream.h"
-#include <crab/common/debug.hpp> // to access to CrabWarningFlag
+#include <crab/support/debug.hpp> // to access to CrabWarningFlag
 
 namespace clam {
 

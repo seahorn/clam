@@ -2,7 +2,7 @@
 #include "CfgBuilderUtils.hh"
 
 #include "clam/Support/Debug.hh"
-#include "clam/crab/crab_cfg.hh"
+#include "clam/crab/crab_lang.hh"
 
 #include "llvm/IR/Constants.h"
 
@@ -65,9 +65,10 @@ var_t crabLitFactoryImpl::mkArrayVar(Region mem_region, const Value *name) {
     type = ARR_BOOL_TYPE;
     bitwidth = 1;
     break;
-  case PTR_REGION:
-    type = ARR_PTR_TYPE;
-    break;
+    /*TO_BE_UPDATED: we need to create an integer variables*/    
+    //case PTR_REGION:
+    //type = ARR_PTR_TYPE;
+    //break;
   default:
     CLAM_ERROR("unsupported region type");
   }
@@ -98,9 +99,10 @@ var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
   case BOOL_REGION:
     type = BOOL_TYPE;
     break;
-  case PTR_REGION:
-    type = PTR_TYPE;
-    break;
+    /* TO_BE_UPDATED */
+    // case PTR_REGION:
+    //type = PTR_TYPE;
+    //break;
   default:
     CLAM_ERROR("unsupported region type");
   }
@@ -117,7 +119,9 @@ var_t crabLitFactoryImpl::mkBoolArrayVar() {
 }
 
 var_t crabLitFactoryImpl::mkPtrArrayVar() {
-  return var_t(m_vfac.get(), ARR_PTR_TYPE);
+  /* TO_BE_UPDATED */  
+  //return var_t(m_vfac.get(), ARR_PTR_TYPE);  
+  CRAB_ERROR("Cannot generate array variables of pointer type");
 }
 
 var_t crabLitFactoryImpl::mkIntVar(unsigned bitwidth) {
@@ -128,7 +132,9 @@ var_t crabLitFactoryImpl::mkBoolVar() {
   return var_t(m_vfac.get(), BOOL_TYPE, 1);
 }
 
-var_t crabLitFactoryImpl::mkPtrVar() { return var_t(m_vfac.get(), PTR_TYPE); }
+var_t crabLitFactoryImpl::mkPtrVar() {
+  return var_t(m_vfac.get(), REF_TYPE);
+}
 
 Optional<var_t> crabLitFactoryImpl::mkVar(const Value &v) {
   if (isBool(v)) {
@@ -209,9 +215,9 @@ Optional<crabPtrLit> crabLitFactoryImpl::getPtrLit(const Value &v) {
     if (isa<UndefValue>(v)) {
       // Create a fresh variable: this treats an undef value as a
       // nondeterministic value.
-      return crabPtrLit(var_t(m_vfac.get(), PTR_TYPE));
+      return crabPtrLit(var_t(m_vfac.get(), REF_TYPE));
     } else {
-      return crabPtrLit(var_t(m_vfac[&v], PTR_TYPE));
+      return crabPtrLit(var_t(m_vfac[&v], REF_TYPE));
     }
   }
   return None;
@@ -249,7 +255,7 @@ crabLitFactory::~crabLitFactory() { delete m_impl; }
 
 llvm_variable_factory &crabLitFactory::get_vfac() { return m_impl->get_vfac(); }
 
-crab::cfg::tracked_precision crabLitFactory::get_track() const {
+CrabBuilderPrecision crabLitFactory::get_track() const {
   return get_cfg_builder_params().precision_level;
 }
 

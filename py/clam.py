@@ -392,9 +392,9 @@ def parseArgs(argv):
     #Instrument each memory instruction with shadow.mem functions to
     #convert the program into memory SSA form and translate to crab
     #preserving that memory SSA form.
-    p.add_argument('--crab-memssa',
-                    help=a.SUPPRESS,
-                    dest='crab_memssa', default=False, action='store_true')
+    #p.add_argument('--crab-memssa',
+    #                help=a.SUPPRESS,
+    #                dest='crab_memssa', default=False, action='store_true')
     
     #### END CRAB
     
@@ -763,7 +763,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         
     if args.crab_backward: clam_args.append('--crab-backward')
     if args.crab_live: clam_args.append('--crab-live')
-    clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
+    ### TO_BE_UPDATED
+    #clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
     if args.crab_promote_assume: clam_args.append('--crab-promote-assume')
     if args.assert_check: clam_args.append('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:
@@ -795,8 +796,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-enable-bignums=true')
     else:
         clam_args.append('--crab-enable-bignums=false')
-    if args.crab_memssa:
-        clam_args.append('--crab-memssa=true')
+    # if args.crab_memssa:
+    #     clam_args.append('--crab-memssa=true')
     # end hidden options
         
     if verbose: print ' '.join(clam_args)

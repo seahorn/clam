@@ -1,55 +1,44 @@
 #pragma once
 
-#include "clam/config.h"
-
 #include <climits>
 #include <string>
 
 namespace clam {
 
 ////
-// Base numerical domains for user options
+// Base numerical domains for user options. To be synchronized with
+// the domains defined in crab/crab_domains.hh
 ////
 enum CrabDomain {
   INTERVALS,
   INTERVALS_CONGRUENCES,
+  WRAPPED_INTERVALS,  
   BOXES,
-  DIS_INTERVALS
-  /*, ZONES_SPARSE_DBM*/
-  ,
+  DIS_INTERVALS,
   ZONES_SPLIT_DBM,
   TERMS_INTERVALS,
-  TERMS_DIS_INTERVALS
-  // TERMS_INTERVALS x  ZONES_SPLIT_DBM
-  ,
-  TERMS_ZONES
+  TERMS_DIS_INTERVALS,
+  TERMS_ZONES, 
   //(#live vars<threshold ? TERMS_INTERVALSxZONES_SPLIT_DBM, INTERVALS)
-  ,
   ADAPT_TERMS_ZONES,
   OCT,
-  PK,
-  WRAPPED_INTERVALS
+  PK
 };
 
 ////
 // Kind of checker
 ////
-enum assert_check_kind_t { NOCHECKS = 0, ASSERTION = 1, NULLITY = 2 };
+enum assert_check_kind_t { NOCHECKS = 0, ASSERTION = 1 /*, NULLITY = 2*/ };
 
 /**
  * Class to set analysis options
  **/
 struct AnalysisParams {
   CrabDomain dom;
-#ifndef TOP_DOWN_INTER_ANALYSIS
-  CrabDomain sum_dom;
-#endif
   bool run_backward;
   bool run_liveness;
   bool run_inter;
-#ifdef TOP_DOWN_INTER_ANALYSIS
   unsigned int max_calling_contexts;
-#endif
   unsigned relational_threshold;
   unsigned widening_delay;
   unsigned narrowing_iters;
@@ -66,13 +55,8 @@ struct AnalysisParams {
 
   AnalysisParams()
       : dom(INTERVALS),
-#ifndef TOP_DOWN_INTER_ANALYSIS
-        sum_dom(ZONES_SPLIT_DBM),
-#endif
         run_backward(false), run_liveness(false), run_inter(false),
-#ifdef TOP_DOWN_INTER_ANALYSIS
         max_calling_contexts(UINT_MAX),
-#endif
         relational_threshold(10000), widening_delay(1), narrowing_iters(10),
         widening_jumpset(0), stats(false), print_invars(false),
         print_preconds(false), print_unjustified_assumptions(false),
@@ -82,9 +66,6 @@ struct AnalysisParams {
 
   std::string abs_dom_to_str() const;
 
-#ifndef TOP_DOWN_INTER_ANALYSIS
-  std::string sum_abs_dom_to_str() const;
-#endif
 };
 
 } // end namespace clam

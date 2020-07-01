@@ -1,8 +1,5 @@
 #include "path_analyzer.hpp"
-#include "clam/config.h"
-// flat_killgen_domain
-#include <crab/iterators/killgen_fixpoint_iterator.hpp>
-
+#include <crab/domains/killgen_domain.hpp>
 #include <unordered_set>
 
 namespace crab {
@@ -26,7 +23,7 @@ template <typename CFG, typename AbsDom>
 bool path_analyzer<CFG, AbsDom>::solve_path(
     const std::vector<basic_block_label_t> &path,
     const bool only_bool_reasoning,
-    std::vector<typename crab::cfg::statement_wrapper> &path_statements,
+    std::vector<statement_t*> &path_statements,
     // block where bottom was detected
     unsigned &bottom_block,
     // first statement  in bottom_block-nth block where bottom was detected
@@ -67,7 +64,7 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
         }
       }
       if (!s.is_assert() && !s.is_ptr_assert() && !s.is_bool_assert()) {
-        path_statements.push_back(crab::cfg::statement_wrapper(&s, node));
+        path_statements.push_back(&s);
       }
       s.accept(&abs_tr);
       AbsDom next_pre(std::move(abs_tr.get_abs_value()));
@@ -125,7 +122,7 @@ bool path_analyzer<CFG, AbsDom>::solve(
 
   // contain all statements along the path until the end of the path
   // or bottom is found.
-  std::vector<typename crab::cfg::statement_wrapper> path_statements;
+  std::vector<statement_t*> path_statements;
   // Compute strongest post-condition over the path
   unsigned bottom_block; // block where bottom was detected
   unsigned
@@ -178,26 +175,26 @@ bool path_analyzer<CFG, AbsDom>::has_kid(basic_block_label_t b1,
 // Return true if the core is just the statement "assume(false)"
 template <typename CFG, typename AbsDom>
 bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
-    std::vector<crab::cfg::statement_wrapper> &core, unsigned bottom_stmt,
+    std::vector<statement_t*> &core, unsigned bottom_stmt,
     bool only_data_dependencies) {
   typedef typename CFG::basic_block_t::assume_t assume_t;
   typedef typename CFG::basic_block_t::bool_assume_t bool_assume_t;
 
   unsigned size = core.size();
-  basic_block_label_t parent_label = core[size - 1].m_parent;
-  auto &parent_bb = m_cfg.get_node(parent_label);
-
+  basic_block_t *parent_bb = core[size - 1]->get_parent();
+  assert(parent_bb);
+  
   if (do_debugging) {
     crab::outs() << "CRAB PATH:\n";
     for (auto s : core) {
-      crab::outs() << "\t" << *(s.m_s) << "\n";
+      crab::outs() << "\t" << *s << "\n";
     }
   }
 
   // if the core contains at most one constraint then we are done
   if (size <= 1) {
     if (size == 1) {
-      if (auto assume = static_cast<const assume_t *>(core[0].m_s)) {
+      if (auto assume = static_cast<const assume_t *>(core[0])) {
         if (assume->constraint().is_contradiction()) {
           return true;
         }
@@ -207,7 +204,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   }
 
   // if there is an "assume(false)" then we are done
-  for (auto it = parent_bb.rbegin(), et = parent_bb.rend(); it != et; ++it) {
+  for (auto it = parent_bb->rbegin(), et = parent_bb->rend(); it != et; ++it) {
     auto &s = *it;
     if (s.is_assume()) {
       auto assume = static_cast<assume_t *>(&s);
@@ -223,7 +220,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   // to look at the last block.
   stmt_t *last_stmt = nullptr;
   unsigned i = 0;
-  for (auto it = parent_bb.begin(), et = parent_bb.end(); it != et; ++it) {
+  for (auto it = parent_bb->begin(), et = parent_bb->end(); it != et; ++it) {
     auto &s = *it;
     if (i == bottom_stmt) {
       last_stmt = &s;
@@ -241,7 +238,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   // until last_stmt is found.
   int j = size - 1;
   for (int i = size - 1; i >= 0; --i) {
-    stmt_t &s = *(core[i].m_s);
+    stmt_t &s = *(core[i]);
     if (last_stmt == &s) {
       break;
     } else {
@@ -271,7 +268,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   std::vector<bool> enabled(size, false);
   enabled[j] = true; // marked last_stmt
   for (int i = j - 1; i >= 0; --i) {
-    stmt_t &s = *(core[i].m_s);
+    stmt_t &s = *(core[i]);
     var_dom_t uses, defs;
     const typename stmt_t::live_t &ls = s.get_live();
     for (auto it = ls.uses_begin(), et = ls.uses_end(); it != et; ++it) {
@@ -307,7 +304,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   for (unsigned i = 0; i < size; ++i) {
     if (enabled[i]) {
       if (do_debugging) {
-        crab::outs() << "\t" << *(core[i].m_s) << "\n";
+        crab::outs() << "\t" << *(core[i]) << "\n";
       }
       res.push_back(core[i]);
     }
@@ -325,10 +322,10 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
  **/
 template <typename CFG, typename AbsDom>
 void path_analyzer<CFG, AbsDom>::minimize_path(
-    const std::vector<crab::cfg::statement_wrapper> &path,
+    const std::vector<statement_t*> &path,
     unsigned bottom_stmt) {
 
-  std::vector<crab::cfg::statement_wrapper> core(path.begin(), path.end());
+  std::vector<statement_t*> core(path.begin(), path.end());
 
   if (only_syntactic_core) {
     /* only syntactic */
@@ -362,7 +359,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
         fwd_abs_tr_t abs_tr(std::move(inv));
         bool is_bottom = false;
         for (unsigned i = 0, e = core.size(); i < e; ++i) {
-          core[i].m_s->accept(&abs_tr);
+          core[i]->accept(&abs_tr);
           if (inv.is_bottom()) {
             is_bottom = true;
             break;
@@ -385,7 +382,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
       fwd_abs_tr_t abs_tr(std::move(inv));
       for (unsigned j = 0; j < core.size(); ++j) {
         if (i != j && enabled[j]) {
-          core[j].m_s->accept(&abs_tr);
+          core[j]->accept(&abs_tr);
           AbsDom next_inv = std::move(abs_tr.get_abs_value());
           if (next_inv.is_bottom()) {
             break;
@@ -417,7 +414,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
       fwd_abs_tr_t abs_tr(std::move(inv));
       bool is_bottom = false;
       for (unsigned i = 0, e = m_core.size(); i < e; ++i) {
-        m_core[i].m_s->accept(&abs_tr);
+        m_core[i]->accept(&abs_tr);
         AbsDom next_inv = std::move(abs_tr.get_abs_value());
         if (next_inv.is_bottom()) {
           is_bottom = true;
@@ -433,19 +430,11 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
 } // namespace analyzer
 } // namespace crab
 
-#include <clam/crab/crab_cfg.hh>
+#include <clam/crab/crab_lang.hh>
 #include <clam/crab/crab_domains.hh>
-
 namespace crab {
 namespace analyzer {
-// explicit instantiations
-template class path_analyzer<clam::cfg_ref_t, clam::split_dbm_domain_t>;
-#ifdef HAVE_ALL_DOMAINS
-template class path_analyzer<clam::cfg_ref_t, clam::interval_domain_t>;
-template class path_analyzer<clam::cfg_ref_t, clam::term_int_domain_t>;
-template class path_analyzer<clam::cfg_ref_t, clam::wrapped_interval_domain_t>;
-template class path_analyzer<clam::cfg_ref_t, clam::num_domain_t>;
-template class path_analyzer<clam::cfg_ref_t, clam::boxes_domain_t>;
-#endif
+// explicit instantiation
+template class path_analyzer<clam::cfg_ref_t, clam::clam_abstract_domain>;
 } // namespace analyzer
 } // namespace crab

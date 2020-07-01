@@ -21,7 +21,7 @@
 #include "SeaDsaHeapAbstractionUtils.hh"
 #include "clam/SeaDsaHeapAbstraction.hh"
 #include "clam/Support/Debug.hh"
-#include "crab/common/debug.hpp"
+#include "crab/support/debug.hpp"
 
 #include <algorithm>
 #include <set>
