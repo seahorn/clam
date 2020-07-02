@@ -29,10 +29,9 @@ public:
   
 private:
   
-  static FactoryMap s_map;
-  
   static FactoryMap& getFactoryMap() {
-    return s_map;
+    static FactoryMap map;
+    return map;
   }
 
   template<typename AbsDom>
