@@ -66,7 +66,7 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
           continue;
         }
       }
-      if (!s.is_assert() && !s.is_ptr_assert() && !s.is_bool_assert()) {
+      if (!s.is_assert() && !s.is_ref_assert() && !s.is_bool_assert()) {
         path_statements.push_back(&s);
       }
       s.accept(&abs_tr);
@@ -358,7 +358,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
       if (only_data) {
         // check that what we get still implies bottom: it might not
         // imply bottom because we only considered data dependencies.
-        AbsDom inv;
+        AbsDom inv = m_init.make_top();
         fwd_abs_tr_t abs_tr(std::move(inv));
         bool is_bottom = false;
         for (unsigned i = 0, e = core.size(); i < e; ++i) {
@@ -381,7 +381,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
 
     std::vector<bool> enabled(core.size(), true);
     for (unsigned i = 0; i < core.size(); ++i) {
-      AbsDom inv;
+      AbsDom inv = m_init.make_top();
       fwd_abs_tr_t abs_tr(std::move(inv));
       for (unsigned j = 0; j < core.size(); ++j) {
         if (i != j && enabled[j]) {
@@ -413,7 +413,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
     }
 
     if (do_sanity_check) {
-      AbsDom inv;
+      AbsDom inv = m_init.make_top();
       fwd_abs_tr_t abs_tr(std::move(inv));
       bool is_bottom = false;
       for (unsigned i = 0, e = m_core.size(); i < e; ++i) {
@@ -432,3 +432,13 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
 }
 } // namespace analyzer
 } // namespace crab
+
+#include <clam/Clam.hh>
+
+namespace crab {
+namespace analyzer {
+// explicit instantiations
+template class path_analyzer<clam::cfg_ref_t, clam::clam_abstract_domain>;
+} // end namespace analyzer
+} // end namespace crab
+
