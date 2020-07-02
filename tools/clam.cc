@@ -177,8 +177,12 @@ int main(int argc, char **argv) {
   // XXX: not sure if needed anymore
   llvm::initializeGlobalsAAWrapperPassPass(Registry);
 
-  llvm::initializeDsaAnalysisPass(Registry);
+  llvm::initializeAllocWrapInfoPass(Registry);  
   llvm::initializeAllocSiteInfoPass(Registry);
+  llvm::initializeRemovePtrToIntPass(Registry);  
+  llvm::initializeDsaAnalysisPass(Registry);
+  llvm::initializeDsaInfoPassPass(Registry);
+  llvm::initializeCompleteCallGraphPass(Registry);
   
   // add an appropriate DataLayout instance for the module
   const llvm::DataLayout *dl = &module->getDataLayout();

@@ -29,6 +29,7 @@
 #include "clam/DummyHeapAbstraction.hh"
 #include "clam/SeaDsaHeapAbstraction.hh"
 
+#include "seadsa/InitializePasses.hh"
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/ShadowMem.hh"
 
@@ -759,8 +760,12 @@ namespace clam {
   
   /**
    * Begin ClamPass methods
-   **/
-ClamPass::ClamPass() : llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {}
+   **/  
+  ClamPass::ClamPass(): llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {
+    // initialize sea-dsa dependencies
+    llvm::initializeAllocWrapInfoPass(*llvm::PassRegistry::getPassRegistry());
+    llvm::initializeShadowMemPassPass(*llvm::PassRegistry::getPassRegistry());
+  }
   
   void ClamPass::releaseMemory() {
     m_pre_map.clear(); 
