@@ -25,9 +25,10 @@
 /**
  * Definition of the abstract domains.
  *
- * No instantiation should happen here.
+ * No instantiation happens here. The instantiations of the abstract
+ * domains occur in lib/Clam/domains.
  * 
- * All clam domains consist of fixed combination of functor and
+ * All clam domains consist of a fixed combination of functor and
  * product domains where the only tunable parameter is the base
  * numerical domain. The names of the domains listed below reflect the
  * name of the base numerical domain:
@@ -56,14 +57,14 @@ using namespace ikos;
 // The base numerical domain 
 #define BASE(DOM) base_ ## DOM
 // Term functor domain 
-#define TERM_FUNCTOR(DOM) \
+#define TERM_FUN(DOM) \
   term_domain<term::TDomInfo<number_t, dom_varname_t, DOM>>
 // Reduced product of boolean domain with numerical domain
 #define BOOL_NUM(DOM) flat_boolean_numerical_domain<DOM>
 // Array functor domain where the parameter domain is DOM
-#define ARRAY_FUNCTOR(DOM) array_adapt_domain<DOM>
+#define ARRAY_FUN(DOM) array_adapt_domain<DOM>
 // Reference functor domain -- the root of the hierarchy of domains.
-#define REF_FUNCTOR(DOM) \
+#define REF_FUN(DOM) \
   reference_domain<reference_domain_impl::Params<z_number, varname_t, DOM>>
 /* ====================================================================== */    
 /* END MACROS to create the hierarchy of domains. Only for internal use */
@@ -81,11 +82,7 @@ public:
   enum { max_array_size = 1024 };
 };
 template<class Dom>
-using array_adapt_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;
-  
-template<class Dom>
-using array_smashing_domain = array_smashing<Dom>;
-
+using array_adapt_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;  
 /* END array domains */      
   
 /* BEGIN base numerical domains */
@@ -150,25 +147,28 @@ using BASE(pk_domain_t) = elina_domain<number_t, dom_varname_t, elina_domain_id_
 using BASE(ric_domain_t) = numerical_congruence_domain<BASE(interval_domain_t)>;
 /// -- Reduced product of term(dis_intervals) and zones
 using BASE(num_domain_t) = reduced_numerical_domain_product2
-  <TERM_FUNCTOR(BASE(dis_interval_domain_t)), BASE(split_dbm_domain_t),
+  <TERM_FUN(BASE(dis_interval_domain_t)), BASE(split_dbm_domain_t),
    reduced_product_impl::term_dbm_params>;
 /* END base numerical domains */
 
 
 // ======== The actual domains ======== //
-using interval_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(BASE(interval_domain_t))));
-using split_dbm_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(BASE(split_dbm_domain_t))));
-using dis_interval_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(BASE(dis_interval_domain_t))));
-using oct_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(BASE(oct_domain_t))));
-using pk_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(BASE(pk_domain_t))));
-using ric_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(BASE(ric_domain_t))));
-using term_int_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(TERM_FUNCTOR(BASE(interval_domain_t)))));  
-using term_dis_int_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(TERM_FUNCTOR(BASE(dis_interval_domain_t)))));
-using num_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(BASE(num_domain_t))));
+using interval_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(interval_domain_t))));
+using split_dbm_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(split_dbm_domain_t))));
+using dis_interval_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(dis_interval_domain_t))));
+using oct_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(oct_domain_t))));
+using pk_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(pk_domain_t))));
+using ric_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(ric_domain_t))));
+using term_int_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(TERM_FUN(BASE(interval_domain_t)))));  
+using term_dis_int_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(TERM_FUN(BASE(dis_interval_domain_t)))));
+using num_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(num_domain_t))));
 // Boxes can reason natively about booleans so that's why we don't
 // combine it with a boolean domain.
-using boxes_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BASE(boxes_domain_t)));
-using wrapped_interval_domain_t = REF_FUNCTOR(ARRAY_FUNCTOR(BOOL_NUM(BASE(wrapped_interval_domain_t))));
+using boxes_domain_t = array_smashing<BASE(boxes_domain_t)>;
+// Boxes does not implement rename operation so we cannot wrap it in
+// REF_FUN or ARRAY_FUN.
+//using boxes_domain_t = REF_FUN(ARRAY_FUN(BASE(boxes_domain_t)));
+using wrapped_interval_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(wrapped_interval_domain_t))));
 } // end namespace clam
 
 // clang-format on
