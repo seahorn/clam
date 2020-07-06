@@ -18,12 +18,10 @@
 
 #include "clam/CfgBuilder.hh"
 #include "clam/Clam.hh"
-#include "clam/RegisterAnalysis.hh"
-#include "clam/crab/crab_lang.hh"
 #include "clam/crab/crab_domains.hh"
+#include "clam/RegisterAnalysis.hh"
 #include "clam/Support/Debug.hh"
 #include "clam/Support/NameValues.hh"
-#include "clam/config.h"
 #include "./crab/path_analyzer.hpp"
 #include "./crab/printer.hpp"
 #include "clam/DummyHeapAbstraction.hh"
@@ -217,7 +215,7 @@ namespace clam {
       		    abs_dom_assumptions, lin_csts_assumptions,
       		    (params.run_liveness) ? live : nullptr, results);
       } else {
-      	CLAM_WARNING("Intra-procedural analysis for " << params.dom.name() <<  " not found.");
+      	CLAM_ERROR("Intra-procedural analysis for " << params.dom.name() <<  " not found.");
       }
     }
     
@@ -247,7 +245,7 @@ namespace clam {
 	crabPathAnalyze(path, DomainRegistry::at(params.dom),
 			core, layered_solving, populate_inv_map, post, res);
       } else {
-      	CLAM_WARNING("Path analysis for  " << params.dom.name() << " not found.");
+      	CLAM_ERROR("Path analysis for  " << params.dom.name() << " not found.");
       }
       return res;
     }
@@ -583,7 +581,7 @@ namespace clam {
 	if (DomainRegistry::count(params.dom)) {
 	  analyze(params, DomainRegistry::at(params.dom), results);
 	} else {
-	  CLAM_WARNING("Inter-procedural analysis for  " <<  params.dom.name() << " not found");
+	  CLAM_ERROR("Inter-procedural analysis for  " <<  params.dom.name() << " not found");
 	}
       }
     }
@@ -1001,32 +999,32 @@ namespace clam {
     unsigned MaxValLen = 0;
     for (auto c: cnts)
     MaxValLen = std::max(MaxValLen, (unsigned)std::to_string(c).size());
-  o << std::string((int)MaxValLen - std::to_string(safe).size(), ' ') << safe
-    << std::string(2, ' ') << "Number of total safe checks\n"
+    o << std::string((int)MaxValLen - std::to_string(safe).size(), ' ') << safe
+      << std::string(2, ' ') << "Number of total safe checks\n"
       << std::string((int) MaxValLen - std::to_string(unsafe).size(), ' ') 
       << unsafe << std::string(2, ' ') << "Number of total error checks\n"
       << std::string((int) MaxValLen - std::to_string(warning).size(), ' ') 
       << warning << std::string(2, ' ') << "Number of total warning checks\n";
   }
-
-  char clam::ClamPass::ID = 0;
-
+  
   REGISTER_DOMAIN(CrabDomain::INTERVALS, interval_domain_t)
   REGISTER_DOMAIN(CrabDomain::ZONES_SPLIT_DBM, split_dbm_domain_t)
   REGISTER_DOMAIN(CrabDomain::DIS_INTERVALS, dis_interval_domain_t)
-#if defined(HAVE_APRON) || defined(HAVE_ELINA)
+  #if defined(HAVE_APRON) || defined(HAVE_ELINA)
   REGISTER_DOMAIN(CrabDomain::OCT, oct_domain_t)  
   REGISTER_DOMAIN(CrabDomain::PK, pk_domain_t)
-#endif   
+  #endif   
   REGISTER_DOMAIN(CrabDomain::INTERVALS_CONGRUENCES, ric_domain_t)
   REGISTER_DOMAIN(CrabDomain::TERMS_INTERVALS, term_int_domain_t)
   REGISTER_DOMAIN(CrabDomain::TERMS_DIS_INTERVALS, term_dis_int_domain_t)
   REGISTER_DOMAIN(CrabDomain::TERMS_ZONES, num_domain_t)
-#ifdef HAVE_LDD
+  #ifdef HAVE_LDD
   REGISTER_DOMAIN(CrabDomain::BOXES, boxes_domain_t)
-#endif   
+  #endif   
   REGISTER_DOMAIN(CrabDomain::WRAPPED_INTERVALS, wrapped_interval_domain_t)
+
   
+  char clam::ClamPass::ID = 0;
 } // namespace clam
 
 static RegisterPass<clam::ClamPass> X("clam", "Infer invariants using Crab",
