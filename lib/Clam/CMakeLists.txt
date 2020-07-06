@@ -1,4 +1,4 @@
-add_llvm_library (ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
+add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CfgBuilder.cc
   CfgBuilderLit.cc
   CfgBuilderUtils.cc
@@ -29,6 +29,8 @@ endif ()
 install(TARGETS ClamAnalysis 
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
+
+add_subdirectory(domains)
 
 # add_llvm_library (ClamInstrumentation ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
 #   InsertInvariants.cc

@@ -1,0 +1,15 @@
+# Library that contains all the Crab domains after instantiation.
+
+add_library(ClamDomains
+  boxes.cc
+  dis_intervals.cc
+  intervals.cc
+  oct.cc
+  pk.cc
+  ric.cc
+  split_dbm.cc
+  terms_dis_intervals.cc
+  terms_intervals.cc
+  terms_zones.cc
+  wrapped_intervals.cc 
+  )

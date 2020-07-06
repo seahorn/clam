@@ -5,7 +5,9 @@
 
 #include <map>
 
+
 namespace clam {
+
 class DomainRegistry {
 public:
   typedef std::map<CrabDomain::Type, clam_abstract_domain> FactoryMap;
@@ -34,20 +36,12 @@ private:
     return map;
   }
 
+  /* The domains instantiations happen in lib/Clam/domains */
   template<typename AbsDom>
   static clam_abstract_domain makeTopDomain();  
 };      
 
-#define MAKE_TOP_DOMAIN(DOM)			                \
-template<>						        \
-clam_abstract_domain DomainRegistry::makeTopDomain<DOM>() {	\
-  DOM dom_val;						        \
-  clam_abstract_domain res(dom_val);				\
-  return res;							\
-}
-  
 #define REGISTER_DOMAIN(domain_enum_val, domain_decl)			\
-  bool domain_decl ## _entry = DomainRegistry::add<domain_decl>(domain_enum_val); \
-  MAKE_TOP_DOMAIN(domain_decl)
+  bool domain_decl ## _entry = DomainRegistry::add<domain_decl>(domain_enum_val); 
   
 } //end namespace clam
