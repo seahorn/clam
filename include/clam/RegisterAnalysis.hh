@@ -2,6 +2,7 @@
 
 #include "clam/ClamAnalysisParams.hh"
 #include "clam/Clam.hh"
+#include "crab/support/stats.hpp"
 
 #include <map>
 
@@ -16,7 +17,9 @@ public:
   static bool add(CrabDomain::Type dom_ty) {
     auto &map = getFactoryMap();
     auto dom = DomainRegistry::makeTopDomain<AbsDom>();
-    return map.insert({dom_ty, dom}).second;
+    bool res = map.insert({dom_ty, dom}).second;
+    crab::CrabStats::reset();
+    return res;
   }
   
   static bool count(CrabDomain::Type dom_ty) {
