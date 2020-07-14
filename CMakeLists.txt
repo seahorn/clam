@@ -65,45 +65,6 @@ endif ()
 #### clam options ######
 option (CLAM_USE_COTIRE "Use cotire to reduce compilation time" OFF)
 option (CLAM_BUILD_LIBS_SHARED "Build all Clam libraries dynamically" OFF)
-option (CLAM_ALL_DOMAINS "Include all crab abstract domains" ON)
-if (CLAM_ALL_DOMAINS)
-  set (HAVE_ALL_DOMAINS TRUE)
-else ()
-  message(STATUS "Some abstract domains are disabled to reduce compilation time")
-  set (HAVE_ALL_DOMAINS FALSE)
-endif ()
-
-option (CLAM_ENABLE_INTER "Include crab inter-procedural analysis" ON)
-if (CLAM_ENABLE_INTER)
-  set (HAVE_INTER TRUE)
-else ()
-  message(STATUS "Inter-procedural analysis is disabled to reduce compilation time")
-  set (HAVE_INTER FALSE)
-endif ()
-
-## only applicable if CLAM_ENABLE_INTER is ON
-option (CLAM_TOP_DOWN_INTER "Use new top-down inter-procedural analysis" ON)
-if (CLAM_TOP_DOWN_INTER)
-  if (CLAM_ENABLE_INTER)
-    message(STATUS "Inter-procedural analysis: top-down")
-  endif()
-  set(TOP_DOWN_INTER_ANALYSIS TRUE)
-else()
-  if (CLAM_ENABLE_INTER)
-    message(STATUS "Inter-procedural analysis: bottom-up")
-  endif()
-  set(TOP_DOWN_INTER_ANALYSIS FALSE)
-endif()
-
-option (CLAM_NEW_ARRAY_DOMAIN "Use new Crab array adative domain" OFF)
-if (CLAM_NEW_ARRAY_DOMAIN)
-  message(STATUS "Array domain: array adaptive")  
-  set (HAVE_ARRAY_ADAPT TRUE)
-else ()
-  message(STATUS "Array domain: array smashing")
-  set (HAVE_ARRAY_ADAPT FALSE)
-endif ()
-
 option (CLAM_USE_DBM_BIGNUM "Use big numbers for DBM weights" OFF)
 if (CLAM_USE_DBM_BIGNUM)
   message(STATUS "DBM-based domains will use big numbers for representing weights")  
@@ -231,18 +192,21 @@ endif()
 #### end crab stuff ####
 
 if (TopLevel)
-  ## FIX: we want llvm10 but it's not available yet in
-  ## http://llvm.org/git/llvm.git a release_xx branch.
-  #set (LLVM_TAG "release_80" CACHE STRING "LLVM tag")
-  # We use master for now.
-  set (LLVM_TAG "master" CACHE STRING "LLVM tag")  
+  set (LLVM_TAG "llvmorg-10.0.0" CACHE STRING "LLVM tag")  
   add_custom_target (download-llvm-src
     # HACK: remove all sources so that git-clone does not fail
     # HACK: a proper solution is to work arround this as in ExternalProject
     ${CMAKE_COMMAND} -E remove_directory ${CMAKE_SOURCE_DIR}/ext/llvm
     COMMAND
     ${GIT_EXECUTABLE} clone --depth=1 --branch=${LLVM_TAG}
-    http://llvm.org/git/llvm.git ${CMAKE_SOURCE_DIR}/ext/llvm)
+    https://github.com/llvm/llvm-project.git ${CMAKE_SOURCE_DIR}/ext/llvm-project
+    # HACK: I cannot find an official repo with only llvm-10 so we
+    # bring the whole llvm-project repo, copy llvm directory and then
+    # remove the rest.
+    COMMAND
+    ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/ext/llvm-project/llvm ${CMAKE_SOURCE_DIR}/ext/llvm
+    COMMAND
+    ${CMAKE_COMMAND} -E remove_directory ${CMAKE_SOURCE_DIR}/ext/llvm-project)
   
   # if top-level, offer to build llvm
   ExternalProject_Add (llvm
@@ -329,17 +293,6 @@ if (TopLevel)
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-redeclared-class-member")
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sometimes-uninitialized")
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
-# if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedefs")  
-#   else ()
-#   if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-#      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-local-typedef")
-#      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-inconsistent-missing-override")
-#   endif ()
-# endif ()
 
 if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
     EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/lib/seadsa/DsaAnalysis.cc)
@@ -408,7 +361,11 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES ${_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
 # Propagate to the parent
 if (NOT TopLevel)
    set(XCLAM_LIBS
-       ClamAnalysis ClamInstrumentation)
+     ClamAnalysis
+     ClamInstrumentation
+     ClamDomains
+     ClamSupport)
+   
    if (CLAM_INCLUDE_TRANSFORMS)
      set(XCLAM_LIBS ${XCLAM_LIBS} LlvmPasses)
    endif()
