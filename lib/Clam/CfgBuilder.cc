@@ -1747,8 +1747,8 @@ void CrabInstVisitor::visitSelectInst(SelectInst &I) {
 //   the base pointer of GEP is zero.
 void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
 			    unsigned max_index_bitwidth, var_t lhs, llvm::Optional<var_t> base) {
-  assert(!base.hasValue() || lhs.get_type() == PTR_TYPE);
-  assert(lhs.get_type() == INT_TYPE || lhs.get_type() == PTR_TYPE);
+  assert(!base.hasValue() || lhs.get_type() == REF_TYPE);
+  assert(lhs.get_type() == INT_TYPE || lhs.get_type() == REF_TYPE);
   assert(max_index_bitwidth == lhs.get_bitwidth());  
   assert(!base.hasValue() || (lhs.get_bitwidth() == base.getValue().get_bitwidth()));
   
