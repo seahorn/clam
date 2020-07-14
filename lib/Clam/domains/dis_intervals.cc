@@ -1,5 +1,5 @@
 #include "clam/RegisterAnalysis.hh"
-#include "clam/crab/crab_domains.hh"
+#include "clam/crab/domains/dis_intervals.hh"
 namespace clam {
 template<>						        
 clam_abstract_domain DomainRegistry::makeTopDomain<dis_interval_domain_t>() {	

@@ -1,6 +1,6 @@
 #include "clam/config.h"
 #include "clam/RegisterAnalysis.hh"
-#include "clam/crab/crab_domains.hh"
+#include "clam/crab/domains/pk.hh"
 namespace clam {
 #if defined(HAVE_APRON) || defined(HAVE_ELINA)
 template<>						        

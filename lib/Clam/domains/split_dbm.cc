@@ -1,5 +1,5 @@
 #include "clam/RegisterAnalysis.hh"
-#include "clam/crab/crab_domains.hh"
+#include "clam/crab/domains/split_dbm.hh"
 namespace clam {
 template<>						        
 clam_abstract_domain DomainRegistry::makeTopDomain<split_dbm_domain_t>() {	

@@ -1,6 +1,6 @@
 #include "clam/config.h"
 #include "clam/RegisterAnalysis.hh"
-#include "clam/crab/crab_domains.hh"
+#include "clam/crab/domains/boxes.hh"
 namespace clam {
 #ifdef HAVE_LDD
 template<>						        
@@ -10,4 +10,4 @@ clam_abstract_domain DomainRegistry::makeTopDomain<boxes_domain_t>() {
    return res;							
  }
 #endif   
-} //end namespace
+} //end namespace clam
