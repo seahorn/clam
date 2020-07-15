@@ -40,8 +40,7 @@ inline Region getRegion(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
     // Use the Heap analysis (mem) to access to the cell pointed by the pointer.
     llvm::Function *fun = user->getParent()->getParent();
     Region res = mem.getRegion(*fun, user, ptr);
-    if (res.getRegionInfo().getType() == INT_REGION ||
-        res.getRegionInfo().getType() == BOOL_REGION) {
+    if (res.getRegionInfo().getType() != UNTYPED_REGION) {
       return res;
     }
   }
@@ -52,13 +51,11 @@ inline Region getRegion(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
 inline const llvm::Value *getSingletonValue(Region r,
                                             bool enable_unique_scalars) {
   if (enable_unique_scalars) {
-    if (r.isUnknown())
+    if (r.isUnknown()) {
       return nullptr;
-    if (r.getRegionInfo().getType() == INT_REGION ||
-        r.getRegionInfo().getType() == BOOL_REGION) {
-      if (const llvm::Value *v = r.getSingleton()) {
-        return v;
-      }
+    } 
+    if (const llvm::Value *v = r.getSingleton()) {
+      return v;
     }
   }
   return nullptr;
@@ -75,8 +72,7 @@ inline RegionVec getReadOnlyRegions(HeapAbstraction &mem, V &v) {
   auto regions = mem.getOnlyReadRegions(v);
   std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
                [](Region r) {
-                 return r.getRegionInfo().getType() == INT_REGION ||
-                        r.getRegionInfo().getType() == BOOL_REGION;
+                 return r.getRegionInfo().getType() != UNTYPED_REGION;
                });
   return res;
 }
@@ -88,8 +84,7 @@ inline RegionVec getModifiedRegions(HeapAbstraction &mem, V &v) {
   auto regions = mem.getModifiedRegions(v);
   std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
                [](Region r) {
-                 return r.getRegionInfo().getType() == INT_REGION ||
-                        r.getRegionInfo().getType() == BOOL_REGION;
+                 return r.getRegionInfo().getType() != UNTYPED_REGION;
                });
   return res;
 }
@@ -101,8 +96,7 @@ inline RegionVec getNewRegions(HeapAbstraction &mem, V &v) {
   auto regions = mem.getNewRegions(v);
   std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
                [](Region r) {
-                 return r.getRegionInfo().getType() == INT_REGION ||
-                        r.getRegionInfo().getType() == BOOL_REGION;
+                 return r.getRegionInfo().getType() != UNTYPED_REGION;
                });
   return res;
 }

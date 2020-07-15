@@ -222,6 +222,8 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
                                   << "\t" << *n << "\n";);
       return RegionInfo(INT_REGION, int_pred.m_bitwidth);
     } else {
+      CRAB_LOG("heap-abs",
+	       errs() << "\tCannot be converted to region due to overlapping.\n";);
       return RegionInfo(UNTYPED_REGION, 0);
     }
   }
@@ -237,6 +239,8 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
                                   << "\t" << *n << "\n";);
       return RegionInfo(BOOL_REGION, 1);
     } else {
+      CRAB_LOG("heap-abs",
+	       errs() << "\tCannot be converted to region due to overlapping.\n";);      
       return RegionInfo(UNTYPED_REGION, 0);
     }
   }
