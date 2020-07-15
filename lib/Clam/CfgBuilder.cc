@@ -688,7 +688,7 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   void doAllocFn(Instruction &I);
   void doMemIntrinsic(MemIntrinsic &I);
   void doVerifierCall(CallInst &I);
-  void doGep(GetElementPtrInst &I, bool translateAsPtrStmt, unsigned bitwidth,
+  void doGep(GetElementPtrInst &I, unsigned bitwidth,
              var_t lhs, llvm::Optional<var_t> base);
   void doStoreInst(StoreInst &I, bool is_singleton, var_t array_var,
                    crab_lit_ref_t val, Region reg);
@@ -814,16 +814,11 @@ lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx,
         return it->second;
       }
     } else if (const Argument *Arg = dyn_cast<Argument>(v)) {
-      const Function &F = *(Arg->getParent());
-      if (m_mem.isBasePtr(F, Arg)) {
-        return number_t(0);
-      } else {
-        CRAB_LOG(
-            "cfg-gep",
-            CLAM_WARNING("cannot infer statically base address of formal input "
-                         << *Arg << " at function " << F.getName()));
-        return getUnconstrainedArrayIdxVar(vfac, 32);
-      }
+      CRAB_LOG("cfg-gep",
+	       const Function &F = *(Arg->getParent());
+	       CLAM_WARNING("cannot infer statically base address of formal input "
+			    << *Arg << " at function " << F.getName()));
+      return getUnconstrainedArrayIdxVar(vfac, 32);
     } else {
       // we cannot infer statically the offset so we return an
       // unconstrained variable.
@@ -1736,16 +1731,16 @@ void CrabInstVisitor::visitSelectInst(SelectInst &I) {
 }
 
 //
-// - If translateAsPtrStmt is true then GEP is translated as a Crab
-//   pointer statement.
+// - If precision level is CrabBuilderPrecision::REF then GEP it is
+//   translated as a Crab reference statement.
 //
-// - Otherwise, it is translated as a Crab arithmetic statement to be
-//   used by a Crab array statement. If base.hasValue() is false then
-//   the base pointer of GEP is zero.
-void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
+// - If precision level is CrabBuilderPrecision::ARR then GEP it is
+//   translated as a sequence of Crab arithmetic statements to be used
+//   by a Crab array statement. If base.hasValue() is false then the
+//   base pointer of GEP is zero.
+void CrabInstVisitor::doGep(GetElementPtrInst &I, 
                             unsigned max_index_bitwidth, var_t lhs,
                             llvm::Optional<var_t> base) {
-  assert(!base.hasValue() || lhs.get_type() == REF_TYPE);
   assert(lhs.get_type() == INT_TYPE || lhs.get_type() == REF_TYPE);
   assert(max_index_bitwidth == lhs.get_bitwidth());
   assert(!base.hasValue() ||
@@ -1760,7 +1755,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
     if (is_bignum) {
       m_bb.havoc(lhs);
     } else {
-      if (translateAsPtrStmt) {
+      if (m_params.precision_level == CrabBuilderPrecision::REF) {
 #if 0 /* TO_BE_UPDATED */
 	// pointer arithmetic	
 	if (!base.hasValue()) {
@@ -1771,7 +1766,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
 	                        	 << o << "\n");
 #endif
       } else {
-        // arithmetic
+        // pure arithmetic
         if (base.hasValue()) {
           m_bb.assign(lhs, base.getValue() + lin_exp_t(o));
           CRAB_LOG("cfg-gep",
@@ -1797,7 +1792,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
       if (const ConstantInt *ci =
               dyn_cast<const ConstantInt>(GTI.getOperand())) {
         number_t offset(fieldOffset(st, ci->getZExtValue()));
-        if (translateAsPtrStmt) {
+        if (m_params.precision_level == CrabBuilderPrecision::REF) {
 #if 0 /* TO_BE_UPDATED */	  
 	  // pointer arithmetic
 	  if (!(already_assigned || base.hasValue())) {
@@ -1811,7 +1806,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
               } else { crab::outs() << lhs << "+=" << offset << "\n"; });
 #endif
         } else {
-          // arithmetic
+          // pure arithmetic
           if (!already_assigned) {
             if (base.hasValue()) {
               m_bb.assign(lhs, base.getValue() + offset);
@@ -1868,7 +1863,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
       }
 
       lin_exp_t offset = offsetOpt.getValue();
-      if (translateAsPtrStmt) {
+      if (m_params.precision_level == CrabBuilderPrecision::REF) {
 #if 0 /* TO_BE_UPDATED */	  	
 	// pointer arithmetic
 	if (!(already_assigned || base.hasValue())) {
@@ -1882,7 +1877,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
             } else { crab::outs() << lhs << "+=" << offset << "\n"; });
 #endif
       } else {
-        // arithmetic
+        // pure arithmetic
         if (!already_assigned) {
           if (base.hasValue()) {
             m_bb.assign(lhs, base.getValue() + offset);
@@ -1913,8 +1908,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I, bool translateAsPtrStmt,
  precision level is REF or ARR. With REF the translation should not
  lose precision. However, with ARR the translation is a best-effort
  thing since we need to know statically if the pointer operand points
- to the base address of its memory object or to the result of another
- GEP. The offset computation is the same in both.
+ to a singleton memory object.
 
  The offset computation is translated to a sequence of Crab linear
  arithmetic operations. In Crab, an arithmetic operation is strongly
@@ -1946,10 +1940,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       return;
     }
     assert(ptr->isVar());
-
-    doGep(I, true /*translateAsPtrStmt*/, bitwidth, lhs->getVar(),
-          ptr->getVar());
-
+    doGep(I, bitwidth, lhs->getVar(), ptr->getVar()/*base address*/);
   } else if (m_params.precision_level == CrabBuilderPrecision::ARR) {
     /*
       The goal is to compute an array index expression to be used by
@@ -1958,77 +1949,60 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       address statically. We try the following:
 
       1. Ask LLVM MemoryBuiltins::ObjectSizeOffsetVisitor. LLVM will
-      succeed if the GEP is a constant value and the memory objects is
-      a global or alloca.
+      succeed if the GEP is a constant value and the memory object is
+      a global or alloca (i.e., singleton).
 
-      2. Ask sea-dsa the memory region associated to the GEP pointer
-      operand Ptr and see if Ptr points to a cell with zero offset and
-      the node is not collapsed and not a sequence either. If we
-      succeed then we can translate the pointer arithmetic part the of
-      GEP instruction (this is done by doGep).
-
-      TO_BE_UPDATED: I think we cannot apply (2) so isBasePtr function
-      shouldn't be used.
+      2. If the GEP is not constant then we can still succeed if the
+         GEP pointer operand's memory object is known to be a
+         singleton.
      */
 
     if (evalOffset(I, I.getContext()).hasValue()) {
-      // we can skip the GEP instruction because the offset is a known
+      // Skip the GEP instruction because the offset is a known
       // constant. The next Load or Store will call evalOffset again
       // to obtain the constant index.
       return;
     }
 
-    Value *Ptr = I.getPointerOperand();
-    Ptr = Ptr->stripPointerCasts();
-    bool isBasePtr = isa<AllocaInst>(Ptr) || isa<GlobalVariable>(Ptr);
-
-    if (!isBasePtr) {
-      if (auto sm = getShadowMem()) {
-        CLAM_WARNING("TODO: precise translation of GEP if shadow mem is used");
-      } else {
-        Region r = getRegion(m_mem, getShadowMem(), *m_dl, &I, &I);
-        if (r.isUnknown()) {
-          // we don't keep track of the memory region, we bail out ...
-          return;
-        }
-        if (getSingletonValue(r, m_params.lower_singleton_aliases)) {
-          // the memory region is a singleton, we bail out ...
-          return;
-        }
-        // We ask the pointer analysis. That should allow us to
-        // translate also inside functions where the parameter is the
-        // address of a caller's alloca.
-        isBasePtr = m_mem.isBasePtr(*(I.getParent()->getParent()), Ptr);
-      }
+    Region r = getRegion(m_mem, getShadowMem(), *m_dl, &I, &I);
+    if (r.isUnknown()) {
+      // we don't keep track of the memory region, we bail out ...
+      return;
+    }
+    if (getSingletonValue(r, m_params.lower_singleton_aliases)) {
+      // the memory region is a singleton, we bail out ...
+      return;
     }
 
-    if (isBasePtr) {
-      var_t shadowV(m_lfac.getVFac().get(), crab::INT_TYPE, bitwidth);
-      m_gep_map.insert(std::make_pair(&I, shadowV));
-      doGep(I, false /*translateAsPtrStmt*/, bitwidth, shadowV, llvm::None);
-    } else {
+    Value *Ptr = I.getPointerOperand();
+    Ptr = Ptr->stripPointerCasts();
+    const bool isSingletonMemory = isa<AllocaInst>(Ptr) || isa<GlobalVariable>(Ptr);
+
+    if (isSingletonMemory) {
+      llvm::Optional<var_t> baseAddress = llvm::None; /* i.e., zero */
+      // Check if the GEP pointer operand is the result of another GEP
+      // instruction
       if (GetElementPtrInst *GepPtr = dyn_cast<GetElementPtrInst>(Ptr)) {
         auto it = m_gep_map.find(GepPtr);
         if (it != m_gep_map.end()) {
-          var_t gep_var = it->second;
-          // Adjust the bitwdith of gep_var wrt bitwitdh which is the
+          var_t gepVar = it->second;
+          // Adjust the bitwdith of gepVar wrt bitwitdh which is the
           // max bitwidth of all the GEP's indices.
-          if (bitwidth < gep_var.get_bitwidth()) {
-            bitwidth = gep_var.get_bitwidth();
-          } else if (bitwidth > gep_var.get_bitwidth()) {
-            var_t sext_gep_var = m_lfac.mkIntVar(bitwidth);
-            m_bb.sext(gep_var, sext_gep_var);
-            gep_var = sext_gep_var;
+          if (bitwidth < gepVar.get_bitwidth()) {
+            bitwidth = gepVar.get_bitwidth();
+          } else if (bitwidth > gepVar.get_bitwidth()) {
+            var_t sextGepVar = m_lfac.mkIntVar(bitwidth);
+            m_bb.sext(gepVar, sextGepVar);
+            baseAddress = sextGepVar;
           }
-
-          var_t shadowV(m_lfac.getVFac().get(), crab::INT_TYPE, bitwidth);
-          m_gep_map.insert(std::make_pair(&I, shadowV));
-          doGep(I, false /*translateAsPtrStmt*/, bitwidth, shadowV, gep_var);
-          return;
-        }
+	}
       }
-      // default case: we give up and translate the GEP to an
-      // unconstrained Crab variable
+      var_t shadowV(m_lfac.getVFac().get(), crab::INT_TYPE, bitwidth);
+      m_gep_map.insert(std::make_pair(&I, shadowV));
+      doGep(I, bitwidth, shadowV, baseAddress);
+    } else {
+      // We give up and translate the GEP to an unconstrained Crab
+      // variable
       var_t shadowV = getUnconstrainedArrayIdxVar(m_lfac.getVFac(), bitwidth);
       CRAB_LOG("cfg-gep",
                CLAM_WARNING("cannot infer statically base address of  "
@@ -2037,7 +2011,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
                             << ".\nUsing unconstrained crab variable "
                             << shadowV.name().str()););
       m_gep_map.insert(std::make_pair(&I, shadowV));
-    }
+    } 
   }
 }
 

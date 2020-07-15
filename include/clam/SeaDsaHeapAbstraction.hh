@@ -90,9 +90,6 @@ public:
     return HeapAbstraction::ClassId::SEA_DSA;
   }
 
-  virtual bool isBasePtr(const llvm::Function &F,
-                         const llvm::Value *V) override;
-
   // Use F and V to get sea-dsa cell associated to it.
   virtual Region
   getRegion(const llvm::Function &F,

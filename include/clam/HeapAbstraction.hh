@@ -160,7 +160,7 @@ public:
 
   // Add a new value if a new HeapAbstraction subclass is created
   // This is used to use static_cast.
-  enum class ClassId { DUMMY, LLVM_DSA, SEA_DSA };
+  enum class ClassId { DUMMY, SEA_DSA };
 
   HeapAbstraction() {}
 
@@ -168,11 +168,7 @@ public:
 
   virtual ClassId getClassId() const = 0;
 
-  // XXX: ideally all these methods should be marked as const but
-  // neither sea-dsa nor llvm-dsa provide APIs to allow that.
-
-  // return true if V points to the base address (zero offset).
-  virtual bool isBasePtr(const llvm::Function &F, const llvm::Value *V) = 0;
+  // TODO: mark all these methods as const.
 
   // fun is used to know in which function ptr lives.
   // If not null, i is the instruction that uses ptr.

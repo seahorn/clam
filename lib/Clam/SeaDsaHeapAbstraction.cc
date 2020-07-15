@@ -422,43 +422,6 @@ LegacySeaDsaHeapAbstraction::~LegacySeaDsaHeapAbstraction() {
   }
 }
 
-bool LegacySeaDsaHeapAbstraction::isBasePtr(const llvm::Function &fn,
-                                            const llvm::Value *V) {
-
-  if (!m_dsa || !m_dsa->hasGraph(fn)) {
-    return false;
-  }
-
-  Graph &G = m_dsa->getGraph(fn);
-  if (!G.hasCell(*V)) {
-    return false;
-  }
-
-  const Cell &c = G.getCell(*V);
-  if (c.isNull()) {
-    return false;
-  }
-
-  Node *N = c.getNode();
-  if (N->isOffsetCollapsed() || N->isIntToPtr() || N->isPtrToInt()) {
-    return false;
-  }
-
-  if (N->isArray() || c.getOffset() != 0) {
-    return false;
-  }
-
-  // Important: note that if the program takes the address of a
-  // non-zero index of an array then the corresponding sea-dsa is
-  // **collapsed**.
-
-  return true;
-
-  // auto &allocSites = N->getAllocSites();
-  // bool res = (allocSites.size() >= 1);
-  // return res;
-}
-
 // f is used to know in which Graph we should search for V
 Region
 LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
