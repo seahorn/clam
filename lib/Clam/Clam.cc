@@ -103,8 +103,9 @@ public:
   // database with all the checks
   checks_db_t &checksdb;
 
-  AnalysisResults(abs_dom_map_t &pre, abs_dom_map_t &post, checks_db_t &db)
-      : premap(pre), postmap(post), checksdb(db) {}
+  AnalysisResults(abs_dom_map_t &pre, abs_dom_map_t &post,
+		  edges_set& false_edges, checks_db_t &db)
+    : premap(pre), postmap(post), infeasible_edges(false_edges), checksdb(db) {}
 };
 
 static bool isTrackable(const Function &fun) {
@@ -425,7 +426,7 @@ CrabBuilderManager &IntraClam::getCfgBuilderMan() { return m_builder_man; }
 
 void IntraClam::analyze(AnalysisParams &params,
                         const abs_dom_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
   lin_csts_map_t lin_csts_assumptions;
   m_impl->analyze(params, &(m_fun.getEntryBlock()), assumptions,
                   lin_csts_assumptions, results);
@@ -433,14 +434,14 @@ void IntraClam::analyze(AnalysisParams &params,
 
 void IntraClam::analyze(AnalysisParams &params, const llvm::BasicBlock *entry,
                         const abs_dom_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
   lin_csts_map_t lin_csts_assumptions;
   m_impl->analyze(params, entry, assumptions, lin_csts_assumptions, results);
 }
 
 void IntraClam::analyze(AnalysisParams &params,
                         const lin_csts_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
   abs_dom_map_t abs_dom_assumptions;
   m_impl->analyze(params, &(m_fun.getEntryBlock()), abs_dom_assumptions,
                   assumptions, results);
@@ -448,7 +449,7 @@ void IntraClam::analyze(AnalysisParams &params,
 
 void IntraClam::analyze(AnalysisParams &params, const llvm::BasicBlock *entry,
                         const lin_csts_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
   abs_dom_map_t abs_dom_assumptions;
   m_impl->analyze(params, entry, abs_dom_assumptions, assumptions, results);
 }
@@ -491,6 +492,11 @@ IntraClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
   return lookup(m_post_map, *block, shadows);
 }
 
+bool IntraClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
+				const llvm::BasicBlock* b2) const {
+  return !(m_infeasible_edges.count({b1, b2}) > 0);
+}
+  
 const checks_db_t &IntraClam::getChecksDB() const { return m_checks_db; }
 /**
  *   End IntraClam methods
@@ -724,14 +730,14 @@ CrabBuilderManager &InterClam::getCfgBuilderMan() { return m_builder_man; }
 
 void InterClam::analyze(AnalysisParams &params,
                         const abs_dom_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,  m_checks_db};
   lin_csts_map_t lin_csts_assumptions;
   m_impl->analyze(params, assumptions, lin_csts_assumptions, results);
 }
 
 void InterClam::analyze(AnalysisParams &params,
                         const lin_csts_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
   abs_dom_map_t abs_dom_assumptions;
   m_impl->analyze(params, abs_dom_assumptions, assumptions, results);
 }
@@ -758,6 +764,11 @@ InterClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
 
 const checks_db_t &InterClam::getChecksDB() const { return m_checks_db; }
 
+bool InterClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
+				const llvm::BasicBlock* b2) const {
+  return !(m_infeasible_edges.count({b1, b2}) > 0);
+}
+  
 /**
  * End InterClam methods
  **/
@@ -862,7 +873,7 @@ bool ClamPass::runOnModule(Module &M) {
 
   if (CrabInter) {
     InterClamImpl inter_crab(M, *m_cfg_builder_man);
-    AnalysisResults results = {m_pre_map, m_post_map, m_checks_db};
+    AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     /* -- empty assumptions */
     abs_dom_map_t abs_dom_assumptions;
     lin_csts_map_t lin_csts_assumptions;
@@ -910,7 +921,7 @@ bool ClamPass::runOnModule(Module &M) {
 
 bool ClamPass::runOnFunction(Function &F) {
   IntraClamImpl intra_crab(F, *m_cfg_builder_man);
-  AnalysisResults results = {m_pre_map, m_post_map, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
   /* -- empty assumptions */
   abs_dom_map_t abs_dom_assumptions;
   lin_csts_map_t lin_csts_assumptions;
@@ -975,6 +986,11 @@ ClamPass::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
   return lookup(m_post_map, *block, shadows);
 }
 
+bool ClamPass::hasFeasibleEdge(const llvm::BasicBlock *b1,
+			       const llvm::BasicBlock* b2) const {
+  return !(m_infeasible_edges.count({b1, b2}) > 0);
+}
+  
 /**
  * For assertion checking
  **/

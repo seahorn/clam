@@ -32,23 +32,23 @@ install(TARGETS ClamAnalysis
 
 add_subdirectory(domains)
 
-# add_llvm_library (ClamInstrumentation ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
-#   InsertInvariants.cc
-#   )
+add_llvm_library (ClamInstrumentation ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
+  InsertInvariants.cc
+  )
 
-# target_link_libraries(ClamInstrumentation
-#   PRIVATE 
-#   ${CRAB_LIBS}
-#   ## Needed if dynamic linking
-#   ClamAnalysis
-#   ${LLVM_LIBS})
+target_link_libraries(ClamInstrumentation
+  PRIVATE 
+  ${CRAB_LIBS}
+  ## Needed if dynamic linking
+  ClamAnalysis
+  ${LLVM_LIBS})
 
-# if (USE_COTIRE)
-#   cotire(ClamInstrumentation)  
-# endif ()
+if (USE_COTIRE)
+  cotire(ClamInstrumentation)  
+endif ()
 
-# install(TARGETS ClamInstrumentation 
-#   ARCHIVE DESTINATION lib
-#   LIBRARY DESTINATION lib)
+install(TARGETS ClamInstrumentation 
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib)
 
 

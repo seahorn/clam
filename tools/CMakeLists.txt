@@ -24,7 +24,7 @@ add_llvm_executable(clam DISABLE_LLVM_LINK_LLVM_DYLIB clam.cc)
 target_link_libraries (clam PRIVATE
   ClamDomains  
   ClamAnalysis
-  #ClamInstrumentation
+  ClamInstrumentation
   ClamSupport  
   LlvmPasses
   ${LLVM_SEAHORN_LIBS}

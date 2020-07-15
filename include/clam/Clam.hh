@@ -54,13 +54,15 @@ public:
   using lin_csts_map_t =
       llvm::DenseMap<const llvm::BasicBlock *, lin_cst_sys_t>;
   using checks_db_t = crab::checker::checks_db;
-
+  using edges_set = std::set<std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>>;
+  
 private:
   std::unique_ptr<IntraClamImpl> m_impl;
   CrabBuilderManager &m_builder_man;
   const llvm::Function &m_fun;
   abs_dom_map_t m_pre_map;
   abs_dom_map_t m_post_map;
+  edges_set m_infeasible_edges;
   checks_db_t m_checks_db;
 
 public:
@@ -139,23 +141,29 @@ public:
    * Return a database with all checks.
    **/
   const checks_db_t &getChecksDB() const;
+
+  /**
+   * Return true if there might be a feasible edge between b1 and b2
+   **/
+  bool hasFeasibleEdge(const llvm::BasicBlock *b1, const llvm::BasicBlock* b2) const;
 };
 
 /**
  * Inter-procedural analysis of a module
  **/
 class InterClam {
-
 public:
   using abs_dom_map_t = typename IntraClam::abs_dom_map_t;
   using lin_csts_map_t = typename IntraClam::lin_csts_map_t;
   using checks_db_t = typename IntraClam::checks_db_t;
-
+  using edges_set = typename IntraClam::edges_set;
+  
 private:
   std::unique_ptr<InterClamImpl> m_impl;
   CrabBuilderManager &m_builder_man;
   abs_dom_map_t m_pre_map;
   abs_dom_map_t m_post_map;
+  edges_set m_infeasible_edges;
   checks_db_t m_checks_db;
 
 public:
@@ -200,6 +208,11 @@ public:
    * Return a database with all checks.
    **/
   const checks_db_t &getChecksDB() const;
+
+  /**
+   * Return true if there might be a feasible edge between b1 and b2
+   **/
+  bool hasFeasibleEdge(const llvm::BasicBlock *b1, const llvm::BasicBlock* b2) const;  
 };
 
 /**
@@ -209,10 +222,12 @@ class ClamPass : public llvm::ModulePass {
 
   using abs_dom_map_t = typename IntraClam::abs_dom_map_t;
   using checks_db_t = typename IntraClam::checks_db_t;
-
+  using edges_set = typename IntraClam::edges_set;
+  
   abs_dom_map_t m_pre_map;
   abs_dom_map_t m_post_map;
   std::unique_ptr<CrabBuilderManager> m_cfg_builder_man;
+  edges_set m_infeasible_edges;
   checks_db_t m_checks_db;
   AnalysisParams m_params;
 
@@ -259,6 +274,11 @@ public:
   llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *BB,
                                                bool KeepShadows = false) const;
 
+  /**
+   * Return true if there might be a feasible edge between b1 and b2
+   **/
+  bool hasFeasibleEdge(const llvm::BasicBlock *b1, const llvm::BasicBlock* b2) const;
+  
   /**
    * To query and view the analysis results
    **/
