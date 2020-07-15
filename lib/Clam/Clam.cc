@@ -358,7 +358,7 @@ namespace clam {
       }
           
       // --- checking assertions 
-      if (params.check) {
+      if (params.check == CheckerKind::ASSERTION) {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Checking assertions ... \n");	
 	intra_checker_t checker(analyzer,
 	      {std::make_shared<assertion_property_checker_t>(params.check_verbose)});
@@ -613,7 +613,7 @@ namespace clam {
 		      << "  ...\n";);
       
       inter_params_t inter_params;
-      inter_params.run_checker = params.check;
+      inter_params.run_checker = (params.check != CheckerKind::NOCHECKS);
       inter_params.checker_verbosity  = params.check_verbose;
       inter_params.minimize_invariants = true;
       inter_params.max_call_contexts = params.max_calling_contexts;
@@ -878,7 +878,7 @@ namespace clam {
       crab::CrabStats::PrintBrunch(crab::outs());
     }
     
-    if (CrabCheck) {
+    if (CrabCheck != CheckerKind::NOCHECKS) {
       llvm::outs() << "\n************** ANALYSIS RESULTS ****************\n";
       printChecks(llvm::outs());
       llvm::outs() << "************** ANALYSIS RESULTS END*************\n";

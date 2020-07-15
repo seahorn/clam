@@ -226,14 +226,13 @@ CrabDsaDisambiguateExternal("crab-dsa-disambiguate-external",
     cl::Hidden);
 
 // Prove assertions
-cl::opt<assert_check_kind_t>
+cl::opt<CheckerKind>
 CrabCheck("crab-check", 
 	   cl::desc("Check user assertions"),
 	   cl::values(
-	       clEnumValN(NOCHECKS  , "none"  , "None"),
-	       clEnumValN(ASSERTION , "assert", "User assertions")),
-	       //clEnumValN(NULLITY   , "null"  , "Null dereference (unused/untested)")),
-	   cl::init(assert_check_kind_t::NOCHECKS));
+	       clEnumValN(CheckerKind::NOCHECKS  , "none"  , "None"),
+	       clEnumValN(CheckerKind::ASSERTION , "assert", "User assertions")),
+	   cl::init(CheckerKind::NOCHECKS));
 
 cl::opt<unsigned int>
 CrabCheckVerbose("crab-check-verbose", 

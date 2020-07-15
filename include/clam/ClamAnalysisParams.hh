@@ -68,9 +68,10 @@ constexpr std::array<Type, 11> List = {
 ////
 // Kind of checker
 ////
-// TODO: registerChecker
-enum assert_check_kind_t { NOCHECKS = 0, ASSERTION = 1 /*, NULLITY = 2*/ };
-
+enum class CheckerKind {
+   NOCHECKS  = 0,
+   ASSERTION = 1 
+};
 
   
 /**
@@ -93,7 +94,7 @@ struct AnalysisParams {
   bool print_summaries;
   bool store_invariants;
   bool keep_shadow_vars;
-  assert_check_kind_t check;
+  CheckerKind check;
   unsigned check_verbose;
 
   AnalysisParams()
@@ -104,7 +105,7 @@ struct AnalysisParams {
       widening_jumpset(0), stats(false), print_invars(false),
       print_preconds(false), print_unjustified_assumptions(false),
       print_summaries(false), store_invariants(true), keep_shadow_vars(false),
-      check(NOCHECKS), check_verbose(0) {
+      check(CheckerKind::NOCHECKS), check_verbose(0) {
   }
 };
 
