@@ -55,12 +55,12 @@ public:
   RegionInfo &operator=(const RegionInfo &other) = default;
 
   bool operator==(const RegionInfo &o) {
-    return (get_type() == o.get_type() && get_bitwidth() == o.get_bitwidth());
+    return (getType() == o.getType() && getBitwidth() == o.getBitwidth());
   }
 
-  region_type_t get_type() const { return m_region_type; }
+  region_type_t getType() const { return m_region_type; }
 
-  unsigned get_bitwidth() const { return m_bitwidth; }
+  unsigned getBitwidth() const { return m_bitwidth; }
 };
 
 /**
@@ -96,9 +96,9 @@ public:
 
   Region &operator=(const Region &other) = default;
 
-  RegionId get_id() const { return m_id; }
+  RegionId getId() const { return m_id; }
 
-  bool isUnknown() const { return (m_info.get_type() == UNTYPED_REGION); }
+  bool isUnknown() const { return (m_info.getType() == UNTYPED_REGION); }
 
   const llvm::Value *getSingleton() const { return m_singleton; }
 
@@ -113,7 +113,7 @@ public:
       o << "unknown";
     } else {
       o << "R_" << m_id << ":";
-      switch (getRegionInfo().get_type()) {
+      switch (getRegionInfo().getType()) {
       case UNTYPED_REGION:
         o << "U";
         break;

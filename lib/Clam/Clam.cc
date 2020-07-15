@@ -152,19 +152,19 @@ namespace clam {
   public:
     
     IntraClamImpl(const Function &fun, CrabBuilderManager &man)
-      : m_cfg_builder(nullptr), m_fun(fun), m_vfac(man.get_var_factory()) {
+      : m_cfg_builder(nullptr), m_fun(fun), m_vfac(man.getVarFactory()) {
       
       if (isTrackable(m_fun)) {
-	if (!man.has_cfg(m_fun)) {
+	if (!man.hasCfg(m_fun)) {
 	  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
 			  << "Started Crab CFG construction for "
 			  << fun.getName() << "\n");	  
-	  m_cfg_builder = man.mk_cfg_builder(m_fun);
+	  m_cfg_builder = man.mkCfgBuilder(m_fun);
 	  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
 			  << "Finished Crab CFG construction for "
 			  << fun.getName() << "\n");	
 	} else {
-	  m_cfg_builder = man.get_cfg_builder(m_fun);
+	  m_cfg_builder = man.getCfgBuilder(m_fun);
 	}
       } else {
 	CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
@@ -189,9 +189,9 @@ namespace clam {
       const liveness_t* live = nullptr;
       if (params.run_liveness || params.dom.isRelational()) {
 	// -- run liveness
-	m_cfg_builder->compute_live_symbols();
+	m_cfg_builder->computeLiveSymbols();
 	if (params.dom.isRelational()) {
-	  live = m_cfg_builder->get_live_symbols();
+	  live = m_cfg_builder->getLiveSymbols();
 	  assert(live);	  
 	  unsigned total_live, avg_live_per_blk, max_live_per_blk;
 	  live->get_stats(total_live, max_live_per_blk, avg_live_per_blk);
@@ -231,10 +231,10 @@ namespace clam {
       std::vector<basic_block_label_t> path;
       path.reserve(blocks.size());
       for(unsigned i=0; i < blocks.size(); ++i) {
-	path.push_back(m_cfg_builder->get_crab_basic_block(blocks[i]));
+	path.push_back(m_cfg_builder->getCrabBasicBlock(blocks[i]));
 	if (i < blocks.size() - 1) {
 	  if (const basic_block_label_t* edge_bb =
-	      m_cfg_builder->get_crab_basic_block(blocks[i], blocks[i+1])) {
+	      m_cfg_builder->getCrabBasicBlock(blocks[i], blocks[i+1])) {
 	    path.push_back(*edge_bb);
 	  }
 	}
@@ -264,20 +264,20 @@ namespace clam {
 		     const liveness_t *live, AnalysisResults &results) {
       
       
-      CRAB_VERBOSE_IF(1, auto fdecl = m_cfg_builder->get_cfg().get_func_decl();
+      CRAB_VERBOSE_IF(1, auto fdecl = m_cfg_builder->getCfg().get_func_decl();
 		      crab::get_msg_stream()
 		      << "Running intra-procedural analysis with "
 		      << "\"" << entry_abs.domain_name()  << "\""
 		      << " for " << fdecl.get_func_name() << "  ... \n";);
       
       // -- run intra-procedural analysis
-      intra_analyzer_t analyzer(m_cfg_builder->get_cfg(), entry_abs);
+      intra_analyzer_t analyzer(m_cfg_builder->getCfg(), entry_abs);
       typename intra_analyzer_t::assumption_map_t crab_assumptions;
 
       // Reconstruct a crab assumption map from an abs_dom_map_t
       for (auto &kv: abs_dom_assumptions) {
 	crab_assumptions.insert(
-	  {m_cfg_builder->get_crab_basic_block(kv.first), kv.second});
+	  {m_cfg_builder->getCrabBasicBlock(kv.first), kv.second});
       }
       
       // Reconstruct a crab assumption map from a lin_csts_map_t
@@ -285,10 +285,10 @@ namespace clam {
 	clam_abstract_domain absval = entry_abs.make_top();
 	absval += kv.second;
 	crab_assumptions.insert(
-          {m_cfg_builder->get_crab_basic_block(kv.first), absval});
+          {m_cfg_builder->getCrabBasicBlock(kv.first), absval});
       }
       
-      analyzer.run(m_cfg_builder->get_crab_basic_block(entry), entry_abs, 
+      analyzer.run(m_cfg_builder->getCrabBasicBlock(entry), entry_abs, 
 		   !params.run_backward, crab_assumptions, live,
 		   params.widening_delay, params.narrowing_iters,
 		   params.widening_jumpset);
@@ -299,8 +299,8 @@ namespace clam {
       if (params.store_invariants || params.print_invars) {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing invariants.\n");       
 	for (basic_block_label_t bl :
-	       llvm::make_range(m_cfg_builder->get_cfg().label_begin(),
-				m_cfg_builder->get_cfg().label_end())) {
+	       llvm::make_range(m_cfg_builder->getCfg().label_begin(),
+				m_cfg_builder->getCfg().label_end())) {
 	  if (bl.is_edge()) {
 	    // Note that we use get_post instead of get_pre:
 	    //   the crab block (bl) has an assume statement corresponding
@@ -329,8 +329,8 @@ namespace clam {
       // -- print all cfg annotations (if any)
       if (params.print_invars || params.print_unjustified_assumptions) {
 	std::vector<std::unique_ptr<block_annotation_t>> pool_annotations;
-	if (m_cfg_builder->get_cfg().has_func_decl()) {
-	  auto fdecl = m_cfg_builder->get_cfg().get_func_decl();
+	if (m_cfg_builder->getCfg().has_func_decl()) {
+	  auto fdecl = m_cfg_builder->getCfg().get_func_decl();
 	  crab::outs() << "\n" << fdecl << "\n";
 	} else {
 	  llvm::outs() << "\n"
@@ -347,14 +347,14 @@ namespace clam {
 	}
 
 	// XXX: it must be alive when print_annotations is called.	
-	assumption_analysis_t unproven_assumption_analyzer(m_cfg_builder->get_cfg());
+	assumption_analysis_t unproven_assumption_analyzer(m_cfg_builder->getCfg());
 	if (params.print_unjustified_assumptions) {
 	  // -- run first the analysis
 	  unproven_assumption_analyzer.exec();
 	  pool_annotations.emplace_back(std::make_unique<unproven_assume_annotation_t>(
-	       m_cfg_builder->get_cfg(), &unproven_assumption_analyzer));
+	       m_cfg_builder->getCfg(), &unproven_assumption_analyzer));
 	}
-	crab_pretty_printer::print_annotations(m_cfg_builder->get_cfg(), pool_annotations);
+	crab_pretty_printer::print_annotations(m_cfg_builder->getCfg(), pool_annotations);
       }
           
       // --- checking assertions 
@@ -378,7 +378,7 @@ namespace clam {
 			 std::vector<statement_t*>& core,
 			 bool layered_solving, bool populate_inv_map,
 			 abs_dom_map_t& post, bool &res) const {
-      path_analyzer_t path_analyzer(m_cfg_builder->get_cfg(), init);
+      path_analyzer_t path_analyzer(m_cfg_builder->getCfg(), init);
       res = path_analyzer.solve(path, layered_solving);
       if (populate_inv_map) {
 	for(auto n: path) {
@@ -416,7 +416,7 @@ namespace clam {
     m_checks_db.clear();
   }
 
-  CrabBuilderManager &IntraClam::get_cfg_builder_man() { return m_builder_man; }
+  CrabBuilderManager &IntraClam::getCfgBuilderMan() { return m_builder_man; }
   
   void IntraClam::analyze(AnalysisParams &params,
 			  const abs_dom_map_t &assumptions) {    
@@ -448,7 +448,7 @@ namespace clam {
     m_impl->analyze(params, entry, abs_dom_assumptions, assumptions, results);
   }
 
-  bool IntraClam::path_analyze(
+  bool IntraClam::pathAnalyze(
     const AnalysisParams &params,
     const std::vector<const llvm::BasicBlock *> &path, bool layered_solving,
     std::vector<statement_t*>& core) const {
@@ -457,7 +457,7 @@ namespace clam {
 			       post_conditions);
   }
 
-  bool IntraClam::path_analyze(const AnalysisParams& params,
+  bool IntraClam::pathAnalyze(const AnalysisParams& params,
 			       const std::vector<const llvm::BasicBlock*>& path,
 			       bool layered_solving, 
 			       std::vector<statement_t*>& core,
@@ -466,27 +466,27 @@ namespace clam {
                              post_conditions);
   }
 
-  llvm::Optional<clam_abstract_domain> IntraClam::get_pre(const llvm::BasicBlock *block,
+  llvm::Optional<clam_abstract_domain> IntraClam::getPre(const llvm::BasicBlock *block,
 							  bool keep_shadows) const {
     std::vector<varname_t> shadows;
-    auto &vfac = m_builder_man.get_var_factory();    
+    auto &vfac = m_builder_man.getVarFactory();    
     if (!keep_shadows)
       shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
 				       vfac.get_shadow_vars().end());
     return lookup(m_pre_map, *block, shadows);
   }   
 
-  llvm::Optional<clam_abstract_domain> IntraClam::get_post(const llvm::BasicBlock *block,
+  llvm::Optional<clam_abstract_domain> IntraClam::getPost(const llvm::BasicBlock *block,
 							   bool keep_shadows) const {
     std::vector<varname_t> shadows;
-    auto &vfac = m_builder_man.get_var_factory();        
+    auto &vfac = m_builder_man.getVarFactory();        
     if (!keep_shadows)
       shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
 				       vfac.get_shadow_vars().end());
     return lookup(m_post_map, *block, shadows);
   }
 
-  const checks_db_t& IntraClam::get_checks_db() const { return m_checks_db;}
+  const checks_db_t& IntraClam::getChecksDB() const { return m_checks_db;}
   /**
    *   End IntraClam methods
    **/
@@ -503,10 +503,10 @@ namespace clam {
       for (auto const &F : m_M) {
         if (isTrackable(F)) {
 	  // -- build cfg's
-	  if (!man.has_cfg(F)) {
-	    m_crab_builder_man.mk_cfg_builder(F);
+	  if (!man.hasCfg(F)) {
+	    m_crab_builder_man.mkCfgBuilder(F);
 	  }
-	  cfg_t* cfg = &(m_crab_builder_man.get_cfg(F));
+	  cfg_t* cfg = &(m_crab_builder_man.getCfg(F));
 	  cfg_ref_vector.push_back(*cfg);
         CRAB_VERBOSE_IF(1, llvm::outs()
                                << "Built Crab CFG for " << F.getName() << "\n");
@@ -541,11 +541,11 @@ namespace clam {
 
 	  // Get the cfg builder to run liveness
 	  if (const Function *fun = m_M.getFunction(cg_node.name())) {
-	    auto cfg_builder = m_crab_builder_man.get_cfg_builder(*fun);
+	    auto cfg_builder = m_crab_builder_man.getCfgBuilder(*fun);
 	    assert(cfg_builder);
 	    // run liveness
-	    cfg_builder->compute_live_symbols();
-	    live = cfg_builder->get_live_symbols();
+	    cfg_builder->computeLiveSymbols();
+	    live = cfg_builder->getLiveSymbols();
 	    // update max number of live variables for whole cg
 	    unsigned total_live, max_live_per_blk_, avg_live_per_blk;
 	    live->get_stats(total_live, max_live_per_blk_, avg_live_per_blk);
@@ -596,10 +596,10 @@ namespace clam {
     // live symbols
     liveness_map_t m_live_map;
 
-    basic_block_label_t get_crab_basic_block(const BasicBlock* bb) const {
+    basic_block_label_t getCrabBasicBlock(const BasicBlock* bb) const {
       const Function*f = bb->getParent();
-      auto builder = m_crab_builder_man.get_cfg_builder(*f);
-      return builder->get_crab_basic_block(bb);
+      auto builder = m_crab_builder_man.getCfgBuilder(*f);
+      return builder->getCrabBasicBlock(bb);
     }
 
     /** Run inter-procedural analysis on the whole call graph **/
@@ -642,7 +642,7 @@ namespace clam {
 	    for (basic_block_label_t bl:
 		   llvm::make_range(cfg.label_begin(),cfg.label_end())) {
 	      if (bl.is_edge()) {
-		// Note that we use get_post instead of get_pre:
+		// Note that we use get_post instead of getPre:
 		//   the crab block (bl) has an assume statement corresponding
 		//   to the branch condition in the predecessor of the
 		//   LLVM edge. We want the invariant *after* the
@@ -653,10 +653,10 @@ namespace clam {
 		}
 	      } else if (const BasicBlock *B = bl.get_basic_block()) {
 		// --- invariants that hold at the entry of the blocks
-		auto pre = analyzer.get_pre(cfg, get_crab_basic_block(B));
+		auto pre = analyzer.get_pre(cfg, getCrabBasicBlock(B));
 		update(results.premap, *B, pre);
 		// --- invariants that hold at the exit of the blocks
-		auto post = analyzer.get_post(cfg, get_crab_basic_block(B));
+		auto post = analyzer.get_post(cfg, getCrabBasicBlock(B));
 		update(results.postmap, *B, post);
 	      } else {
 		// this should be unreachable
@@ -678,8 +678,8 @@ namespace clam {
 	      std::vector<varname_t> shadow_varnames;
 	      if (!params.keep_shadow_vars) {
 		shadow_varnames = std::vector<varname_t>
-		  (m_crab_builder_man.get_var_factory().get_shadow_vars().begin(),
-		   m_crab_builder_man.get_var_factory().get_shadow_vars().end());
+		  (m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
+		   m_crab_builder_man.getVarFactory().get_shadow_vars().end());
 	      }
 	      std::vector<std::unique_ptr<block_annotation_t>>
                 annotations;
@@ -715,7 +715,7 @@ namespace clam {
     m_checks_db.clear();
   }
 
-  CrabBuilderManager &InterClam::get_cfg_builder_man() { return m_builder_man; }
+  CrabBuilderManager &InterClam::getCfgBuilderMan() { return m_builder_man; }
   
   void InterClam::analyze(AnalysisParams &params,
 			  const abs_dom_map_t &assumptions) {
@@ -731,26 +731,26 @@ namespace clam {
     m_impl->analyze(params, abs_dom_assumptions, assumptions, results);
   }
 
-  llvm::Optional<clam_abstract_domain> InterClam::get_pre(const llvm::BasicBlock *block,
+  llvm::Optional<clam_abstract_domain> InterClam::getPre(const llvm::BasicBlock *block,
 							  bool keep_shadows) const {
     std::vector<varname_t> shadows;
     if (!keep_shadows)
-      shadows = std::vector<varname_t>(m_builder_man.get_var_factory().get_shadow_vars().begin(),
-				       m_builder_man.get_var_factory().get_shadow_vars().end());
+      shadows = std::vector<varname_t>(m_builder_man.getVarFactory().get_shadow_vars().begin(),
+				       m_builder_man.getVarFactory().get_shadow_vars().end());
     return lookup(m_pre_map, *block, shadows);
   }   
 
-  llvm::Optional<clam_abstract_domain> InterClam::get_post(const llvm::BasicBlock *block,
+  llvm::Optional<clam_abstract_domain> InterClam::getPost(const llvm::BasicBlock *block,
 							   bool keep_shadows) const {
     std::vector<varname_t> shadows;
     if (!keep_shadows)
       shadows = std::vector<varname_t>(
-        m_builder_man.get_var_factory().get_shadow_vars().begin(),
-        m_builder_man.get_var_factory().get_shadow_vars().end());
+        m_builder_man.getVarFactory().get_shadow_vars().begin(),
+        m_builder_man.getVarFactory().get_shadow_vars().end());
     return lookup(m_post_map, *block, shadows);
   }
 
-  const checks_db_t& InterClam::get_checks_db() const { return m_checks_db;}
+  const checks_db_t& InterClam::getChecksDB() const { return m_checks_db;}
   
   /**
    * End InterClam methods
@@ -880,16 +880,16 @@ namespace clam {
     
     if (CrabCheck) {
       llvm::outs() << "\n************** ANALYSIS RESULTS ****************\n";
-      print_checks(llvm::outs());
+      printChecks(llvm::outs());
       llvm::outs() << "************** ANALYSIS RESULTS END*************\n";
 		      
       if (CrabStats) {		     
         llvm::outs() << "\n************** BRUNCH STATS ********************\n";
-        if (get_total_checks() == 0) {
+        if (getTotalChecks() == 0) {
 	  llvm::outs() << "BRUNCH_STAT Result NOCHECKS\n";
-        } else if (get_total_error_checks() > 0) {
+        } else if (getTotalErrorChecks() > 0) {
  	  llvm::outs() << "BRUNCH_STAT Result FALSE\n";
-        } else if (get_total_warning_checks() == 0) {
+        } else if (getTotalWarningChecks() == 0) {
 	  llvm::outs() << "BRUNCH_STAT Result TRUE\n";
         } else {
   	  llvm::outs() << "BRUNCH_STAT Result INCONCLUSIVE\n";
@@ -935,24 +935,24 @@ namespace clam {
    * For clam clients
    **/
 
-  bool ClamPass::has_cfg(llvm::Function &F) {
-    return m_cfg_builder_man->has_cfg(F);
+  bool ClamPass::hasCfg(llvm::Function &F) {
+    return m_cfg_builder_man->hasCfg(F);
   }
   
-  cfg_ref_t ClamPass::get_cfg(llvm::Function &F) {
-    assert(m_cfg_builder_man->has_cfg(F));
-    return m_cfg_builder_man->get_cfg(F);
+  cfg_ref_t ClamPass::getCfg(llvm::Function &F) {
+    assert(m_cfg_builder_man->hasCfg(F));
+    return m_cfg_builder_man->getCfg(F);
   }
 
-  CrabBuilderManager& ClamPass::get_cfg_builder_man() {
+  CrabBuilderManager& ClamPass::getCfgBuilderMan() {
     return *m_cfg_builder_man;
   }
   
   // return invariants that hold at the entry of block
-  llvm::Optional<clam_abstract_domain> ClamPass::get_pre(const llvm::BasicBlock *block,
+  llvm::Optional<clam_abstract_domain> ClamPass::getPre(const llvm::BasicBlock *block,
 							 bool keep_shadows) const {
     std::vector<varname_t> shadows;
-    auto &vfac = m_cfg_builder_man->get_var_factory();
+    auto &vfac = m_cfg_builder_man->getVarFactory();
     if (!keep_shadows)
       shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
 				       vfac.get_shadow_vars().end());
@@ -960,10 +960,10 @@ namespace clam {
   }   
 
   // return invariants that hold at the exit of block
-  llvm::Optional<clam_abstract_domain> ClamPass::get_post(const llvm::BasicBlock *block,
+  llvm::Optional<clam_abstract_domain> ClamPass::getPost(const llvm::BasicBlock *block,
 							  bool keep_shadows) const {
     std::vector<varname_t> shadows;
-    auto &vfac = m_cfg_builder_man->get_var_factory();    
+    auto &vfac = m_cfg_builder_man->getVarFactory();    
     if (!keep_shadows)
       shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
 				       vfac.get_shadow_vars().end());
@@ -974,27 +974,27 @@ namespace clam {
    * For assertion checking
    **/
   
-  unsigned ClamPass::get_total_checks() const {
-  return get_total_safe_checks() + get_total_error_checks() +
-           get_total_warning_checks();
+  unsigned ClamPass::getTotalChecks() const {
+  return getTotalSafeChecks() + getTotalErrorChecks() +
+           getTotalWarningChecks();
   }
 
-  unsigned ClamPass::get_total_safe_checks() const {
+  unsigned ClamPass::getTotalSafeChecks() const {
     return m_checks_db.get_total_safe();
   }
 
-  unsigned ClamPass::get_total_error_checks() const {
+  unsigned ClamPass::getTotalErrorChecks() const {
     return m_checks_db.get_total_error();
   }
 
-  unsigned ClamPass::get_total_warning_checks() const {
+  unsigned ClamPass::getTotalWarningChecks() const {
     return m_checks_db.get_total_warning();
   }
 
-  void ClamPass::print_checks(raw_ostream &o) const {
-    unsigned safe = get_total_safe_checks();
-    unsigned unsafe = get_total_error_checks();
-    unsigned warning = get_total_warning_checks();
+  void ClamPass::printChecks(raw_ostream &o) const {
+    unsigned safe = getTotalSafeChecks();
+    unsigned unsafe = getTotalErrorChecks();
+    unsigned warning = getTotalWarningChecks();
     std::vector<unsigned> cnts = { safe, unsafe, warning};
     unsigned MaxValLen = 0;
     for (auto c: cnts)

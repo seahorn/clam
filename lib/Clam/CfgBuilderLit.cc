@@ -56,10 +56,10 @@ var_t crabLitFactoryImpl::mkArrayVar(Region mem_region, const Value *name) {
   crab::variable_type type = crab::UNK_TYPE;
   unsigned bitwidth = 0; /* unknown */
   auto info = mem_region.getRegionInfo();
-  switch (info.get_type()) {
+  switch (info.getType()) {
   case INT_REGION:
     type = ARR_INT_TYPE;
-    bitwidth = info.get_bitwidth();
+    bitwidth = info.getBitwidth();
     break;
   case BOOL_REGION:
     type = ARR_BOOL_TYPE;
@@ -72,7 +72,7 @@ var_t crabLitFactoryImpl::mkArrayVar(Region mem_region, const Value *name) {
   default:
     CLAM_ERROR("unsupported region type");
   }
-  auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.get_id()));
+  auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.getId()));
   return var_t(varname, type, bitwidth);
 }
 
@@ -83,7 +83,7 @@ var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
   if (const Value *v = mem_region.getSingleton()) {
     Type *ty = cast<PointerType>(v->getType())->getElementType();
     bitwidth = ty->getIntegerBitWidth();
-    if (mem_region.getRegionInfo().get_type() == INT_REGION && bitwidth <= 1) {
+    if (mem_region.getRegionInfo().getType() == INT_REGION && bitwidth <= 1) {
       CLAM_ERROR("Integer region must have bitwidth > 1");
     }
     // If the singleton contains a pointer then getIntegerBitWidth()
@@ -92,7 +92,7 @@ var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
   } else {
     CLAM_ERROR("Memory region does not belong to a global singleton");
   }
-  switch (mem_region.getRegionInfo().get_type()) {
+  switch (mem_region.getRegionInfo().getType()) {
   case INT_REGION:
     type = INT_TYPE;
     break;
@@ -106,7 +106,7 @@ var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
   default:
     CLAM_ERROR("unsupported region type");
   }
-  auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.get_id()));
+  auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.getId()));
   return var_t(varname, type, bitwidth);
 }
 
@@ -253,14 +253,14 @@ crabLitFactory::crabLitFactory(llvm_variable_factory &vfac,
 
 crabLitFactory::~crabLitFactory() { delete m_impl; }
 
-llvm_variable_factory &crabLitFactory::get_vfac() { return m_impl->get_vfac(); }
+llvm_variable_factory &crabLitFactory::getVFac() { return m_impl->getVFac(); }
 
-CrabBuilderPrecision crabLitFactory::get_track() const {
-  return get_cfg_builder_params().precision_level;
+CrabBuilderPrecision crabLitFactory::getTrack() const {
+  return getCfgBuilderParams().precision_level;
 }
 
-const CrabBuilderParams &crabLitFactory::get_cfg_builder_params() const {
-  return m_impl->get_cfg_builder_params();
+const CrabBuilderParams &crabLitFactory::getCfgBuilderParams() const {
+  return m_impl->getCfgBuilderParams();
 }
 
 crab_lit_ref_t crabLitFactory::getLit(const Value &v) {

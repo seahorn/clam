@@ -102,7 +102,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodes(
           DsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
                       m_disambiguate_external);
 
-      if (r_info.get_type() != UNTYPED_REGION) {
+      if (r_info.getType() != UNTYPED_REGION) {
         Region reg(mkRegion(c, r_info));
         if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
           reads.push_back(reg);
@@ -179,7 +179,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
           DsaToRegion(calleeC, m_dl, m_disambiguate_unknown,
                       m_disambiguate_ptr_cast, m_disambiguate_external);
 
-      if (calleeRI.get_type() != UNTYPED_REGION) {
+      if (calleeRI.getType() != UNTYPED_REGION) {
         // Map the callee node to the node in the caller's callsite
         Cell callerC = simMap.get(calleeC);
         if (callerC.isNull()) {
@@ -483,7 +483,7 @@ LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
       DsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
                   m_disambiguate_external);
 
-  if (r_info.get_type() == UNTYPED_REGION) {
+  if (r_info.getType() == UNTYPED_REGION) {
     return Region();
   } else {
     return mkRegion(c, r_info);
@@ -510,7 +510,7 @@ Region LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
       RegionInfo r_info =
           DsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
                       m_disambiguate_external);
-      if (r_info.get_type() != UNTYPED_REGION) {
+      if (r_info.getType() != UNTYPED_REGION) {
         return mkRegion(c, r_info);
       }
     }

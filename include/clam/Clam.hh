@@ -43,8 +43,8 @@ using clam_abstract_domain = crab::domains::abstract_domain_ref<var_t>;
  *    AnalysisParams params;
  *    ic.analyze(params);
  *    for (auto &b: fun) {
- *      if (auto dom_ptr = ic.get_pre(&b)) {
- *         crab::outs << *dom_ptr << "\n";
+ *      if (clam_abstract_domain dom = ic.getPre(&b)) {
+ *         crab::outs << dom << "\n";
  *      }
  *    }
  **/
@@ -78,7 +78,7 @@ public:
   void clear();
 
   /* return the manager used to build all CFGs */
-  CrabBuilderManager &get_cfg_builder_man();
+  CrabBuilderManager &getCfgBuilderMan();
 
   /**
    * Call crab analysis on the CFG under assumptions.
@@ -112,34 +112,34 @@ public:
    *   - core is a minimal subset of statements that implies false
    **/
   bool
-  path_analyze(const AnalysisParams &params,
-               const std::vector<const llvm::BasicBlock *> &path,
-               /* use gradually more expensive domains until unsat is proven*/
-               bool layered_solving, std::vector<statement_t*> &core,
+  pathAnalyze(const AnalysisParams &params,
+	      const std::vector<const llvm::BasicBlock *> &path,
+	      /* use gradually more expensive domains until unsat is proven*/
+	      bool layered_solving, std::vector<statement_t*> &core,
                abs_dom_map_t &post) const;
 
   bool
-  path_analyze(const AnalysisParams &params,
-               const std::vector<const llvm::BasicBlock *> &path,
-               /* use gradually more expensive domains until unsat is proven*/
-               bool layered_solving, std::vector<statement_t*> &core) const;
+  pathAnalyze(const AnalysisParams &params,
+	      const std::vector<const llvm::BasicBlock *> &path,
+	      /* use gradually more expensive domains until unsat is proven*/
+	      bool layered_solving, std::vector<statement_t*> &core) const;
 
   /**
    * Return invariants that hold at the entry of b
    **/
-  llvm::Optional<clam_abstract_domain> get_pre(const llvm::BasicBlock *b,
-					       bool keep_shadows = false) const;
+  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
+					      bool keep_shadows = false) const;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  llvm::Optional<clam_abstract_domain> get_post(const llvm::BasicBlock *b,
-						bool keep_shadows = false) const;
+  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
+					       bool keep_shadows = false) const;
 
   /**
    * Return a database with all checks.
    **/
-  const checks_db_t &get_checks_db() const;
+  const checks_db_t &getChecksDB() const;
 };
 
 /**
@@ -168,7 +168,7 @@ public:
   ~InterClam();
 
   /* return the manager used to build all CFGs */
-  CrabBuilderManager &get_cfg_builder_man();
+  CrabBuilderManager &getCfgBuilderMan();
 
   /**
    * Clear all the internal state
@@ -188,19 +188,19 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  llvm::Optional<clam_abstract_domain> get_pre(const llvm::BasicBlock *b,
-					       bool keep_shadows = false) const;
+  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
+					      bool keep_shadows = false) const;
   
   /**
    * Return invariants that hold at the exit of b
    **/
-  llvm::Optional<clam_abstract_domain> get_post(const llvm::BasicBlock *b,
-						bool keep_shadows = false) const;
+  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
+					       bool keep_shadows = false) const;
 
   /**
    * Return a database with all checks.
    **/
-  const checks_db_t &get_checks_db() const;
+  const checks_db_t &getChecksDB() const;
 };
 
 /**
@@ -237,28 +237,28 @@ public:
   /* end ModulePass API */
 
   /* return the manager used to build all CFGs */
-  CrabBuilderManager &get_cfg_builder_man();
+  CrabBuilderManager &getCfgBuilderMan();
 
   /* return the analysis options */
-  const AnalysisParams &get_analysis_params() const { return m_params; }
+  const AnalysisParams &getAnalysisParams() const { return m_params; }
 
   /* return true if there is Crab CFG for F */
-  bool has_cfg(llvm::Function &F);
+  bool hasCfg(llvm::Function &F);
 
   /* return the Crab CFG associated to F */
-  cfg_ref_t get_cfg(llvm::Function &F);
+  cfg_ref_t getCfg(llvm::Function &F);
 
   /**
    * return invariants that hold at the entry of BB
    **/
-  llvm::Optional<clam_abstract_domain> get_pre(const llvm::BasicBlock *BB,
-					       bool KeepShadows = false) const;
+  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *BB,
+					      bool KeepShadows = false) const;
 
   /**
    * return invariants that hold at the exit of BB
    **/
-  llvm::Optional<clam_abstract_domain> get_post(const llvm::BasicBlock *BB,
-						bool KeepShadows = false) const;
+  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *BB,
+					       bool KeepShadows = false) const;
 
   /**
    * To query and view the analysis results
@@ -266,18 +266,18 @@ public:
 
   /* return total number of checks if assertion checker enabled,
      otherwise 0 */
-  unsigned get_total_checks() const;
+  unsigned getTotalChecks() const;
   /* return total number of safe checks if assertion checker
      enabled, otherwise 0 */
-  unsigned get_total_safe_checks() const;
+  unsigned getTotalSafeChecks() const;
   /* return total number of definite error checks if assertion
      checker enabled, otherwise 0 */
-  unsigned get_total_error_checks() const;
+  unsigned getTotalErrorChecks() const;
   /* return total number of possibly error checks if assertion
      checker enabled, otherwise 0 */
-  unsigned get_total_warning_checks() const;
+  unsigned getTotalWarningChecks() const;
 
-  void print_checks(llvm::raw_ostream &o) const;
+  void printChecks(llvm::raw_ostream &o) const;
 };
 
 } // namespace clam

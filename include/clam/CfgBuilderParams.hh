@@ -51,21 +51,21 @@ struct CrabBuilderParams {
     , enable_bignums(_enable_bignums)
     , print_cfg(_print_cfg) {}
   
-  bool track_pointers() const {
+  bool trackPointers() const {
     return precision_level == CrabBuilderPrecision::REF;
   }
 
   /* Represent only booleans and integers */
-  void set_num_precision() {
+  void setNumPrecision() {
     precision_level = CrabBuilderPrecision::NUM; }
 
   /* Represent booleans, integers, and arrays of those types */
-  void set_array_precision() {
+  void setArrayPrecision() {
     precision_level = CrabBuilderPrecision::ARR;
   }
   
   /* Represent booleans, integers, arrays and pointers */
-  void set_pointer_precision() {
+  void setPointerPrecision() {
     precision_level = CrabBuilderPrecision::REF; }
 
   void write(llvm::raw_ostream &o) const;

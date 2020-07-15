@@ -133,7 +133,7 @@ Region getShadowRegion(const seadsa::Cell &c, const llvm::DataLayout &dl,
     auto ri = DsaToRegion(c, dl, 
 			  /* these should be user flags */
 			  false, false, false);
-    if (ri.get_type() != UNTYPED_REGION) {
+    if (ri.getType() != UNTYPED_REGION) {
       return Region(cellId, ri, getUniqueScalar(c));
     }
   }

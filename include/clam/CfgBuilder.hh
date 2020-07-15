@@ -59,12 +59,12 @@ private:
 
   CfgBuilder(const llvm::Function &func, CrabBuilderManager &man);
 
-  void build_cfg();
+  void buildCfg();
 
   // return live symbols for the whole cfg. Return nullptr if
   // compute_live_symbols has not been called.
   // Only IntraClam_Impl and InterClam_Impl should call this method.
-  const liveness_t *get_live_symbols() const;
+  const liveness_t *getLiveSymbols() const;
 
 public:
   CfgBuilder(const CfgBuilder &o) = delete;
@@ -74,23 +74,23 @@ public:
   ~CfgBuilder();
 
   // return crab control flow graph
-  cfg_t &get_cfg();
+  cfg_t &getCfg();
 
   // compute live symbols per block by running standard liveness
   // analysis
-  void compute_live_symbols();
+  void computeLiveSymbols();
 
   // return live symbols at the end of block bb. Return None if
   // compute_live_symbols has not been called.
-  llvm::Optional<varset> get_live_symbols(const llvm::BasicBlock *bb) const;
+  llvm::Optional<varset> getLiveSymbols(const llvm::BasicBlock *bb) const;
 
   // map a llvm basic block to a crab basic block label
-  basic_block_label_t get_crab_basic_block(const llvm::BasicBlock *bb) const;
+  basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
 
   // map a llvm edge to a crab basic block label.
   // return nullptr if the edge is not translated to a crab basic block.
   const basic_block_label_t *
-  get_crab_basic_block(const llvm::BasicBlock *src,
+  getCrabBasicBlock(const llvm::BasicBlock *src,
                        const llvm::BasicBlock *dst) const;
 
   // Most crab statements have back pointers to LLVM operands so it
@@ -100,7 +100,7 @@ public:
   // This method maps an **array** crab statement to its
   // corresponding llvm instruction. Return null if the the array
   // instruction is not mapped to a LLVM instruction.
-  const llvm::Instruction *get_instruction(const statement_t &s) const;
+  const llvm::Instruction *getInstruction(const statement_t &s) const;
 
 }; // end class CfgBuilder
 
@@ -130,26 +130,26 @@ public:
 
   CrabBuilderManager &operator=(const CrabBuilderManager &o) = delete;
 
-  CfgBuilderPtr mk_cfg_builder(const llvm::Function &func);
+  CfgBuilderPtr mkCfgBuilder(const llvm::Function &func);
 
-  bool has_cfg(const llvm::Function &f) const;
+  bool hasCfg(const llvm::Function &f) const;
 
-  cfg_t &get_cfg(const llvm::Function &f) const;
+  cfg_t &getCfg(const llvm::Function &f) const;
 
-  CfgBuilderPtr get_cfg_builder(const llvm::Function &f) const;
+  CfgBuilderPtr getCfgBuilder(const llvm::Function &f) const;
 
-  variable_factory_t &get_var_factory();
+  variable_factory_t &getVarFactory();
 
-  const CrabBuilderParams &get_cfg_builder_params() const;
+  const CrabBuilderParams &getCfgBuilderParams() const;
 
-  const llvm::TargetLibraryInfo &get_tli(const llvm::Function&) const;
-  llvm::TargetLibraryInfoWrapperPass &get_tli_wrapper() const;
+  const llvm::TargetLibraryInfo &getTLI(const llvm::Function&) const;
+  llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
 
-  HeapAbstraction &get_heap_abstraction();
+  HeapAbstraction &getHeapAbstraction();
 
-  const seadsa::ShadowMem *get_shadow_mem() const;
+  const seadsa::ShadowMem *getShadowMem() const;
 
-  seadsa::ShadowMem *get_shadow_mem();
+  seadsa::ShadowMem *getShadowMem();
 
 private:
   // User-definable parameters for building the Crab CFGs

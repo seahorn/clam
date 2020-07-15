@@ -175,9 +175,9 @@ public:
   crabLitFactoryImpl(llvm_variable_factory &vfac,
                      const CrabBuilderParams &params);
 
-  llvm_variable_factory &get_vfac() { return m_vfac; }
+  llvm_variable_factory &getVFac() { return m_vfac; }
 
-  const CrabBuilderParams &get_cfg_builder_params() const { return m_params; }
+  const CrabBuilderParams &getCfgBuilderParams() const { return m_params; }
 
   // Translate v into a crab literal based on v's type
   crab_lit_ref_t getLit(const llvm::Value &v);
@@ -242,11 +242,11 @@ public:
 
   ~crabLitFactory();
 
-  llvm_variable_factory &get_vfac();
+  llvm_variable_factory &getVFac();
 
-  CrabBuilderPrecision get_track() const;
+  CrabBuilderPrecision getTrack() const;
 
-  const CrabBuilderParams &get_cfg_builder_params() const;
+  const CrabBuilderParams &getCfgBuilderParams() const;
 
   /** convert a Value to a crabLit **/
   crab_lit_ref_t getLit(const llvm::Value &v);

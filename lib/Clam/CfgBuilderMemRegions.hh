@@ -22,7 +22,7 @@ typedef typename HeapAbstraction::RegionVec RegionVec;
 
 // "Switch" function that uses either ShadowMem (mem) or
 // HeapAbstraction (sm) to return the cell pointer a LLVM pointer.
-inline Region get_region(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
+inline Region getRegion(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
                          const llvm::DataLayout &dl, llvm::Instruction *user,
                          llvm::Value *ptr) {
   if (sm) {
@@ -34,14 +34,14 @@ inline Region get_region(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
       return getShadowRegionFromGvInitializer(*sm, dl, *user, *ptr);
     } else {
       // To see which instructions we are skipping ...
-      CLAM_WARNING("get_region using ShadowMem skipped " << *user);
+      CLAM_WARNING("getRegion using ShadowMem skipped " << *user);
     }
   } else {
     // Use the Heap analysis (mem) to access to the cell pointed by the pointer.
     llvm::Function *fun = user->getParent()->getParent();
     Region res = mem.getRegion(*fun, user, ptr);
-    if (res.getRegionInfo().get_type() == INT_REGION ||
-        res.getRegionInfo().get_type() == BOOL_REGION) {
+    if (res.getRegionInfo().getType() == INT_REGION ||
+        res.getRegionInfo().getType() == BOOL_REGION) {
       return res;
     }
   }
@@ -49,13 +49,13 @@ inline Region get_region(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
 }
 
 // Return whether the region contains a singleton alias class.
-inline const llvm::Value *get_singleton_value(Region r,
+inline const llvm::Value *getSingletonValue(Region r,
                                               bool enable_unique_scalars) {
   if (enable_unique_scalars) {
     if (r.isUnknown())
       return nullptr;
-    if (r.getRegionInfo().get_type() == INT_REGION ||
-        r.getRegionInfo().get_type() == BOOL_REGION) {
+    if (r.getRegionInfo().getType() == INT_REGION ||
+        r.getRegionInfo().getType() == BOOL_REGION) {
       if (const llvm::Value *v = r.getSingleton()) {
         return v;
       }
@@ -70,39 +70,39 @@ inline const llvm::Value *get_singleton_value(Region r,
 
 // v is either a llvm::Function or llvm::CallInst.
 template <typename V>
-inline RegionVec get_read_only_regions(HeapAbstraction &mem, V &v) {
+inline RegionVec getReadOnlyRegions(HeapAbstraction &mem, V &v) {
   RegionVec res;
   auto regions = mem.getOnlyReadRegions(v);
   std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
                [](Region r) {
-                 return r.getRegionInfo().get_type() == INT_REGION ||
-                        r.getRegionInfo().get_type() == BOOL_REGION;
+                 return r.getRegionInfo().getType() == INT_REGION ||
+                        r.getRegionInfo().getType() == BOOL_REGION;
                });
   return res;
 }
 
 // v is either a llvm::Function or llvm::CallInst.
 template <typename V>
-inline RegionVec get_modified_regions(HeapAbstraction &mem, V &v) {
+inline RegionVec getModifiedRegions(HeapAbstraction &mem, V &v) {
   RegionVec res;
   auto regions = mem.getModifiedRegions(v);
   std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
                [](Region r) {
-                 return r.getRegionInfo().get_type() == INT_REGION ||
-                        r.getRegionInfo().get_type() == BOOL_REGION;
+                 return r.getRegionInfo().getType() == INT_REGION ||
+                        r.getRegionInfo().getType() == BOOL_REGION;
                });
   return res;
 }
 
 // v is either a llvm::Function or llvm::CallInst.
 template <typename V>
-inline RegionVec get_new_regions(HeapAbstraction &mem, V &v) {
+inline RegionVec getNewRegions(HeapAbstraction &mem, V &v) {
   RegionVec res;
   auto regions = mem.getNewRegions(v);
   std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
                [](Region r) {
-                 return r.getRegionInfo().get_type() == INT_REGION ||
-                        r.getRegionInfo().get_type() == BOOL_REGION;
+                 return r.getRegionInfo().getType() == INT_REGION ||
+                        r.getRegionInfo().getType() == BOOL_REGION;
                });
   return res;
 }

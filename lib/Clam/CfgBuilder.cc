@@ -145,13 +145,13 @@ void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac, basic_block_t &bb) {
 
   crab_lit_ref_t ref0 = lfac.getLit(v0);
   if (!ref0 || !(ref0->isInt())) {
-    havoc(lhs, bb, lfac.get_cfg_builder_params().include_useless_havoc);
+    havoc(lhs, bb, lfac.getCfgBuilderParams().include_useless_havoc);
     return;
   }
 
   crab_lit_ref_t ref1 = lfac.getLit(v1);
   if (!ref1 || !(ref1->isInt())) {
-    havoc(lhs, bb, lfac.get_cfg_builder_params().include_useless_havoc);
+    havoc(lhs, bb, lfac.getCfgBuilderParams().include_useless_havoc);
     return;
   }
 
@@ -338,7 +338,7 @@ var_t normalizeFuncParamOrRet(Value &v, basic_block_t &bb,
     }
   }
 
-  if (isTracked(v, lfac.get_cfg_builder_params())) {
+  if (isTracked(v, lfac.getCfgBuilderParams())) {
     if (isa<ConstantExpr>(v)) {
       CLAM_WARNING(
           "Clam cfg builder created a fresh variable from constant expr");
@@ -388,7 +388,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
     auto curr = BB.begin();
     for (; PHINode *phi = dyn_cast<PHINode>(curr); ++curr) {
       const Value &v = *phi->getIncomingValueForBlock(&m_inc_BB);
-      if (!isTracked(v, m_lfac.get_cfg_builder_params())) {
+      if (!isTracked(v, m_lfac.getCfgBuilderParams())) {
         continue;
       }
       const PHINode *phi_v = dyn_cast<PHINode>(&v);
@@ -440,7 +440,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
     curr = BB.begin();
     for (; isa<PHINode>(curr); ++curr) {
       PHINode &phi = *cast<PHINode>(curr);
-      if (!isTracked(phi, m_lfac.get_cfg_builder_params())) {
+      if (!isTracked(phi, m_lfac.getCfgBuilderParams())) {
         continue;
       }
       const Value &v = *phi.getIncomingValueForBlock(&m_inc_BB);
@@ -462,7 +462,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 	  m_bb.bool_assign(lhs, it->second);
 	} else if (phi.getType()->isIntegerTy()) {
 	  m_bb.assign(lhs, it->second);
-	} else if (isPointer(phi, m_lfac.get_cfg_builder_params())) {
+	} else if (isPointer(phi, m_lfac.getCfgBuilderParams())) {
 	  /* TO_BE_UPDATED */
 	  // m_bb.ptr_assign(lhs, it->second, number_t(0));
 	}
@@ -593,7 +593,7 @@ public:
       if (!r.isUnknown()) {
 	crab_lit_ref_t val_ref = m_lfac.getLit(Val);
 	assert(val_ref);
-	if (get_singleton_value(r, m_params.lower_singleton_aliases)) {
+	if (getSingletonValue(r, m_params.lower_singleton_aliases)) {
 	  // Promote the global to an integer/boolean scalar
 	  var_t a = m_lfac.mkArraySingletonVar(r);
 	  if (isInteger(Val.getType())) {
@@ -842,22 +842,22 @@ bool CrabInstVisitor::AllUsesAreNonTrackMem(Value *V) const {
   for (auto &U : V->uses()) {
     if (StoreInst *SI = dyn_cast<StoreInst>(U.getUser())) {
       if (isa<Instruction>(V)) {
-        if (get_region(m_mem, getShadowMem(), *m_dl, SI,
+        if (getRegion(m_mem, getShadowMem(), *m_dl, SI,
                        SI->getPointerOperand())
                 .isUnknown() &&
             (!SI->getValueOperand()->getType()->isPointerTy() ||
-             get_region(m_mem, getShadowMem(), *m_dl, SI, SI->getValueOperand())
+             getRegion(m_mem, getShadowMem(), *m_dl, SI, SI->getValueOperand())
                  .isUnknown()))
           continue;
       }
       return false;
     } else if (LoadInst *LI = dyn_cast<LoadInst>(U.getUser())) {
       if (Instruction *I = dyn_cast<Instruction>(V)) {
-        if (get_region(m_mem, getShadowMem(), *m_dl, LI,
+        if (getRegion(m_mem, getShadowMem(), *m_dl, LI,
                        LI->getPointerOperand())
                 .isUnknown() &&
             (!I->getType()->isPointerTy() ||
-             get_region(m_mem, getShadowMem(), *m_dl, LI, LI).isUnknown()))
+             getRegion(m_mem, getShadowMem(), *m_dl, LI, LI).isUnknown()))
           continue;
       }
       return false;
@@ -1193,20 +1193,20 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
   CLAM_WARNING("Skipped memory intrinsics " << I);
 
 #if 0 /* TO_BE_UPDATED */   
-  if (m_lfac.get_track() == NUM) {
+  if (m_lfac.getTrack() == NUM) {
     return;
-  } else if (m_lfac.get_track() == PTR) {
+  } else if (m_lfac.getTrack() == PTR) {
     // XXX: memory intrinsics are currently only translated for ARR
     CLAM_WARNING("Skipped memory intrinsics " << I);
     return;
   } 
 
-  assert(m_lfac.get_track() == ARR);
+  assert(m_lfac.getTrack() == ARR);
   
   MemCpyInst  *MCI = dyn_cast<MemCpyInst>(&I);
   MemMoveInst *MVI = dyn_cast<MemMoveInst>(&I);
   Value *dst = I.getDest();
-  Region dst_reg = get_region(m_mem, getShadowMem(), *m_dl, &I, dst);
+  Region dst_reg = getRegion(m_mem, getShadowMem(), *m_dl, &I, dst);
   if (dst_reg.isUnknown()) {
     return;
   }
@@ -1981,12 +1981,12 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       if (auto sm = getShadowMem()) {
 	CLAM_WARNING("TODO: precise translation of GEP if shadow mem is used");
       } else {
-	Region r = get_region(m_mem, getShadowMem(), *m_dl, &I, &I);
+	Region r = getRegion(m_mem, getShadowMem(), *m_dl, &I, &I);
 	if (r.isUnknown()) {
 	  // we don't keep track of the memory region, we bail out ...
 	  return;
 	}
-	if (get_singleton_value(r, m_params.lower_singleton_aliases)) {
+	if (getSingletonValue(r, m_params.lower_singleton_aliases)) {
 	  // the memory region is a singleton, we bail out ...
 	  return;
 	}
@@ -1999,7 +1999,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     
 
     if (isBasePtr) {
-      var_t shadowV(m_lfac.get_vfac().get(), crab::INT_TYPE, bitwidth);
+      var_t shadowV(m_lfac.getVFac().get(), crab::INT_TYPE, bitwidth);
       m_gep_map.insert(std::make_pair(&I, shadowV));
       doGep(I, false /*translateAsPtrStmt*/, bitwidth, shadowV, llvm::None);
     } else {
@@ -2017,7 +2017,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
 	    gep_var = sext_gep_var;
 	  }
 	  
-	  var_t shadowV(m_lfac.get_vfac().get(), crab::INT_TYPE, bitwidth);
+	  var_t shadowV(m_lfac.getVFac().get(), crab::INT_TYPE, bitwidth);
 	  m_gep_map.insert(std::make_pair(&I, shadowV));
 	  doGep(I, false /*translateAsPtrStmt*/, bitwidth, shadowV, gep_var);
 	  return;
@@ -2025,7 +2025,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       }
       // default case: we give up and translate the GEP to an
       // unconstrained Crab variable
-      var_t shadowV = getUnconstrainedArrayIdxVar(m_lfac.get_vfac(), bitwidth);      
+      var_t shadowV = getUnconstrainedArrayIdxVar(m_lfac.getVFac(), bitwidth);      
       CRAB_LOG("cfg-gep",
                CLAM_WARNING("cannot infer statically base address of  "
                             << *Ptr << " at function "
@@ -2057,7 +2057,7 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
     }
   } else {
     lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), reg,
-                                    m_lfac.get_vfac());
+                                    m_lfac.getVFac());
     /**
      * We can help the array domain if we know already that
      * the array store is a strong update.
@@ -2076,8 +2076,8 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton,
       // Due to heap abstraction imprecisions, it can happen
       // that the region's bitwidth is smaller than value's
       // bitwidth.
-      if (reg.getRegionInfo().get_bitwidth() < val->getVar().get_bitwidth()) {
-	temp_v = m_lfac.mkIntVar(reg.getRegionInfo().get_bitwidth());
+      if (reg.getRegionInfo().getBitwidth() < val->getVar().get_bitwidth()) {
+	temp_v = m_lfac.mkIntVar(reg.getRegionInfo().getBitwidth());
 	// XXX: this truncate operation can overflow but the
 	// store instruction does not overflow
 	m_bb.truncate(val->getVar(), temp_v);
@@ -2129,7 +2129,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
     return;
   }
 
-  if (m_lfac.get_track() == CrabBuilderPrecision::ARR &&
+  if (m_lfac.getTrack() == CrabBuilderPrecision::ARR &&
       (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))) {
     // -- value is an integer/bool -> add array statement
     if (!val) {
@@ -2140,16 +2140,16 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
       CLAM_ERROR("unexpected value operand of store instruction");
     }
     Region r =
-        get_region(m_mem, getShadowMem(), *m_dl, &I, I.getPointerOperand());
+        getRegion(m_mem, getShadowMem(), *m_dl, &I, I.getPointerOperand());
     if (!r.isUnknown()) {
       bool lowerToScalar =
-	get_singleton_value(r, m_params.lower_singleton_aliases);
+	getSingletonValue(r, m_params.lower_singleton_aliases);
       doStoreInst(I, lowerToScalar, 
 		  (lowerToScalar ? m_lfac.mkArraySingletonVar(r)
 		   : m_lfac.mkArrayVar(r)),
 		  val, r);
     }
-  } else if (m_lfac.get_track() == CrabBuilderPrecision::REF) {
+  } else if (m_lfac.getTrack() == CrabBuilderPrecision::REF) {
     if (!val) {
       CLAM_ERROR("unexpected value operand of store instruction");
     }
@@ -2207,18 +2207,18 @@ void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton, var_t lhs_v,
     // Due to heap abstraction imprecisions, it can happen
     // that the region's bitwidth is smaller than lhs_v'
     // bitwidth.
-    if (reg.getRegionInfo().get_bitwidth() < lhs_v.get_bitwidth()) {
-	lhs_v = m_lfac.mkIntVar(reg.getRegionInfo().get_bitwidth());
+    if (reg.getRegionInfo().getBitwidth() < lhs_v.get_bitwidth()) {
+	lhs_v = m_lfac.mkIntVar(reg.getRegionInfo().getBitwidth());
     }
     
     lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), reg,
-				    m_lfac.get_vfac());
+				    m_lfac.getVFac());
     
     auto const *crab_stmt =
       m_bb.array_load(lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()).getFixedSize());
     insertRevMap(crab_stmt, I);
     
-    if (reg.getRegionInfo().get_bitwidth() < lhs_v.get_bitwidth()) {
+    if (reg.getRegionInfo().getBitwidth() < lhs_v.get_bitwidth()) {
       // XXX: not sure if signed extension is correct.
       // Regions are signed-agnostic so dont know what is the
       // best choice here. Maybe if the regions' bitwidth is
@@ -2262,13 +2262,13 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
     return;
   }
 
-  if (m_lfac.get_track() == CrabBuilderPrecision::ARR && (isInteger(I) || isBool(I))) {
+  if (m_lfac.getTrack() == CrabBuilderPrecision::ARR && (isInteger(I) || isBool(I))) {
     // -- lhs is an integer/bool -> add array statement
     Region r =
-        get_region(m_mem, getShadowMem(), *m_dl, &I, I.getPointerOperand());
+        getRegion(m_mem, getShadowMem(), *m_dl, &I, I.getPointerOperand());
     if (!(r.isUnknown())) {
       bool lowerToScalar =
-          get_singleton_value(r, m_params.lower_singleton_aliases);
+          getSingletonValue(r, m_params.lower_singleton_aliases);
       if (auto sm = getShadowMem()) {
 	Value &useV = getShadowMemUse(I, *sm);
 	doLoadInst(I, lowerToScalar, lhs->getVar(),
@@ -2283,7 +2283,7 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
       }
       return;
     }
-  } else if (m_lfac.get_track() == CrabBuilderPrecision::REF) {
+  } else if (m_lfac.getTrack() == CrabBuilderPrecision::REF) {
 #if 0 /* TO_BE_UPDATED */    
     uint64_t elem_size = clam::storageSize(I.getPointerOperand()->getType(), *m_dl);
     assert(elem_size > 0);
@@ -2301,7 +2301,7 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
     m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
-  } else if (m_lfac.get_track() == ARR) {
+  } else if (m_lfac.getTrack() == ARR) {
     // Memory allocated in the stack is initially uninitialized.
     // 
     // We assume they are zero initialized so that Crab's array
@@ -2400,10 +2400,10 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     // -- havoc all modified regions by the callee
     // Note that even if the code is not available for the callee, the
     // pointer analysis might be able to model its pointer semantics.
-    if (m_lfac.get_track() == CrabBuilderPrecision::ARR /*TO_BE_UPDATED*/) {
-      RegionVec mods = get_modified_regions(m_mem, I);
+    if (m_lfac.getTrack() == CrabBuilderPrecision::ARR /*TO_BE_UPDATED*/) {
+      RegionVec mods = getModifiedRegions(m_mem, I);
       for (auto a : mods) {
-        if (get_singleton_value(a, m_params.lower_singleton_aliases))
+        if (getSingletonValue(a, m_params.lower_singleton_aliases))
           m_bb.havoc(m_lfac.mkArraySingletonVar(a));
         else
           m_bb.havoc(m_lfac.mkArrayVar(a));
@@ -2480,12 +2480,12 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     }
   }
 
-  if (m_lfac.get_track() == CrabBuilderPrecision::ARR) {
+  if (m_lfac.getTrack() == CrabBuilderPrecision::ARR) {
     // -- add the input and output array parameters a_i1,...,a_in
     // -- and a_o1,...,a_om.
-    RegionVec onlyreads = get_read_only_regions(m_mem, I);
-    RegionVec mods = get_modified_regions(m_mem, I);
-    RegionVec news = get_new_regions(m_mem, I);
+    RegionVec onlyreads = getReadOnlyRegions(m_mem, I);
+    RegionVec mods = getModifiedRegions(m_mem, I);
+    RegionVec news = getNewRegions(m_mem, I);
 
     CRAB_LOG("cfg-mem", llvm::errs()
                             << "Callsite " << I << "\n"
@@ -2498,7 +2498,7 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
 
     // -- add only read regions as array input parameters
     for (auto a : onlyreads) {
-      if (get_singleton_value(a, m_params.lower_singleton_aliases)) {
+      if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
         // Promote the global to a scalar
         inputs.push_back(m_lfac.mkArraySingletonVar(a));
       } else {
@@ -2513,7 +2513,7 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
       }
 
       // input version
-      if (get_singleton_value(a, m_params.lower_singleton_aliases)) {
+      if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
         // Promote the global to a scalar
         inputs.push_back(m_lfac.mkArraySingletonVar(a));
       } else {
@@ -2521,7 +2521,7 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
       }
 
       // output version
-      if (get_singleton_value(a, m_params.lower_singleton_aliases)) {
+      if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
         // Promote the global to a scalar
         outputs.push_back(m_lfac.mkArraySingletonVar(a));
       } else {
@@ -2568,7 +2568,7 @@ public:
                  llvm::TargetLibraryInfoWrapperPass *tli,
 		 const CrabBuilderParams &params);
 
-  void build_cfg();
+  void buildCfg();
 
   CfgBuilderImpl(const CfgBuilderImpl &o) = delete;
 
@@ -2577,15 +2577,15 @@ public:
   ~CfgBuilderImpl();
 
   // return crab control flow graph
-  cfg_t &get_cfg();
+  cfg_t &getCfg();
 
   // map a llvm basic block to a crab basic block label
-  basic_block_label_t get_crab_basic_block(const llvm::BasicBlock *bb) const;
+  basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
 
   // map a llvm edge to a crab basic block label.
   // return nullptr if the edge is not translated to a crab basic block.
   const basic_block_label_t *
-  get_crab_basic_block(const llvm::BasicBlock *src,
+  getCrabBasicBlock(const llvm::BasicBlock *src,
                        const llvm::BasicBlock *dst) const;
 
   // Most crab statements have back pointers to LLVM operands so it
@@ -2595,7 +2595,7 @@ public:
   // This method maps an **array** crab statement to its
   // corresponding llvm instruction. Return null if the the array
   // instruction is not mapped to a LLVM instruction.
-  const llvm::Instruction *get_instruction(const statement_t &s) const;
+  const llvm::Instruction *getInstruction(const statement_t &s) const;
 
 private:
   // map from a llvm basic block to a crab basic block id
@@ -2648,24 +2648,24 @@ private:
   // cfg builder parameters
   const CrabBuilderParams &m_params;
 
-  /// Helpers for build_cfg
+  /// Helpers for buildCfg
 
   // Given a llvm basic block return its corresponding crab basic block
   basic_block_t *lookup(const llvm::BasicBlock &bb) const;
 
-  void add_block(const llvm::BasicBlock &bb);
+  void addBlock(const llvm::BasicBlock &bb);
 
-  void add_edge(const llvm::BasicBlock &src, const llvm::BasicBlock &target);
+  void addEdge(const llvm::BasicBlock &src, const llvm::BasicBlock &target);
 
-  basic_block_t *exec_edge(const llvm::BasicBlock &src,
+  basic_block_t *execEdge(const llvm::BasicBlock &src,
                            const llvm::BasicBlock &target);
 
-  void add_block_in_between(basic_block_t &src, basic_block_t &dst,
+  void addBlockInBetween(basic_block_t &src, basic_block_t &dst,
                             basic_block_t &between);
 
-  basic_block_label_t make_crab_basic_block_label(const llvm::BasicBlock *bb);
+  basic_block_label_t makeCrabBasicBlockLabel(const llvm::BasicBlock *bb);
 
-  basic_block_label_t make_crab_basic_block_label(const llvm::BasicBlock *src,
+  basic_block_label_t makeCrabBasicBlockLabel(const llvm::BasicBlock *src,
                                                   const llvm::BasicBlock *dst);
 }; // end class CfgBuilderImpl
 
@@ -2680,19 +2680,19 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func,
       m_func(const_cast<Function &>(func)), m_lfac(vfac, params), m_mem(mem),
       m_sm(sm), m_cfg(nullptr), m_id(0),
       m_dl(&(func.getParent()->getDataLayout())), m_tli(tli), m_params(params) {
-  m_cfg = std::make_unique<cfg_t>(make_crab_basic_block_label(&m_func.getEntryBlock()));
+  m_cfg = std::make_unique<cfg_t>(makeCrabBasicBlockLabel(&m_func.getEntryBlock()));
 }
 
 CfgBuilderImpl::~CfgBuilderImpl() {}
 
-cfg_t &CfgBuilderImpl::get_cfg() {
+cfg_t &CfgBuilderImpl::getCfg() {
   // it won't build if already built
-  build_cfg();
+  buildCfg();
   return *m_cfg;
 }
 
 const llvm::Instruction *
-CfgBuilderImpl::get_instruction(const statement_t &s) const {
+CfgBuilderImpl::getInstruction(const statement_t &s) const {
   auto it = m_rev_map.find(&s);
   if (it != m_rev_map.end()) {
     return it->second;
@@ -2702,7 +2702,7 @@ CfgBuilderImpl::get_instruction(const statement_t &s) const {
 }
 
 basic_block_label_t
-CfgBuilderImpl::get_crab_basic_block(const BasicBlock *bb) const {
+CfgBuilderImpl::getCrabBasicBlock(const BasicBlock *bb) const {
   auto it = m_node_to_crab_map.find(bb);
   if (it == m_node_to_crab_map.end()) {
     CLAM_ERROR("cannot map llvm basic block ", bb->getName(),
@@ -2712,7 +2712,7 @@ CfgBuilderImpl::get_crab_basic_block(const BasicBlock *bb) const {
 }
 
 const basic_block_label_t *
-CfgBuilderImpl::get_crab_basic_block(const BasicBlock *src,
+CfgBuilderImpl::getCrabBasicBlock(const BasicBlock *src,
                                      const BasicBlock *dst) const {
   auto it = m_edge_to_crab_map.find(std::make_pair(src, dst));
   if (it != m_edge_to_crab_map.end()) {
@@ -2731,22 +2731,22 @@ basic_block_t *CfgBuilderImpl::lookup(const BasicBlock &bb) const {
   return &(m_cfg->get_node(it->second));
 }
 
-void CfgBuilderImpl::add_block(const BasicBlock &bb) {
+void CfgBuilderImpl::addBlock(const BasicBlock &bb) {
   auto it = m_node_to_crab_map.find(&bb);
   if (it == m_node_to_crab_map.end()) {
-    auto bb_label = make_crab_basic_block_label(&bb);
+    auto bb_label = makeCrabBasicBlockLabel(&bb);
     m_cfg->insert(bb_label);
   }
 }
 
-void CfgBuilderImpl::add_edge(const BasicBlock &src, const BasicBlock &dst) {
+void CfgBuilderImpl::addEdge(const BasicBlock &src, const BasicBlock &dst) {
   basic_block_t *crab_src = lookup(src);
   basic_block_t *crab_dst = lookup(dst);
   assert(crab_src && crab_dst);
   *crab_src >> *crab_dst;
 }
 
-void CfgBuilderImpl::add_block_in_between(basic_block_t &src,
+void CfgBuilderImpl::addBlockInBetween(basic_block_t &src,
                                           basic_block_t &dst,
                                           basic_block_t &bb) {
   src -= dst;
@@ -2755,14 +2755,14 @@ void CfgBuilderImpl::add_block_in_between(basic_block_t &src,
 }
 
 basic_block_label_t
-CfgBuilderImpl::make_crab_basic_block_label(const BasicBlock *bb) {
+CfgBuilderImpl::makeCrabBasicBlockLabel(const BasicBlock *bb) {
   ++m_id;
   basic_block_label_t res(bb, m_id);
   m_node_to_crab_map.insert({bb, res});
   return res;
 }
 
-static std::string create_bb_name(unsigned id, std::string prefix = "") {
+static std::string createBasicBlockName(unsigned id, std::string prefix = "") {
   if (prefix == "")
     prefix = std::string("__@bb_");
   std::string id_str = std::to_string(id);
@@ -2770,17 +2770,17 @@ static std::string create_bb_name(unsigned id, std::string prefix = "") {
 }
 
 basic_block_label_t
-CfgBuilderImpl::make_crab_basic_block_label(const BasicBlock *src,
+CfgBuilderImpl::makeCrabBasicBlockLabel(const BasicBlock *src,
                                             const BasicBlock *dst) {
   ++m_id;
-  std::string name = create_bb_name(m_id);
+  std::string name = createBasicBlockName(m_id);
   basic_block_label_t res(src, dst, name, m_id);
   m_edge_to_crab_map.insert({{src, dst}, res});
   return res;
 }
 
 //! return the new block inserted between src and dest if any
-basic_block_t *CfgBuilderImpl::exec_edge(const BasicBlock &src,
+basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
                                          const BasicBlock &dst) {
   if (const BranchInst *br = dyn_cast<const BranchInst>(src.getTerminator())) {
     if (br->isConditional()) {
@@ -2789,9 +2789,9 @@ basic_block_t *CfgBuilderImpl::exec_edge(const BasicBlock &src,
       assert(crab_src && crab_dst);
 
       // Create a new crab block that represents the LLVM edge
-      auto bb_label = make_crab_basic_block_label(&src, &dst);
+      auto bb_label = makeCrabBasicBlockLabel(&src, &dst);
       basic_block_t &bb = m_cfg->insert(bb_label);
-      add_block_in_between(*crab_src, *crab_dst, bb);
+      addBlockInBetween(*crab_src, *crab_dst, bb);
 
       // Populate the new crab block with an assume
       const Value &c = *br->getCondition();
@@ -2847,7 +2847,7 @@ basic_block_t *CfgBuilderImpl::exec_edge(const BasicBlock &src,
       return &bb;
     } else {
       // br is unconditional
-      add_edge(src, dst);
+      addEdge(src, dst);
     }
   } else if (const SwitchInst *SI = dyn_cast<SwitchInst>(src.getTerminator())) {
     // switch <value>, label <defaultdest> [ <val>, label <dest> ... ]
@@ -2861,12 +2861,12 @@ basic_block_t *CfgBuilderImpl::exec_edge(const BasicBlock &src,
     // sequence:
     //      "assume(value != val1); ... ; assume(value != valk);"
 
-    add_edge(src, dst);
+    addEdge(src, dst);
   }
   return nullptr;
 }
 
-void CfgBuilderImpl::build_cfg() {
+void CfgBuilderImpl::buildCfg() {
   if (m_is_cfg_built) {
     return;
   }
@@ -2881,7 +2881,7 @@ void CfgBuilderImpl::build_cfg() {
 
   // Create create basic block for each LLVM block
   for (auto &B : m_func) {
-    add_block(B);
+    addBlock(B);
   }
 
   // Lower global initializers into main
@@ -2953,7 +2953,7 @@ void CfgBuilderImpl::build_cfg() {
       for (const BasicBlock *dst : succs_vector) {
         // -- move branch condition in bb to a new block inserted
         //    between bb and dst
-        basic_block_t *mid_bb = exec_edge(B, *dst);
+        basic_block_t *mid_bb = execEdge(B, *dst);
 
         // -- phi nodes in dst are translated into assignments in
         //    the predecessor
@@ -3054,11 +3054,11 @@ void CfgBuilderImpl::build_cfg() {
       }
     }
 
-    if (m_lfac.get_track() == CrabBuilderPrecision::ARR && (!m_func.getName().equals("main"))) {
+    if (m_lfac.getTrack() == CrabBuilderPrecision::ARR && (!m_func.getName().equals("main"))) {
       // -- add the input and output array parameters
-      RegionVec onlyreads = get_read_only_regions(m_mem, m_func);
-      RegionVec mods = get_modified_regions(m_mem, m_func);
-      RegionVec news = get_new_regions(m_mem, m_func);
+      RegionVec onlyreads = getReadOnlyRegions(m_mem, m_func);
+      RegionVec mods = getModifiedRegions(m_mem, m_func);
+      RegionVec news = getNewRegions(m_mem, m_func);
 
       CRAB_LOG("cfg-mem", llvm::errs() << "Function " << m_func.getName()
                                        << "\n\tOnly-Read regions "
@@ -3069,7 +3069,7 @@ void CfgBuilderImpl::build_cfg() {
 
       // -- add only read regions as input parameters
       for (auto a : onlyreads) {
-        if (get_singleton_value(a, m_params.lower_singleton_aliases)) {
+        if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
           // Promote the global to a scalar
           inputs.push_back(m_lfac.mkArraySingletonVar(a));
         } else {
@@ -3093,7 +3093,7 @@ void CfgBuilderImpl::build_cfg() {
         /** Added in the entry block of the function **/
         entry.set_insert_point_front();
         if (const Value *v =
-                get_singleton_value(a, m_params.lower_singleton_aliases)) {
+                getSingletonValue(a, m_params.lower_singleton_aliases)) {
           // Promote the global to a scalar
           Type *ty = cast<PointerType>(v->getType())->getElementType();
           var_t s = m_lfac.mkArraySingletonVar(a);
@@ -3106,7 +3106,7 @@ void CfgBuilderImpl::build_cfg() {
           } else { /* unreachable */
           }
         } else {
-          switch (a.getRegionInfo().get_type()) {
+          switch (a.getRegionInfo().getType()) {
           case INT_REGION:
             a_in = m_lfac.mkIntArrayVar(0 /*unknown bitwidth*/);
             break;
@@ -3125,7 +3125,7 @@ void CfgBuilderImpl::build_cfg() {
           inputs.push_back(a_in.getValue());
 
         // output version
-        if (get_singleton_value(a, m_params.lower_singleton_aliases)) {
+        if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
           // Promote the global to a scalar
           outputs.push_back(m_lfac.mkArraySingletonVar(a));
         } else {
@@ -3304,37 +3304,37 @@ void CrabBuilderParams::write(raw_ostream &o) const {
 
 /* CFG Builder class */
 CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManager &man)
-  : m_impl(std::make_unique<CfgBuilderImpl>(func, man.get_var_factory(),
-					    man.get_heap_abstraction(),
-					    man.get_shadow_mem(), &(man.get_tli_wrapper()),
-					    man.get_cfg_builder_params())),
+  : m_impl(std::make_unique<CfgBuilderImpl>(func, man.getVarFactory(),
+					    man.getHeapAbstraction(),
+					    man.getShadowMem(), &(man.getTLIWrapper()),
+					    man.getCfgBuilderParams())),
     m_ls(nullptr) {}
 
 CfgBuilder::~CfgBuilder() {}
 
-void CfgBuilder::build_cfg() { m_impl->build_cfg(); }
+void CfgBuilder::buildCfg() { m_impl->buildCfg(); }
 
-cfg_t &CfgBuilder::get_cfg() { return m_impl->get_cfg(); }
+cfg_t &CfgBuilder::getCfg() { return m_impl->getCfg(); }
 
 basic_block_label_t
-CfgBuilder::get_crab_basic_block(const llvm::BasicBlock *bb) const {
-  return m_impl->get_crab_basic_block(bb);
+CfgBuilder::getCrabBasicBlock(const llvm::BasicBlock *bb) const {
+  return m_impl->getCrabBasicBlock(bb);
 }
 
 const basic_block_label_t *
-CfgBuilder::get_crab_basic_block(const llvm::BasicBlock *src,
+CfgBuilder::getCrabBasicBlock(const llvm::BasicBlock *src,
                                  const llvm::BasicBlock *dst) const {
-  return m_impl->get_crab_basic_block(src, dst);
+  return m_impl->getCrabBasicBlock(src, dst);
 }
 
 const llvm::Instruction *
-CfgBuilder::get_instruction(const statement_t &s) const {
-  return m_impl->get_instruction(s);
+CfgBuilder::getInstruction(const statement_t &s) const {
+  return m_impl->getInstruction(s);
 }
 
-void CfgBuilder::compute_live_symbols() {
+void CfgBuilder::computeLiveSymbols() {
   if (!m_ls) {
-    auto &cfg = m_impl->get_cfg();
+    auto &cfg = m_impl->getCfg();
     m_ls = std::make_unique<liveness_t>(cfg);
     CRAB_VERBOSE_IF(1, auto fdecl = cfg.get_func_decl();
                     crab::get_msg_stream()
@@ -3353,16 +3353,16 @@ void CfgBuilder::compute_live_symbols() {
   }
 }
 
-const CfgBuilder::liveness_t* CfgBuilder::get_live_symbols() const {
+const CfgBuilder::liveness_t* CfgBuilder::getLiveSymbols() const {
   return (m_ls ? &*m_ls: nullptr);
 }
 
 Optional<CfgBuilder::varset>
-CfgBuilder::get_live_symbols(const BasicBlock *B) const {
+CfgBuilder::getLiveSymbols(const BasicBlock *B) const {
   if (!m_ls) {
     return llvm::None;
   } else {
-    basic_block_label_t bbl = get_crab_basic_block(B);
+    basic_block_label_t bbl = getCrabBasicBlock(B);
     return m_ls->get(bbl);
   }
 }
@@ -3386,11 +3386,11 @@ CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
 CrabBuilderManager::~CrabBuilderManager() {}
 
 CrabBuilderManager::CfgBuilderPtr
-CrabBuilderManager::mk_cfg_builder(const Function &f) {
+CrabBuilderManager::mkCfgBuilder(const Function &f) {
   auto it = m_cfg_builder_map.find(&f);
   if (it == m_cfg_builder_map.end()) {
     CfgBuilderPtr builder(new CfgBuilder(f, *this));
-    builder->build_cfg();
+    builder->buildCfg();
     m_cfg_builder_map.insert({&f, builder});
     return builder;
   } else {
@@ -3398,16 +3398,16 @@ CrabBuilderManager::mk_cfg_builder(const Function &f) {
   }
 }
 
-bool CrabBuilderManager::has_cfg(const Function &f) const {
+bool CrabBuilderManager::hasCfg(const Function &f) const {
   return m_cfg_builder_map.find(&f) != m_cfg_builder_map.end();
 }
 
-cfg_t &CrabBuilderManager::get_cfg(const Function &f) const {
-  return get_cfg_builder(f)->get_cfg();
+cfg_t &CrabBuilderManager::getCfg(const Function &f) const {
+  return getCfgBuilder(f)->getCfg();
 }
 
 CrabBuilderManager::CfgBuilderPtr
-CrabBuilderManager::get_cfg_builder(const Function &f) const {
+CrabBuilderManager::getCfgBuilder(const Function &f) const {
   auto it = m_cfg_builder_map.find(&f);
   if (it == m_cfg_builder_map.end()) {
     CLAM_ERROR("Cannot find crab cfg for ", f.getName());
@@ -3415,26 +3415,26 @@ CrabBuilderManager::get_cfg_builder(const Function &f) const {
   return it->second;
 }
 
-variable_factory_t &CrabBuilderManager::get_var_factory() { return m_vfac; }
+variable_factory_t &CrabBuilderManager::getVarFactory() { return m_vfac; }
 
-const CrabBuilderParams &CrabBuilderManager::get_cfg_builder_params() const {
+const CrabBuilderParams &CrabBuilderManager::getCfgBuilderParams() const {
   return m_params;
 }
 
-const llvm::TargetLibraryInfo &CrabBuilderManager::get_tli(const Function &F) const {
+const llvm::TargetLibraryInfo &CrabBuilderManager::getTLI(const Function &F) const {
   return m_tli.getTLI(F);
 }
 
-llvm::TargetLibraryInfoWrapperPass &CrabBuilderManager::get_tli_wrapper() const {
+llvm::TargetLibraryInfoWrapperPass &CrabBuilderManager::getTLIWrapper() const {
   return m_tli;
 }
 
-HeapAbstraction &CrabBuilderManager::get_heap_abstraction() { return *m_mem; }
+HeapAbstraction &CrabBuilderManager::getHeapAbstraction() { return *m_mem; }
 
-const seadsa::ShadowMem *CrabBuilderManager::get_shadow_mem() const {
+const seadsa::ShadowMem *CrabBuilderManager::getShadowMem() const {
   return m_sm;
 }
 
-seadsa::ShadowMem *CrabBuilderManager::get_shadow_mem() { return m_sm; }
+seadsa::ShadowMem *CrabBuilderManager::getShadowMem() { return m_sm; }
   
 } // end namespace clam
