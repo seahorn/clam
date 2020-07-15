@@ -6,7 +6,6 @@
 
 namespace clam {
 using namespace ikos;
-using BASE(interval_domain_t) = interval_domain <number_t, dom_varname_t>;
-using interval_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(interval_domain_t))));  
+using BASE(interval_domain_t) = interval_domain<number_t, dom_varname_t>;
+using interval_domain_t = REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(interval_domain_t))));
 } // end namespace clam
-

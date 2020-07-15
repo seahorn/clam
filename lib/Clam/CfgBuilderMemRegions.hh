@@ -23,8 +23,8 @@ typedef typename HeapAbstraction::RegionVec RegionVec;
 // "Switch" function that uses either ShadowMem (mem) or
 // HeapAbstraction (sm) to return the cell pointer a LLVM pointer.
 inline Region getRegion(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
-                         const llvm::DataLayout &dl, llvm::Instruction *user,
-                         llvm::Value *ptr) {
+                        const llvm::DataLayout &dl, llvm::Instruction *user,
+                        llvm::Value *ptr) {
   if (sm) {
     // Use ShadowMem (sm) to access to the cell pointed by the pointer.
     llvm::CallInst *CI = llvm::dyn_cast<llvm::CallInst>(user);
@@ -50,7 +50,7 @@ inline Region getRegion(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
 
 // Return whether the region contains a singleton alias class.
 inline const llvm::Value *getSingletonValue(Region r,
-                                              bool enable_unique_scalars) {
+                                            bool enable_unique_scalars) {
   if (enable_unique_scalars) {
     if (r.isUnknown())
       return nullptr;

@@ -25,8 +25,7 @@ path_analyzer<CFG, AbsDom>::path_analyzer(CFG cfg, AbsDom init)
 template <typename CFG, typename AbsDom>
 bool path_analyzer<CFG, AbsDom>::solve_path(
     const std::vector<basic_block_label_t> &path,
-    const bool only_bool_reasoning,
-    std::vector<statement_t*> &path_statements,
+    const bool only_bool_reasoning, std::vector<statement_t *> &path_statements,
     // block where bottom was detected
     unsigned &bottom_block,
     // first statement  in bottom_block-nth block where bottom was detected
@@ -114,9 +113,12 @@ bool path_analyzer<CFG, AbsDom>::solve(
       }
       if (i < path.size() - 1) {
         if (!has_kid(path[i], path[i + 1])) {
-          CRAB_WARN("There is no an edge from ",
-                    crab::basic_block_traits<clam::basic_block_t>::to_string(path[i]), " to ",
-                    crab::basic_block_traits<clam::basic_block_t>::to_string(path[i + 1]));
+          CRAB_WARN(
+              "There is no an edge from ",
+              crab::basic_block_traits<clam::basic_block_t>::to_string(path[i]),
+              " to ",
+              crab::basic_block_traits<clam::basic_block_t>::to_string(
+                  path[i + 1]));
           return true;
         }
       }
@@ -125,7 +127,7 @@ bool path_analyzer<CFG, AbsDom>::solve(
 
   // contain all statements along the path until the end of the path
   // or bottom is found.
-  std::vector<statement_t*> path_statements;
+  std::vector<statement_t *> path_statements;
   // Compute strongest post-condition over the path
   unsigned bottom_block; // block where bottom was detected
   unsigned
@@ -178,7 +180,7 @@ bool path_analyzer<CFG, AbsDom>::has_kid(basic_block_label_t b1,
 // Return true if the core is just the statement "assume(false)"
 template <typename CFG, typename AbsDom>
 bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
-    std::vector<statement_t*> &core, unsigned bottom_stmt,
+    std::vector<statement_t *> &core, unsigned bottom_stmt,
     bool only_data_dependencies) {
   typedef typename CFG::basic_block_t::assume_t assume_t;
   typedef typename CFG::basic_block_t::bool_assume_t bool_assume_t;
@@ -186,7 +188,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   unsigned size = core.size();
   basic_block_t *parent_bb = core[size - 1]->get_parent();
   assert(parent_bb);
-  
+
   if (do_debugging) {
     crab::outs() << "CRAB PATH:\n";
     for (auto s : core) {
@@ -302,7 +304,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   if (do_debugging) {
     crab::outs() << "SYNTACTIC UNSAT CORE PATH:\n";
   }
-  std::vector<statement_t*> res;
+  std::vector<statement_t *> res;
   res.reserve(size);
   for (unsigned i = 0; i < size; ++i) {
     if (enabled[i]) {
@@ -325,10 +327,9 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
  **/
 template <typename CFG, typename AbsDom>
 void path_analyzer<CFG, AbsDom>::minimize_path(
-    const std::vector<statement_t*> &path,
-    unsigned bottom_stmt) {
+    const std::vector<statement_t *> &path, unsigned bottom_stmt) {
 
-  std::vector<statement_t*> core(path.begin(), path.end());
+  std::vector<statement_t *> core(path.begin(), path.end());
 
   if (only_syntactic_core) {
     /* only syntactic */
@@ -441,4 +442,3 @@ namespace analyzer {
 template class path_analyzer<clam::cfg_ref_t, clam::clam_abstract_domain>;
 } // end namespace analyzer
 } // end namespace crab
-

@@ -239,16 +239,15 @@ void LegacySeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
       "heap-abs", llvm::errs()
                       << "========= HeapAbstraction using sea-dsa =========\n");
 
-  CRAB_VERBOSE_IF(
-      3, for (auto &F
-              : M) {
-        if (m_dsa->hasGraph(F)) {
-          errs() << "#### " << F.getName() << "####\n";
-          auto &G = m_dsa->getGraph(F);
-          G.write(errs());
-          errs() << "\n";
-        }
-      });
+  CRAB_VERBOSE_IF(3, for (auto &F
+                          : M) {
+    if (m_dsa->hasGraph(F)) {
+      errs() << "#### " << F.getName() << "####\n";
+      auto &G = m_dsa->getGraph(F);
+      G.write(errs());
+      errs() << "\n";
+    }
+  });
 
   callsite_map_t cs_accessed, cs_mods, cs_news;
   for (auto const &F : M) {

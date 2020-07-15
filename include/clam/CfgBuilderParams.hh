@@ -5,11 +5,11 @@
 namespace clam {
 
 enum class CrabBuilderPrecision {
-NUM, // only integers and boolean
-ARR, // NUM + abstract arrays
-REF  // ARR + pointers
+  NUM, // only integers and boolean
+  ARR, // NUM + abstract arrays
+  REF  // ARR + pointers
 };
-  
+
 /** User-definable parameters to build a Crab CFG **/
 struct CrabBuilderParams {
   // Level of abstraction of the CFG
@@ -28,48 +28,36 @@ struct CrabBuilderParams {
   //// --- printing options
   // print the cfg after it has been built
   bool print_cfg;
-  
-  CrabBuilderParams():
-    precision_level(CrabBuilderPrecision::NUM)
-    , simplify(false)
-    , interprocedural(true)
-    , lower_singleton_aliases(false)
-    , include_useless_havoc(true)
-    , enable_bignums(false)
-    , print_cfg(false) {}
-  
-  CrabBuilderParams(CrabBuilderPrecision _precision_level,
-		    bool _simplify, bool _interprocedural, bool _lower_singleton_aliases,
-		    bool _include_useless_havoc, 
-		    bool _enable_bignums,
-		    bool _print_cfg):
-    precision_level(_precision_level)
-    , simplify(_simplify)
-    , interprocedural(_interprocedural)
-    , lower_singleton_aliases(_lower_singleton_aliases)
-    , include_useless_havoc(_include_useless_havoc)
-    , enable_bignums(_enable_bignums)
-    , print_cfg(_print_cfg) {}
-  
+
+  CrabBuilderParams()
+      : precision_level(CrabBuilderPrecision::NUM), simplify(false),
+        interprocedural(true), lower_singleton_aliases(false),
+        include_useless_havoc(true), enable_bignums(false), print_cfg(false) {}
+
+  CrabBuilderParams(CrabBuilderPrecision _precision_level, bool _simplify,
+                    bool _interprocedural, bool _lower_singleton_aliases,
+                    bool _include_useless_havoc, bool _enable_bignums,
+                    bool _print_cfg)
+      : precision_level(_precision_level), simplify(_simplify),
+        interprocedural(_interprocedural),
+        lower_singleton_aliases(_lower_singleton_aliases),
+        include_useless_havoc(_include_useless_havoc),
+        enable_bignums(_enable_bignums), print_cfg(_print_cfg) {}
+
   bool trackPointers() const {
     return precision_level == CrabBuilderPrecision::REF;
   }
 
   /* Represent only booleans and integers */
-  void setNumPrecision() {
-    precision_level = CrabBuilderPrecision::NUM; }
+  void setNumPrecision() { precision_level = CrabBuilderPrecision::NUM; }
 
   /* Represent booleans, integers, and arrays of those types */
-  void setArrayPrecision() {
-    precision_level = CrabBuilderPrecision::ARR;
-  }
-  
+  void setArrayPrecision() { precision_level = CrabBuilderPrecision::ARR; }
+
   /* Represent booleans, integers, arrays and pointers */
-  void setPointerPrecision() {
-    precision_level = CrabBuilderPrecision::REF; }
+  void setPointerPrecision() { precision_level = CrabBuilderPrecision::REF; }
 
   void write(llvm::raw_ostream &o) const;
 };
 
 } // end namespace clam
-

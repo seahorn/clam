@@ -4,7 +4,6 @@
  * Types and macros to define abstract domains.
  **/
 
-
 // AG: Something is wrong. Formatting breaks compilation
 // clang-format off
 

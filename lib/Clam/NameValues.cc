@@ -1,11 +1,11 @@
 #include "clam/Support/NameValues.hh"
 
+#include "clam/Support/Boost.hh"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/CommandLine.h"
-#include "clam/Support/Boost.hh"
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/tokenizer.hpp>
 

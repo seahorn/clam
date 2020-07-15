@@ -120,12 +120,12 @@ static bool isOverlappingCell(const Cell &c, const DataLayout &dl) {
   return true;
 }
 
-// Make sure that there is no other overlapping cells. 
+// Make sure that there is no other overlapping cells.
 static bool isDisjointCell(const Cell &c, const DataLayout &dl) {
   if (isOverlappingCell(c, dl)) {
     CRAB_LOG("heap-abs",
              errs() << "\tCannot be converted to region because overlaps "
-                                   "with other cells.\n";);
+                       "with other cells.\n";);
     return false;
   }
 
@@ -138,16 +138,18 @@ static bool isDisjointCell(const Cell &c, const DataLayout &dl) {
     return false;
   }
 
-  // XXX: I think we don't need this strong condition for soundness.  
+  // XXX: I think we don't need this strong condition for soundness.
   // This would disallow an array of struct.
   //
   // if (n->isArray()) {
   //   if (std::any_of(n->types().begin(), n->types().end(),
-  //                   [offset](const Node::accessed_types_type::value_type &kv) {
+  //                   [offset](const Node::accessed_types_type::value_type &kv)
+  //                   {
   //                     return (kv.first != offset);
   //                   })) {
   //     CRAB_LOG("heap-abs",
-  //              errs() << "\tCannot be converted to region because cell's node is "
+  //              errs() << "\tCannot be converted to region because cell's node
+  //              is "
   //                     << " an array accessed with different offsets\n";);
   //     return false;
   //   }
@@ -166,14 +168,14 @@ using namespace seadsa;
 // DsaToRegion succeeds if returned valued != UNTYPED_REGION
 RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
                        bool disambiguate_unknown, bool disambiguate_ptr_cast,
-		       bool disambiguate_external) {
+                       bool disambiguate_external) {
   if (c.isNull()) {
     return RegionInfo(UNTYPED_REGION, 0);
   }
 
   const Node *n = c.getNode();
   unsigned offset = c.getOffset();
-  
+
   CRAB_LOG("heap-abs", errs() << "*** Checking whether node at offset "
                               << offset << " can be converted to region ... \n"
                               << "\t" << *n << "\n";);
@@ -195,7 +197,7 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
     if (!disambiguate_ptr_cast) {
       CRAB_LOG("heap-abs",
                errs() << "\tCannot be converted to region: node is casted "
-                               << "from/to an integer.\n";);
+                      << "from/to an integer.\n";);
       return RegionInfo(UNTYPED_REGION, 0);
     }
   }
@@ -204,13 +206,14 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
     if (!disambiguate_external) {
       CRAB_LOG(
           "heap-abs",
-               errs() << "\tCannot be converted to region: node is external.\n";);
+          errs() << "\tCannot be converted to region: node is external.\n";);
       return RegionInfo(UNTYPED_REGION, 0);
     }
   }
 
   seadsa_heap_abs_impl::isInteger int_pred;
-  if (isTypedCell(n, offset, int_pred) || isTypedArrayCell(n, offset, int_pred)) {
+  if (isTypedCell(n, offset, int_pred) ||
+      isTypedArrayCell(n, offset, int_pred)) {
     if (isDisjointCell(c, dl)) {
       CRAB_LOG("heap-abs", errs() << "\tDisambiguation succeed!\n"
                                   << "Found INT_REGION at offset " << offset
@@ -224,9 +227,10 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
   }
 
   seadsa_heap_abs_impl::isBool bool_pred;
-  if (isTypedCell(n, offset, bool_pred) || isTypedArrayCell(n, offset, bool_pred)) {
+  if (isTypedCell(n, offset, bool_pred) ||
+      isTypedArrayCell(n, offset, bool_pred)) {
     if (isDisjointCell(c, dl)) {
-	
+
       CRAB_LOG("heap-abs", errs() << "\tDisambiguation succeed!\n"
                                   << "Found BOOL_REGION at offset " << offset
                                   << " with bitwidth=1\n"
@@ -240,7 +244,7 @@ RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
   // TODO: modify here to consider cells containing pointers.
   CRAB_LOG(
       "heap-abs",
-           errs() << "\tCannot be converted to region: do not contain integer.\n";);
+      errs() << "\tCannot be converted to region: do not contain integer.\n";);
 
   return RegionInfo(UNTYPED_REGION, 0);
 }

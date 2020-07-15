@@ -10,11 +10,11 @@
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <crab/cfg/basic_block_traits.hpp>
 #include "crab/cfg/cfg.hpp"
 #include "crab/cg/cg.hpp"
 #include "crab/types/indexable.hpp"
 #include "crab/types/varname_factory.hpp"
+#include <crab/cfg/basic_block_traits.hpp>
 
 #include <functional>
 #include <memory>
@@ -23,7 +23,7 @@ namespace clam {
 
 // This wrapper is needed because we can have crab blocks which do not
 // correspond to llvm blocks.
-class llvm_basic_block_wrapper: public crab::indexable {
+class llvm_basic_block_wrapper : public crab::indexable {
 public:
   // the new block represents that the control is at b
   llvm_basic_block_wrapper(const llvm::BasicBlock *b, std::size_t id)
@@ -112,17 +112,17 @@ template <> struct hash<clam::llvm_basic_block_wrapper> {
 namespace clam {
 /** Variable factory from llvm::Value's **/
 class llvm_variable_factory
-    : public crab::var_factory_impl::variable_factory<
-          const llvm::Value *> {
-  using variable_factory_t = crab::var_factory_impl::variable_factory<const llvm::Value *>;
-  
+    : public crab::var_factory_impl::variable_factory<const llvm::Value *> {
+  using variable_factory_t =
+      crab::var_factory_impl::variable_factory<const llvm::Value *>;
+
 public:
   typedef variable_factory_t::varname_t varname_t;
   typedef variable_factory_t::const_var_range const_var_range;
 
   llvm_variable_factory() : variable_factory_t() {}
 };
-  
+
 /** Define a Crab CFG and call graph over integers **/
 using variable_factory_t = llvm_variable_factory;
 using varname_t = typename variable_factory_t::varname_t;
@@ -135,12 +135,13 @@ using basic_block_t = cfg_t::basic_block_t;
 using statement_t = typename cfg_t::basic_block_t::statement_t;
 using lin_exp_t = typename cfg_t::basic_block_t::lin_exp_t;
 using lin_cst_t = typename cfg_t::basic_block_t::lin_cst_t;
-using ref_cst_t = crab::reference_constraint<number_t, varname_t>;  
+using ref_cst_t = crab::reference_constraint<number_t, varname_t>;
 using lin_cst_sys_t = ikos::linear_constraint_system<number_t, varname_t>;
-using disj_lin_cst_sys_t = ikos::disjunctive_linear_constraint_system<number_t, varname_t>;
+using disj_lin_cst_sys_t =
+    ikos::disjunctive_linear_constraint_system<number_t, varname_t>;
 using cg_t = crab::cg::call_graph<cfg_ref_t>;
-using cg_ref_t = crab::cg::call_graph_ref<cg_t>;  
-  
+using cg_ref_t = crab::cg::call_graph_ref<cg_t>;
+
 using lin_exp_unordered_set =
     ikos::linear_expression_unordered_set<number_t, varname_t>;
 using lin_cst_unordered_set =
@@ -154,24 +155,19 @@ using lin_cst_unordered_map =
 } // end namespace clam
 
 namespace crab {
-template<>
-class variable_name_traits<const llvm::Value*> {
+template <> class variable_name_traits<const llvm::Value *> {
 public:
-  static std::string to_string(const llvm::Value* v) {
+  static std::string to_string(const llvm::Value *v) {
     return v->getName().str();
   }
 };
 
-template<>
-class variable_name_traits<std::string> {
+template <> class variable_name_traits<std::string> {
 public:
-  static std::string to_string(std::string v) {
-    return v;
-  }
+  static std::string to_string(std::string v) { return v; }
 };
-  
-template<>
-class basic_block_traits<clam::basic_block_t> {
+
+template <> class basic_block_traits<clam::basic_block_t> {
 public:
   using basic_block_label_t = clam::basic_block_t::basic_block_label_t;
   static std::string to_string(const basic_block_label_t &bbl) {

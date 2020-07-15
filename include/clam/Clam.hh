@@ -24,10 +24,9 @@ class CrabBuilderManager;
 
 namespace clam {
 
-// A wrapper for an arbitrary abstract domain, cheap to copy  
+// A wrapper for an arbitrary abstract domain, cheap to copy
 using clam_abstract_domain = crab::domains::abstract_domain_ref<var_t>;
 
-  
 /**
  * Intra-procedural analysis of a function
  *
@@ -113,28 +112,28 @@ public:
    **/
   bool
   pathAnalyze(const AnalysisParams &params,
-	      const std::vector<const llvm::BasicBlock *> &path,
-	      /* use gradually more expensive domains until unsat is proven*/
-	      bool layered_solving, std::vector<statement_t*> &core,
-               abs_dom_map_t &post) const;
+              const std::vector<const llvm::BasicBlock *> &path,
+              /* use gradually more expensive domains until unsat is proven*/
+              bool layered_solving, std::vector<statement_t *> &core,
+              abs_dom_map_t &post) const;
 
   bool
   pathAnalyze(const AnalysisParams &params,
-	      const std::vector<const llvm::BasicBlock *> &path,
-	      /* use gradually more expensive domains until unsat is proven*/
-	      bool layered_solving, std::vector<statement_t*> &core) const;
+              const std::vector<const llvm::BasicBlock *> &path,
+              /* use gradually more expensive domains until unsat is proven*/
+              bool layered_solving, std::vector<statement_t *> &core) const;
 
   /**
    * Return invariants that hold at the entry of b
    **/
   llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
-					      bool keep_shadows = false) const;
+                                              bool keep_shadows = false) const;
 
   /**
    * Return invariants that hold at the exit of b
    **/
   llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
-					       bool keep_shadows = false) const;
+                                               bool keep_shadows = false) const;
 
   /**
    * Return a database with all checks.
@@ -189,13 +188,13 @@ public:
    * Return invariants that hold at the entry of b
    **/
   llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
-					      bool keep_shadows = false) const;
-  
+                                              bool keep_shadows = false) const;
+
   /**
    * Return invariants that hold at the exit of b
    **/
   llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
-					       bool keep_shadows = false) const;
+                                               bool keep_shadows = false) const;
 
   /**
    * Return a database with all checks.
@@ -252,13 +251,13 @@ public:
    * return invariants that hold at the entry of BB
    **/
   llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *BB,
-					      bool KeepShadows = false) const;
+                                              bool KeepShadows = false) const;
 
   /**
    * return invariants that hold at the exit of BB
    **/
   llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *BB,
-					       bool KeepShadows = false) const;
+                                               bool KeepShadows = false) const;
 
   /**
    * To query and view the analysis results

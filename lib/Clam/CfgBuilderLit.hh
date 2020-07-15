@@ -2,9 +2,9 @@
 
 /* A wrapper object for a LLVM variable or constant */
 
+#include "llvm/ADT/Optional.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/ADT/Optional.h"
 
 #include "clam/CfgBuilderParams.hh"
 #include "clam/HeapAbstraction.hh"
@@ -97,7 +97,7 @@ class crabPtrLit : public crabLit {
   friend class crabLitFactoryImpl;
 
   // if !m_lit.hasValue() then the literal represents null
-  llvm::Optional<var_t> m_lit; 
+  llvm::Optional<var_t> m_lit;
 
   crabPtrLit() : crabLit(CRAB_LITERAL_PTR) {} // null
   crabPtrLit(var_t v) : crabLit(CRAB_LITERAL_PTR), m_lit(v) {}

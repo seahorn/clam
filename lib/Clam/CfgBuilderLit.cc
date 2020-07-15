@@ -65,10 +65,10 @@ var_t crabLitFactoryImpl::mkArrayVar(Region mem_region, const Value *name) {
     type = ARR_BOOL_TYPE;
     bitwidth = 1;
     break;
-    /*TO_BE_UPDATED: we need to create an integer variables*/    
-    //case PTR_REGION:
-    //type = ARR_PTR_TYPE;
-    //break;
+    /*TO_BE_UPDATED: we need to create an integer variables*/
+    // case PTR_REGION:
+    // type = ARR_PTR_TYPE;
+    // break;
   default:
     CLAM_ERROR("unsupported region type");
   }
@@ -101,8 +101,8 @@ var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
     break;
     /* TO_BE_UPDATED */
     // case PTR_REGION:
-    //type = PTR_TYPE;
-    //break;
+    // type = PTR_TYPE;
+    // break;
   default:
     CLAM_ERROR("unsupported region type");
   }
@@ -119,8 +119,8 @@ var_t crabLitFactoryImpl::mkBoolArrayVar() {
 }
 
 var_t crabLitFactoryImpl::mkPtrArrayVar() {
-  /* TO_BE_UPDATED */  
-  //return var_t(m_vfac.get(), ARR_PTR_TYPE);  
+  /* TO_BE_UPDATED */
+  // return var_t(m_vfac.get(), ARR_PTR_TYPE);
   CRAB_ERROR("Cannot generate array variables of pointer type");
 }
 
@@ -132,9 +132,7 @@ var_t crabLitFactoryImpl::mkBoolVar() {
   return var_t(m_vfac.get(), BOOL_TYPE, 1);
 }
 
-var_t crabLitFactoryImpl::mkPtrVar() {
-  return var_t(m_vfac.get(), REF_TYPE);
-}
+var_t crabLitFactoryImpl::mkPtrVar() { return var_t(m_vfac.get(), REF_TYPE); }
 
 Optional<var_t> crabLitFactoryImpl::mkVar(const Value &v) {
   if (isBool(v)) {

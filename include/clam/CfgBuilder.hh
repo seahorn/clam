@@ -91,7 +91,7 @@ public:
   // return nullptr if the edge is not translated to a crab basic block.
   const basic_block_label_t *
   getCrabBasicBlock(const llvm::BasicBlock *src,
-                       const llvm::BasicBlock *dst) const;
+                    const llvm::BasicBlock *dst) const;
 
   // Most crab statements have back pointers to LLVM operands so it
   // is always possible to find the corresponding LLVM
@@ -122,7 +122,8 @@ public:
   // This constructor will use ShadowMem to translate LLVM memory
   // instructions to Crab arrays.
   CrabBuilderManager(CrabBuilderParams params,
-                     llvm::TargetLibraryInfoWrapperPass &tli, seadsa::ShadowMem &sm);
+                     llvm::TargetLibraryInfoWrapperPass &tli,
+                     seadsa::ShadowMem &sm);
 
   ~CrabBuilderManager();
 
@@ -142,7 +143,7 @@ public:
 
   const CrabBuilderParams &getCfgBuilderParams() const;
 
-  const llvm::TargetLibraryInfo &getTLI(const llvm::Function&) const;
+  const llvm::TargetLibraryInfo &getTLI(const llvm::Function &) const;
   llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
 
   HeapAbstraction &getHeapAbstraction();
@@ -163,7 +164,7 @@ private:
   variable_factory_t m_vfac;
 
   /// TODOX: hide details whether we use HeabAbstraction or ShadowMem.
-  
+
   // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
   // Shadow memory (it can be null if not available)

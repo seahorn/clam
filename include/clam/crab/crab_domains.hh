@@ -5,12 +5,12 @@
  *
  * No instantiation happens here. The instantiations of the abstract
  * domains occur in the lib/Clam/domains directory.
- * 
+ *
  * All clam domains consist of a fixed combination of functor and
  * product domains (defined in crab_defs.hh) where the only tunable
  * parameter is the base numerical domain. The names of the domains
  * listed below reflect the name of the base numerical domain:
- * 
+ *
  * - boxes_domain_t
  * - dis_interval_domain_t
  * - interval_domain_t

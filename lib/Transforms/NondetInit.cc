@@ -46,8 +46,10 @@ private:
   Constant *getNondetFn(Type *type) {
     Constant *res = m_ndfn[type];
     if (res == NULL) {
-      res = dyn_cast<Constant>(m->getOrInsertFunction(
-	    "verifier.nondet." + std::to_string(m_ndfn.size()), type).getCallee());
+      res = dyn_cast<Constant>(
+          m->getOrInsertFunction(
+               "verifier.nondet." + std::to_string(m_ndfn.size()), type)
+              .getCallee());
 
       // -- say that f does not access memory will make llvm
       // -- assume that all calls to it return the same value
@@ -123,7 +125,7 @@ public:
 };
 
 char NondetInit::ID = 0;
-}
+} // namespace clam
 
 namespace clam {
 class KillUnusedNondet : public FunctionPass {
@@ -169,11 +171,10 @@ char KillUnusedNondet::ID = 0;
 
 llvm::Pass *createNondetInitPass() { return new NondetInit(); }
 llvm::Pass *createDeadNondetElimPass() { return new KillUnusedNondet(); }
-}
+} // namespace clam
 
 static RegisterPass<clam::NondetInit>
     X("nondet-init", "Non-deterministic initialization of all alloca");
 
-static RegisterPass<clam::KillUnusedNondet>
-    Y("kill-nondet", "Remove unused nondet calls.");
-
+static RegisterPass<clam::KillUnusedNondet> Y("kill-nondet",
+                                              "Remove unused nondet calls.");

@@ -1,4 +1,3 @@
-#include "llvm/Pass.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -7,6 +6,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PatternMatch.h"
+#include "llvm/Pass.h"
 
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/raw_ostream.h"
@@ -65,8 +65,8 @@ public:
           continue;
         }
 
-	/* insert after verifier.assume, otherwise, verifier assume
-           might get simplified away */	
+        /* insert after verifier.assume, otherwise, verifier assume
+           might get simplified away */
         Builder.SetInsertPoint(I.getParent(), ++BasicBlock::iterator(I));
         if (fn->getName().equals("verifier.assume.not")) {
           arg = Builder.CreateNot(arg);
