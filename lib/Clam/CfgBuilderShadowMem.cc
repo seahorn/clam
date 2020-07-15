@@ -1,5 +1,5 @@
 #include "CfgBuilderShadowMem.hh"
-#include "SeaDsaHeapAbstractionDsaToRegion.hh"
+#include "SeaDsaToRegion.hh"
 
 #include "clam/Support/Debug.hh"
 #include "llvm/ADT/Optional.h"
@@ -130,9 +130,9 @@ Region getShadowRegion(const seadsa::Cell &c, const llvm::DataLayout &dl,
   auto cellIdOpt = sm.getCellId(c);
   if (cellIdOpt.hasValue()) {
     auto cellId = cellIdOpt.getValue();
-    auto ri = DsaToRegion(c, dl,
-                          /* these should be user flags */
-                          false, false, false);
+    auto ri = SeaDsaToRegion(c, dl,
+			     /* these should be user flags */
+			     false, false, false);
     if (ri.getType() != UNTYPED_REGION) {
       return Region(cellId, ri, getUniqueScalar(c));
     }

@@ -1,6 +1,6 @@
 #include "clam/config.h"
 
-#include "SeaDsaHeapAbstractionDsaToRegion.hh"
+#include "SeaDsaToRegion.hh"
 #include "SeaDsaHeapAbstractionUtils.hh"
 
 #include "llvm/IR/DataLayout.h"
@@ -165,10 +165,11 @@ namespace clam {
 using namespace llvm;
 using namespace seadsa;
 
-// DsaToRegion succeeds if returned valued != UNTYPED_REGION
-RegionInfo DsaToRegion(const Cell &c, const DataLayout &dl,
-                       bool disambiguate_unknown, bool disambiguate_ptr_cast,
-                       bool disambiguate_external) {
+// SeaDsaToRegion succeeds if returned valued != UNTYPED_REGION
+// TODO: consider cells that contain pointers
+RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
+			  bool disambiguate_unknown, bool disambiguate_ptr_cast,
+			  bool disambiguate_external) {
   if (c.isNull()) {
     return RegionInfo(UNTYPED_REGION, 0);
   }

@@ -17,7 +17,7 @@
 #include "seadsa/Global.hh"
 #include "seadsa/Graph.hh"
 
-#include "SeaDsaHeapAbstractionDsaToRegion.hh"
+#include "SeaDsaToRegion.hh"
 #include "SeaDsaHeapAbstractionUtils.hh"
 #include "clam/SeaDsaHeapAbstraction.hh"
 #include "clam/Support/Debug.hh"
@@ -99,7 +99,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodes(
 
       Cell c(const_cast<Node *>(n), kv.first);
       RegionInfo r_info =
-          DsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
+          SeaDsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
                       m_disambiguate_external);
 
       if (r_info.getType() != UNTYPED_REGION) {
@@ -176,8 +176,8 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 
       Cell calleeC(const_cast<Node *>(n), kv.first);
       RegionInfo calleeRI =
-          DsaToRegion(calleeC, m_dl, m_disambiguate_unknown,
-                      m_disambiguate_ptr_cast, m_disambiguate_external);
+          SeaDsaToRegion(calleeC, m_dl, m_disambiguate_unknown,
+			 m_disambiguate_ptr_cast, m_disambiguate_external);
 
       if (calleeRI.getType() != UNTYPED_REGION) {
         // Map the callee node to the node in the caller's callsite
@@ -189,8 +189,8 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
         }
 
         RegionInfo callerRI =
-            DsaToRegion(callerC, m_dl, m_disambiguate_unknown,
-                        m_disambiguate_ptr_cast, m_disambiguate_external);
+            SeaDsaToRegion(callerC, m_dl, m_disambiguate_unknown,
+			   m_disambiguate_ptr_cast, m_disambiguate_external);
         /**
          * FIXME: assert(calleeRI == callerRI) should always hold.
          *
@@ -442,8 +442,8 @@ LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
   }
 
   RegionInfo r_info =
-      DsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
-                  m_disambiguate_external);
+      SeaDsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
+		     m_disambiguate_external);
 
   if (r_info.getType() == UNTYPED_REGION) {
     return Region();
@@ -470,8 +470,8 @@ Region LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
     if (n->hasAccessedType(offset)) {
       Cell c(n, offset);
       RegionInfo r_info =
-          DsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
-                      m_disambiguate_external);
+          SeaDsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
+			 m_disambiguate_external);
       if (r_info.getType() != UNTYPED_REGION) {
         return mkRegion(c, r_info);
       }
