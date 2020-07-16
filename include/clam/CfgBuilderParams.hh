@@ -6,8 +6,8 @@ namespace clam {
 
 enum class CrabBuilderPrecision {
   NUM, // only integers and boolean
-  ARR, // NUM + abstract arrays
-  REF  // ARR + pointers
+  ARR, // NUM + singleton memory objects
+  REF  // NUM + all memory objects
 };
 
 /** User-definable parameters to build a Crab CFG **/

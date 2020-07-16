@@ -6,9 +6,7 @@
 #include "clam/HeapAbstraction.hh"
 #include "clam/Support/Debug.hh"
 #include "seadsa/Graph.hh"
-#include "seadsa/ShadowMem.hh"
 
-#include "CfgBuilderShadowMem.hh"
 #include "CfgBuilderUtils.hh"
 
 /**
@@ -19,36 +17,20 @@ namespace clam {
 
 typedef typename HeapAbstraction::RegionVec RegionVec;
 
-// "Switch" function that uses either ShadowMem (mem) or
-// HeapAbstraction (sm) to return the cell pointer a LLVM pointer.
-inline Region getRegion(HeapAbstraction &mem, const seadsa::ShadowMem *sm,
-                        const llvm::DataLayout &dl, llvm::Instruction *user,
-                        llvm::Value *ptr) {
-  if (sm) {
-    // Use ShadowMem (sm) to access to the cell pointed by the pointer.
-    llvm::CallInst *CI = llvm::dyn_cast<llvm::CallInst>(user);
-    if (llvm::isa<llvm::LoadInst>(user) || llvm::isa<llvm::StoreInst>(user)) {
-      return getShadowRegionFromLoadOrStore(*sm, dl, *user);
-    } else if (CI && (isZeroInitializer(*CI) || isIntInitializer(*CI))) {
-      return getShadowRegionFromGvInitializer(*sm, dl, *user, *ptr);
-    } else {
-      // To see which instructions we are skipping ...
-      CLAM_WARNING("getRegion using ShadowMem skipped " << *user);
-    }
-  } else {
-    // Use the Heap analysis (mem) to access to the cell pointed by the pointer.
-    llvm::Function *fun = user->getParent()->getParent();
-    Region res = mem.getRegion(*fun, user, ptr);
-    if (res.getRegionInfo().getType() != UNTYPED_REGION) {
-      return res;
-    }
+// Return the region associated to ptr
+inline Region getRegion(HeapAbstraction &mem, const llvm::DataLayout &dl /*unused*/,
+			llvm::Instruction *user, llvm::Value *ptr) {
+  // Use the Heap analysis (mem) to access to the cell pointed by the pointer.
+  llvm::Function *fun = user->getParent()->getParent();
+  Region res = mem.getRegion(*fun, user, ptr);
+  if (res.getRegionInfo().getType() != UNTYPED_REGION) {
+    return res;
   }
   return Region();
 }
 
 // Return whether the region contains a singleton alias class.
-inline const llvm::Value *getSingletonValue(Region r,
-                                            bool enable_unique_scalars) {
+inline const llvm::Value *getSingletonValue(Region r, bool enable_unique_scalars) {
   if (enable_unique_scalars) {
     if (r.isUnknown()) {
       return nullptr;
@@ -59,10 +41,6 @@ inline const llvm::Value *getSingletonValue(Region r,
   }
   return nullptr;
 }
-
-/**
- * HeapAbstraction functions
- **/
 
 // v is either a llvm::Function or llvm::CallInst.
 template <typename V>

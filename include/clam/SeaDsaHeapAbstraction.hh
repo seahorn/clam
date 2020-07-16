@@ -14,7 +14,6 @@ class GlobalAnalysis;
 class Node;
 class Cell;
 class AllocWrapInfo;
-class ShadowMem;
 } // namespace seadsa
 
 namespace llvm {
@@ -28,7 +27,7 @@ namespace clam {
 /*
  * Wrapper for sea-dsa (https://github.com/seahorn/sea-dsa)
  */
-class LegacySeaDsaHeapAbstraction : public HeapAbstraction {
+class SeaDsaHeapAbstraction : public HeapAbstraction {
 
 public:
   using typename HeapAbstraction::RegionId;
@@ -67,7 +66,7 @@ private:
 public:
   // This constructor creates and owns a sea-dsa GlobalAnalysis instance and
   // run it on M.
-  LegacySeaDsaHeapAbstraction(const llvm::Module &M, llvm::CallGraph &cg,
+  SeaDsaHeapAbstraction(const llvm::Module &M, llvm::CallGraph &cg,
                               const llvm::DataLayout &dl,
                               const llvm::TargetLibraryInfoWrapperPass &tli,
                               const seadsa::AllocWrapInfo &alloc_wrap_info,
@@ -78,13 +77,13 @@ public:
 
   // This constructor takes an existing sea-dsa Global Analysis instance.
   // It doesn't own it.
-  LegacySeaDsaHeapAbstraction(const llvm::Module &M, const llvm::DataLayout &dl,
+  SeaDsaHeapAbstraction(const llvm::Module &M, const llvm::DataLayout &dl,
                               seadsa::GlobalAnalysis &dsa,
                               bool disambiguate_unknown,
                               bool disambiguate_ptr_cast,
                               bool disambiguate_external);
 
-  ~LegacySeaDsaHeapAbstraction();
+  ~SeaDsaHeapAbstraction();
 
   HeapAbstraction::ClassId getClassId() const {
     return HeapAbstraction::ClassId::SEA_DSA;
@@ -118,7 +117,7 @@ public:
   virtual RegionVec getNewRegions(const llvm::CallInst &I) override;
 
   virtual llvm::StringRef getName() const override {
-    return "LegacySeaDsaHeapAbstraction";
+    return "SeaDsaHeapAbstraction";
   }
 
 private:
@@ -142,5 +141,4 @@ private:
   llvm::DenseMap<const llvm::CallInst *, RegionVec> m_callsite_news;
 };
 
-using SeaDsaHeapAbstraction = LegacySeaDsaHeapAbstraction;
 } // end namespace clam

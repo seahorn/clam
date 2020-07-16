@@ -29,10 +29,6 @@ class HeapAbstraction;
 class CfgBuilderImpl;
 } // namespace clam
 
-namespace seadsa {
-class ShadowMem;
-}
-
 namespace clam {
 
 /**
@@ -113,17 +109,9 @@ class CrabBuilderManager {
 public:
   using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
 
-  // This constructor will use HeapAbstraction to translate LLVM
-  // memory instructions to Crab arrays.
   CrabBuilderManager(CrabBuilderParams params,
                      llvm::TargetLibraryInfoWrapperPass &tli,
                      std::unique_ptr<HeapAbstraction> mem);
-
-  // This constructor will use ShadowMem to translate LLVM memory
-  // instructions to Crab arrays.
-  CrabBuilderManager(CrabBuilderParams params,
-                     llvm::TargetLibraryInfoWrapperPass &tli,
-                     seadsa::ShadowMem &sm);
 
   ~CrabBuilderManager();
 
@@ -148,10 +136,6 @@ public:
 
   HeapAbstraction &getHeapAbstraction();
 
-  const seadsa::ShadowMem *getShadowMem() const;
-
-  seadsa::ShadowMem *getShadowMem();
-
 private:
   // User-definable parameters for building the Crab CFGs
   CrabBuilderParams m_params;
@@ -162,13 +146,8 @@ private:
   // All CFGs created by this manager are created using the same
   // variable factory.
   variable_factory_t m_vfac;
-
-  /// TODOX: hide details whether we use HeabAbstraction or ShadowMem.
-
   // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
-  // Shadow memory (it can be null if not available)
-  seadsa::ShadowMem *m_sm;
 };
 
 } // end namespace clam

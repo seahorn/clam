@@ -5,8 +5,8 @@ CrabTrackLev("crab-track",
    cl::desc("Track abstraction level of the Crab Cfg"),
    cl::values
     (clEnumValN(CrabBuilderPrecision::NUM, "num", "Integer and Boolean registers only"),
-     clEnumValN(CrabBuilderPrecision::ARR, "arr", "num + some memory contents via array abstraction"),
-     clEnumValN(CrabBuilderPrecision::REF, "ref", "num + all memory contents")),
+     clEnumValN(CrabBuilderPrecision::ARR, "arr", "num + singleton memory objects"),
+     clEnumValN(CrabBuilderPrecision::REF, "ref", "num + all memory objects")),
    cl::init(CrabBuilderPrecision::NUM));
 
 cl::opt<bool>
@@ -43,15 +43,6 @@ cl::opt<bool>
 CrabEnableBignums("crab-enable-bignums",
      cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."), 
      cl::init(false));
-
-namespace clam {
-bool XShadowMem;
-}
-
-cl::opt<bool, true>
-CrabShadowMem("crab-use-shadow-mem",
-    cl::desc("Use seadsa shadow.mem functions to translate memory operations to Crab"),
-    cl::location(clam::XShadowMem), cl::init(false), llvm::cl::Hidden);
 
 /*** Crab Analysis Options ***/
 

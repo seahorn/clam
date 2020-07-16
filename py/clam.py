@@ -283,8 +283,8 @@ def parseArgs(argv):
                     help='Max number of live vars per block before switching to a non-relational domain',
                     default=10000)
     p.add_argument('--crab-track',
-                   help='Track integers (num), num + pointer offsets (ptr), and num + memory contents (arr) via memory abstraction',
-                   choices=['num', 'ptr', 'arr'], dest='track', default='num')
+                   help='Track integers (num), num + pointers (ref), and num + singleton memory contents (arr)',
+                   choices=['num', 'ref', 'arr'], dest='track', default='num')
     p.add_argument('--crab-heap-analysis',
                    help="Heap analysis used for memory disambiguation (if --crab-track=arr):\n"
                    "- ci-sea-dsa: context-insensitive sea-dsa\n"
@@ -300,10 +300,6 @@ def parseArgs(argv):
     p.add_argument('--crab-inter',
                     help='Run summary-based, inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
-    # p.add_argument('--crab-inter-sum-dom',
-    #                 help='Choose abstract domain for computing summaries',
-    #                 choices=['zones','oct','rtz'],
-    #                 dest='crab_inter_sum_dom', default='zones')
     p.add_argument('--crab-inter-max-summaries', 
                     type=int, dest='inter_max_summaries', 
                     help='Max number of summaries per function',
@@ -389,13 +385,6 @@ def parseArgs(argv):
     p.add_argument('--crab-enable-bignums',
                     help=a.SUPPRESS,
                     dest='crab_enable_bignums', default=False, action='store_true')
-    #Instrument each memory instruction with shadow.mem functions to
-    #convert the program into memory SSA form and translate to crab
-    #preserving that memory SSA form.
-    #p.add_argument('--crab-memssa',
-    #                help=a.SUPPRESS,
-    #                dest='crab_memssa', default=False, action='store_true')
-    
     #### END CRAB
     
     args = p.parse_args(argv)
@@ -796,8 +785,6 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-enable-bignums=true')
     else:
         clam_args.append('--crab-enable-bignums=false')
-    # if args.crab_memssa:
-    #     clam_args.append('--crab-memssa=true')
     # end hidden options
         
     if verbose: print ' '.join(clam_args)

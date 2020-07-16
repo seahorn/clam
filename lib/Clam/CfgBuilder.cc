@@ -10,9 +10,9 @@
  * is pretty straightforward.  LLVM branches are translated to Crab
  * assume and goto statements. The translation also removes phi nodes.
  *
- * TO_BE_UPDATED: If tracked precision = PTR then LLVM pointer operations are
- * translated to Crab pointer operations. This translation is almost
- * one-to-one, except some unsupported cases (see below limitations).
+ * If tracked precision = REF then LLVM pointer operations are
+ * translated to Crab reference operations. This translation is almost
+ * one-to-one but it requires the use of the Heap Analysis.
  *
  * TO_BE_UPDATED: If tracked precision = ARR then the translation is more
  * complex. We use a heap analysis to partition statically memory into disjoint
@@ -40,11 +40,6 @@
  * latter frees Crab abstract domains from reasoning about aliasing
  * since arrays are disjoint.
  *
- * Currently, Crab does not have a precise memory abstract domain for
- * tracked precision = PTR, so there is not actually a choice (i.e.,
- * tracked precision = ARR should be always used) but we plan to have
- * one.
- *
  * Known limitations of the translation:
  *
  * - Ignore floating point instructions.
@@ -71,22 +66,17 @@
 
 #include "CfgBuilderLit.hh"
 #include "CfgBuilderMemRegions.hh"
-#include "CfgBuilderShadowMem.hh"
 #include "CfgBuilderUtils.hh"
 
 #include "clam/CfgBuilder.hh"
 #include "clam/DummyHeapAbstraction.hh"
-#include "clam/HeapAbstraction.hh"       // temporary
-#include "clam/SeaDsaHeapAbstraction.hh" // temporary
+#include "clam/HeapAbstraction.hh"       
+#include "clam/SeaDsaHeapAbstraction.hh" 
 #include "clam/Support/CFG.hh"
 #include "clam/Support/Debug.hh"
 #include "crab/support/debug.hpp"
 #include "crab/support/stats.hpp"
 #include "crab/transforms/dce.hpp"
-#include "seadsa/Global.hh" // temporary
-#include "seadsa/Graph.hh"  // temporary
-
-#include "seadsa/ShadowMem.hh"
 
 #include <algorithm>
 #include <boost/functional/hash_fwd.hpp> // for hash_combine
@@ -500,7 +490,6 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 class MemoryInitializer {
   crabLitFactory &m_lfac;
   HeapAbstraction &m_mem;
-  seadsa::ShadowMem *m_sm; /*unused*/
   const DataLayout &m_dl;
   const CrabBuilderParams &m_params;
 
@@ -515,11 +504,11 @@ class MemoryInitializer {
 
 public:
   MemoryInitializer(crabLitFactory &lfac, HeapAbstraction &mem,
-                    seadsa::ShadowMem *sm, const DataLayout &dl,
+                    const DataLayout &dl,
                     const CrabBuilderParams &params, Function &fun,
                     basic_block_t &bb, unsigned max_stores = -1)
 
-      : m_lfac(lfac), m_mem(mem), m_sm(sm), m_dl(dl), m_params(params),
+      : m_lfac(lfac), m_mem(mem), m_dl(dl), m_params(params),
         m_fun(fun), m_bb(bb), m_max_stores(max_stores) {}
 
   void InitGlobalMemory(Value &Base, Constant &C, unsigned offset) {
@@ -588,7 +577,6 @@ public:
   }
 
   void InitInteger(Value &Base, ConstantInt &Val, unsigned offset) {
-    /* TODOX: use m_sm if enabled */
     if (m_mem.getClassId() == HeapAbstraction::ClassId::SEA_DSA) {
       SeaDsaHeapAbstraction *seaDsaHeapAbs =
           static_cast<SeaDsaHeapAbstraction *>(&m_mem);
@@ -633,7 +621,6 @@ public:
 class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   crabLitFactory &m_lfac;
   HeapAbstraction &m_mem;
-  seadsa::ShadowMem *m_sm;
   const DataLayout *m_dl;
   const TargetLibraryInfo *m_tli;
   basic_block_t &m_bb;
@@ -668,7 +655,6 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
    */
   lin_exp_t inferArrayIndex(Value *v, LLVMContext &ctx, Region reg,
                             llvm_variable_factory &vfac);
-
   unsigned getMaxBitWidthFromGepIndexes(GetElementPtrInst &I);
   /*
    *  Insert key-value in the reverse map but only if no CFG
@@ -695,18 +681,9 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   void doLoadInst(LoadInst &I, bool is_singleton, var_t lhs, var_t rhs,
                   Region rhs_region);
 
-  const seadsa::ShadowMem *getShadowMem() const {
-    if (m_sm) {
-      assert(m_mem.getClassId() == HeapAbstraction::ClassId::DUMMY);
-      return m_sm;
-    } else {
-      return nullptr;
-    }
-  }
-
 public:
   CrabInstVisitor(
-      crabLitFactory &lfac, HeapAbstraction &mem, seadsa::ShadowMem *sm,
+      crabLitFactory &lfac, HeapAbstraction &mem, 
       const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       std::set<Region> &init_regions,
@@ -841,20 +818,20 @@ bool CrabInstVisitor::AllUsesAreNonTrackMem(Value *V) const {
   for (auto &U : V->uses()) {
     if (StoreInst *SI = dyn_cast<StoreInst>(U.getUser())) {
       if (isa<Instruction>(V)) {
-        if (getRegion(m_mem, getShadowMem(), *m_dl, SI, SI->getPointerOperand())
+        if (getRegion(m_mem, *m_dl, SI, SI->getPointerOperand())
                 .isUnknown() &&
             (!SI->getValueOperand()->getType()->isPointerTy() ||
-             getRegion(m_mem, getShadowMem(), *m_dl, SI, SI->getValueOperand())
+             getRegion(m_mem, *m_dl, SI, SI->getValueOperand())
                  .isUnknown()))
           continue;
       }
       return false;
     } else if (LoadInst *LI = dyn_cast<LoadInst>(U.getUser())) {
       if (Instruction *I = dyn_cast<Instruction>(V)) {
-        if (getRegion(m_mem, getShadowMem(), *m_dl, LI, LI->getPointerOperand())
+        if (getRegion(m_mem, *m_dl, LI, LI->getPointerOperand())
                 .isUnknown() &&
             (!I->getType()->isPointerTy() ||
-             getRegion(m_mem, getShadowMem(), *m_dl, LI, LI).isUnknown()))
+             getRegion(m_mem, *m_dl, LI, LI).isUnknown()))
           continue;
       }
       return false;
@@ -1202,7 +1179,7 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
   MemCpyInst  *MCI = dyn_cast<MemCpyInst>(&I);
   MemMoveInst *MVI = dyn_cast<MemMoveInst>(&I);
   Value *dst = I.getDest();
-  Region dst_reg = getRegion(m_mem, getShadowMem(), *m_dl, &I, dst);
+  Region dst_reg = getRegion(m_mem, *m_dl, &I, dst);
   if (dst_reg.isUnknown()) {
     return;
   }
@@ -1378,13 +1355,13 @@ void CrabInstVisitor::doVerifierCall(CallInst &I) {
 }
 
 CrabInstVisitor::CrabInstVisitor(
-    crabLitFactory &lfac, HeapAbstraction &mem, seadsa::ShadowMem *sm,
+    crabLitFactory &lfac, HeapAbstraction &mem, 
     const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
     llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
     std::set<Region> &init_regions,
     DenseMap<const GetElementPtrInst *, var_t> &gep_map,
     const CrabBuilderParams &params)
-    : m_lfac(lfac), m_mem(mem), m_sm(sm), m_dl(dl), m_tli(tli), m_bb(bb),
+    : m_lfac(lfac), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb),
       m_object_id(0), m_has_seahorn_fail(false), m_params(params),
       m_gep_map(gep_map), m_rev_map(rev_map), m_init_regions(init_regions) {}
 
@@ -1964,7 +1941,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       return;
     }
 
-    Region r = getRegion(m_mem, getShadowMem(), *m_dl, &I, &I);
+    Region r = getRegion(m_mem, *m_dl, &I, &I);
     if (r.isUnknown()) {
       // we don't keep track of the memory region, we bail out ...
       return;
@@ -2120,7 +2097,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
       CLAM_ERROR("unexpected value operand of store instruction");
     }
     Region r =
-        getRegion(m_mem, getShadowMem(), *m_dl, &I, I.getPointerOperand());
+        getRegion(m_mem, *m_dl, &I, I.getPointerOperand());
     if (!r.isUnknown()) {
       bool lowerToScalar =
           getSingletonValue(r, m_params.lower_singleton_aliases);
@@ -2246,22 +2223,14 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
       (isInteger(I) || isBool(I))) {
     // -- lhs is an integer/bool -> add array statement
     Region r =
-        getRegion(m_mem, getShadowMem(), *m_dl, &I, I.getPointerOperand());
+        getRegion(m_mem, *m_dl, &I, I.getPointerOperand());
     if (!(r.isUnknown())) {
       bool lowerToScalar =
-          getSingletonValue(r, m_params.lower_singleton_aliases);
-      if (auto sm = getShadowMem()) {
-        Value &useV = getShadowMemUse(I, *sm);
-        doLoadInst(I, lowerToScalar, lhs->getVar(),
-                   (lowerToScalar ? m_lfac.mkArraySingletonVar(r, &useV)
-                                  : m_lfac.mkArrayVar(r, &useV)),
-                   r);
-      } else {
-        doLoadInst(I, lowerToScalar, lhs->getVar(),
-                   (lowerToScalar ? m_lfac.mkArraySingletonVar(r)
-                                  : m_lfac.mkArrayVar(r)),
-                   r);
-      }
+	getSingletonValue(r, m_params.lower_singleton_aliases);
+      doLoadInst(I, lowerToScalar, lhs->getVar(),
+		 (lowerToScalar ? m_lfac.mkArraySingletonVar(r)
+		  : m_lfac.mkArrayVar(r)),
+		 r);
       return;
     }
   } else if (m_lfac.getTrack() == CrabBuilderPrecision::REF) {
@@ -2295,7 +2264,7 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
     // better solution for array adaptive is to unroll loops one
     // iteration.
     Function *parentF = I.getParent()->getParent();
-    MemoryInitializer MI(m_lfac, m_mem, m_sm, *m_dl, m_params, *parentF, m_bb);
+    MemoryInitializer MI(m_lfac, m_mem, *m_dl, m_params, *parentF, m_bb);
     Type *ATy = I.getAllocatedType();
     MI.InitZeroInitializer(I, *ATy, 0);
   }
@@ -2366,10 +2335,6 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
      * If external or we don't perform inter-procedural reasoning
      * then we make sure all modified arrays and return value of
      * the callsite are havoc'ed.
-     *
-     * TODOX: version for memory ssa form, otherwise results can be
-     * unsound.  There is currently an implicit assumption that memory
-     * ssa can be only used when the program has been fully inlined.
      **/
 
     // -- havoc return value
@@ -2416,8 +2381,6 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
    *
    *    - a_i1,...,a_in are read-only and modified arrays by foo.
    *    - a_o1,...,a_om are modified and new arrays created inside foo.
-   *
-   * TODOX: version for memory ssa form
    **/
 
   std::vector<var_t> inputs, outputs;
@@ -2547,7 +2510,7 @@ namespace clam {
 class CfgBuilderImpl {
 public:
   CfgBuilderImpl(const llvm::Function &func, llvm_variable_factory &vfac,
-                 HeapAbstraction &mem, seadsa::ShadowMem *sm,
+                 HeapAbstraction &mem, 
                  llvm::TargetLibraryInfoWrapperPass *tli,
                  const CrabBuilderParams &params);
 
@@ -2606,10 +2569,8 @@ private:
   llvm::Function &m_func;
   // literal factory
   crabLitFactory m_lfac;
-  // heap analysis for array translation
+  // heap analysis for memory translation
   HeapAbstraction &m_mem;
-  // shadow mem for memory ssa form
-  seadsa::ShadowMem *m_sm;
   // the crab CFG
   std::unique_ptr<cfg_t> m_cfg;
   // generate unique identifiers for crab basic block ids
@@ -2654,14 +2615,14 @@ private:
 
 CfgBuilderImpl::CfgBuilderImpl(const Function &func,
                                llvm_variable_factory &vfac,
-                               HeapAbstraction &mem, seadsa::ShadowMem *sm,
+                               HeapAbstraction &mem, 
                                TargetLibraryInfoWrapperPass *tli,
                                const CrabBuilderParams &params)
     : m_is_cfg_built(false),
       // HACK: it's safe to remove constness because we know that the
       // Builder never modifies the bitcode.
       m_func(const_cast<Function &>(func)), m_lfac(vfac, params), m_mem(mem),
-      m_sm(sm), m_cfg(nullptr), m_id(0),
+      m_cfg(nullptr), m_id(0),
       m_dl(&(func.getParent()->getDataLayout())), m_tli(tli), m_params(params) {
   m_cfg =
       std::make_unique<cfg_t>(makeCrabBasicBlockLabel(&m_func.getEntryBlock()));
@@ -2873,8 +2834,7 @@ void CfgBuilderImpl::buildCfg() {
     Module &M = *(m_func.getParent());
     for (GlobalVariable &gv : M.globals()) {
       if (gv.hasInitializer()) {
-        MemoryInitializer MI(m_lfac, m_mem, m_sm, *m_dl, m_params, m_func,
-                             entry);
+        MemoryInitializer MI(m_lfac, m_mem, *m_dl, m_params, m_func, entry);
         MI.InitGlobalMemory(gv, *(gv.getInitializer()), 0);
       }
     }
@@ -2898,7 +2858,7 @@ void CfgBuilderImpl::buildCfg() {
       continue;
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
-    CrabInstVisitor v(m_lfac, m_mem, m_sm, m_dl, tli, *bb, m_rev_map,
+    CrabInstVisitor v(m_lfac, m_mem, m_dl, tli, *bb, m_rev_map,
                       init_regions, gep_map, m_params);
     v.visit(B);
     // hook for seahorn
@@ -2970,8 +2930,6 @@ void CfgBuilderImpl::buildCfg() {
      *
      * It ensures that the set {a_i1,...,a_in} is disjoint from
      * {a_o1,....,a_om}, otherwise crab will complain.
-     *
-     * TODOX: version for memory ssa form
      **/
 
     std::vector<var_t> inputs, outputs;
@@ -3291,7 +3249,7 @@ void CrabBuilderParams::write(raw_ostream &o) const {
 CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManager &man)
     : m_impl(std::make_unique<CfgBuilderImpl>(
           func, man.getVarFactory(), man.getHeapAbstraction(),
-          man.getShadowMem(), &(man.getTLIWrapper()),
+          &(man.getTLIWrapper()),
           man.getCfgBuilderParams())),
       m_ls(nullptr) {}
 
@@ -3356,15 +3314,7 @@ CfgBuilder::getLiveSymbols(const BasicBlock *B) const {
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        llvm::TargetLibraryInfoWrapperPass &tli,
                                        std::unique_ptr<HeapAbstraction> mem)
-    : m_params(params), m_tli(tli), m_mem(std::move(mem)), m_sm(nullptr) {
-  CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
-}
-
-CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
-                                       llvm::TargetLibraryInfoWrapperPass &tli,
-                                       seadsa::ShadowMem &sm)
-    : m_params(params), m_tli(tli),
-      m_mem(std::make_unique<DummyHeapAbstraction>()), m_sm(&sm) {
+    : m_params(params), m_tli(tli), m_mem(std::move(mem)) {
   CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
 }
 
@@ -3416,11 +3366,5 @@ llvm::TargetLibraryInfoWrapperPass &CrabBuilderManager::getTLIWrapper() const {
 }
 
 HeapAbstraction &CrabBuilderManager::getHeapAbstraction() { return *m_mem; }
-
-const seadsa::ShadowMem *CrabBuilderManager::getShadowMem() const {
-  return m_sm;
-}
-
-seadsa::ShadowMem *CrabBuilderManager::getShadowMem() { return m_sm; }
 
 } // end namespace clam

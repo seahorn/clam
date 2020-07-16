@@ -29,7 +29,6 @@
 
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/InitializePasses.hh"
-#include "seadsa/ShadowMem.hh"
 
 #include "crab/analysis/bwd_analyzer.hpp"
 #include "crab/analysis/dataflow/assumptions.hpp"
@@ -779,7 +778,6 @@ bool InterClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
 ClamPass::ClamPass() : llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {
   // initialize sea-dsa dependencies
   llvm::initializeAllocWrapInfoPass(*llvm::PassRegistry::getPassRegistry());
-  llvm::initializeShadowMemPassPass(*llvm::PassRegistry::getPassRegistry());
 }
 
 void ClamPass::releaseMemory() {
@@ -798,20 +796,17 @@ bool ClamPass::runOnModule(Module &M) {
   auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>();
 
   /// Create the CFG builder manager
-  if (!CrabShadowMem) {
-    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
-    // If CrabShadowMem is enabled then we don't run any heap
-    // analysis.
-    switch (CrabHeapAnalysis) {
-    case heap_analysis_t::CI_SEA_DSA:
-    case heap_analysis_t::CS_SEA_DSA: {
+  std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
+  switch (CrabHeapAnalysis) {
+  case heap_analysis_t::CI_SEA_DSA:
+  case heap_analysis_t::CS_SEA_DSA: {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                             << "Started sea-dsa analysis\n";);
+		      << "Started sea-dsa analysis\n";);
       CallGraph &cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
       const DataLayout &dl = M.getDataLayout();
       seadsa::AllocWrapInfo *allocWrapInfo =
           &getAnalysis<seadsa::AllocWrapInfo>();
-      mem.reset(new LegacySeaDsaHeapAbstraction(
+      mem.reset(new SeaDsaHeapAbstraction(
           M, cg, dl, tli, *allocWrapInfo,
           (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
           CrabDsaDisambiguateUnknown, CrabDsaDisambiguatePtrCast,
@@ -819,26 +814,13 @@ bool ClamPass::runOnModule(Module &M) {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                              << "Finished sea-dsa analysis\n";);
       break;
-    }
-    case heap_analysis_t::NONE:
-    default:
-      CLAM_WARNING("running clam without heap analysis");
-    }
-    m_cfg_builder_man.reset(
-        new CrabBuilderManager(params, tli, std::move(mem)));
-  } else {
-    if (auto smp = getAnalysisIfAvailable<seadsa::ShadowMemPass>()) {
-      m_cfg_builder_man.reset(
-          new CrabBuilderManager(params, tli, smp->getShadowMem()));
-    } else {
-      std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
-      m_cfg_builder_man.reset(
-          new CrabBuilderManager(params, tli, std::move(mem)));
-      if (CrabShadowMem)
-        CLAM_WARNING("getAnalysisIfAvailable<ShadowMemPass> returned null");
-    }
   }
-
+  case heap_analysis_t::NONE:
+  default:
+    CLAM_WARNING("running clam without heap analysis");
+  }
+  m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem)));
+  
   /// Run the analysis
 
   m_params.dom = ClamDomain;
@@ -937,13 +919,10 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
   bool runSeaDsa = (CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
                     CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA);
 
-  if (!CrabShadowMem && runSeaDsa) {
+  if (runSeaDsa) {
     AU.addRequired<seadsa::AllocWrapInfo>();
   }
 
-  if (CrabShadowMem) {
-    AU.addRequired<seadsa::ShadowMemPass>();
-  }
   AU.addRequired<UnifyFunctionExitNodes>();
   AU.addRequired<clam::NameValues>();
   AU.addRequired<CallGraphWrapperPass>();

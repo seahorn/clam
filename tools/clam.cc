@@ -25,9 +25,8 @@
 
 #include "clam/Passes.hh"
 #include "clam/Clam.hh"
-//#include "clam/Transforms/InsertInvariants.hh"
+#include "clam/Transforms/InsertInvariants.hh"
 
-#include "seadsa/ShadowMem.hh"
 #include "seadsa/InitializePasses.hh"
 
 static llvm::cl::opt<std::string>
@@ -91,10 +90,6 @@ static llvm::cl::opt<bool>
 PromoteAssume("crab-promote-assume", 
 	       llvm::cl::desc("Promote verifier.assume to llvm.assume intrinsics"),
 	       llvm::cl::init(false));
-
-namespace clam {
-extern bool XShadowMem;
-}
 
 using namespace clam;
 
@@ -252,11 +247,6 @@ int main(int argc, char **argv) {
   // LowerUnsignedIcmpPass and LowerSelect can add multiple returns.
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
 
-  if (XShadowMem) {
-    // XXX: it should preserve unifyFunctionExitNodes pass.
-    pass_manager.add(seadsa::createShadowMemPass());
-  }
-  
   if (!DisableCrab) {
     /// -- run the crab analyzer
     pass_manager.add(new clam::ClamPass());
@@ -266,8 +256,6 @@ int main(int argc, char **argv) {
     pass_manager.add(createPrintModulePass(asmOutput->os()));    
   }
 
-  /* TO_BE_UPDATED */
-  #if 0
   if (!DisableCrab) {
     // -- perform dead code elimination and insert invariants as
     // -- assume instructions
@@ -279,7 +267,6 @@ int main(int argc, char **argv) {
       pass_manager.add(clam::createPromoteAssumePass());
     }    
   }
-  #endif
 
   
   if (!OutputFilename.empty()) {

@@ -36,14 +36,16 @@ using clam_abstract_domain = crab::domains::abstract_domain_ref<var_t>;
  *    auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
  *    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
  *    CrabBuilderManager man(params, tli, std::move(mem));
+ * 
  *    // Create an intra-procedural analysis
  *    IntraClam ic(fun, man);
  *
  *    AnalysisParams params;
  *    ic.analyze(params);
  *    for (auto &b: fun) {
- *      if (clam_abstract_domain dom = ic.getPre(&b)) {
- *         crab::outs << dom << "\n";
+ *      llvm::Optional<clam_abstract_domain> dom = ic.getPre(&b);
+ *      if (dom.hasValue()) {
+ *         crab::outs << dom.getValue() << "\n";
  *      }
  *    }
  **/
@@ -150,6 +152,27 @@ public:
 
 /**
  * Inter-procedural analysis of a module
+ * 
+ * Basic usage:
+ *    // Create a crab cfg builder manager
+ *    CrabBuilderParams params;
+ *    auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+ *    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
+ *    CrabBuilderManager man(params, tli, std::move(mem));
+ * 
+ *    // Create an inter-procedural analysis
+ *    InterClam ic(m, man);
+ *
+ *    AnalysisParams params;
+ *    ic.analyze(params);
+ *    for (auto &f: m) {
+ *       for (auto &b: f) {
+ *         llvm::Optional<clam_abstract_domain> dom = ic.getPre(&b);
+ *         if (dom.hasValue()) {
+ *            crab::outs << dom.getValue() << "\n";
+ *         }
+ *      }
+ *    }
  **/
 class InterClam {
 public:

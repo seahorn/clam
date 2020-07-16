@@ -31,13 +31,13 @@ namespace clam {
 using namespace seadsa;
 using namespace llvm;
 
-Region LegacySeaDsaHeapAbstraction::mkRegion(const Cell &c, RegionInfo ri) {
+Region SeaDsaHeapAbstraction::mkRegion(const Cell &c, RegionInfo ri) {
   auto id = getId(c);
   return Region(id, ri, getSingleton(id));
 }
 
-LegacySeaDsaHeapAbstraction::RegionId
-LegacySeaDsaHeapAbstraction::getId(const Cell &c) {
+SeaDsaHeapAbstraction::RegionId
+SeaDsaHeapAbstraction::getId(const Cell &c) {
   const Node *n = c.getNode();
   unsigned offset = c.getOffset();
 
@@ -70,7 +70,7 @@ LegacySeaDsaHeapAbstraction::getId(const Cell &c) {
 // compute and cache the set of read, mod and new nodes of a whole
 // function such that mod nodes are a subset of the read nodes and
 // the new nodes are disjoint from mod nodes.
-void LegacySeaDsaHeapAbstraction::computeReadModNewNodes(
+void SeaDsaHeapAbstraction::computeReadModNewNodes(
     const llvm::Function &f) {
 
   if (!m_dsa || !(m_dsa->hasGraph(f))) {
@@ -124,7 +124,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodes(
 // Compute and cache the set of read, mod and new nodes of a
 // callsite such that mod nodes are a subset of the read nodes and
 // the new nodes are disjoint from mod nodes.
-void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
+void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
     const llvm::CallInst &I, callsite_map_t &accessed_map,
     callsite_map_t &mods_map, callsite_map_t &news_map) {
   if (!m_dsa)
@@ -233,7 +233,7 @@ void LegacySeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 }
 
 // Pre-compute all the information per function and callsites
-void LegacySeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
+void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 
   CRAB_LOG(
       "heap-abs", llvm::errs()
@@ -372,7 +372,7 @@ void LegacySeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
   }
 }
 
-LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
+SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
     const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
     const llvm::TargetLibraryInfoWrapperPass &tli,
     const seadsa::AllocWrapInfo &alloc_info, bool is_context_sensitive,
@@ -402,7 +402,7 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
   initialize(M);
 }
 
-LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
+SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
     const llvm::Module &M, const llvm::DataLayout &dl,
     seadsa::GlobalAnalysis &dsa, bool disambiguate_unknown,
     bool disambiguate_ptr_cast, bool disambiguate_external)
@@ -414,7 +414,7 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
   initialize(M);
 }
 
-LegacySeaDsaHeapAbstraction::~LegacySeaDsaHeapAbstraction() {
+SeaDsaHeapAbstraction::~SeaDsaHeapAbstraction() {
   if (m_fac) {
     // if m_fac is not null we know that we own m_dsa
     delete m_dsa;
@@ -424,7 +424,7 @@ LegacySeaDsaHeapAbstraction::~LegacySeaDsaHeapAbstraction() {
 
 // f is used to know in which Graph we should search for V
 Region
-LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
+SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
                                        const llvm::Instruction *I /*unused*/,
                                        const llvm::Value *V) {
   if (!m_dsa || !m_dsa->hasGraph(fn)) {
@@ -452,7 +452,7 @@ LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
   }
 }
 
-Region LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
+Region SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
                                               const llvm::Value &V,
                                               unsigned offset,
                                               const Type &AccessedType) {
@@ -481,7 +481,7 @@ Region LegacySeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
 }
 
 const llvm::Value *
-LegacySeaDsaHeapAbstraction::getSingleton(RegionId region) const {
+SeaDsaHeapAbstraction::getSingleton(RegionId region) const {
   auto const it = m_rev_node_ids.find(region);
   if (it == m_rev_node_ids.end())
     return nullptr;
@@ -499,13 +499,13 @@ LegacySeaDsaHeapAbstraction::getSingleton(RegionId region) const {
   return nullptr;
 }
 
-LegacySeaDsaHeapAbstraction::RegionVec
-LegacySeaDsaHeapAbstraction::getAccessedRegions(const llvm::Function &fn) {
+SeaDsaHeapAbstraction::RegionVec
+SeaDsaHeapAbstraction::getAccessedRegions(const llvm::Function &fn) {
   return m_func_accessed[&fn];
 }
 
-LegacySeaDsaHeapAbstraction::RegionVec
-LegacySeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {
+SeaDsaHeapAbstraction::RegionVec
+SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {
   RegionVec v1 = m_func_accessed[&fn];
   RegionVec v2 = m_func_mods[&fn];
   std::set<Region> s2(v2.begin(), v2.end());
@@ -521,23 +521,23 @@ LegacySeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {
   return out;
 }
 
-LegacySeaDsaHeapAbstraction::RegionVec
-LegacySeaDsaHeapAbstraction::getModifiedRegions(const llvm::Function &fn) {
+SeaDsaHeapAbstraction::RegionVec
+SeaDsaHeapAbstraction::getModifiedRegions(const llvm::Function &fn) {
   return m_func_mods[&fn];
 }
 
-LegacySeaDsaHeapAbstraction::RegionVec
-LegacySeaDsaHeapAbstraction::getNewRegions(const llvm::Function &fn) {
+SeaDsaHeapAbstraction::RegionVec
+SeaDsaHeapAbstraction::getNewRegions(const llvm::Function &fn) {
   return m_func_news[&fn];
 }
 
-LegacySeaDsaHeapAbstraction::RegionVec
-LegacySeaDsaHeapAbstraction::getAccessedRegions(const llvm::CallInst &I) {
+SeaDsaHeapAbstraction::RegionVec
+SeaDsaHeapAbstraction::getAccessedRegions(const llvm::CallInst &I) {
   return m_callsite_accessed[&I];
 }
 
-LegacySeaDsaHeapAbstraction::RegionVec
-LegacySeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) {
+SeaDsaHeapAbstraction::RegionVec
+SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) {
   RegionVec v1 = m_callsite_accessed[&I];
   RegionVec v2 = m_callsite_mods[&I];
   std::set<Region> s2(v2.begin(), v2.end());
@@ -553,13 +553,13 @@ LegacySeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) {
   return out;
 }
 
-LegacySeaDsaHeapAbstraction::RegionVec
-LegacySeaDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst &I) {
+SeaDsaHeapAbstraction::RegionVec
+SeaDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst &I) {
   return m_callsite_mods[&I];
 }
 
-LegacySeaDsaHeapAbstraction::RegionVec
-LegacySeaDsaHeapAbstraction::getNewRegions(const llvm::CallInst &I) {
+SeaDsaHeapAbstraction::RegionVec
+SeaDsaHeapAbstraction::getNewRegions(const llvm::CallInst &I) {
   return m_callsite_news[&I];
 }
 
