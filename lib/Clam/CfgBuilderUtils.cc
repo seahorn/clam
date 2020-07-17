@@ -36,7 +36,7 @@ bool isInteger(const Type *t) { return (t->isIntegerTy() && !isBool(t)); }
 bool isInteger(const Value &v) { return isInteger(v.getType()); }
 
 bool isPointer(const Type *t, const CrabBuilderParams &params) {
-  return (t->isPointerTy() && params.trackPointers());
+  return (t->isPointerTy() && params.trackMemory());
 }
 
 bool isPointer(const Value &v, const CrabBuilderParams &params) {
@@ -81,7 +81,7 @@ z_number getIntConstant(const ConstantInt *CI, const CrabBuilderParams &params,
 bool isTrackedType(const Type &ty, const CrabBuilderParams &params) {
   // -- a pointer
   if (ty.isPointerTy())
-    return (params.trackPointers());
+    return (params.trackMemory());
 
   // -- always track integer and boolean registers
   return ty.isIntegerTy();

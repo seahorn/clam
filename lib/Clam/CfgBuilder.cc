@@ -10,47 +10,33 @@
  * is pretty straightforward.  LLVM branches are translated to Crab
  * assume and goto statements. The translation also removes phi nodes.
  *
- * If tracked precision = REF then LLVM pointer operations are
+ * If tracked precision = SINGLETON_MEM then only pointer operations
+ * over singleton memory objects are translated to Crab array
+ * operations. This translation requires the Heap analysis used to
+ * partition statically memory into disjoint regions. Then, each
+ * memory region's _field_ (i.e., Burstall's memory model) is mapped
+ * to a Crab array and LLVM load/store are translated to array
+ * read/write statements. A memory object is considered a singleton if
+ * its address is not taken. This is usually the case of global and
+ * stack variables.
+ *
+ * If tracked precision = MEM then all LLVM pointer operations are
  * translated to Crab reference operations. This translation is almost
- * one-to-one but it requires the use of the Heap Analysis.
+ * one-to-one but it also requires the use of the Heap Analysis.
  *
- * TO_BE_UPDATED: If tracked precision = ARR then the translation is more
- * complex. We use a heap analysis to partition statically memory into disjoint
- * regions. Then, each memory region's _field_ (i.e., Burstall's
- * memory model) is mapped to a Crab array and LLVM load/store are
- * translated to array read/write statements. Some memory regions'
- * fields might not be mapped to Crab arrays because otherwise, the
- * Crab array domains wouldn't be sound. The hard part is to infer
- * statically pointer offsets. We use the heap analysis for it. In any
- * case, this translation should be sound but it's a best effort so
- * some operations might not be precisely translated.
- *
- * The translation of function calls is also straightforward except if
- * tracked precision = ARR. In that case, all functions are
- * _purified_. That is, the translation ensures that functions have no
- * side-effects.
- *
- * TO_BE_UPDATED: In summary, Clam translates memory operations using two
- * different modes: a straightforward translation (tracked precision = PTR)
- * which maps each integer and memory LLVM instruction to an
- * boolean/integer and pointer Crab statement, respectively; and a
- * more complex translation that translates memory LLVM instructions
- * into Crab array statements using the Burstall's memory model. The
- * former delegates all the work to the Crab abstract domain. The
- * latter frees Crab abstract domains from reasoning about aliasing
- * since arrays are disjoint.
+ * The translation of function calls is also straightforward except
+ * that all functions are _purified_ if tracked precision != NUM. That
+ * is, the translation ensures that functions have no side-effects.
  *
  * Known limitations of the translation:
  *
  * - Ignore floating point instructions.
  * - Ignore inttoptr/ptrtoint instructions.
  * - Almost ignore memset/memmove/memcpy.
- * - TO_FIX: Only if tracked precision = ARR: if a `LoadInst`'s lhs
+ * - Only if tracked precision = SINGLETON_MEM: if a `LoadInst`'s lhs
  *   (`StoreInst` value operand) is a pointer then the translation
  *   ignores safely the LLVM instruction and hence, it won't add the
- *   corresponding Crab array statement `array_load`
- *   (`array_store`). This means that Clam's reasoning about memory
- *   contents is only for integers and booleans.
+ *   corresponding Crab array statement `array_load` (`array_store`).
  */
 
 #include "llvm/ADT/APInt.h"
@@ -608,9 +594,12 @@ public:
           } else if (val_ref->isBool() && m_lfac.isBoolTrue(val_ref)) {
             val = number_t(1);
           }
-          /* TO_BE_UPDATED */
-          // m_bb.array_store(m_lfac.mkArrayVar(r), lin_exp_t(offset),
-          //                 val, elem_size, first /*strong update*/);
+	  if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM) {	  
+	    m_bb.array_store(m_lfac.mkArrayVar(r), lin_exp_t(offset),
+			     val, elem_size, first /*strong update*/);
+	  } else if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+	    CLAM_WARNING("TODO implement global initializer if CrabBuilderPrecision::MEM");
+	  }
         }
       }
     }
@@ -676,10 +665,10 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   void doVerifierCall(CallInst &I);
   void doGep(GetElementPtrInst &I, unsigned bitwidth,
              var_t lhs, llvm::Optional<var_t> base);
-  void doStoreInst(StoreInst &I, bool is_singleton, var_t array_var,
+  void StoreIntoSingletonMem(StoreInst &I, bool is_singleton, var_t array_var,
                    crab_lit_ref_t val, Region reg);
-  void doLoadInst(LoadInst &I, bool is_singleton, var_t lhs, var_t rhs,
-                  Region rhs_region);
+  void LoadFromSingletonMem(LoadInst &I, bool is_singleton, var_t lhs, var_t rhs,
+			    Region rhs_region);
 
 public:
   CrabInstVisitor(
@@ -730,12 +719,12 @@ uint64_t CrabInstVisitor::storageSize(const Type *t) const {
 
 var_t CrabInstVisitor::getUnconstrainedArrayIdxVar(llvm_variable_factory &vfac,
                                                    unsigned bitwidth) {
-#if 0
+  #if 0
   static var_t v(vfac.get(), crab::INT_TYPE, bitwidth);
   m_bb.havoc(v);
-#else
+  #else
   var_t v(vfac.get(), crab::INT_TYPE, bitwidth);
-#endif
+  #endif
   return v;
 }
 
@@ -767,7 +756,8 @@ Optional<z_number> CrabInstVisitor::evalOffset(Value &v, LLVMContext &ctx) {
   return llvm::None;
 }
 
-// This method is key for precision for memory operations.
+// This method is key for precision of memory operations if tracked
+// precision is SINGLETON_MEM.
 //
 // v is a pointer operand. It tries to figure out its numerical
 // offset. If it can it returns an unconstrained variable.
@@ -797,8 +787,6 @@ lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx,
 			    << *Arg << " at function " << F.getName()));
       return getUnconstrainedArrayIdxVar(vfac, 32);
     } else {
-      // we cannot infer statically the offset so we return an
-      // unconstrained variable.
       CRAB_LOG("cfg-gep",
                CLAM_WARNING("cannot infer statically base address of  " << *v));
       return getUnconstrainedArrayIdxVar(vfac, 32);
@@ -1141,24 +1129,19 @@ void CrabInstVisitor::doIntLogicOp(crab_lit_ref_t ref, BinaryOperator &i) {
 
 /* malloc-like functions */
 void CrabInstVisitor::doAllocFn(Instruction &I) {
-#if 0 /* TO_BE_UPDATED */
+
   if (!I.getType()->isVoidTy()) {
     crab_lit_ref_t ref = m_lfac.getLit(I);
     assert(ref->isVar());
     if (isPointer(I, m_params)) {
+#if 0 /* TO_BE_UPDATED */      
       m_bb.ptr_new_object(ref->getVar(), m_object_id++);
+#endif      
     } else if (isTracked(I, m_params)) {
       // -- havoc return value
       havoc(ref->getVar(), m_bb, m_params.include_useless_havoc);
-      /**
-       * TODO: add an array_init statement for the allocation function.
-       * This would be unsound in general so we need to be careful. It's
-       * only sound if the allocation happens only once. Maybe we can do
-       * something like recency abstraction at translation time.
-       **/
     }
   }
-#endif
 }
 
 /* memcpy/memmove/memset functions */
@@ -1169,13 +1152,10 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
   if (m_lfac.getTrack() == NUM) {
     return;
   } else if (m_lfac.getTrack() == PTR) {
-    // XXX: memory intrinsics are currently only translated for ARR
     CLAM_WARNING("Skipped memory intrinsics " << I);
     return;
   } 
 
-  assert(m_lfac.getTrack() == ARR);
-  
   MemCpyInst  *MCI = dyn_cast<MemCpyInst>(&I);
   MemMoveInst *MVI = dyn_cast<MemMoveInst>(&I);
   Value *dst = I.getDest();
@@ -1708,13 +1688,13 @@ void CrabInstVisitor::visitSelectInst(SelectInst &I) {
 }
 
 //
-// - If precision level is CrabBuilderPrecision::REF then GEP it is
+// - If precision level is CrabBuilderPrecision::MEM then GEP it is
 //   translated as a Crab reference statement.
 //
-// - If precision level is CrabBuilderPrecision::ARR then GEP it is
-//   translated as a sequence of Crab arithmetic statements to be used
-//   by a Crab array statement. If base.hasValue() is false then the
-//   base pointer of GEP is zero.
+// - If precision level is CrabBuilderPrecision::SINGLETON_MEM then
+//   GEP it is translated as a sequence of Crab arithmetic statements
+//   to be used by a Crab array statement. If base.hasValue() is false
+//   then the base pointer of GEP is zero.
 void CrabInstVisitor::doGep(GetElementPtrInst &I, 
                             unsigned max_index_bitwidth, var_t lhs,
                             llvm::Optional<var_t> base) {
@@ -1732,9 +1712,9 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
     if (is_bignum) {
       m_bb.havoc(lhs);
     } else {
-      if (m_params.precision_level == CrabBuilderPrecision::REF) {
+      if (m_params.precision_level == CrabBuilderPrecision::MEM) {
 #if 0 /* TO_BE_UPDATED */
-	// pointer arithmetic	
+	// reference statement
 	if (!base.hasValue()) {
 	  CRAB_ERROR("doGEP expects a base pointer");
 	}
@@ -1742,7 +1722,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
 	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":=" << base.getValue() << "+"
 	                        	 << o << "\n");
 #endif
-      } else {
+      } else if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM) {
         // pure arithmetic
         if (base.hasValue()) {
           m_bb.assign(lhs, base.getValue() + lin_exp_t(o));
@@ -1769,9 +1749,9 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
       if (const ConstantInt *ci =
               dyn_cast<const ConstantInt>(GTI.getOperand())) {
         number_t offset(fieldOffset(st, ci->getZExtValue()));
-        if (m_params.precision_level == CrabBuilderPrecision::REF) {
+        if (m_params.precision_level == CrabBuilderPrecision::MEM) {
 #if 0 /* TO_BE_UPDATED */	  
-	  // pointer arithmetic
+	  // reference statement
 	  if (!(already_assigned || base.hasValue())) {
 	    CRAB_ERROR("doGEP expects a base pointer");
 	  }
@@ -1782,7 +1762,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
 		     crab::outs() << lhs << "=" << base.getValue() << "+" << offset << "\n";
               } else { crab::outs() << lhs << "+=" << offset << "\n"; });
 #endif
-        } else {
+        } else if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM){
           // pure arithmetic
           if (!already_assigned) {
             if (base.hasValue()) {
@@ -1840,9 +1820,9 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
       }
 
       lin_exp_t offset = offsetOpt.getValue();
-      if (m_params.precision_level == CrabBuilderPrecision::REF) {
+      if (m_params.precision_level == CrabBuilderPrecision::MEM) {
 #if 0 /* TO_BE_UPDATED */	  	
-	// pointer arithmetic
+	// reference statement
 	if (!(already_assigned || base.hasValue())) {
 	  CRAB_ERROR("doGEP expects a base pointer");
 	}
@@ -1853,7 +1833,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
 		   crab::outs() << lhs << "=" << base.getValue() << "+" << offset << "\n";
             } else { crab::outs() << lhs << "+=" << offset << "\n"; });
 #endif
-      } else {
+      } else if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM) {
         // pure arithmetic
         if (!already_assigned) {
           if (base.hasValue()) {
@@ -1881,12 +1861,6 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
 }
 
 /*
- The translation of GEP is different depending on whether the
- precision level is REF or ARR. With REF the translation should not
- lose precision. However, with ARR the translation is a best-effort
- thing since we need to know statically if the pointer operand points
- to a singleton memory object.
-
  The offset computation is translated to a sequence of Crab linear
  arithmetic operations. In Crab, an arithmetic operation is strongly
  typed which means that all operands must have same bitwidth. GEP
@@ -1903,7 +1877,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
   CRAB_LOG("cfg-gep", llvm::errs() << "Translating " << I << "\n");
 
   unsigned bitwidth = getMaxBitWidthFromGepIndexes(I);
-  if (m_params.precision_level == CrabBuilderPrecision::REF) {
+  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
     crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
@@ -1918,23 +1892,9 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     }
     assert(ptr->isVar());
     doGep(I, bitwidth, lhs->getVar(), ptr->getVar()/*base address*/);
-  } else if (m_params.precision_level == CrabBuilderPrecision::ARR) {
-    /*
-      The goal is to compute an array index expression to be used by
-      some array read or write. It's not always possible to figure out
-      the array index expression because we need to know the base
-      address statically. We try the following:
-
-      1. Ask LLVM MemoryBuiltins::ObjectSizeOffsetVisitor. LLVM will
-      succeed if the GEP is a constant value and the memory object is
-      a global or alloca (i.e., singleton).
-
-      2. If the GEP is not constant then we can still succeed if the
-         GEP pointer operand's memory object is known to be a
-         singleton.
-     */
-
-    if (evalOffset(I, I.getContext()).hasValue()) {
+  } else if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM) {
+    
+    if (evalOffset(I, I.getContext()).hasValue()) {      
       // Skip the GEP instruction because the offset is a known
       // constant. The next Load or Store will call evalOffset again
       // to obtain the constant index.
@@ -1956,7 +1916,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     const bool isSingletonMemory = isa<AllocaInst>(Ptr) || isa<GlobalVariable>(Ptr);
 
     if (isSingletonMemory) {
-      llvm::Optional<var_t> baseAddress = llvm::None; /* i.e., zero */
+      llvm::Optional<var_t> baseAddress = llvm::None; /* i.e., zero base address*/
       // Check if the GEP pointer operand is the result of another GEP
       // instruction
       if (GetElementPtrInst *GepPtr = dyn_cast<GetElementPtrInst>(Ptr)) {
@@ -1992,10 +1952,12 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
   }
 }
 
-/* Translate a StoreInt into a Crab array statement */
-void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton, var_t v,
-                                  crab_lit_ref_t val, Region reg) {
-  if (is_singleton) {
+/* Translate a StoreInt into a Crab array or assign statement */
+void CrabInstVisitor::StoreIntoSingletonMem(StoreInst &I, bool LowerToScalar, var_t v,
+					    crab_lit_ref_t val, Region reg) {
+  assert(m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM);
+  
+  if (LowerToScalar) {
     // Promote the global to an integer/boolean scalar
     if (isInteger(*I.getValueOperand())) {
       assert(val->isInt());
@@ -2028,9 +1990,8 @@ void CrabInstVisitor::doStoreInst(StoreInst &I, bool is_singleton, var_t v,
     const statement_t *crab_stmt;
     if (val->isVar()) {
       var_t temp_v = val->getVar();
-      // Due to heap abstraction imprecisions, it can happen
-      // that the region's bitwidth is smaller than value's
-      // bitwidth.
+      // Due to heap abstraction imprecisions, it can happen that the
+      // region's bitwidth is smaller than value's bitwidth.
       if (reg.getRegionInfo().getBitwidth() < val->getVar().get_bitwidth()) {
         temp_v = m_lfac.mkIntVar(reg.getRegionInfo().getBitwidth());
         // XXX: this truncate operation can overflow but the
@@ -2086,7 +2047,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
     return;
   }
 
-  if (m_lfac.getTrack() == CrabBuilderPrecision::ARR &&
+  if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
       (isInteger(*I.getValueOperand()) || isBool(*I.getValueOperand()))) {
     // -- value is an integer/bool -> add array statement
     if (!val) {
@@ -2096,17 +2057,15 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
       // expressions are lowered.
       CLAM_ERROR("unexpected value operand of store instruction");
     }
-    Region r =
-        getRegion(m_mem, *m_dl, &I, I.getPointerOperand());
+    Region r = getRegion(m_mem, *m_dl, &I, I.getPointerOperand());
     if (!r.isUnknown()) {
-      bool lowerToScalar =
-          getSingletonValue(r, m_params.lower_singleton_aliases);
-      doStoreInst(I, lowerToScalar,
-                  (lowerToScalar ? m_lfac.mkArraySingletonVar(r)
-                                 : m_lfac.mkArrayVar(r)),
-                  val, r);
+      bool lowerToScalar = getSingletonValue(r, m_params.lower_singleton_aliases);
+      StoreIntoSingletonMem(I, lowerToScalar,
+			    (lowerToScalar ? m_lfac.mkArraySingletonVar(r)
+			     : m_lfac.mkArrayVar(r)),
+			    val, r);
     }
-  } else if (m_lfac.getTrack() == CrabBuilderPrecision::REF) {
+  } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
     if (!val) {
       CLAM_ERROR("unexpected value operand of store instruction");
     }
@@ -2142,15 +2101,15 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
 }
 
 /*
- * Translate a LoadInst into a Crab statement.
+ * Translate a LoadInst into a Crab array or assign statement.
  *
  * lhs_v and rhs_v are crab typed variables.
  * reg is the region associated with the load's pointer operand.
  */
-void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton, var_t lhs_v,
-                                 var_t rhs_v, Region reg) {
-
-  if (is_singleton) {
+void CrabInstVisitor::LoadFromSingletonMem(LoadInst &I, bool LowerToScalar, var_t lhs_v,
+					   var_t rhs_v, Region reg) {
+  assert(m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM);
+  if (LowerToScalar) {
     // Promote the global to an integer/boolean scalar
     if (isInteger(I)) {
       m_bb.assign(lhs_v, rhs_v);
@@ -2159,7 +2118,6 @@ void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton, var_t lhs_v,
     } else { /* unreachable */
     }
   } else {
-#if 0 /* TO_BE_UPDATED */    
     var_t tmp = lhs_v;
     // Due to heap abstraction imprecisions, it can happen
     // that the region's bitwidth is smaller than lhs_v'
@@ -2167,14 +2125,11 @@ void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton, var_t lhs_v,
     if (reg.getRegionInfo().getBitwidth() < lhs_v.get_bitwidth()) {
 	lhs_v = m_lfac.mkIntVar(reg.getRegionInfo().getBitwidth());
     }
-    
     lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), reg,
 				    m_lfac.getVFac());
-    
     auto const *crab_stmt =
       m_bb.array_load(lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()).getFixedSize());
     insertRevMap(crab_stmt, I);
-    
     if (reg.getRegionInfo().getBitwidth() < lhs_v.get_bitwidth()) {
       // XXX: not sure if signed extension is correct.
       // Regions are signed-agnostic so dont know what is the
@@ -2183,8 +2138,7 @@ void CrabInstVisitor::doLoadInst(LoadInst &I, bool is_singleton, var_t lhs_v,
       // load instruction.
       m_bb.sext(lhs_v, tmp);
     }
-#endif
-  }
+  } 
 }
 
 void CrabInstVisitor::visitLoadInst(LoadInst &I) {
@@ -2219,21 +2173,20 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
     return;
   }
 
-  if (m_lfac.getTrack() == CrabBuilderPrecision::ARR &&
+  if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
       (isInteger(I) || isBool(I))) {
     // -- lhs is an integer/bool -> add array statement
-    Region r =
-        getRegion(m_mem, *m_dl, &I, I.getPointerOperand());
+    Region r = getRegion(m_mem, *m_dl, &I, I.getPointerOperand());
     if (!(r.isUnknown())) {
       bool lowerToScalar =
 	getSingletonValue(r, m_params.lower_singleton_aliases);
-      doLoadInst(I, lowerToScalar, lhs->getVar(),
-		 (lowerToScalar ? m_lfac.mkArraySingletonVar(r)
-		  : m_lfac.mkArrayVar(r)),
-		 r);
+      LoadFromSingletonMem(I, lowerToScalar, lhs->getVar(),
+			   (lowerToScalar ? m_lfac.mkArraySingletonVar(r)
+			    : m_lfac.mkArrayVar(r)),
+			   r);
       return;
     }
-  } else if (m_lfac.getTrack() == CrabBuilderPrecision::REF) {
+  } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
 #if 0 /* TO_BE_UPDATED */    
     uint64_t elem_size = clam::storageSize(I.getPointerOperand()->getType(), *m_dl);
     assert(elem_size > 0);
@@ -2246,29 +2199,28 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
 }
 
 void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
-#if 0 /* TO_BE_UPDATED */
   if (isPointer(I, m_params)) {
+    #if 0 /* TO_BE_UPDATED */
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
     m_bb.ptr_new_object(lhs->getVar(), m_object_id++);
-  } else if (m_lfac.getTrack() == ARR) {
-    // Memory allocated in the stack is initially uninitialized.
+    #endif     
+  } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+    // Memory allocated in the stack is uninitialized.
     // 
     // We assume they are zero initialized so that Crab's array
     // smashing can infer something meaningful. Even Crab's array
     // adaptive domain may benefit from this in case an array is
     // initialized in a loop.
     // 
-    // REVISIT/TODO: this can generate two consecutive array store if
-    // the alloca instruction is followed by an array store.  A
-    // better solution for array adaptive is to unroll loops one
-    // iteration.
+    // REVISIT/TODO: this can generate two consecutive array stores if
+    // the alloca instruction is followed by an array store.  A better
+    // solution for array adaptive is to unroll loops one iteration.
     Function *parentF = I.getParent()->getParent();
     MemoryInitializer MI(m_lfac, m_mem, *m_dl, m_params, *parentF, m_bb);
     Type *ATy = I.getAllocatedType();
     MI.InitZeroInitializer(I, *ATy, 0);
   }
-#endif
 }
 
 void CrabInstVisitor::visitCallInst(CallInst &I) {
@@ -2346,7 +2298,7 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     // -- havoc all modified regions by the callee
     // Note that even if the code is not available for the callee, the
     // pointer analysis might be able to model its pointer semantics.
-    if (m_lfac.getTrack() == CrabBuilderPrecision::ARR /*TO_BE_UPDATED*/) {
+    if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM /*TO_BE_UPDATED*/) {
       RegionVec mods = getModifiedRegions(m_mem, I);
       for (auto a : mods) {
         if (getSingletonValue(a, m_params.lower_singleton_aliases))
@@ -2354,6 +2306,8 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
         else
           m_bb.havoc(m_lfac.mkArrayVar(a));
       }
+    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+      CLAM_WARNING("TODO CrabBuilderPrecision::MEM");
     }
 
     CLAM_WARNING(
@@ -2426,7 +2380,7 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     }
   }
 
-  if (m_lfac.getTrack() == CrabBuilderPrecision::ARR) {
+  if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
     // -- add the input and output array parameters a_i1,...,a_in
     // -- and a_o1,...,a_om.
     RegionVec onlyreads = getReadOnlyRegions(m_mem, I);
@@ -2478,7 +2432,10 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     for (auto a : news) {
       outputs.push_back(m_lfac.mkArrayVar(a));
     }
+  } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+    CLAM_WARNING("TODO implement callsite with CrabBuilderPrecision::MEM");
   }
+  
 
   // -- Finally, add the callsite or crab intrinsic
   if (isCrabIntrinsic(*callee)) {
@@ -2845,7 +2802,7 @@ void CfgBuilderImpl::buildCfg() {
   bool has_seahorn_fail = false;
   // keep track of initialized regions
   std::set<Region> init_regions;
-  // For translation of gep if precision level is CrabBuilderPrecision::ARR
+  // Map GEP instruction to a Crab variable
   DenseMap<const GetElementPtrInst *, var_t> gep_map;
 
   const TargetLibraryInfo *tli = nullptr;
@@ -2996,91 +2953,93 @@ void CfgBuilderImpl::buildCfg() {
       }
     }
 
-    if (m_lfac.getTrack() == CrabBuilderPrecision::ARR &&
-        (!m_func.getName().equals("main"))) {
-      // -- add the input and output array parameters
-      RegionVec onlyreads = getReadOnlyRegions(m_mem, m_func);
-      RegionVec mods = getModifiedRegions(m_mem, m_func);
-      RegionVec news = getNewRegions(m_mem, m_func);
+    if (!m_func.getName().equals("main")) {
+      if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+	// -- add the input and output array parameters
+	RegionVec onlyreads = getReadOnlyRegions(m_mem, m_func);
+	RegionVec mods = getModifiedRegions(m_mem, m_func);
+	RegionVec news = getNewRegions(m_mem, m_func);
+	
+	CRAB_LOG("cfg-mem", llvm::errs() << "Function " << m_func.getName()
+                                         << "\n\tOnly-Read regions "
+                                         << onlyreads.size() << ": " << onlyreads
+                                         << "\n\tModified regions " << mods.size()
+                                         << ": " << mods << "\n\tNew regions "
+                                         << news.size() << ": " << news << "\n");
 
-      CRAB_LOG("cfg-mem", llvm::errs() << "Function " << m_func.getName()
-                                       << "\n\tOnly-Read regions "
-                                       << onlyreads.size() << ": " << onlyreads
-                                       << "\n\tModified regions " << mods.size()
-                                       << ": " << mods << "\n\tNew regions "
-                                       << news.size() << ": " << news << "\n");
-
-      // -- add only read regions as input parameters
-      for (auto a : onlyreads) {
-        if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
-          // Promote the global to a scalar
-          inputs.push_back(m_lfac.mkArraySingletonVar(a));
-        } else {
-          inputs.push_back(m_lfac.mkArrayVar(a));
-        }
-      }
-
-      // -- add input/output parameters
-      for (auto a : mods) {
-        if (std::find(news.begin(), news.end(), a) != news.end()) {
-          continue;
-        }
-        llvm::Optional<var_t> a_in;
-
-        // -- for each parameter `a` we create a fresh version
-        //    `a_in` where `a_in` acts as the input version of the
-        //    parameter and `a` is the output version. Note that the
-        //    translation of the function will not produce new
-        //    versions of `a` since all array stores overwrite `a`.
-
-        /** Added in the entry block of the function **/
-        entry.set_insert_point_front();
-        if (const Value *v =
-                getSingletonValue(a, m_params.lower_singleton_aliases)) {
-          // Promote the global to a scalar
-          Type *ty = cast<PointerType>(v->getType())->getElementType();
-          var_t s = m_lfac.mkArraySingletonVar(a);
-          if (isInteger(ty)) {
-            a_in = m_lfac.mkIntVar(ty->getIntegerBitWidth());
-            entry.assign(s, a_in.getValue());
-          } else if (isBool(ty)) {
-            a_in = m_lfac.mkBoolVar();
-            entry.bool_assign(s, a_in.getValue(), false);
-          } else { /* unreachable */
-          }
-        } else {
-          switch (a.getRegionInfo().getType()) {
-          case INT_REGION:
-            a_in = m_lfac.mkIntArrayVar(0 /*unknown bitwidth*/);
-            break;
-          case BOOL_REGION:
-            a_in = m_lfac.mkBoolArrayVar();
-            break;
-          default: /*unreachable*/;
-            ;
-          }
-          if (a_in.hasValue())
-            entry.array_assign(m_lfac.mkArrayVar(a), a_in.getValue());
-        }
-
-        // input version
-        if (a_in.hasValue())
-          inputs.push_back(a_in.getValue());
-
-        // output version
-        if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
-          // Promote the global to a scalar
-          outputs.push_back(m_lfac.mkArraySingletonVar(a));
-        } else {
-          outputs.push_back(m_lfac.mkArrayVar(a));
-        }
-      }
-
-      // -- add more output parameters
-      for (auto a : news) {
+	// -- add only read regions as input parameters
+	for (auto a : onlyreads) {
+	  if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
+	    // Promote the global to a scalar
+	    inputs.push_back(m_lfac.mkArraySingletonVar(a));
+	  } else {
+	    inputs.push_back(m_lfac.mkArrayVar(a));
+	  }
+	}
+	
+	// -- add input/output parameters
+	for (auto a : mods) {
+	  if (std::find(news.begin(), news.end(), a) != news.end()) {
+	    continue;
+	  }
+	  llvm::Optional<var_t> a_in;
+	  
+	  // -- for each parameter `a` we create a fresh version
+	  //    `a_in` where `a_in` acts as the input version of the
+	  //    parameter and `a` is the output version. Note that the
+	  //    translation of the function will not produce new
+	  //    versions of `a` since all array stores overwrite `a`.
+	  
+	  /** Added in the entry block of the function **/
+	  entry.set_insert_point_front();
+	  if (const Value *v =
+	      getSingletonValue(a, m_params.lower_singleton_aliases)) {
+	    // Promote the global to a scalar
+	    Type *ty = cast<PointerType>(v->getType())->getElementType();
+	    var_t s = m_lfac.mkArraySingletonVar(a);
+	    if (isInteger(ty)) {
+	      a_in = m_lfac.mkIntVar(ty->getIntegerBitWidth());
+	      entry.assign(s, a_in.getValue());
+	    } else if (isBool(ty)) {
+	      a_in = m_lfac.mkBoolVar();
+	      entry.bool_assign(s, a_in.getValue(), false);
+	    } else { /* unreachable */
+	    }
+	  } else {
+	    switch (a.getRegionInfo().getType()) {
+	    case INT_REGION:
+	      a_in = m_lfac.mkIntArrayVar(0 /*unknown bitwidth*/);
+	      break;
+	    case BOOL_REGION:
+	      a_in = m_lfac.mkBoolArrayVar();
+	      break;
+	    default: /*unreachable*/;
+	      ;
+	    }
+	    if (a_in.hasValue())
+	      entry.array_assign(m_lfac.mkArrayVar(a), a_in.getValue());
+	  }
+	  
+	  // input version
+	  if (a_in.hasValue())
+	    inputs.push_back(a_in.getValue());
+	  
+	  // output version
+	  if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
+	    // Promote the global to a scalar
+	    outputs.push_back(m_lfac.mkArraySingletonVar(a));
+	  } else {
+	    outputs.push_back(m_lfac.mkArrayVar(a));
+	  }
+	}
+	// -- add more output parameters
+	for (auto a : news) {
         outputs.push_back(m_lfac.mkArrayVar(a));
+	}
+      } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+	CLAM_WARNING("TODO implement callsite with CrabBuilderPrecision::MEM");      
       }
-    }
+    } 
 
     // -- Finally, we add the function declaration
 
@@ -3229,19 +3188,19 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   case CrabBuilderPrecision::NUM:
     o << "only integers\n";
     break;
-  case CrabBuilderPrecision::ARR:
-    o << "integers and arrays (memory abstraction)\n";
+  case CrabBuilderPrecision::SINGLETON_MEM:
+    o << "integers and singleton memory objects\n";
     break;
-  case CrabBuilderPrecision::REF:
-    o << "integers and pointers\n";
+  case CrabBuilderPrecision::MEM:
+    o << "integers and all memory objects\n";
     break;
   default:;
     ;
   }
   o << "\tsimplify cfg: " << simplify << "\n";
   o << "\tinterproc cfg: " << interprocedural << "\n";
-  o << "\tlower singleton aliases into scalars: " << lower_singleton_aliases
-    << "\n";
+  o << "\tlower singleton aliases into scalars: "
+    << lower_singleton_aliases << "\n";
   o << "\tenable big numbers: " << enable_bignums << "\n";
 }
 

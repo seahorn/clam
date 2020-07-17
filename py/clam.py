@@ -283,10 +283,10 @@ def parseArgs(argv):
                     help='Max number of live vars per block before switching to a non-relational domain',
                     default=10000)
     p.add_argument('--crab-track',
-                   help='Track integers (num), num + pointers (ref), and num + singleton memory contents (arr)',
-                   choices=['num', 'ref', 'arr'], dest='track', default='num')
+                   help='Track integers (num), num + singleton memory objects (sing-mem), and num + all memory objects (mem)',
+                   choices=['num', 'sing-mem', 'mem'], dest='track', default='num')
     p.add_argument('--crab-heap-analysis',
-                   help="Heap analysis used for memory disambiguation (if --crab-track=arr):\n"
+                   help="Heap analysis used for memory disambiguation (if --crab-track != num):\n"
                    "- ci-sea-dsa: context-insensitive sea-dsa\n"
                    "- cs-sea-dsa: context-sensitive sea-dsa\n"
                    "- ci-sea-dsa-types: context-insensitive sea-dsa with types (default)\n"
@@ -730,10 +730,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
     clam_args.append('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
     clam_args.append('--crab-relational-threshold={0}'.format(args.num_threshold))
-    if args.track == 'arr':        
-        clam_args.append('--crab-track=arr')
-    else:
-        clam_args.append('--crab-track={0}'.format(args.track))
+    clam_args.append('--crab-track={0}'.format(args.track))
     if args.crab_heap_analysis == 'none' or \
        args.crab_heap_analysis == 'ci-sea-dsa' or \
        args.crab_heap_analysis == 'cs-sea-dsa':

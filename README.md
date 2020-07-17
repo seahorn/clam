@@ -285,26 +285,11 @@ where `N` is the maximum number of thresholds.
 We also provide the option `--crab-track=VAL` to indicate the level of
 abstraction of the translation. The possible values of `VAL` are:
 
-- `num`: translate only operations over LLVM registers of integer and boolean types.
-- `ptr`: `num` + translate all pointer operations using Crab pointer operations. 
-- `arr`: `num` + translates all pointer operations using Crab arrays.
-
-    Although the translation with level `ptr` should work, Crab does
-    not actually reason about pointers (although we are working on
-    it). Thus, this translation is not very useful at the moment.
-
-    To reason about memory contents and taking aliasing into account
-    use the level `arr`.  At this level, the Clam's frontend will
-    partition the heap into disjoint regions using a pointer
-    analysis. Each region is mapped to a Crab array, and each LLVM
-    load and store is translated to an array read and write operation,
-    respectively. Currently, we choose to consider a region only if
-    its element type is an integer but it can be extended to pointers
-    if we would interested in e.g., nullity analysis. Then, it will
-    use an array domain provided by Crab whose base domain is the one
-    selected by option `--crab-domain`. If option
-    `--crab-singleton-aliases` is enabled then Clam translates global
-    singleton regions to scalar variables.
+- `num`: translate only operations over LLVM registers of integer and
+   boolean types.
+- `sing-mem`: `num` + translate all singleton memory objects (e.g.,
+   non-taken-address globals and stack variables).
+- `mem`: `num` + translates all memory objects.
 
 By default, all the analyses are run in an intra-procedural
 manner. Whenever possible, we recommend to run Clam with option
@@ -373,7 +358,7 @@ Consider the next program:
 
 and type
 
-    clam.py test.c --crab-track=arr --crab-add-invariants=all -o test.crab.bc
+    clam.py test.c --crab-track=sing-mem --crab-add-invariants=all -o test.crab.bc
     llvm-dis test.crab.bc
 
 The content of `test.crab.bc` should be similar to:
@@ -441,21 +426,4 @@ Crab. Here some of them:
 
 - The backward analysis is too experimental and it requires more work.
   
-- The option `--crab-track=ptr` translates pointer operations to Crab
-  pointer operations without losing precision. However, Crab does not
-  provide currently any pointer or shape analysis, and thus, very
-  little reasoning about pointer operations can be currently done.
- 
-  Alternatively, points-to information can be provided to Clam by
-  `sea-dsa` as a pre-analysis step if `--crab-track=arr`.  Clam uses
-  this pre-analysis step to statically partition memory into disjoint
-  regions and then (under some conditions) translate regions to Crab
-  arrays. Then, Clam uses one of the Crab array domains to reason
-  about their contents. By default, Clam uses Crab _array smashing_
-  domain which is fast but very imprecise. If compiled with option
-  `-DCLAM_NEW_ARRAY_DOMAIN=ON` then Clam will use a new Crab array
-  domain, called _array adaptive_ domain, which is more precise but
-  slower. The array adaptive domain will eventually replace array
-  smashing.
-	  
   

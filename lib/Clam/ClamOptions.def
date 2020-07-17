@@ -5,8 +5,8 @@ CrabTrackLev("crab-track",
    cl::desc("Track abstraction level of the Crab Cfg"),
    cl::values
     (clEnumValN(CrabBuilderPrecision::NUM, "num", "Integer and Boolean registers only"),
-     clEnumValN(CrabBuilderPrecision::ARR, "arr", "num + singleton memory objects"),
-     clEnumValN(CrabBuilderPrecision::REF, "ref", "num + all memory objects")),
+     clEnumValN(CrabBuilderPrecision::SINGLETON_MEM, "sing-mem", "num + singleton memory objects"),
+     clEnumValN(CrabBuilderPrecision::MEM, "mem", "num + all memory objects")),
    cl::init(CrabBuilderPrecision::NUM));
 
 cl::opt<bool>

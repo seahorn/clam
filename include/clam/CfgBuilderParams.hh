@@ -6,8 +6,8 @@ namespace clam {
 
 enum class CrabBuilderPrecision {
   NUM, // only integers and boolean
-  ARR, // NUM + singleton memory objects
-  REF  // NUM + all memory objects
+  SINGLETON_MEM, // NUM + singleton memory objects
+  MEM  // NUM + all memory objects
 };
 
 /** User-definable parameters to build a Crab CFG **/
@@ -44,18 +44,16 @@ struct CrabBuilderParams {
         include_useless_havoc(_include_useless_havoc),
         enable_bignums(_enable_bignums), print_cfg(_print_cfg) {}
 
-  bool trackPointers() const {
-    return precision_level == CrabBuilderPrecision::REF;
+  bool trackMemory() const {
+    return precision_level == CrabBuilderPrecision::MEM;
   }
 
-  /* Represent only booleans and integers */
-  void setNumPrecision() { precision_level = CrabBuilderPrecision::NUM; }
-
-  /* Represent booleans, integers, and arrays of those types */
-  void setArrayPrecision() { precision_level = CrabBuilderPrecision::ARR; }
-
-  /* Represent booleans, integers, arrays and pointers */
-  void setPointerPrecision() { precision_level = CrabBuilderPrecision::REF; }
+  bool trackOnlySingletonMemory() const {
+    return precision_level == CrabBuilderPrecision::SINGLETON_MEM;
+  }
+  
+  /* Set the level of abstraction for Crab programs */
+  void setPrecision(CrabBuilderPrecision val) { precision_level = val; }
 
   void write(llvm::raw_ostream &o) const;
 };
