@@ -235,19 +235,18 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 // Pre-compute all the information per function and callsites
 void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 
-  CRAB_LOG(
-      "heap-abs", llvm::errs()
-                      << "========= HeapAbstraction using sea-dsa =========\n");
+  CRAB_LOG("heap-abs", llvm::errs() 
+	   << "========= HeapAbstraction using sea-dsa =========\n";);
 
-  CRAB_VERBOSE_IF(3, for (auto &F
-                          : M) {
-    if (m_dsa->hasGraph(F)) {
-      errs() << "#### " << F.getName() << "####\n";
-      auto &G = m_dsa->getGraph(F);
-      G.write(errs());
-      errs() << "\n";
-    }
-  });
+  CRAB_LOG("heap-abs-graphs", 
+      for (auto &F : M) {
+	if (m_dsa->hasGraph(F)) {
+	  llvm::errs() << "#### " << F.getName() << "####\n";
+	  auto &G = m_dsa->getGraph(F);
+	  G.write(llvm::errs());
+	  llvm::errs() << "\n";
+	}
+      });
 
   callsite_map_t cs_accessed, cs_mods, cs_news;
   for (auto const &F : M) {
