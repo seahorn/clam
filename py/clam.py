@@ -745,12 +745,10 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_inter:
         clam_args.append('--crab-inter')
         clam_args.append('--crab-inter-max-summaries={0}'.format(args.inter_max_summaries))
-        #clam_args.append('--crab-inter-sum-dom={0}'.format(args.crab_inter_sum_dom))
         
     if args.crab_backward: clam_args.append('--crab-backward')
     if args.crab_live: clam_args.append('--crab-live')
-    ### TO_BE_UPDATED
-    #clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
+    clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
     if args.crab_promote_assume: clam_args.append('--crab-promote-assume')
     if args.assert_check: clam_args.append('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:
