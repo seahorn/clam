@@ -1,4 +1,4 @@
-// RUN: %clam -m32 --crab-inter --crab-track=arr --crab-dom=int --crab-check=assert --crab-sanity-checks --crab-heap-analysis=cs-sea-dsa-types "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -m32 --crab-inter --crab-track=sing-mem --crab-dom=int --crab-check=assert --crab-sanity-checks --crab-heap-analysis=cs-sea-dsa-types "%s" 2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total safe checks$
 // CHECK: ^8  Number of total warning checks$
 extern int int_nd(void);

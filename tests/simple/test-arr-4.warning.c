@@ -1,5 +1,5 @@
-// RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=int --crab-track=arr --crab-heap-analysis=ci-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
-// RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=int --crab-track=arr --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=int --crab-track=sing-mem --crab-heap-analysis=ci-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=int --crab-track=sing-mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^1  Number of total warning checks$
 extern int nd ();

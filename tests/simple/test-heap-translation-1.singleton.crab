@@ -1,9 +1,9 @@
-; RUN: %clam -O0 --crab-inter --crab-track=arr --crab-only-cfg --crab-print-cfg \
+; RUN: %clam -O0 --crab-inter --crab-track=sing-mem --crab-only-cfg --crab-print-cfg \
 ; RUN:           --crab-singleton-aliases \ 
 ; RUN:           "%S/test-heap-translation-1.c" 2>&1 | OutputCheck %s --comment=";"
 
-; CHECK: \(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\) declare foo\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\)
-(@V_3:int,@V_6:int,@V_9:arr_int) declare foo(@V_5:int,@V_7:int,@V_8:arr_int)
+; CHECK: \(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr\(int\)\) declare foo\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr\(int\)\)
+(@V_3:int,@V_6:int,@V_9:arr\(int\)) declare foo(@V_5:int,@V_7:int,@V_8:arr\(int\))
 _1:
   @V_9 = @V_8;
   @V_6 = @V_7;
@@ -12,8 +12,8 @@ _1:
   _store = _2+1;
   @V_3 = _store;
 
-; CHECK: \(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\) declare bar\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\)
-(@V_3:int,@V_6:int,@V_9:arr_int) declare bar(@V_13:int,@V_14:int,@V_15:arr_int)
+; CHECK: \(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr\(int\)\) declare bar\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr\(int\)\)
+(@V_3:int,@V_6:int,@V_9:arr\(int\)) declare bar(@V_13:int,@V_14:int,@V_15:arr\(int\))
 _1:
   @V_9 = @V_15;
   @V_6 = @V_14;
@@ -28,8 +28,8 @@ _call:
   @V_3 = 5;
   @V_6 = 3;
   @V_9[0...39] := 0;
-; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call foo\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\)
-  (@V_3,@V_6,@V_9)= call foo(@V_3:int,@V_6:int,@V_9:arr_int);
+; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call foo\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr\(int\)\)
+  (@V_3,@V_6,@V_9)= call foo(@V_3:int,@V_6:int,@V_9:arr\(int\));
   .0 = 0;
   goto _.0;
 _.0:
@@ -61,8 +61,8 @@ __@bb_9:
   assume(-.0 <= -10);
   goto _call4;
 _call4:
-; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call bar\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr_int\)
-  (@V_3,@V_6,@V_9)= call bar(@V_3:int,@V_6:int,@V_9:arr_int);
+; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call bar\(@V_[0-9]+:int,@V_[0-9]+:int,@V_[0-9]+:arr\(int\)\)
+  (@V_3,@V_6,@V_9)= call bar(@V_3:int,@V_6:int,@V_9:arr\(int\));
   _17 = .0+-1;
   _19 = array_load(@V_9,@V_30,sz=4);
   _20 = (_19 <=_u 6);

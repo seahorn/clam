@@ -10,23 +10,12 @@ add_lit_testsuite(test-simple "Run simple tests"
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/simple
   DEPENDS clam)
 
-if (CLAM_NEW_ARRAY_DOMAIN)
-  add_lit_testsuite(test-array-adapt "Run tests for the array adaptive domain"
-    -v
-    ${CMAKE_CURRENT_SOURCE_DIR}/array-adapt  ## where .cfg file is located
-    PARAMS
-    test_dir=${CMAKE_CURRENT_BINARY_DIR}/array-adapt
-    DEPENDS clam)
-# else()
-#   # the array adaptive domain does not implement currently some
-#   # operations needed by these tests.
-#   add_lit_testsuite(test-shadow-memssa "Run tests for shadow memory ssa from sea-dsa"
-#     -v
-#     ${CMAKE_CURRENT_SOURCE_DIR}/shadow-memssa  ## where .cfg file is located
-#     PARAMS
-#   test_dir=${CMAKE_CURRENT_BINARY_DIR}/shadow-memssa
-#   DEPENDS clam)  
-endif()  
+add_lit_testsuite(test-array-adapt "Run tests for the array adaptive domain"
+  -v
+  ${CMAKE_CURRENT_SOURCE_DIR}/array-adapt  ## where .cfg file is located
+  PARAMS
+  test_dir=${CMAKE_CURRENT_BINARY_DIR}/array-adapt
+  DEPENDS clam)
 
 add_lit_testsuite(test-readme "Run README.md tests"
   -v

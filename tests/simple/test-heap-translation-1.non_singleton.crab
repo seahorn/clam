@@ -1,8 +1,8 @@
-; RUN: %clam -O0 --crab-inter --crab-track=arr --crab-only-cfg --crab-print-cfg \
+; RUN: %clam -O0 --crab-inter --crab-track=sing-mem --crab-only-cfg --crab-print-cfg \
 ; RUN:           "%S/test-heap-translation-1.c" 2>&1 | OutputCheck %s --comment=";"
 
-; CHECK: \(@V_[0-9]+:arr_int,@V_[0-9]+:arr_int,@V_[0-9]+:arr_int\) declare foo\(@V_[0-9]+:arr_int,@V_[0-9]+:arr_int,@V_[0-9]+:arr_int\)
-(@V_4:arr_int,@V_9:arr_int,@V_11:arr_int) declare foo(@V_7:arr_int,@V_8:arr_int,@V_10:arr_int)
+; CHECK: \(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\) declare foo\(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)
+(@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\)) declare foo(@V_7:arr\(int\),@V_8:arr\(int\),@V_10:arr\(int\))
 _1:
   @V_11 = @V_10;
   @V_9 = @V_8;
@@ -12,8 +12,8 @@ _1:
   array_store(@V_4,@V_6,_store,sz=4);
 
 
-; CHECK: \(@V_[0-9]+:arr_int,@V_[0-9]+:arr_int,@V_[0-9]+:arr_int\) declare bar\(@V_[0-9]+:arr_int,@V_[0-9]+:arr_int,@V_[0-9]+:arr_int\)
-(@V_4:arr_int,@V_9:arr_int,@V_11:arr_int) declare bar(@V_17:arr_int,@V_18:arr_int,@V_19:arr_int)
+; CHECK: \(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\) declare bar\(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)
+(@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\)) declare bar(@V_17:arr\(int\),@V_18:arr\(int\),@V_19:arr\(int\))
 _1:
   @V_11 = @V_19;
   @V_9 = @V_18;
@@ -28,8 +28,8 @@ _call:
   @V_4[0...3] := 5;
   @V_9[0...3] := 3;
   @V_11[0...39] := 0;
-; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call foo\(@V_[0-9]+:arr_int,@V_[0-9]+:arr_int,@V_[0-9]+:arr_int\)
-  (@V_4,@V_9,@V_11)= call foo(@V_4:arr_int,@V_9:arr_int,@V_11:arr_int);
+; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call foo\(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)
+  (@V_4,@V_9,@V_11)= call foo(@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\));
   .0 = 0;
   goto _.0;
 _.0:
@@ -61,8 +61,8 @@ __@bb_9:
   assume(-.0 <= -10);
   goto _call4;
 _call4:
-; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call bar\(@V_[0-9]+:arr_int,@V_[0-9]+:arr_int,@V_[0-9]+:arr_int\)
-  (@V_4,@V_9,@V_11)= call bar(@V_4:arr_int,@V_9:arr_int,@V_11:arr_int);
+; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call bar\(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)
+  (@V_4,@V_9,@V_11)= call bar(@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\));
   _17 = .0+-1;
   _19 = array_load(@V_11,@V_36,sz=4);
   _20 = (_19 <=_u 6);

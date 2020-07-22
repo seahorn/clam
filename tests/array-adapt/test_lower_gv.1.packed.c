@@ -1,5 +1,5 @@
-// RUN: %clam -m32 --crab-inter --crab-track=arr  --crab-dom=int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
-// RUN: %clam -m64 --crab-inter --crab-track=arr  --crab-dom=int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -m32 --crab-inter --crab-track=sing-mem  --crab-dom=int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -m64 --crab-inter --crab-track=sing-mem  --crab-dom=int --crab-check=assert --crab-sanity-checks  --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
 

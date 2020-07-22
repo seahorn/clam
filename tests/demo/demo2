@@ -1,4 +1,4 @@
-; RUN: %clam -O0 --crab-do-not-print-invariants --crab-add-invariants=all --crab-track=arr "%s".c -o %s.bc
+; RUN: %clam -O0 --crab-do-not-print-invariants --crab-add-invariants=all --crab-track=sing-mem "%s".c -o %s.bc
 ; RUN: %llvm_dis < %s.bc | OutputCheck %s --comment=";"
 
 ; ModuleID = '../tests/demo/demo2.bc'

@@ -1,4 +1,4 @@
-// RUN: %clam --crab-track=arr --crab-dom=int --crab-inter --crab-check=assert "%s"  2>&1 | OutputCheck %s
+// RUN: %clam --crab-track=sing-mem --crab-dom=int --crab-inter --crab-check=assert "%s"  2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 extern int int_nd(void);
 extern void __CRAB_assert(int);
@@ -20,6 +20,7 @@ int f() {
 
 int main(void) {
   int y = f();
-  __CRAB_assert(y == 1);
+  // __CRAB_assert(y == 1);
+  __CRAB_assert(y >= 0 && y <= 1);
   return 0;
 }
