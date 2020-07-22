@@ -3008,7 +3008,7 @@ void CfgBuilderImpl::buildCfg() {
 	  } else {
 	    switch (a.getRegionInfo().getType()) {
 	    case INT_REGION:
-	      a_in = m_lfac.mkIntArrayVar(0 /*unknown bitwidth*/);
+	      a_in = m_lfac.mkIntArrayVar(a.getRegionInfo().getBitwidth());
 	      break;
 	    case BOOL_REGION:
 	      a_in = m_lfac.mkBoolArrayVar();
