@@ -3,6 +3,7 @@
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/CallGraph.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/DataLayout.h"
@@ -787,7 +788,6 @@ void ClamPass::releaseMemory() {
 }
 
 bool ClamPass::runOnModule(Module &M) {
-
   /// Translate the module to Crab CFGs
   CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
                            CrabEnableUniqueScalars, CrabIncludeHavoc,
@@ -804,10 +804,13 @@ bool ClamPass::runOnModule(Module &M) {
 		      << "Started sea-dsa analysis\n";);
       CallGraph &cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
       const DataLayout &dl = M.getDataLayout();
-      seadsa::AllocWrapInfo *allocWrapInfo =
-          &getAnalysis<seadsa::AllocWrapInfo>();
+      seadsa::AllocWrapInfo &allocWrapInfo = getAnalysis<seadsa::AllocWrapInfo>();
+      // FIXME: if we pass "this" then allocWrapInfo can be more
+      // precise because it can use LoopInfo. However, I get some
+      // crash that I need to debug.
+      allocWrapInfo.initialize(M, nullptr /*this*/);
       mem.reset(new SeaDsaHeapAbstraction(
-          M, cg, dl, tli, *allocWrapInfo,
+          M, cg, dl, tli, allocWrapInfo,
           (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
           CrabDsaDisambiguateUnknown, CrabDsaDisambiguatePtrCast,
           CrabDsaDisambiguateExternal));
@@ -918,8 +921,10 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
 
   bool runSeaDsa = (CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
                     CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA);
-
+  
   if (runSeaDsa) {
+    // dependency for immutable AllocWrapInfo
+    AU.addRequired<LoopInfoWrapperPass>();    
     AU.addRequired<seadsa::AllocWrapInfo>();
   }
 
