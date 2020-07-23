@@ -20,7 +20,7 @@ public:
   enum lit_class_t {
     CRAB_LITERAL_BOOL,
     CRAB_LITERAL_INT,
-    CRAB_LITERAL_PTR,
+    CRAB_LITERAL_REF,
   };
 
   crabLit(lit_class_t lit_class) : m_lit_class(lit_class) {}
@@ -31,7 +31,7 @@ public:
 
   bool isInt() const { return m_lit_class == CRAB_LITERAL_INT; }
 
-  bool isPtr() const { return m_lit_class == CRAB_LITERAL_PTR; }
+  bool isRef() const { return m_lit_class == CRAB_LITERAL_REF; }
 
   virtual bool isVar() const = 0;
 
@@ -92,15 +92,15 @@ public:
   }
 };
 
-/** A pointer literal is either a variable or constant null.**/
-class crabPtrLit : public crabLit {
+/** A reference literal is either a variable or constant null.**/
+class crabRefLit : public crabLit {
   friend class crabLitFactoryImpl;
 
   // if !m_lit.hasValue() then the literal represents null
   llvm::Optional<var_t> m_lit;
 
-  crabPtrLit() : crabLit(CRAB_LITERAL_PTR) {} // null
-  crabPtrLit(var_t v) : crabLit(CRAB_LITERAL_PTR), m_lit(v) {}
+  crabRefLit() : crabLit(CRAB_LITERAL_REF) {} // null
+  crabRefLit(var_t v) : crabLit(CRAB_LITERAL_REF), m_lit(v) {}
 
 public:
   bool isVar() const override { return m_lit.hasValue(); }
@@ -188,24 +188,21 @@ public:
   // Create a fresh boolean array variable
   var_t mkBoolArrayVar();
 
-  // Create a fresh pointer array variable
-  var_t mkPtrArrayVar();
-
-  // Create an array variable associated with region r.
-  var_t mkArrayVar(Region r, const llvm::Value *name);
-
-  // Create an scalar variable associated with region r.
-  var_t mkArraySingletonVar(Region r, const llvm::Value *name);
-
   // Create a fresh integer variable of bitwidth bits
   var_t mkIntVar(unsigned bitwidth);
 
   // Create a fresh boolean variable
   var_t mkBoolVar();
 
-  // Create a fresh pointer variable
-  var_t mkPtrVar();
+  // Create a fresh reference variable
+  var_t mkRefVar();
 
+  // Create an array variable associated with region r.
+  var_t mkArrayVar(Region r, const llvm::Value *name);
+
+  // Create an scalar variable associated with region r.
+  var_t mkArraySingletonVar(Region r, const llvm::Value *name);
+  
   // Create a fresh variable from a Value
   llvm::Optional<var_t> mkVar(const llvm::Value &v);
 
@@ -214,7 +211,7 @@ public:
 
   bool isBoolFalse(const crab_lit_ref_t ref) const;
 
-  bool isPtrNull(const crab_lit_ref_t ref) const;
+  bool isRefNull(const crab_lit_ref_t ref) const;
 
   number_t getIntCst(const crab_lit_ref_t ref) const;
 
@@ -230,7 +227,7 @@ private:
 
   llvm::Optional<crabBoolLit> getBoolLit(const llvm::Value &v);
   llvm::Optional<crabIntLit> getIntLit(const llvm::Value &v);
-  llvm::Optional<crabPtrLit> getPtrLit(const llvm::Value &v);
+  llvm::Optional<crabRefLit> getRefLit(const llvm::Value &v);
 };
 
 /**
@@ -256,7 +253,7 @@ public:
 
   var_t mkBoolVar();
 
-  var_t mkPtrVar();
+  var_t mkRefVar();
 
   llvm::Optional<var_t> mkVar(const llvm::Value &v);
 
@@ -264,7 +261,7 @@ public:
 
   var_t mkBoolArrayVar();
 
-  var_t mkPtrArrayVar();
+  var_t mkRefArrayVar();
 
   var_t mkArrayVar(Region r, const llvm::Value *name = nullptr);
 
@@ -275,7 +272,7 @@ public:
 
   bool isBoolFalse(const crab_lit_ref_t ref) const;
 
-  bool isPtrNull(const crab_lit_ref_t ref) const;
+  bool isRefNull(const crab_lit_ref_t ref) const;
 
   lin_exp_t getExp(const crab_lit_ref_t ref) const;
 

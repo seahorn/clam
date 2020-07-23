@@ -35,12 +35,12 @@ bool isInteger(const Type *t) { return (t->isIntegerTy() && !isBool(t)); }
 
 bool isInteger(const Value &v) { return isInteger(v.getType()); }
 
-bool isPointer(const Type *t, const CrabBuilderParams &params) {
+bool isReference(const Type *t, const CrabBuilderParams &params) {
   return (t->isPointerTy() && params.trackMemory());
 }
 
-bool isPointer(const Value &v, const CrabBuilderParams &params) {
-  return isPointer(v.getType(), params);
+bool isReference(const Value &v, const CrabBuilderParams &params) {
+  return isReference(v.getType(), params);
 }
 
 z_number toZNumber(const APInt &v, const CrabBuilderParams &params,
@@ -79,12 +79,7 @@ z_number getIntConstant(const ConstantInt *CI, const CrabBuilderParams &params,
 }
 
 bool isTrackedType(const Type &ty, const CrabBuilderParams &params) {
-  // -- a pointer
-  if (ty.isPointerTy())
-    return (params.trackMemory());
-
-  // -- always track integer and boolean registers
-  return ty.isIntegerTy();
+  return isReference(&ty, params) || ty.isIntegerTy();
 }
 
 bool isTracked(const Value &v, const CrabBuilderParams &params) {

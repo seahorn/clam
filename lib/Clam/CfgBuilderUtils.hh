@@ -28,9 +28,9 @@ bool isInteger(const llvm::Type *t);
 
 bool isInteger(const llvm::Value &v);
 
-bool isPointer(const llvm::Type *t, const CrabBuilderParams &params);
+bool isReference(const llvm::Type *t, const CrabBuilderParams &params);
 
-bool isPointer(const llvm::Value &v, const CrabBuilderParams &params);
+bool isReference(const llvm::Value &v, const CrabBuilderParams &params);
 
 // Converts v to z_number. Assumes that v is signed
 ikos::z_number toZNumber(const llvm::APInt &v, const CrabBuilderParams &params,

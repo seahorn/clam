@@ -178,11 +178,11 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
   const Value &v1 = *I.getOperand(1);
 
   crab_lit_ref_t ref0 = lfac.getLit(v0);
-  if (!ref0 || !(ref0->isPtr()))
+  if (!ref0 || !(ref0->isRef()))
     return llvm::None;
 
   crab_lit_ref_t ref1 = lfac.getLit(v1);
-  if (!ref1 || !(ref1->isPtr()))
+  if (!ref1 || !(ref1->isRef()))
     return llvm::None;
 
   if (I.getPredicate() != CmpInst::ICMP_EQ &&
@@ -200,9 +200,9 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
   }
 
   if (is_eq) {
-    if (ref0->isVar() && lfac.isPtrNull(ref1)) {
+    if (ref0->isVar() && lfac.isRefNull(ref1)) {
       return ref_cst_t::mk_null(ref0->getVar());
-    } else if (lfac.isPtrNull(ref0) && ref1->isVar()) {
+    } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
       return ref_cst_t::mk_null(ref1->getVar());
     } else if (ref0->isVar() && ref1->isVar()) {
       return ref_cst_t::mk_eq(ref0->getVar(), ref1->getVar());
@@ -210,9 +210,9 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
       return ref_cst_t::mk_true();
     }
   } else {
-    if (ref0->isVar() && lfac.isPtrNull(ref1)) {
+    if (ref0->isVar() && lfac.isRefNull(ref1)) {
       return ref_cst_t::mk_not_null(ref0->getVar());
-    } else if (lfac.isPtrNull(ref0) && ref1->isVar()) {
+    } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
       return ref_cst_t::mk_not_null(ref1->getVar());
     } else if (ref0->isVar() && ref1->isVar()) {
       return ref_cst_t::mk_not_eq(ref0->getVar(), ref1->getVar());
@@ -306,8 +306,8 @@ var_t normalizeFuncParamOrRet(Value &v, basic_block_t &bb,
         bb.bool_assign(res, lfac.isBoolTrue(ref) ? lin_cst_t::get_true()
                                                  : lin_cst_t::get_false());
         return res;
-      } else if (ref->isPtr()) {
-        var_t res = lfac.mkPtrVar();
+      } else if (ref->isRef()) {
+        var_t res = lfac.mkRefVar();
         bb.assume_ref(ref_cst_t::mk_null(res));
         return res;
       }
@@ -394,8 +394,8 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
                   m_lfac.mkIntVar(phi_v->getType()->getIntegerBitWidth());
               m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
               old_val_map.insert({&v, lhs});
-            } else if (phi_val_ref->isPtr()) {
-              var_t lhs = m_lfac.mkPtrVar();
+            } else if (phi_val_ref->isRef()) {
+              var_t lhs = m_lfac.mkRefVar();
               if (phi_val_ref->isVar()) {
                 /* TO_BE_UPDATED */
                 // m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
@@ -436,7 +436,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
           m_bb.bool_assign(lhs, it->second);
         } else if (phi.getType()->isIntegerTy()) {
           m_bb.assign(lhs, it->second);
-        } else if (isPointer(phi, m_lfac.getCfgBuilderParams())) {
+        } else if (isReference(phi, m_lfac.getCfgBuilderParams())) {
           /* TO_BE_UPDATED */
           // m_bb.ptr_assign(lhs, it->second, number_t(0));
         }
@@ -452,7 +452,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
             }
           } else if (phi_val_ref->isInt()) {
             m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
-          } else if (phi_val_ref->isPtr()) {
+          } else if (phi_val_ref->isRef()) {
             if (phi_val_ref->isVar()) {
               /* TO_BE_UPDATED */
               // m_bb.ptr_assign(lhs, phi_val_ref->getVar(), number_t(0));
@@ -1133,8 +1133,8 @@ void CrabInstVisitor::doAllocFn(Instruction &I) {
   if (!I.getType()->isVoidTy()) {
     crab_lit_ref_t ref = m_lfac.getLit(I);
     assert(ref->isVar());
-    if (isPointer(I, m_params)) {
-#if 0 /* TO_BE_UPDATED */      
+    if (isReference(I, m_params)) {
+#if 0 /* TO_BE_UPDATED */
       m_bb.ptr_new_object(ref->getVar(), m_object_id++);
 #endif      
     } else if (isTracked(I, m_params)) {
@@ -1356,8 +1356,8 @@ void CrabInstVisitor::visitCmpInst(CmpInst &I) {
   crab_lit_ref_t ref = m_lfac.getLit(I);
   assert(ref->isVar());
 
-  if (isPointer(*I.getOperand(0), m_params) &&
-      isPointer(*I.getOperand(1), m_params)) {
+  if (isReference(*I.getOperand(0), m_params) &&
+      isReference(*I.getOperand(1), m_params)) {
 
     if (!AllUsesAreBrInst(I)) {
       CLAM_WARNING("translation skipped comparison between pointers");
@@ -1514,10 +1514,10 @@ void CrabInstVisitor::visitCastInst(CastInst &I) {
       // CLAM_WARNING("translation skipped pointer to integer cast");
     } else if (isa<IntToPtrInst>(I)) {
       // CLAM_WARNING("translation skipped integer to pointer cast");
-    } else if (isa<BitCastInst>(I) && isPointer(*I.getOperand(0), m_params)) {
+    } else if (isa<BitCastInst>(I) && isReference(*I.getOperand(0), m_params)) {
 
-      if (src->isPtr()) {
-        if (m_lfac.isPtrNull(src)) {
+      if (src->isRef()) {
+        if (m_lfac.isRefNull(src)) {
           m_bb.assume_ref(ref_cst_t::mk_null(dst->getVar()));
         } else {
           assert(src->isVar());
@@ -1551,7 +1551,7 @@ void CrabInstVisitor::visitSelectInst(SelectInst &I) {
   crab_lit_ref_t lhs = m_lfac.getLit(I);
   assert(lhs && lhs->isVar());
 
-  if (isPointer(I, m_params)) {
+  if (isReference(I, m_params)) {
     // We don't even bother with pointers
     CLAM_WARNING("skipped " << I << "\n"
                             << "Enable --lower-select.");
@@ -1885,7 +1885,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
       havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
       return;
     }
-    if (m_lfac.isPtrNull(ptr)) {
+    if (m_lfac.isRefNull(ptr)) {
       CLAM_WARNING(I << " doing pointer arithmetic with null pointer.");
       havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
       return;
@@ -2038,11 +2038,11 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
   crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
   crab_lit_ref_t val = m_lfac.getLit(*I.getValueOperand());
 
-  if (!ptr || !ptr->isPtr()) {
+  if (!ptr || !ptr->isRef()) {
     CLAM_ERROR("unexpected pointer operand of store instruction");
   }
 
-  if (m_lfac.isPtrNull(ptr)) {
+  if (m_lfac.isRefNull(ptr)) {
     CLAM_WARNING(I << " is possibly dereferencing a null pointer");
     return;
   }
@@ -2069,7 +2069,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
     if (!val) {
       CLAM_ERROR("unexpected value operand of store instruction");
     }
-    if (val->isPtr() && m_lfac.isPtrNull(val)) {
+    if (val->isRef() && m_lfac.isRefNull(val)) {
       // TODO: we ignore for now the case if we store a null pointer. In
       // most cases, it will be fine since typical pointer
       // analyses ignore that case but it might be imprecise with
@@ -2163,11 +2163,11 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
 
   crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
 
-  if (!ptr || !ptr->isPtr()) {
+  if (!ptr || !ptr->isRef()) {
     CLAM_ERROR("unexpected pointer operand of load instruction");
   }
 
-  if (m_lfac.isPtrNull(ptr)) {
+  if (m_lfac.isRefNull(ptr)) {
     CLAM_WARNING(I << " is possibly dereferencing a null pointer");
     havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
     return;
@@ -2199,7 +2199,7 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
 }
 
 void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
-  if (isPointer(I, m_params)) {
+  if (isReference(I, m_params)) {
     #if 0 /* TO_BE_UPDATED */
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
@@ -2365,8 +2365,8 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
         unsigned bitwidth = RT->getIntegerBitWidth();
         var_t fresh_ret = m_lfac.mkIntVar(bitwidth);
         outputs.push_back(fresh_ret);
-      } else if (isPointer(RT, m_params)) {
-        var_t fresh_ret = m_lfac.mkPtrVar();
+      } else if (isReference(RT, m_params)) {
+        var_t fresh_ret = m_lfac.mkRefVar();
         outputs.push_back(fresh_ret);
       } else {
         // do nothing
@@ -2716,8 +2716,8 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
             if (cst_opt.hasValue()) {
               bb.assume(cst_opt.getValue());
             }
-          } else if (isPointer(*(CI->getOperand(0)), m_params) &&
-                     isPointer(*(CI->getOperand(1)), m_params)) {
+          } else if (isReference(*(CI->getOperand(0)), m_params) &&
+                     isReference(*(CI->getOperand(1)), m_params)) {
             auto cst_opt = cmpInstToCrabRef(*CI, m_lfac, isNegated);
             if (cst_opt.hasValue()) {
               /* TO_BE_UPDATED */
@@ -2906,7 +2906,7 @@ void CfgBuilderImpl::buildCfg() {
           ret_val = m_lfac.mkIntVar(bitwidth);
         } else {
           assert(RT.isPointerTy());
-          ret_val = m_lfac.mkPtrVar();
+          ret_val = m_lfac.mkRefVar();
         }
       }
     }
@@ -2940,9 +2940,9 @@ void CfgBuilderImpl::buildCfg() {
           var_t fresh_i = m_lfac.mkIntVar(bitwidth);
           entry.assign(i->getVar(), fresh_i);
           inputs.push_back(fresh_i);
-        } else if (i->isPtr()) {
+        } else if (i->isRef()) {
           /* TO_BE_UPDATED */
-          // var_t fresh_i = m_lfac.mkPtrVar();
+          // var_t fresh_i = m_lfac.mkRefVar();
           // entry.ptr_assign(i->getVar(), fresh_i, number_t(0));
           // inputs.push_back(fresh_i);
         } else {

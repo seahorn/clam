@@ -21,7 +21,7 @@ crab_lit_ref_t crabLitFactoryImpl::getLit(const Value &v) {
     return it->second;
   }
   const Type &t = *v.getType();
-  // Note that getBoolLit, getPtrLit and getIntLit are not aware of
+  // Note that getBoolLit, getRefLit and getIntLit are not aware of
   // which types are tracked or not. They only use type information
   // and not the track level.
   if (isBool(&t)) {
@@ -41,10 +41,10 @@ crab_lit_ref_t crabLitFactoryImpl::getLit(const Value &v) {
       return ref;
     }
   } else if (t.isPointerTy()) {
-    Optional<crabPtrLit> lit = getPtrLit(v);
+    Optional<crabRefLit> lit = getRefLit(v);
     if (lit.hasValue()) {
       crab_lit_ref_t ref = std::static_pointer_cast<crabLit>(
-          std::make_shared<crabPtrLit>(lit.getValue()));
+          std::make_shared<crabRefLit>(lit.getValue()));
       m_lit_cache.insert(binding_t(&v, ref));
       return ref;
     }
@@ -70,7 +70,7 @@ var_t crabLitFactoryImpl::mkArrayVar(Region mem_region, const Value *name) {
     // type = ARR_PTR_TYPE;
     // break;
   default:
-    CLAM_ERROR("unsupported region type");
+    CLAM_ERROR("unsupported region type ", info);
   }
   auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.getId()));
   return var_t(varname, type, bitwidth);
@@ -118,12 +118,6 @@ var_t crabLitFactoryImpl::mkBoolArrayVar() {
   return var_t(m_vfac.get(), ARR_BOOL_TYPE, 1);
 }
 
-var_t crabLitFactoryImpl::mkPtrArrayVar() {
-  /* TO_BE_UPDATED */
-  // return var_t(m_vfac.get(), ARR_PTR_TYPE);
-  CRAB_ERROR("Cannot generate array variables of pointer type");
-}
-
 var_t crabLitFactoryImpl::mkIntVar(unsigned bitwidth) {
   return var_t(m_vfac.get(), INT_TYPE, bitwidth);
 }
@@ -132,7 +126,7 @@ var_t crabLitFactoryImpl::mkBoolVar() {
   return var_t(m_vfac.get(), BOOL_TYPE, 1);
 }
 
-var_t crabLitFactoryImpl::mkPtrVar() { return var_t(m_vfac.get(), REF_TYPE); }
+var_t crabLitFactoryImpl::mkRefVar() { return var_t(m_vfac.get(), REF_TYPE); }
 
 Optional<var_t> crabLitFactoryImpl::mkVar(const Value &v) {
   if (isBool(v)) {
@@ -140,8 +134,8 @@ Optional<var_t> crabLitFactoryImpl::mkVar(const Value &v) {
   } else if (isInteger(v)) {
     unsigned bitwidth = v.getType()->getIntegerBitWidth();
     return mkIntVar(bitwidth);
-  } else if (isPointer(v, m_params)) {
-    return mkPtrVar();
+  } else if (isReference(v, m_params)) {
+    return mkRefVar();
   }
   return None;
 }
@@ -160,10 +154,10 @@ bool crabLitFactoryImpl::isBoolFalse(const crab_lit_ref_t ref) const {
   return lit->isFalse();
 }
 
-bool crabLitFactoryImpl::isPtrNull(const crab_lit_ref_t ref) const {
-  if (!ref || !ref->isPtr())
+bool crabLitFactoryImpl::isRefNull(const crab_lit_ref_t ref) const {
+  if (!ref || !ref->isRef())
     CLAM_ERROR("Literal is not a pointer");
-  auto lit = std::static_pointer_cast<const crabPtrLit>(ref);
+  auto lit = std::static_pointer_cast<const crabRefLit>(ref);
   return lit->isNull();
 }
 
@@ -204,18 +198,18 @@ Optional<crabBoolLit> crabLitFactoryImpl::getBoolLit(const Value &v) {
   return None;
 }
 
-Optional<crabPtrLit> crabLitFactoryImpl::getPtrLit(const Value &v) {
+Optional<crabRefLit> crabLitFactoryImpl::getRefLit(const Value &v) {
   if (isa<ConstantPointerNull>(&v)) {
     // -- constant null
-    return crabPtrLit();
+    return crabRefLit();
   } else if (v.getType()->isPointerTy() && !isa<ConstantExpr>(v)) {
     // -- pointer variable
     if (isa<UndefValue>(v)) {
       // Create a fresh variable: this treats an undef value as a
       // nondeterministic value.
-      return crabPtrLit(var_t(m_vfac.get(), REF_TYPE));
+      return crabRefLit(var_t(m_vfac.get(), REF_TYPE));
     } else {
-      return crabPtrLit(var_t(m_vfac[&v], REF_TYPE));
+      return crabRefLit(var_t(m_vfac[&v], REF_TYPE));
     }
   }
   return None;
@@ -271,8 +265,6 @@ var_t crabLitFactory::mkIntArrayVar(unsigned bitwidth) {
 
 var_t crabLitFactory::mkBoolArrayVar() { return m_impl->mkBoolArrayVar(); }
 
-var_t crabLitFactory::mkPtrArrayVar() { return m_impl->mkPtrArrayVar(); }
-
 var_t crabLitFactory::mkArrayVar(Region r, const Value *name) {
   return m_impl->mkArrayVar(r, name);
 }
@@ -287,7 +279,7 @@ var_t crabLitFactory::mkIntVar(unsigned bitwidth) {
 
 var_t crabLitFactory::mkBoolVar() { return m_impl->mkBoolVar(); }
 
-var_t crabLitFactory::mkPtrVar() { return m_impl->mkPtrVar(); }
+var_t crabLitFactory::mkRefVar() { return m_impl->mkRefVar(); }
 
 Optional<var_t> crabLitFactory::mkVar(const Value &v) {
   return m_impl->mkVar(v);
@@ -301,8 +293,8 @@ bool crabLitFactory::isBoolFalse(const crab_lit_ref_t ref) const {
   return m_impl->isBoolFalse(ref);
 }
 
-bool crabLitFactory::isPtrNull(const crab_lit_ref_t ref) const {
-  return m_impl->isPtrNull(ref);
+bool crabLitFactory::isRefNull(const crab_lit_ref_t ref) const {
+  return m_impl->isRefNull(ref);
 }
 
 lin_exp_t crabLitFactory::getExp(const crab_lit_ref_t ref) const {
