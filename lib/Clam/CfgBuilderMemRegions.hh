@@ -23,7 +23,7 @@ inline Region getRegion(HeapAbstraction &mem, const llvm::DataLayout &dl /*unuse
   // Use the Heap analysis (mem) to access to the cell pointed by the pointer.
   llvm::Function *fun = user->getParent()->getParent();
   Region res = mem.getRegion(*fun, user, ptr);
-  if (res.getRegionInfo().getType() != UNTYPED_REGION) {
+  if (res.getRegionInfo().containScalar()) {
     return res;
   }
   return Region();
@@ -49,7 +49,7 @@ inline RegionVec getReadOnlyRegions(HeapAbstraction &mem, V &v) {
   auto regions = mem.getOnlyReadRegions(v);
   std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
                [](Region r) {
-                 return r.getRegionInfo().getType() != UNTYPED_REGION;
+                 return r.getRegionInfo().containScalar();
                });
   return res;
 }
@@ -61,7 +61,7 @@ inline RegionVec getModifiedRegions(HeapAbstraction &mem, V &v) {
   auto regions = mem.getModifiedRegions(v);
   std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
                [](Region r) {
-                 return r.getRegionInfo().getType() != UNTYPED_REGION;
+                 return r.getRegionInfo().containScalar();
                });
   return res;
 }
@@ -73,7 +73,7 @@ inline RegionVec getNewRegions(HeapAbstraction &mem, V &v) {
   auto regions = mem.getNewRegions(v);
   std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
                [](Region r) {
-                 return r.getRegionInfo().getType() != UNTYPED_REGION;
+                 return r.getRegionInfo().containScalar();
                });
   return res;
 }

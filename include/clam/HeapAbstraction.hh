@@ -34,33 +34,56 @@ enum class heap_analysis_t {
   CS_SEA_DSA
 };
 
-typedef enum {
+enum class region_type_t{
   UNTYPED_REGION = 0,
   BOOL_REGION = 1,
   INT_REGION = 2,
   PTR_REGION = 3
-} region_type_t;
+};
 
 class RegionInfo {
   region_type_t m_region_type;
-  // if the region contains a basic type (bool or integer) then
-  // m_bitwidth is the bitwidth of the basic type. Otherwise, it is 0.
-  unsigned m_bitwidth;
-
+  // if PTR_REGION then bitwidth is the pointer size
+  // if INT_REGION or BOOL_REGION then bitwidth is the integer's
+  //    bitwidth or 1.
+  unsigned m_bitwidth; // number of bits
+  // whether the region is coming from a "sequence" sea-dsa node
+  bool m_is_sequence;
 public:
-  RegionInfo(region_type_t t, unsigned b) : m_region_type(t), m_bitwidth(b) {}
+  RegionInfo(region_type_t t, unsigned b, bool is_seq)
+    : m_region_type(t), m_bitwidth(b), m_is_sequence(is_seq) {}
 
   RegionInfo(const RegionInfo &other) = default;
 
   RegionInfo &operator=(const RegionInfo &other) = default;
 
   bool operator==(const RegionInfo &o) {
-    return (getType() == o.getType() && getBitwidth() == o.getBitwidth());
+    // don't consider isSequence().
+    // We use this operation to compare a region between caller and callee. 
+    return (getType() == o.getType() &&
+	    getBitwidth() == o.getBitwidth());
   }
 
+  bool containScalar() const {
+    return m_region_type == region_type_t::BOOL_REGION ||
+      m_region_type == region_type_t::INT_REGION;
+  }
+  
+  bool containPointer() const {
+    return m_region_type == region_type_t::PTR_REGION;
+  }
+      
+  // Return region's type: boolean, integer or pointer.
   region_type_t getType() const { return m_region_type; }
 
+  // Return 1 if boolean region, size of the pointer if pointer
+  // region, or size of the integer if integer region. The bitwidth is
+  // in bits. Otherwise, it returns 0 if bitwdith cannot be
+  // determined.
   unsigned getBitwidth() const { return m_bitwidth; }
+
+  // Whether the region corresponds to a "sequence" node
+  bool isSequence() const { return m_is_sequence;}
 };
 
 /**
@@ -88,7 +111,9 @@ public:
       : m_id(id), m_info(info), m_singleton(singleton) {}
 
   Region()
-      : m_id(0), m_info(RegionInfo(UNTYPED_REGION, 0)), m_singleton(nullptr) {}
+    : m_id(0),
+      m_info(RegionInfo(region_type_t::UNTYPED_REGION, 0, false)),
+      m_singleton(nullptr) {}
 
   Region(const Region &other) = default;
 
@@ -98,7 +123,7 @@ public:
 
   RegionId getId() const { return m_id; }
 
-  bool isUnknown() const { return (m_info.getType() == UNTYPED_REGION); }
+  bool isUnknown() const { return (m_info.getType() == region_type_t::UNTYPED_REGION); }
 
   const llvm::Value *getSingleton() const { return m_singleton; }
 
@@ -114,16 +139,16 @@ public:
     } else {
       o << "R_" << m_id << ":";
       switch (getRegionInfo().getType()) {
-      case UNTYPED_REGION:
+      case region_type_t::UNTYPED_REGION:
         o << "U";
         break;
-      case BOOL_REGION:
+      case region_type_t::BOOL_REGION:
         o << "B";
         break;
-      case INT_REGION:
+      case region_type_t::INT_REGION:
         o << "I";
         break;
-      case PTR_REGION:
+      case region_type_t::PTR_REGION:
         o << "P";
         break;
       }

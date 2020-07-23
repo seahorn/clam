@@ -55,6 +55,10 @@ bool isIntegerOrBool::operator()(const llvm::Type *t) const {
   return t->isIntegerTy();
 }
 
+bool isPointer::operator()(const llvm::Type *t) const {
+  return t->isPointerTy();
+}
+  
 void markReachableNodes(const Node *n, NodeSet &set) {
   if (!n)
     return;

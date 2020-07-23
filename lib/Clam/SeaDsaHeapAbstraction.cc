@@ -102,7 +102,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
           SeaDsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
                       m_disambiguate_external);
 
-      if (r_info.getType() != UNTYPED_REGION) {
+      if (r_info.getType() != region_type_t::UNTYPED_REGION) {
         Region reg(mkRegion(c, r_info));
         if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
           reads.push_back(reg);
@@ -119,6 +119,26 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
   m_func_accessed[&f] = reads;
   m_func_mods[&f] = mods;
   m_func_news[&f] = news;
+
+  CRAB_LOG("heap-abs-regions",
+	   llvm::errs() << "### " << f.getName() << " ###\n";
+	   llvm::errs() << "Read-only regions {";
+	   for (auto &r: reads) {
+	     llvm::errs() << r << ";";
+	   }
+	   llvm::errs() << "}\n";
+	   llvm::errs() << "Modified regions {";
+	   for (auto &r: mods) {
+	     llvm::errs() << r << ";";
+	   }
+	   llvm::errs() << "}\n";
+	   llvm::errs() << "New regions for {";
+	   for (auto &r: news) {
+	     llvm::errs() << r << ";";
+	   }
+	   llvm::errs() << "}\n";);
+	   
+	   
 }
 
 // Compute and cache the set of read, mod and new nodes of a
@@ -179,7 +199,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
           SeaDsaToRegion(calleeC, m_dl, m_disambiguate_unknown,
 			 m_disambiguate_ptr_cast, m_disambiguate_external);
 
-      if (calleeRI.getType() != UNTYPED_REGION) {
+      if (calleeRI.getType() != region_type_t::UNTYPED_REGION) {
         // Map the callee node to the node in the caller's callsite
         Cell callerC = simMap.get(calleeC);
         if (callerC.isNull()) {
@@ -230,6 +250,25 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   accessed_map[&I] = reads;
   mods_map[&I] = mods;
   news_map[&I] = news;
+
+  CRAB_LOG("heap-abs-regions",
+	   llvm::errs() << "### " << I << " ###\n";
+	   llvm::errs() << "Read-only regions {";
+	   for (auto &r: reads) {
+	     llvm::errs() << r.first << "#" << r.second << ";";
+	   }
+	   llvm::errs() << "}\n";
+	   llvm::errs() << "Modified regions {";
+	   for (auto &r: mods) {
+	     llvm::errs() << r.first << "#" << r.second << ";";
+	   }
+	   llvm::errs() << "}\n";
+	   llvm::errs() << "New regions {";
+	   for (auto &r: news) {
+	     llvm::errs() << r.first << "#" << r.second << ";";
+	   }
+	   llvm::errs() << "}\n";);
+  
 }
 
 // Pre-compute all the information per function and callsites
@@ -444,7 +483,7 @@ SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
       SeaDsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
 		     m_disambiguate_external);
 
-  if (r_info.getType() == UNTYPED_REGION) {
+  if (r_info.getType() == region_type_t::UNTYPED_REGION) {
     return Region();
   } else {
     return mkRegion(c, r_info);
@@ -471,7 +510,7 @@ Region SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
       RegionInfo r_info =
           SeaDsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
 			 m_disambiguate_external);
-      if (r_info.getType() != UNTYPED_REGION) {
+      if (r_info.getType() != region_type_t::UNTYPED_REGION) {
         return mkRegion(c, r_info);
       }
     }

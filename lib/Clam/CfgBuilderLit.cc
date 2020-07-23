@@ -57,20 +57,16 @@ var_t crabLitFactoryImpl::mkArrayVar(Region mem_region, const Value *name) {
   unsigned bitwidth = 0; /* unknown */
   auto info = mem_region.getRegionInfo();
   switch (info.getType()) {
-  case INT_REGION:
+  case region_type_t::INT_REGION:
     type = ARR_INT_TYPE;
     bitwidth = info.getBitwidth();
     break;
-  case BOOL_REGION:
+  case region_type_t::BOOL_REGION:
     type = ARR_BOOL_TYPE;
     bitwidth = 1;
     break;
-    /*TO_BE_UPDATED: we need to create an integer variables*/
-    // case PTR_REGION:
-    // type = ARR_PTR_TYPE;
-    // break;
   default:
-    CLAM_ERROR("unsupported region type ", info);
+    CLAM_ERROR("unsupported region type ", mem_region);
   }
   auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.getId()));
   return var_t(varname, type, bitwidth);
@@ -83,7 +79,7 @@ var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
   if (const Value *v = mem_region.getSingleton()) {
     Type *ty = cast<PointerType>(v->getType())->getElementType();
     bitwidth = ty->getIntegerBitWidth();
-    if (mem_region.getRegionInfo().getType() == INT_REGION && bitwidth <= 1) {
+    if (mem_region.getRegionInfo().getType() == region_type_t::INT_REGION && bitwidth <= 1) {
       CLAM_ERROR("Integer region must have bitwidth > 1");
     }
     // If the singleton contains a pointer then getIntegerBitWidth()
@@ -93,18 +89,14 @@ var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
     CLAM_ERROR("Memory region does not belong to a global singleton");
   }
   switch (mem_region.getRegionInfo().getType()) {
-  case INT_REGION:
+  case region_type_t::INT_REGION:
     type = INT_TYPE;
     break;
-  case BOOL_REGION:
+  case region_type_t::BOOL_REGION:
     type = BOOL_TYPE;
     break;
-    /* TO_BE_UPDATED */
-    // case PTR_REGION:
-    // type = PTR_TYPE;
-    // break;
   default:
-    CLAM_ERROR("unsupported region type");
+    CLAM_ERROR("unsupported region type", mem_region);
   }
   auto varname = (name ? m_vfac[name] : m_vfac.get(mem_region.getId()));
   return var_t(varname, type, bitwidth);

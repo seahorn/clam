@@ -563,44 +563,49 @@ public:
   }
 
   void InitInteger(Value &Base, ConstantInt &Val, unsigned offset) {
+    Region r;
     if (m_mem.getClassId() == HeapAbstraction::ClassId::SEA_DSA) {
       SeaDsaHeapAbstraction *seaDsaHeapAbs =
           static_cast<SeaDsaHeapAbstraction *>(&m_mem);
-      Region r =
-          seaDsaHeapAbs->getRegion(m_fun, Base, offset, *(Val.getType()));
-      if (!r.isUnknown()) {
-        crab_lit_ref_t val_ref = m_lfac.getLit(Val);
-        assert(val_ref);
-        if (getSingletonValue(r, m_params.lower_singleton_aliases)) {
-          // Promote the global to an integer/boolean scalar
-          var_t a = m_lfac.mkArraySingletonVar(r);
-          if (isInteger(Val.getType())) {
-            assert(!val_ref->isVar() && val_ref->isInt());
-            m_bb.assign(a, m_lfac.getIntCst(val_ref));
-          } else if (isBool(Val.getType())) {
-            assert(!val_ref->isVar() && val_ref->isBool());
-            m_bb.bool_assign(a, m_lfac.isBoolTrue(val_ref)
-                                    ? lin_cst_t::get_true()
-                                    : lin_cst_t::get_false());
-          } else { /* unreachable*/
-          }
-        } else {
-          uint64_t elem_size = clam::storageSize(Val.getType(), m_dl);
-          assert(elem_size > 0);
-          bool first = m_initialized_arrays.insert(r).second;
-          number_t val(0);
-          if (val_ref->isInt()) {
-            val = m_lfac.getIntCst(val_ref);
+      r = seaDsaHeapAbs->getRegion(m_fun, Base, offset, *(Val.getType()));
+      /// TO_BE_UPDATED: only scalar regions for now
+      if (!r.getRegionInfo().containScalar()) {
+	r = Region();
+      }
+    }
+    
+    if (!r.isUnknown()) {
+      crab_lit_ref_t val_ref = m_lfac.getLit(Val);
+      assert(val_ref);
+      if (getSingletonValue(r, m_params.lower_singleton_aliases)) {
+	// Promote the global to an integer/boolean scalar
+	var_t a = m_lfac.mkArraySingletonVar(r);
+	if (isInteger(Val.getType())) {
+	  assert(!val_ref->isVar() && val_ref->isInt());
+	  m_bb.assign(a, m_lfac.getIntCst(val_ref));
+	} else if (isBool(Val.getType())) {
+	  assert(!val_ref->isVar() && val_ref->isBool());
+	  m_bb.bool_assign(a, m_lfac.isBoolTrue(val_ref)
+			   ? lin_cst_t::get_true()
+			   : lin_cst_t::get_false());
+	} else { /* unreachable*/
+	}
+      } else {
+	uint64_t elem_size = clam::storageSize(Val.getType(), m_dl);
+	assert(elem_size > 0);
+	bool first = m_initialized_arrays.insert(r).second;
+	number_t val(0);
+	if (val_ref->isInt()) {
+	  val = m_lfac.getIntCst(val_ref);
           } else if (val_ref->isBool() && m_lfac.isBoolTrue(val_ref)) {
-            val = number_t(1);
-          }
-	  if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM) {	  
-	    m_bb.array_store(m_lfac.mkArrayVar(r), lin_exp_t(offset),
-			     val, elem_size, first /*strong update*/);
-	  } else if (m_params.precision_level == CrabBuilderPrecision::MEM) {
-	    CLAM_WARNING("TODO implement global initializer if CrabBuilderPrecision::MEM");
-	  }
-        }
+	  val = number_t(1);
+	}
+	if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM) {	  
+	  m_bb.array_store(m_lfac.mkArrayVar(r), lin_exp_t(offset),
+			   val, elem_size, first /*strong update*/);
+	} else if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+	  CLAM_WARNING("TODO implement global initializer if CrabBuilderPrecision::MEM");
+	}
       }
     }
   }
@@ -3007,10 +3012,10 @@ void CfgBuilderImpl::buildCfg() {
 	    }
 	  } else {
 	    switch (a.getRegionInfo().getType()) {
-	    case INT_REGION:
+	    case region_type_t::INT_REGION:
 	      a_in = m_lfac.mkIntArrayVar(a.getRegionInfo().getBitwidth());
 	      break;
-	    case BOOL_REGION:
+	    case region_type_t::BOOL_REGION:
 	      a_in = m_lfac.mkBoolArrayVar();
 	      break;
 	    default: /*unreachable*/;
