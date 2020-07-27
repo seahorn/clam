@@ -2,11 +2,8 @@
 
 #include <clam/crab/crab_defs.hh>
 #include <crab/config.h>
-#ifdef HAVE_APRON
 #include <crab/domains/apron_domains.hpp>
-#else
 #include <crab/domains/elina_domains.hpp>
-#endif
 
 namespace clam {
 using namespace crab::domains;

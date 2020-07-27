@@ -31,6 +31,7 @@
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/InitializePasses.hh"
 
+#include "crab/config.h"
 #include "crab/analysis/bwd_analyzer.hpp"
 #include "crab/analysis/dataflow/assumptions.hpp"
 #include "crab/analysis/fwd_analyzer.hpp"
@@ -1017,14 +1018,12 @@ REGISTER_DOMAIN(CrabDomain::DIS_INTERVALS, dis_interval_domain_t)
 #if defined(HAVE_APRON) || defined(HAVE_ELINA)
 REGISTER_DOMAIN(CrabDomain::OCT, oct_domain_t)
 REGISTER_DOMAIN(CrabDomain::PK, pk_domain_t)
-#endif
+#endif 
 REGISTER_DOMAIN(CrabDomain::INTERVALS_CONGRUENCES, ric_domain_t)
 REGISTER_DOMAIN(CrabDomain::TERMS_INTERVALS, term_int_domain_t)
 REGISTER_DOMAIN(CrabDomain::TERMS_DIS_INTERVALS, term_dis_int_domain_t)
 REGISTER_DOMAIN(CrabDomain::TERMS_ZONES, num_domain_t)
-#ifdef HAVE_LDD
 REGISTER_DOMAIN(CrabDomain::BOXES, boxes_domain_t)
-#endif
 REGISTER_DOMAIN(CrabDomain::WRAPPED_INTERVALS, wrapped_interval_domain_t)
 
 char clam::ClamPass::ID = 0;

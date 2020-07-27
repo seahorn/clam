@@ -10,7 +10,7 @@ namespace clam {
 
 class DomainRegistry {
 public:
-  typedef std::map<CrabDomain::Type, clam_abstract_domain> FactoryMap;
+  using FactoryMap = std::map<CrabDomain::Type, clam_abstract_domain>;
 
   template <typename AbsDom> static bool add(CrabDomain::Type dom_ty) {
     auto &map = getFactoryMap();
@@ -36,8 +36,11 @@ private:
     return map;
   }
 
-  /* The domains instantiations happen in lib/Clam/domains */
-  template <typename AbsDom> static clam_abstract_domain makeTopDomain();
+  template <typename AbsDom> static clam_abstract_domain makeTopDomain() {
+    AbsDom dom_val;
+    clam_abstract_domain res(std::move(dom_val));
+    return res;
+  }
 };
 
 #define REGISTER_DOMAIN(domain_enum_val, domain_decl)                          \
