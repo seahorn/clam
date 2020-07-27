@@ -91,43 +91,6 @@ CrabWideningJumpSet("crab-widening-jump-set",
                     cl::desc("Size of the jump set used for widening"),
                     cl::init(0));
 
-struct CrabDomainParser : public cl::parser<CrabDomain::Type> {
-  CrabDomainParser(cl::Option &O): cl::parser<CrabDomain::Type>(O) {}
-
-  void addLiteralOption(StringRef Name, const unsigned &V, StringRef HelpStr) {
-    CrabDomain::Type TV;
-    bool found = false;
-    for (auto t : CrabDomain::List) {
-       if (t.value() == V) {
-          TV = t;
-	  found = true;
-	  break;
-       }
-    }
-    if (found) {
-      OptionInfo X(Name, TV, HelpStr);
-      Values.push_back(X);
-      AddLiteralOption(Owner, Name);
-    } else {
-      // TODO: ERROR
-    }
-  }
-
-  // parse - Return true on error.
-  bool parse(cl::Option &O, StringRef ArgName, const std::string &ArgValue,
-             CrabDomain::Type &Val) {
-    bool found = false;
-    for (auto t : CrabDomain::List) {
-       if (t.name() == ArgValue) {
-          Val = t;
-	  found = true;
-	  break;
-       }
-    }
-    return !found;
-  }
-};
-
 cl::opt<CrabDomain::Type, false, CrabDomainParser>
 ClamDomain("crab-dom",
       cl::desc("Crab numerical abstract domain used to infer invariants"),

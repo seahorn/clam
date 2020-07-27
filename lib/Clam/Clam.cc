@@ -21,6 +21,8 @@
 #include "./crab/printer.hpp"
 #include "clam/CfgBuilder.hh"
 #include "clam/Clam.hh"
+#include "clam/ClamAnalysisParams.hh"
+#include "clam/CrabDomainParser.hh"
 #include "clam/DummyHeapAbstraction.hh"
 #include "clam/RegisterAnalysis.hh"
 #include "clam/SeaDsaHeapAbstraction.hh"

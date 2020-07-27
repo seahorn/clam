@@ -7,6 +7,7 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   SeaDsaHeapAbstraction.cc
   SeaDsaHeapAbstractionUtils.cc
   SeaDsaToRegion.cc
+  CrabDomainParser.cc
   crab/path_analyzer.cc
   crab/printer.cc
   )
