@@ -70,7 +70,11 @@ public:
   std::size_t hash() const { return std::hash<std::string>{}(m_name); }
 
   // used by some crab datastructures
-  ikos::index_t index() const { return m_id; }
+  virtual ikos::index_t index() const override { return m_id; }
+  
+  virtual void write(crab::crab_os &o) const override {
+    o << get_name();
+  }
 
 private:
   //
@@ -96,7 +100,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &o,
 
 inline crab::crab_os &operator<<(crab::crab_os &o,
                                  const llvm_basic_block_wrapper &b) {
-  o << b.get_name();
+  b.write(o);
   return o;
 }
 } // namespace clam
