@@ -806,14 +806,13 @@ bool ClamPass::runOnModule(Module &M) {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream()
 		      << "Started sea-dsa analysis\n";);
       CallGraph &cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
-      const DataLayout &dl = M.getDataLayout();
       seadsa::AllocWrapInfo &allocWrapInfo = getAnalysis<seadsa::AllocWrapInfo>();
       // FIXME: if we pass "this" then allocWrapInfo can be more
       // precise because it can use LoopInfo. However, I get some
       // crash that I need to debug.
       allocWrapInfo.initialize(M, nullptr /*this*/);
       mem.reset(new SeaDsaHeapAbstraction(
-          M, cg, dl, tli, allocWrapInfo,
+          M, cg, tli, allocWrapInfo,
           (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
           CrabDsaDisambiguateUnknown, CrabDsaDisambiguatePtrCast,
           CrabDsaDisambiguateExternal));

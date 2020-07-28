@@ -67,21 +67,20 @@ public:
   // This constructor creates and owns a sea-dsa GlobalAnalysis instance and
   // run it on M.
   SeaDsaHeapAbstraction(const llvm::Module &M, llvm::CallGraph &cg,
-                              const llvm::DataLayout &dl,
-                              const llvm::TargetLibraryInfoWrapperPass &tli,
-                              const seadsa::AllocWrapInfo &alloc_wrap_info,
-                              bool is_context_sensitive,
-                              bool disambiguate_unknown,
-                              bool disambiguate_ptr_cast,
-                              bool disambiguate_external);
+			const llvm::TargetLibraryInfoWrapperPass &tli,
+			const seadsa::AllocWrapInfo &alloc_wrap_info,
+			bool is_context_sensitive,
+			bool disambiguate_unknown = false,
+			bool disambiguate_ptr_cast = false,
+			bool disambiguate_external = false);
 
   // This constructor takes an existing sea-dsa Global Analysis instance.
   // It doesn't own it.
-  SeaDsaHeapAbstraction(const llvm::Module &M, const llvm::DataLayout &dl,
-                              seadsa::GlobalAnalysis &dsa,
-                              bool disambiguate_unknown,
-                              bool disambiguate_ptr_cast,
-                              bool disambiguate_external);
+  SeaDsaHeapAbstraction(const llvm::Module &M, 
+			seadsa::GlobalAnalysis &dsa,
+			bool disambiguate_unknown = false,
+			bool disambiguate_ptr_cast = false,
+			bool disambiguate_external = false);
 
   ~SeaDsaHeapAbstraction();
 

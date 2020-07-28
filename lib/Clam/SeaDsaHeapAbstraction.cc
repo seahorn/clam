@@ -411,12 +411,12 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 }
 
 SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
-    const llvm::Module &M, llvm::CallGraph &cg, const llvm::DataLayout &dl,
+    const llvm::Module &M, llvm::CallGraph &cg, 
     const llvm::TargetLibraryInfoWrapperPass &tli,
     const seadsa::AllocWrapInfo &alloc_info, bool is_context_sensitive,
     bool disambiguate_unknown, bool disambiguate_ptr_cast,
     bool disambiguate_external)
-    : m_dsa(nullptr), m_fac(nullptr), m_dl(dl), m_max_id(0),
+    : m_dsa(nullptr), m_fac(nullptr), m_dl(M.getDataLayout()), m_max_id(0),
       m_disambiguate_unknown(disambiguate_unknown),
       m_disambiguate_ptr_cast(disambiguate_ptr_cast),
       m_disambiguate_external(disambiguate_external) {
@@ -441,10 +441,10 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
 }
 
 SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
-    const llvm::Module &M, const llvm::DataLayout &dl,
+    const llvm::Module &M, 
     seadsa::GlobalAnalysis &dsa, bool disambiguate_unknown,
     bool disambiguate_ptr_cast, bool disambiguate_external)
-    : m_dsa(&dsa), m_fac(nullptr), m_dl(dl), m_max_id(0),
+    : m_dsa(&dsa), m_fac(nullptr), m_dl(M.getDataLayout()), m_max_id(0),
       m_disambiguate_unknown(disambiguate_unknown),
       m_disambiguate_ptr_cast(disambiguate_ptr_cast),
       m_disambiguate_external(disambiguate_external) {
