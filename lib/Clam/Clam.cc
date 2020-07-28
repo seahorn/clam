@@ -31,6 +31,7 @@
 #include "clam/crab/crab_domains.hh"
 
 #include "seadsa/AllocWrapInfo.hh"
+#include "seadsa/DsaLibFuncInfo.hh"
 #include "seadsa/InitializePasses.hh"
 
 #include "crab/config.h"
@@ -811,8 +812,11 @@ bool ClamPass::runOnModule(Module &M) {
       // precise because it can use LoopInfo. However, I get some
       // crash that I need to debug.
       allocWrapInfo.initialize(M, nullptr /*this*/);
+      seadsa::DsaLibFuncInfo &dsaLibFuncInfo =
+	getAnalysis<seadsa::DsaLibFuncInfo>();      
+      
       mem.reset(new SeaDsaHeapAbstraction(
-          M, cg, tli, allocWrapInfo,
+	  M, cg, tli, allocWrapInfo, dsaLibFuncInfo,
           (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
           CrabDsaDisambiguateUnknown, CrabDsaDisambiguatePtrCast,
           CrabDsaDisambiguateExternal));
@@ -928,6 +932,7 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
     // dependency for immutable AllocWrapInfo
     AU.addRequired<LoopInfoWrapperPass>();    
     AU.addRequired<seadsa::AllocWrapInfo>();
+    AU.addRequired<seadsa::DsaLibFuncInfo>();
   }
 
   AU.addRequired<UnifyFunctionExitNodes>();

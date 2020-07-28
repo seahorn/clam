@@ -14,6 +14,7 @@ class GlobalAnalysis;
 class Node;
 class Cell;
 class AllocWrapInfo;
+class DsaLibFuncInfo;
 } // namespace seadsa
 
 namespace llvm {
@@ -69,6 +70,7 @@ public:
   SeaDsaHeapAbstraction(const llvm::Module &M, llvm::CallGraph &cg,
 			const llvm::TargetLibraryInfoWrapperPass &tli,
 			const seadsa::AllocWrapInfo &alloc_wrap_info,
+			const seadsa::DsaLibFuncInfo &spec_graph_info,			
 			bool is_context_sensitive,
 			bool disambiguate_unknown = false,
 			bool disambiguate_ptr_cast = false,

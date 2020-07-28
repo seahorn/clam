@@ -14,6 +14,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "seadsa/AllocWrapInfo.hh"
+#include "seadsa/DsaLibFuncInfo.hh"
 #include "seadsa/Global.hh"
 #include "seadsa/Graph.hh"
 
@@ -413,7 +414,9 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
     const llvm::Module &M, llvm::CallGraph &cg, 
     const llvm::TargetLibraryInfoWrapperPass &tli,
-    const seadsa::AllocWrapInfo &alloc_info, bool is_context_sensitive,
+    const seadsa::AllocWrapInfo &alloc_info,
+    const seadsa::DsaLibFuncInfo &spec_graph_info,
+    bool is_context_sensitive,
     bool disambiguate_unknown, bool disambiguate_ptr_cast,
     bool disambiguate_external)
     : m_dsa(nullptr), m_fac(nullptr), m_dl(M.getDataLayout()), m_max_id(0),
@@ -428,11 +431,11 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
   if (!is_context_sensitive) {
     m_dsa = new seadsa::ContextInsensitiveGlobalAnalysis(
         m_dl, *(const_cast<llvm::TargetLibraryInfoWrapperPass *>(&tli)),
-        alloc_info, cg, *m_fac, false);
+        alloc_info, spec_graph_info, cg, *m_fac, false);
   } else {
     m_dsa = new seadsa::ContextSensitiveGlobalAnalysis(
         m_dl, *(const_cast<llvm::TargetLibraryInfoWrapperPass *>(&tli)),
-        alloc_info, cg, *m_fac);
+        alloc_info, spec_graph_info, cg, *m_fac);
   }
 
   m_dsa->runOnModule(const_cast<Module &>(M));
