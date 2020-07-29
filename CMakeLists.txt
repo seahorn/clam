@@ -363,7 +363,6 @@ if (NOT TopLevel)
    set(XCLAM_LIBS
      ClamAnalysis
      ClamInstrumentation
-     ClamDomains
      ClamSupport)
    
    if (CLAM_INCLUDE_TRANSFORMS)
