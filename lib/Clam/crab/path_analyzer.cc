@@ -37,7 +37,7 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
   AbsDom pre(m_init);
   fwd_abs_tr_t abs_tr(std::move(pre));
   for (unsigned i = 0, e = path.size(); i < e; ++i) {
-    AbsDom new_pre(std::move(abs_tr.get_abs_value()));
+    const AbsDom &new_pre = abs_tr.get_abs_value();
     if (new_pre.is_bottom()) {
       if (!bottom_found) {
         bottom_block = i; // update only the first time bottom is found
@@ -45,14 +45,12 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
       bottom_found = true;
       break;
     }
-
     // store constraints that hold at the entry of the block
     basic_block_label_t node = path[i];
     auto it = m_fwd_dom_map.find(node);
     if (it == m_fwd_dom_map.end()) {
       m_fwd_dom_map.insert(std::make_pair(node, new_pre));
     }
-
     // compute strongest post-condition for one block
     auto &b = m_cfg.get_node(node);
     bottom_stmt = 0;
@@ -69,8 +67,8 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
         path_statements.push_back(&s);
       }
       s.accept(&abs_tr);
-      AbsDom next_pre(std::move(abs_tr.get_abs_value()));
-      if (next_pre.is_bottom()) {
+      
+      if (abs_tr.get_abs_value().is_bottom()) {
         break;
       } else {
         bottom_stmt++;
@@ -364,7 +362,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
         bool is_bottom = false;
         for (unsigned i = 0, e = core.size(); i < e; ++i) {
           core[i]->accept(&abs_tr);
-          if (inv.is_bottom()) {
+          if (abs_tr.get_abs_value().is_bottom()) {
             is_bottom = true;
             break;
           }
@@ -387,14 +385,12 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
       for (unsigned j = 0; j < core.size(); ++j) {
         if (i != j && enabled[j]) {
           core[j]->accept(&abs_tr);
-          AbsDom next_inv = std::move(abs_tr.get_abs_value());
-          if (next_inv.is_bottom()) {
+          if (abs_tr.get_abs_value().is_bottom()) {
             break;
           }
         }
       }
-      AbsDom next_inv = std::move(abs_tr.get_abs_value());
-      if (next_inv.is_bottom()) {
+      if (abs_tr.get_abs_value().is_bottom()) {
         enabled[i] = false;
       }
     }
@@ -419,8 +415,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
       bool is_bottom = false;
       for (unsigned i = 0, e = m_core.size(); i < e; ++i) {
         m_core[i]->accept(&abs_tr);
-        AbsDom next_inv = std::move(abs_tr.get_abs_value());
-        if (next_inv.is_bottom()) {
+        if (abs_tr.get_abs_value().is_bottom()) {
           is_bottom = true;
           break;
         }
