@@ -2,23 +2,14 @@ language: cpp
 dist: trusty
 os: linux
 cache: apt
-branches:
-  except:
-  - mdd
-  - soct
-matrix:
-  include:
-  - env: ARRAY_DOM=default
-    script:
-      - docker build --build-arg BRANCH=$TRAVIS_BRANCH -t seahorn/clam-llvm10:latest -f docker/clam.Dockerfile .   
-      - |
-       if [ "$TRAVIS_EVENT_TYPE" = "cron" ]; then
+script:
+  - docker build --build-arg BRANCH=$TRAVIS_BRANCH -t seahorn/clam-llvm10:latest -f docker/clam.Dockerfile .
+  
+  - 'if [ "$TRAVIS_EVENT_TYPE" = "cron" ]; then
         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin &&
         docker push seahorn/clam-llvm10:latest;       
-       fi
-#  - env: ARRAY_DOM=new
-#    script:
-#      - docker build --build-arg BRANCH=$TRAVIS_BRANCH -t seahorn/clam-array-adapt-llvm10:latest -f docker/clam.array-adapt.Dockerfile . 
+       fi '
+       
 services:
   - docker
 install: true

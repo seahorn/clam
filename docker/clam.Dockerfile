@@ -11,7 +11,7 @@ FROM seahorn/buildpack-deps-seahorn:$BASE_IMAGE
 # Needed to run clang with -m32
 RUN apt-get install -yqq libc6-dev-i386
 
-ARG BRANCH=llvm10
+ARG BRANCH=dev10
 RUN cd / && rm -rf /clam && \
     git clone https://github.com/seahorn/crab-llvm -b $BRANCH clam --depth=10 ; \
     mkdir -p /clam/build
@@ -44,7 +44,7 @@ RUN cmake --build . --target test-simple
 RUN cmake --build . --target test-readme
 RUN cmake --build . --target test-ssh-simplified
 RUN cmake --build . --target test-ntdrivers-simplified
-
+RUN cmake --build . --target test-array-adapt
 
 WORKDIR /clam
 
