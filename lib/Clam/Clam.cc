@@ -1029,7 +1029,9 @@ REGISTER_DOMAIN(CrabDomain::INTERVALS_CONGRUENCES, ric_domain_t)
 REGISTER_DOMAIN(CrabDomain::TERMS_INTERVALS, term_int_domain_t)
 REGISTER_DOMAIN(CrabDomain::TERMS_DIS_INTERVALS, term_dis_int_domain_t)
 REGISTER_DOMAIN(CrabDomain::TERMS_ZONES, num_domain_t)
+#ifdef HAVE_LDD
 REGISTER_DOMAIN(CrabDomain::BOXES, boxes_domain_t)
+#endif 
 REGISTER_DOMAIN(CrabDomain::WRAPPED_INTERVALS, wrapped_interval_domain_t)
 
 char clam::ClamPass::ID = 0;
