@@ -17,12 +17,14 @@
  * memory region's _field_ (i.e., Burstall's memory model) is mapped
  * to a Crab array and LLVM load/store are translated to array
  * read/write statements. A memory object is considered a singleton if
- * its address is not taken. This is usually the case of global and
- * stack variables.
+ * it represents a single allocated memory region. This is usually the
+ * case of global and stack variables.
  *
  * If tracked precision = MEM then all LLVM pointer operations are
  * translated to Crab reference operations. This translation is almost
- * one-to-one but it also requires the use of the Heap Analysis.
+ * one-to-one but it also requires the use of the Heap
+ * Analysis. Sometimes, the LLVM instruction can be safely ignored if
+ * the Heap Analysis is too imprecise.
  *
  * The translation of function calls is also straightforward except
  * that all functions are _purified_ if tracked precision != NUM. That
@@ -654,12 +656,14 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
    *  Insert key-value in the reverse map but only if no CFG
    *  simplifications enabled
    */
-  void insertRevMap(const statement_t *s, Instruction &inst);
+  void insertRevMap(const statement_t *s, Instruction &inst);  
   /*  Return true if all uses of V are non-trackable memory accesses.
    *  Useful to avoid translating bitcode that won't have any effect
    *  anyway.
    */
   bool AllUsesAreNonTrackMem(Value *V) const;
+
+  /* Most of the translation work happens in these methods */
   void doBinOp(unsigned op, var_t lhs, lin_exp_t op1, lin_exp_t op2);
   void doArithmetic(crab_lit_ref_t ref, BinaryOperator &i);
   var_t doBoolLogicOp(Instruction::BinaryOps op, crab_lit_ref_t ref,
@@ -671,10 +675,10 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   void doGep(GetElementPtrInst &I, unsigned bitwidth,
              var_t lhs, llvm::Optional<var_t> base);
   void StoreIntoSingletonMem(StoreInst &I, bool is_singleton, var_t array_var,
-                   crab_lit_ref_t val, Region reg);
+			     crab_lit_ref_t val, Region reg);
   void LoadFromSingletonMem(LoadInst &I, bool is_singleton, var_t lhs, var_t rhs,
 			    Region rhs_region);
-
+  void doCallSite(CallInst &CI);
 public:
   CrabInstVisitor(
       crabLitFactory &lfac, HeapAbstraction &mem, 
@@ -712,6 +716,17 @@ public:
   void visitInstruction(Instruction &I);
 }; // end class
 
+CrabInstVisitor::CrabInstVisitor(
+  crabLitFactory &lfac, HeapAbstraction &mem, 
+  const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
+  llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
+  std::set<Region> &init_regions,
+  DenseMap<const GetElementPtrInst *, var_t> &gep_map,
+  const CrabBuilderParams &params)
+  : m_lfac(lfac), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb),
+    m_object_id(0), m_has_seahorn_fail(false), m_params(params),
+    m_gep_map(gep_map), m_rev_map(rev_map), m_init_regions(init_regions) {}
+  
 unsigned CrabInstVisitor::fieldOffset(const StructType *t,
                                       unsigned field) const {
   return m_dl->getStructLayout(const_cast<StructType *>(t))
@@ -1132,108 +1147,6 @@ void CrabInstVisitor::doIntLogicOp(crab_lit_ref_t ref, BinaryOperator &i) {
   }
 }
 
-/* malloc-like functions */
-void CrabInstVisitor::doAllocFn(Instruction &I) {
-
-  if (!I.getType()->isVoidTy()) {
-    crab_lit_ref_t ref = m_lfac.getLit(I);
-    assert(ref->isVar());
-    if (isReference(I, m_params)) {
-#if 0 /* TO_BE_UPDATED */
-      m_bb.ptr_new_object(ref->getVar(), m_object_id++);
-#endif      
-    } else if (isTracked(I, m_params)) {
-      // -- havoc return value
-      havoc(ref->getVar(), m_bb, m_params.include_useless_havoc);
-    }
-  }
-}
-
-/* memcpy/memmove/memset functions */
-void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
-  CLAM_WARNING("Skipped memory intrinsics " << I);
-
-#if 0 /* TO_BE_UPDATED */   
-  if (m_lfac.getTrack() == NUM) {
-    return;
-  } else if (m_lfac.getTrack() == PTR) {
-    CLAM_WARNING("Skipped memory intrinsics " << I);
-    return;
-  } 
-
-  MemCpyInst  *MCI = dyn_cast<MemCpyInst>(&I);
-  MemMoveInst *MVI = dyn_cast<MemMoveInst>(&I);
-  Value *dst = I.getDest();
-  Region dst_reg = getRegion(m_mem, *m_dl, &I, dst);
-  if (dst_reg.isUnknown()) {
-    return;
-  }
-  var_t arr_var = m_lfac.mkArrayVar(dst_reg);
-  const statement_t *crab_stmt = nullptr;
-  if (MCI || MVI) {
-    /** 
-     * TODO: to be more precise we need from crab something like
-     * array_copy that copies len bytes from dst to src. We could use
-     * array_assign if we know statically that src and dst have the
-     * same size and the memory transfer function copies the entire
-     * memory region. For memmove, we would also need to prove that
-     * source and destination do not overlap.
-     **/
-    if (MCI)      
-      CLAM_WARNING("Skipped memcpy instruction");
-    else 
-      CLAM_WARNING("Skipped memmove instruction");        
-  } else if (MemSetInst  *MSI = dyn_cast<MemSetInst>(&I)) {
-    bool is_uninit_region = m_init_regions.insert(dst_reg).second;
-    if (isInteger(*(MSI->getValue()))) {
-      crab_lit_ref_t len_ref = m_lfac.getLit(*(MSI->getLength()));
-      crab_lit_ref_t val_ref = m_lfac.getLit(*(MSI->getValue()));
-      if (len_ref && val_ref && len_ref->isInt()) {
-	lin_exp_t lb_idx(number_t(0));
-	lin_exp_t ub_idx(m_lfac.getExp(len_ref) - 1);
-	// An aligment of x means that the address is multiple of x
-	// However, you can have an array of i32 and have aligment of 16.
-	//    @a = common global [5 x i32] zeroinitializer, align 16
-	uint64_t elem_size = MSI->getDestAlignment(); /*double check this*/
-
-	if (val_ref->isInt()) {
-	  if (val_ref->isVar()) {
-	    crab_stmt =
-	      m_bb.array_store_range(arr_var, lb_idx, ub_idx, val_ref->getVar(),
-				     elem_size);
-	  } else {
-	    crab_stmt =
-	      m_bb.array_store_range(arr_var, lb_idx, ub_idx,
-				     m_lfac.getIntCst(val_ref), elem_size);
-	  }
-	} else if (val_ref->isBool()) {
-	  if (val_ref->isVar()) {
-	    crab_stmt =
-	      m_bb.array_store_range(arr_var, lb_idx, ub_idx, val_ref->getVar(),
-				     elem_size);
-	  } else {
-	    crab_stmt =
-	      m_bb.array_store_range(arr_var, lb_idx, ub_idx,
-				     m_lfac.isBoolTrue(val_ref) ? number_t(1)
-				     : number_t(0),
-				     elem_size);
-	  }
-	} else {
-	  /* unreachable */
-	}
-      }
-    } else {      
-      CLAM_WARNING("Skipped memset instruction of non-integer type.");
-    }
-  }
-
-  if (!crab_stmt) {
-    // default case: we havoc the array variable
-    m_bb.havoc(arr_var);
-  }
-#endif
-}
-
 /* special functions for verification */
 void CrabInstVisitor::doVerifierCall(CallInst &I) {
   CallSite CS(&I);
@@ -1339,16 +1252,6 @@ void CrabInstVisitor::doVerifierCall(CallInst &I) {
   }
 }
 
-CrabInstVisitor::CrabInstVisitor(
-    crabLitFactory &lfac, HeapAbstraction &mem, 
-    const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
-    llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
-    std::set<Region> &init_regions,
-    DenseMap<const GetElementPtrInst *, var_t> &gep_map,
-    const CrabBuilderParams &params)
-    : m_lfac(lfac), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb),
-      m_object_id(0), m_has_seahorn_fail(false), m_params(params),
-      m_gep_map(gep_map), m_rev_map(rev_map), m_init_regions(init_regions) {}
 
 /// I is already translated if it is the condition of a branch or
 /// a select's condition.  Here we cover cases where I is an
@@ -1692,6 +1595,109 @@ void CrabInstVisitor::visitSelectInst(SelectInst &I) {
   }
 }
 
+  
+/* malloc-like functions */
+void CrabInstVisitor::doAllocFn(Instruction &I) {
+
+  if (!I.getType()->isVoidTy()) {
+    crab_lit_ref_t ref = m_lfac.getLit(I);
+    assert(ref->isVar());
+    if (isReference(I, m_params)) {
+#if 0 /* TO_BE_UPDATED */
+      m_bb.ptr_new_object(ref->getVar(), m_object_id++);
+#endif      
+    } else if (isTracked(I, m_params)) {
+      // -- havoc return value
+      havoc(ref->getVar(), m_bb, m_params.include_useless_havoc);
+    }
+  }
+}
+
+/* memcpy/memmove/memset functions */
+void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
+  CLAM_WARNING("Skipped memory intrinsics " << I);
+
+#if 0 /* TO_BE_UPDATED */   
+  if (m_lfac.getTrack() == NUM) {
+    return;
+  } else if (m_lfac.getTrack() == PTR) {
+    CLAM_WARNING("Skipped memory intrinsics " << I);
+    return;
+  } 
+
+  MemCpyInst  *MCI = dyn_cast<MemCpyInst>(&I);
+  MemMoveInst *MVI = dyn_cast<MemMoveInst>(&I);
+  Value *dst = I.getDest();
+  Region dst_reg = getRegion(m_mem, *m_dl, &I, dst);
+  if (dst_reg.isUnknown()) {
+    return;
+  }
+  var_t arr_var = m_lfac.mkArrayVar(dst_reg);
+  const statement_t *crab_stmt = nullptr;
+  if (MCI || MVI) {
+    /** 
+     * TODO: to be more precise we need from crab something like
+     * array_copy that copies len bytes from dst to src. We could use
+     * array_assign if we know statically that src and dst have the
+     * same size and the memory transfer function copies the entire
+     * memory region. For memmove, we would also need to prove that
+     * source and destination do not overlap.
+     **/
+    if (MCI)      
+      CLAM_WARNING("Skipped memcpy instruction");
+    else 
+      CLAM_WARNING("Skipped memmove instruction");        
+  } else if (MemSetInst  *MSI = dyn_cast<MemSetInst>(&I)) {
+    bool is_uninit_region = m_init_regions.insert(dst_reg).second;
+    if (isInteger(*(MSI->getValue()))) {
+      crab_lit_ref_t len_ref = m_lfac.getLit(*(MSI->getLength()));
+      crab_lit_ref_t val_ref = m_lfac.getLit(*(MSI->getValue()));
+      if (len_ref && val_ref && len_ref->isInt()) {
+	lin_exp_t lb_idx(number_t(0));
+	lin_exp_t ub_idx(m_lfac.getExp(len_ref) - 1);
+	// An aligment of x means that the address is multiple of x
+	// However, you can have an array of i32 and have aligment of 16.
+	//    @a = common global [5 x i32] zeroinitializer, align 16
+	uint64_t elem_size = MSI->getDestAlignment(); /*double check this*/
+
+	if (val_ref->isInt()) {
+	  if (val_ref->isVar()) {
+	    crab_stmt =
+	      m_bb.array_store_range(arr_var, lb_idx, ub_idx, val_ref->getVar(),
+				     elem_size);
+	  } else {
+	    crab_stmt =
+	      m_bb.array_store_range(arr_var, lb_idx, ub_idx,
+				     m_lfac.getIntCst(val_ref), elem_size);
+	  }
+	} else if (val_ref->isBool()) {
+	  if (val_ref->isVar()) {
+	    crab_stmt =
+	      m_bb.array_store_range(arr_var, lb_idx, ub_idx, val_ref->getVar(),
+				     elem_size);
+	  } else {
+	    crab_stmt =
+	      m_bb.array_store_range(arr_var, lb_idx, ub_idx,
+				     m_lfac.isBoolTrue(val_ref) ? number_t(1)
+				     : number_t(0),
+				     elem_size);
+	  }
+	} else {
+	  /* unreachable */
+	}
+      }
+    } else {      
+      CLAM_WARNING("Skipped memset instruction of non-integer type.");
+    }
+  }
+
+  if (!crab_stmt) {
+    // default case: we havoc the array variable
+    m_bb.havoc(arr_var);
+  }
+#endif
+}
+  
 //
 // - If precision level is CrabBuilderPrecision::MEM then GEP it is
 //   translated as a Crab reference statement.
@@ -1864,7 +1870,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
     }
   }
 }
-
+  
 /*
  The offset computation is translated to a sequence of Crab linear
  arithmetic operations. In Crab, an arithmetic operation is strongly
@@ -2228,6 +2234,130 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
   }
 }
 
+/**
+ * Translate a LLVM callsite
+ *     o := foo(i1,...,i_n)
+ *
+ * into a crab callsite or intrinsic
+ *     (o,a_o1,...,a_om) := foo(i1,...,in,a_i1,...,a_in) where
+ *
+ *    - a_i1,...,a_in are read-only and modified arrays by foo.
+ *    - a_o1,...,a_om are modified and new arrays created inside foo.
+ **/
+void CrabInstVisitor::doCallSite(CallInst &I) {
+  CallSite CS(&I);
+  const Function *calleeF = dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts());
+  assert(calleeF);  
+  
+  std::vector<var_t> inputs, outputs;
+
+  // -- add the actual parameters of the llvm callsite: i1,...in.
+  for (auto &a : llvm::make_range(CS.arg_begin(), CS.arg_end())) {
+    Value *v = a.get();
+    if (!isTracked(*v, m_params))
+      continue;
+    inputs.push_back(normalizeFuncParamOrRet(*v, m_bb, m_lfac));
+  }
+
+  // -- add the return value of the llvm calliste: o
+  if (ShouldCallSiteReturn(I, m_params)) {
+    if (DoesCallSiteReturn(I, m_params)) {
+      crab_lit_ref_t ret = m_lfac.getLit(I);
+      assert(ret && ret->isVar());
+      outputs.push_back(ret->getVar());
+    } else {
+      // The callsite should return something to match with the
+      // function signature but it doesn't: we create a fresh
+      // return value.
+      Type *RT = calleeF->getReturnType();
+      if (isBool(RT)) {
+        var_t fresh_ret = m_lfac.mkBoolVar();
+        outputs.push_back(fresh_ret);
+      } else if (isInteger(RT)) {
+        unsigned bitwidth = RT->getIntegerBitWidth();
+        var_t fresh_ret = m_lfac.mkIntVar(bitwidth);
+        outputs.push_back(fresh_ret);
+      } else if (isReference(RT, m_params)) {
+        var_t fresh_ret = m_lfac.mkRefVar();
+        outputs.push_back(fresh_ret);
+      } else {
+        // do nothing
+      }
+    }
+  } else {
+    if (DoesCallSiteReturn(I, m_params)) {
+      // LLVM shouldn't allow this.
+      CLAM_ERROR(
+          "Unexpected type mismatch between callsite and function signature");
+    }
+  }
+
+  if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+    // -- add the input and output array parameters a_i1,...,a_in
+    // -- and a_o1,...,a_om.
+    RegionVec onlyreads = getReadOnlyRegions(m_mem, I);
+    RegionVec mods = getModifiedRegions(m_mem, I);
+    RegionVec news = getNewRegions(m_mem, I);
+
+    CRAB_LOG("cfg-mem", llvm::errs()
+                            << "Callsite " << I << "\n"
+                            << "\tOnly-Read regions " << onlyreads.size()
+                            << ": " << onlyreads << "\n"
+                            << "\tModified regions " << mods.size() << ": "
+                            << mods << "\n"
+                            << "\tNew regions " << news.size() << ": " << news
+                            << "\n");
+
+    // -- add only read regions as input parameters
+    for (auto a : onlyreads) {
+      if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
+        // Promote the global to a scalar
+        inputs.push_back(m_lfac.mkArraySingletonVar(a));
+      } else {
+        inputs.push_back(m_lfac.mkArrayVar(a));
+      }
+    }
+
+    // -- add modified regions as both input and output parameters
+    for (auto a : mods) {
+      if (std::find(news.begin(), news.end(), a) != news.end()) {
+        continue;
+      }
+
+      // input version
+      if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
+        // Promote the global to a scalar
+        inputs.push_back(m_lfac.mkArraySingletonVar(a));
+      } else {
+        inputs.push_back(m_lfac.mkArrayVar(a));
+      }
+
+      // output version
+      if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
+        // Promote the global to a scalar
+        outputs.push_back(m_lfac.mkArraySingletonVar(a));
+      } else {
+        outputs.push_back(m_lfac.mkArrayVar(a));
+      }
+    }
+    // -- add more output parameters
+    for (auto a : news) {
+      // New regions cannot be singletons so they are directly
+      // translated as arrays
+      outputs.push_back(m_lfac.mkArrayVar(a));
+    }
+  } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+    CLAM_WARNING("TODO implement callsite with CrabBuilderPrecision::MEM");
+  }
+  
+  // -- Finally, add the callsite or crab intrinsic
+  if (isCrabIntrinsic(*calleeF)) {
+    m_bb.intrinsic(getCrabIntrinsicName(*calleeF), outputs, inputs);
+  } else {
+    m_bb.callsite(calleeF->getName().str(), outputs, inputs);
+  }
+}
+    
 void CrabInstVisitor::visitCallInst(CallInst &I) {
   CallSite CS(&I);
   const Value *calleeV = CS.getCalledValue();
@@ -2253,12 +2383,10 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     return;
   }
 
-  if (callee->getName().startswith("shadow.mem")) {
+  if (callee->getName().startswith("shadow.mem") ||
+      callee->getName().equals("seahorn.fn.enter")) {
     return;
   }
-
-  if (callee->getName().equals("seahorn.fn.enter"))
-    return;
 
   if (isVerifierCall(*callee)) {
     doVerifierCall(I);
@@ -2330,124 +2458,9 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     //
     return;
   }
-
-  /**
-   * Translate a LLVM callsite or Crab intrinsic
-   *     o := foo(i1,...,i_n)
-   *
-   * into a crab callsite
-   *     (o,a_o1,...,a_om) := foo(i1,...,in,a_i1,...,a_in) where
-   *
-   *    - a_i1,...,a_in are read-only and modified arrays by foo.
-   *    - a_o1,...,a_om are modified and new arrays created inside foo.
-   **/
-
-  std::vector<var_t> inputs, outputs;
-
-  // -- add the actual parameters of the llvm callsite: i1,...in.
-  for (auto &a : llvm::make_range(CS.arg_begin(), CS.arg_end())) {
-    Value *v = a.get();
-    if (!isTracked(*v, m_params))
-      continue;
-    inputs.push_back(normalizeFuncParamOrRet(*v, m_bb, m_lfac));
-  }
-
-  // -- add the return value of the llvm calliste: o
-  if (ShouldCallSiteReturn(I, m_params)) {
-    if (DoesCallSiteReturn(I, m_params)) {
-      crab_lit_ref_t ret = m_lfac.getLit(I);
-      assert(ret && ret->isVar());
-      outputs.push_back(ret->getVar());
-    } else {
-      // The callsite should return something to match with the
-      // function signature but it doesn't: we create a fresh
-      // return value.
-      Type *RT = callee->getReturnType();
-      if (isBool(RT)) {
-        var_t fresh_ret = m_lfac.mkBoolVar();
-        outputs.push_back(fresh_ret);
-      } else if (isInteger(RT)) {
-        unsigned bitwidth = RT->getIntegerBitWidth();
-        var_t fresh_ret = m_lfac.mkIntVar(bitwidth);
-        outputs.push_back(fresh_ret);
-      } else if (isReference(RT, m_params)) {
-        var_t fresh_ret = m_lfac.mkRefVar();
-        outputs.push_back(fresh_ret);
-      } else {
-        // do nothing
-      }
-    }
-  } else {
-    if (DoesCallSiteReturn(I, m_params)) {
-      // LLVM shouldn't allow this.
-      CLAM_ERROR(
-          "Unexpected type mismatch between callsite and function signature");
-    }
-  }
-
-  if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
-    // -- add the input and output array parameters a_i1,...,a_in
-    // -- and a_o1,...,a_om.
-    RegionVec onlyreads = getReadOnlyRegions(m_mem, I);
-    RegionVec mods = getModifiedRegions(m_mem, I);
-    RegionVec news = getNewRegions(m_mem, I);
-
-    CRAB_LOG("cfg-mem", llvm::errs()
-                            << "Callsite " << I << "\n"
-                            << "\tOnly-Read regions " << onlyreads.size()
-                            << ": " << onlyreads << "\n"
-                            << "\tModified regions " << mods.size() << ": "
-                            << mods << "\n"
-                            << "\tNew regions " << news.size() << ": " << news
-                            << "\n");
-
-    // -- add only read regions as array input parameters
-    for (auto a : onlyreads) {
-      if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
-        // Promote the global to a scalar
-        inputs.push_back(m_lfac.mkArraySingletonVar(a));
-      } else {
-        inputs.push_back(m_lfac.mkArrayVar(a));
-      }
-    }
-
-    // -- add modified regions as both input and output parameters
-    for (auto a : mods) {
-      if (std::find(news.begin(), news.end(), a) != news.end()) {
-        continue;
-      }
-
-      // input version
-      if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
-        // Promote the global to a scalar
-        inputs.push_back(m_lfac.mkArraySingletonVar(a));
-      } else {
-        inputs.push_back(m_lfac.mkArrayVar(a));
-      }
-
-      // output version
-      if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
-        // Promote the global to a scalar
-        outputs.push_back(m_lfac.mkArraySingletonVar(a));
-      } else {
-        outputs.push_back(m_lfac.mkArrayVar(a));
-      }
-    }
-    // -- add more output parameters
-    for (auto a : news) {
-      outputs.push_back(m_lfac.mkArrayVar(a));
-    }
-  } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-    CLAM_WARNING("TODO implement callsite with CrabBuilderPrecision::MEM");
-  }
   
-
-  // -- Finally, add the callsite or crab intrinsic
-  if (isCrabIntrinsic(*callee)) {
-    m_bb.intrinsic(getCrabIntrinsicName(*callee), outputs, inputs);
-  } else {
-    m_bb.callsite(callee->getName().str(), outputs, inputs);
-  }
+  /* Translate the call to an internal function */
+  doCallSite(I);
 }
 
 void CrabInstVisitor::visitUnreachableInst(UnreachableInst &I) {
@@ -2569,6 +2582,8 @@ private:
   void addBlockInBetween(basic_block_t &src, basic_block_t &dst,
                          basic_block_t &between);
 
+  void addFunctionDeclaration(llvm::Optional<var_t> ret_val);
+  
   basic_block_label_t makeCrabBasicBlockLabel(const llvm::BasicBlock *bb);
 
   basic_block_label_t makeCrabBasicBlockLabel(const llvm::BasicBlock *src,
@@ -2871,209 +2886,7 @@ void CfgBuilderImpl::buildCfg() {
 
   /// Add function declaration
   if (m_params.interprocedural && !m_func.isVarArg()) {
-
-    /**
-     * Translate LLVM function declaration
-     *   o_ty foo (i1,...,in)
-     *
-     * into a crab function declaration
-     *
-     *   o, a_o1,...,a_om foo (i1,...,in,a_i1,...,a_in) where
-     *
-     *   - o is the **returned value** of the function (translation
-     *     ensures there is always one return instruction and the
-     *     returned value is a variable, i.e., cannot be a
-     *     constant).
-     *
-     *   - a_i1,...,a_in are read-only and modified arrays in function foo
-     *
-     *   - a_o1,....,a_om are modified and new arrays created inside
-     *     foo.
-     *
-     * It ensures that the set {a_i1,...,a_in} is disjoint from
-     * {a_o1,....,a_om}, otherwise crab will complain.
-     **/
-
-    std::vector<var_t> inputs, outputs;
-
-    basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
-
-    if (!ret_val.hasValue()) {
-      // special case: function that does not return but in its
-      // signature it has a return type. E.g., "int foo() {
-      // unreachable; }"
-      const Type &RT = *m_func.getReturnType();
-      if (isTrackedType(RT, m_params)) {
-        if (isBool(&RT)) {
-          ret_val = m_lfac.mkBoolVar();
-        } else if (isInteger(&RT)) {
-          unsigned bitwidth = RT.getIntegerBitWidth();
-          ret_val = m_lfac.mkIntVar(bitwidth);
-        } else {
-          assert(RT.isPointerTy());
-          ret_val = m_lfac.mkRefVar();
-        }
-      }
-    }
-
-    // -- add the returned value of the llvm function: o
-    if (ret_val.hasValue()) {
-      outputs.push_back(ret_val.getValue());
-    }
-
-    // -- add input parameters i1,...,in
-    for (Value &arg : llvm::make_range(m_func.arg_begin(), m_func.arg_end())) {
-      if (!isTracked(arg, m_params))
-        continue;
-
-      /** Make sure the assignments are inserted before a return
-       *  instruction in case the entry and the exit blocks are the
-       *  same.
-       **/
-      entry.set_insert_point_front();
-
-      crab_lit_ref_t i = m_lfac.getLit(arg);
-      assert(i && i->isVar());
-      if (ret_val.hasValue() && i->getVar() == ret_val.getValue()) {
-        // rename i to avoid having same name as output (crab requirement)
-        if (i->isBool()) {
-          var_t fresh_i = m_lfac.mkBoolVar();
-          entry.bool_assign(i->getVar(), fresh_i);
-          inputs.push_back(fresh_i);
-        } else if (i->isInt()) {
-          unsigned bitwidth = arg.getType()->getIntegerBitWidth();
-          var_t fresh_i = m_lfac.mkIntVar(bitwidth);
-          entry.assign(i->getVar(), fresh_i);
-          inputs.push_back(fresh_i);
-        } else if (i->isRef()) {
-          /* TO_BE_UPDATED */
-          // var_t fresh_i = m_lfac.mkRefVar();
-          // entry.ptr_assign(i->getVar(), fresh_i, number_t(0));
-          // inputs.push_back(fresh_i);
-        } else {
-          CLAM_ERROR("unexpected function parameter type");
-        }
-      } else {
-        inputs.push_back(i->getVar());
-      }
-    }
-
-    if (!m_func.getName().equals("main")) {
-      if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
-	// -- add the input and output array parameters
-	RegionVec onlyreads = getReadOnlyRegions(m_mem, m_func);
-	RegionVec mods = getModifiedRegions(m_mem, m_func);
-	RegionVec news = getNewRegions(m_mem, m_func);
-	
-	CRAB_LOG("cfg-mem", llvm::errs() << "Function " << m_func.getName()
-                                         << "\n\tOnly-Read regions "
-                                         << onlyreads.size() << ": " << onlyreads
-                                         << "\n\tModified regions " << mods.size()
-                                         << ": " << mods << "\n\tNew regions "
-                                         << news.size() << ": " << news << "\n");
-
-	// -- add only read regions as input parameters
-	for (auto a : onlyreads) {
-	  if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
-	    // Promote the global to a scalar
-	    inputs.push_back(m_lfac.mkArraySingletonVar(a));
-	  } else {
-	    inputs.push_back(m_lfac.mkArrayVar(a));
-	  }
-	}
-	
-	// -- add input/output parameters
-	for (auto a : mods) {
-	  if (std::find(news.begin(), news.end(), a) != news.end()) {
-	    continue;
-	  }
-	  llvm::Optional<var_t> a_in;
-	  
-	  // -- for each parameter `a` we create a fresh version
-	  //    `a_in` where `a_in` acts as the input version of the
-	  //    parameter and `a` is the output version. Note that the
-	  //    translation of the function will not produce new
-	  //    versions of `a` since all array stores overwrite `a`.
-	  
-	  /** Added in the entry block of the function **/
-	  entry.set_insert_point_front();
-	  if (const Value *v =
-	      getSingletonValue(a, m_params.lower_singleton_aliases)) {
-	    // Promote the global to a scalar
-	    Type *ty = cast<PointerType>(v->getType())->getElementType();
-	    var_t s = m_lfac.mkArraySingletonVar(a);
-	    if (isInteger(ty)) {
-	      a_in = m_lfac.mkIntVar(ty->getIntegerBitWidth());
-	      entry.assign(s, a_in.getValue());
-	    } else if (isBool(ty)) {
-	      a_in = m_lfac.mkBoolVar();
-	      entry.bool_assign(s, a_in.getValue(), false);
-	    } else { /* unreachable */
-	    }
-	  } else {
-	    switch (a.getRegionInfo().getType()) {
-	    case region_type_t::INT_REGION:
-	      a_in = m_lfac.mkIntArrayVar(a.getRegionInfo().getBitwidth());
-	      break;
-	    case region_type_t::BOOL_REGION:
-	      a_in = m_lfac.mkBoolArrayVar();
-	      break;
-	    default: /*unreachable*/;
-	      ;
-	    }
-	    if (a_in.hasValue())
-	      entry.array_assign(m_lfac.mkArrayVar(a), a_in.getValue());
-	  }
-	  
-	  // input version
-	  if (a_in.hasValue())
-	    inputs.push_back(a_in.getValue());
-	  
-	  // output version
-	  if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
-	    // Promote the global to a scalar
-	    outputs.push_back(m_lfac.mkArraySingletonVar(a));
-	  } else {
-	    outputs.push_back(m_lfac.mkArrayVar(a));
-	  }
-	}
-	// -- add more output parameters
-	for (auto a : news) {
-        outputs.push_back(m_lfac.mkArrayVar(a));
-	}
-      } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-	CLAM_WARNING("TODO implement callsite with CrabBuilderPrecision::MEM");      
-      }
-    } 
-
-    // -- Finally, we add the function declaration
-
-    // Sanity check
-    std::vector<var_t> sorted_ins(inputs.begin(), inputs.end());
-    std::vector<var_t> sorted_outs(outputs.begin(), outputs.end());
-    std::sort(sorted_ins.begin(), sorted_ins.end());
-    std::sort(sorted_outs.begin(), sorted_outs.end());
-    std::vector<var_t> intersect;
-    std::set_intersection(sorted_ins.begin(), sorted_ins.end(),
-                          sorted_outs.begin(), sorted_outs.end(),
-                          std::back_inserter(intersect));
-    if (!intersect.empty()) {
-      crab::errs() << "INPUTS: {";
-      for (auto i : inputs) {
-        crab::outs() << i << ";";
-      }
-      crab::errs() << "}\n";
-      crab::errs() << "OUTPUTS: {";
-      for (auto o : outputs) {
-        crab::outs() << o << ";";
-      }
-      crab::errs() << "}\n";
-      CLAM_ERROR("function inputs and outputs should not intersect");
-    }
-
-    typedef function_decl<number_t, varname_t> function_decl_t;
-    m_cfg->set_func_decl(
-        function_decl_t(m_func.getName().str(), inputs, outputs));
+    addFunctionDeclaration(ret_val);
   } else {
     ////
     // Intra-procedural case:
@@ -3184,6 +2997,210 @@ void CfgBuilderImpl::buildCfg() {
   return;
 }
 
+/**
+ * Translate LLVM function declaration
+ *   o_ty foo (i1,...,in)
+ *
+ * into a crab function declaration
+ *
+ *   o, a_o1,...,a_om foo (i1,...,in,a_i1,...,a_in) where
+ *
+ *   - o is the **returned value** of the function (translation
+ *     ensures there is always one return instruction and the
+ *     returned value is a variable, i.e., cannot be a
+ *     constant).
+ *
+ *   - a_i1,...,a_in are read-only and modified arrays in function foo
+ *
+ *   - a_o1,....,a_om are modified and new arrays created inside
+ *     foo.
+ *
+ * It ensures that the set {a_i1,...,a_in} is disjoint from
+ * {a_o1,....,a_om}, otherwise crab will complain.
+ **/
+void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
+  std::vector<var_t> inputs, outputs;
+  basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
+  
+  if (!ret_val.hasValue()) {
+    // special case: function that does not return but in its
+    // signature it has a return type. E.g., "int foo() {
+    // unreachable; }"
+    const Type &RT = *m_func.getReturnType();
+    if (isTrackedType(RT, m_params)) {
+      if (isBool(&RT)) {
+	ret_val = m_lfac.mkBoolVar();
+      } else if (isInteger(&RT)) {
+	unsigned bitwidth = RT.getIntegerBitWidth();
+	ret_val = m_lfac.mkIntVar(bitwidth);
+      } else {
+	assert(RT.isPointerTy());
+	 ret_val = m_lfac.mkRefVar();
+      }
+    }
+  }
+  
+  // -- add the returned value of the llvm function: o
+  if (ret_val.hasValue()) {
+    outputs.push_back(ret_val.getValue());
+  }
+  
+  // -- add input parameters i1,...,in
+  for (Value &arg : llvm::make_range(m_func.arg_begin(), m_func.arg_end())) {
+    if (!isTracked(arg, m_params))
+       continue;
+    
+    /** Make sure the assignments are inserted before a return
+     *  instruction in case the entry and the exit blocks are the
+     *  same.
+     **/
+    entry.set_insert_point_front();
+    
+    crab_lit_ref_t i = m_lfac.getLit(arg);
+    assert(i && i->isVar());
+    if (ret_val.hasValue() && i->getVar() == ret_val.getValue()) {
+      // rename i to avoid having same name as output (crab requirement)
+      if (i->isBool()) {
+	var_t fresh_i = m_lfac.mkBoolVar();
+	entry.bool_assign(i->getVar(), fresh_i);
+	inputs.push_back(fresh_i);
+      } else if (i->isInt()) {
+	unsigned bitwidth = arg.getType()->getIntegerBitWidth();
+	var_t fresh_i = m_lfac.mkIntVar(bitwidth);
+	entry.assign(i->getVar(), fresh_i);
+	inputs.push_back(fresh_i);
+      } else if (i->isRef()) {
+	/* TO_BE_UPDATED */
+	// var_t fresh_i = m_lfac.mkRefVar();
+	// entry.ptr_assign(i->getVar(), fresh_i, number_t(0));
+	// inputs.push_back(fresh_i);
+      } else {
+	CLAM_ERROR("unexpected function parameter type");
+       }
+    } else {
+      inputs.push_back(i->getVar());
+    }
+  }
+  
+  if (!m_func.getName().equals("main")) {
+    if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+      // -- add the input and output array parameters
+      RegionVec onlyreads = getReadOnlyRegions(m_mem, m_func);
+      RegionVec mods = getModifiedRegions(m_mem, m_func);
+      RegionVec news = getNewRegions(m_mem, m_func);
+      
+      CRAB_LOG("cfg-mem", llvm::errs() << "Function " << m_func.getName()
+	       << "\n\tOnly-Read regions "
+		<< onlyreads.size() << ": " << onlyreads
+	       << "\n\tModified regions " << mods.size()
+		<< ": " << mods << "\n\tNew regions "
+	       << news.size() << ": " << news << "\n");
+      
+       // -- add only read regions as input parameters
+      for (auto a : onlyreads) {
+	if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
+	  // Promote the global to a scalar
+	  inputs.push_back(m_lfac.mkArraySingletonVar(a));
+	} else {
+	  inputs.push_back(m_lfac.mkArrayVar(a));
+	}
+      }
+      
+      // -- add input/output parameters
+      for (auto a : mods) {
+	if (std::find(news.begin(), news.end(), a) != news.end()) {
+	  continue;
+	}
+	llvm::Optional<var_t> a_in;
+	
+	// -- for each parameter `a` we create a fresh version
+	//    `a_in` where `a_in` acts as the input version of the
+	//    parameter and `a` is the output version. Note that the
+	//    translation of the function will not produce new
+	//    versions of `a` since all array stores overwrite `a`.
+	
+	/** Added in the entry block of the function **/
+	entry.set_insert_point_front();
+	if (const Value *v =
+	    getSingletonValue(a, m_params.lower_singleton_aliases)) {
+	  // Promote the global to a scalar
+	  Type *ty = cast<PointerType>(v->getType())->getElementType();
+	  var_t s = m_lfac.mkArraySingletonVar(a);
+	  if (isInteger(ty)) {
+	    a_in = m_lfac.mkIntVar(ty->getIntegerBitWidth());
+	    entry.assign(s, a_in.getValue());
+	  } else if (isBool(ty)) {
+	    a_in = m_lfac.mkBoolVar();
+	    entry.bool_assign(s, a_in.getValue(), false);
+	  } else { /* unreachable */
+	   }
+	} else {
+	  switch (a.getRegionInfo().getType()) {
+	  case region_type_t::INT_REGION:
+	    a_in = m_lfac.mkIntArrayVar(a.getRegionInfo().getBitwidth());
+	    break;
+	  case region_type_t::BOOL_REGION:
+	    a_in = m_lfac.mkBoolArrayVar();
+	    break;
+	  default: /*unreachable*/;
+	    ;
+	  }
+	  if (a_in.hasValue())
+	    entry.array_assign(m_lfac.mkArrayVar(a), a_in.getValue());
+	}
+	
+	 // input version
+	if (a_in.hasValue())
+	  inputs.push_back(a_in.getValue());
+	
+	// output version
+	if (getSingletonValue(a, m_params.lower_singleton_aliases)) {
+	  // Promote the global to a scalar
+	  outputs.push_back(m_lfac.mkArraySingletonVar(a));
+	} else {
+	  outputs.push_back(m_lfac.mkArrayVar(a));
+	}
+      }
+      // -- add more output parameters
+      for (auto a : news) {
+	outputs.push_back(m_lfac.mkArrayVar(a));
+      }
+     } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+      CLAM_WARNING("TODO implement callsite with CrabBuilderPrecision::MEM");      
+    }
+  } 
+  
+  // -- Finally, we add the function declaration
+   
+  // Sanity check
+  std::vector<var_t> sorted_ins(inputs.begin(), inputs.end());
+  std::vector<var_t> sorted_outs(outputs.begin(), outputs.end());
+  std::sort(sorted_ins.begin(), sorted_ins.end());
+  std::sort(sorted_outs.begin(), sorted_outs.end());
+  std::vector<var_t> intersect;
+  std::set_intersection(sorted_ins.begin(), sorted_ins.end(),
+			sorted_outs.begin(), sorted_outs.end(),
+			std::back_inserter(intersect));
+  if (!intersect.empty()) {
+    crab::errs() << "INPUTS: {";
+    for (auto i : inputs) {
+      crab::outs() << i << ";";
+    }
+    crab::errs() << "}\n";
+    crab::errs() << "OUTPUTS: {";
+    for (auto o : outputs) {
+      crab::outs() << o << ";";
+     }
+    crab::errs() << "}\n";
+    CLAM_ERROR("function inputs and outputs should not intersect");
+  }
+  
+  typedef function_decl<number_t, varname_t> function_decl_t;
+  m_cfg->set_func_decl(
+     function_decl_t(m_func.getName().str(), inputs, outputs));
+   
+}
+  
 /* CrabBuilderParams class */
 
 void CrabBuilderParams::write(raw_ostream &o) const {
