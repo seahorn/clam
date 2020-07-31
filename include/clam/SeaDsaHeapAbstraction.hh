@@ -92,9 +92,7 @@ public:
 
   // Use F and V to get sea-dsa cell associated to it.
   virtual Region
-  getRegion(const llvm::Function &F,
-            // user of V if it's an instruction (currently unused)
-            const llvm::Instruction *I, const llvm::Value *V) override;
+  getRegion(const llvm::Function &F, const llvm::Value &V) override;
 
   // Use F and V to get the sea-dsa node associated to V and extracts
   // the region associated to nodes's field offset if any.

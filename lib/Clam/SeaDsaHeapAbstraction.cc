@@ -245,7 +245,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   }
 
   // -- add the region of the lhs of the call site
-  // Region ret = getRegion(*(I.getParent()->getParent()), &I, &I);
+  // Region ret = getRegion(*(I.getParent()->getParent()), I);
   // if (!ret.isUnknown()) mods.push_back(ret);
 
   accessed_map[&I] = reads;
@@ -467,19 +467,17 @@ SeaDsaHeapAbstraction::~SeaDsaHeapAbstraction() {
 
 // f is used to know in which Graph we should search for V
 Region
-SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
-				 const llvm::Instruction *I /*unused*/,
-				 const llvm::Value *V) {
+SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn, const llvm::Value &V) {
   if (!m_dsa || !m_dsa->hasGraph(fn)) {
     return Region();
   }
 
   Graph &G = m_dsa->getGraph(fn);
-  if (!G.hasCell(*V)) {
+  if (!G.hasCell(V)) {
     return Region();
   }
 
-  const Cell &c = G.getCell(*V);
+  const Cell &c = G.getCell(V);
   if (c.isNull()) {
     return Region();
   }

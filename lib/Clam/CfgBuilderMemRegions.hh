@@ -21,11 +21,11 @@ using RegionVec = typename HeapAbstraction::RegionVec;
 using RegionSet = std::set<Region>;
 
 // Return the region associated to ptr
-inline Region getRegion(HeapAbstraction &mem, RegionSet &Regions, const CrabBuilderParams &params,
-			const llvm::Instruction *user, const llvm::Value *ptr) {
+inline Region getRegion(HeapAbstraction &mem, RegionSet &Regions,
+			const CrabBuilderParams &params,
+			const llvm::Function &fun, const llvm::Value &ptr) {
   // Use the Heap analysis (mem) to access to the cell pointed by the pointer.
-  const llvm::Function *fun = user->getParent()->getParent();
-  Region rgn = mem.getRegion(*fun, user, ptr);
+  Region rgn = mem.getRegion(fun, ptr);
   if (params.trackMemory()) {
     Regions.insert(rgn);
     return rgn; 
@@ -39,6 +39,13 @@ inline Region getRegion(HeapAbstraction &mem, RegionSet &Regions, const CrabBuil
   }
 }
 
+inline Region getRegion(HeapAbstraction &mem, RegionSet &Regions,
+			const CrabBuilderParams &params,
+			const llvm::Instruction &I, const llvm::Value &ptr) {
+  const llvm::Function &fun = *(I.getParent()->getParent());
+  return getRegion(mem, Regions, params, fun, ptr);
+}
+  
 // Return whether the region contains a singleton alias class.
 inline const llvm::Value *getSingletonValue(Region r, bool enable_unique_scalars) {
   if (enable_unique_scalars) {

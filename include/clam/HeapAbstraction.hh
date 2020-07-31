@@ -200,8 +200,7 @@ public:
   // fun is used to know in which function ptr lives.
   // If not null, i is the instruction that uses ptr.
   virtual Region getRegion(const llvm::Function &fun,
-                           const llvm::Instruction *i,
-                           const llvm::Value *ptr) = 0;
+                           const llvm::Value &ptr) = 0;
 
   /**========  These functions allow to purify functions ========**/
   

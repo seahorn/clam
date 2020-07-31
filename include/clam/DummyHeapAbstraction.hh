@@ -18,8 +18,7 @@ struct DummyHeapAbstraction : public HeapAbstraction {
     return HeapAbstraction::ClassId::DUMMY;
   }
 
-  Region getRegion(const llvm::Function &, const llvm::Instruction *,
-                   const llvm::Value *) {
+  Region getRegion(const llvm::Function &, const llvm::Value &) {
     return Region();
   }
 

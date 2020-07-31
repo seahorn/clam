@@ -437,7 +437,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
             } else if (phi_val_ref->isRef()) {
               var_t lhs = m_lfac.mkRefVar();
               if (phi_val_ref->isVar()) {
-		Region rgn_phi_val = getRegion(m_mem, m_func_regions, m_params, phi_v, phi_v);
+		Region rgn_phi_val = getRegion(m_mem, m_func_regions, m_params, *phi_v, *phi_v);
 		if (!rgn_phi_val.isUnknown()) {
 		  m_bb.gep_ref(lhs, mkCrabRegion(rgn_phi_val),
 			       phi_val_ref->getVar(), mkCrabRegion(rgn_phi_val));
@@ -480,7 +480,7 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
         } else if (phi.getType()->isIntegerTy()) {
           m_bb.assign(lhs, it->second);
         } else if (isReference(phi, m_lfac.getCfgBuilderParams())) {
-	  Region rgn_phi = getRegion(m_mem, m_func_regions, m_params, &phi, &phi);
+	  Region rgn_phi = getRegion(m_mem, m_func_regions, m_params, phi, phi);
 	  if (!rgn_phi.isUnknown()) {
 	    m_bb.gep_ref(lhs, mkCrabRegion(rgn_phi),
 			 it->second, mkCrabRegion(rgn_phi));
@@ -500,8 +500,8 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
             m_bb.assign(lhs, m_lfac.getExp(phi_val_ref));
           } else if (phi_val_ref->isRef()) {
             if (phi_val_ref->isVar()) {
-	      Region rgn_phi = getRegion(m_mem, m_func_regions, m_params, &phi, &phi);
-	      Region rgn_phi_v = getRegion(m_mem, m_func_regions, m_params, &phi, &v);
+	      Region rgn_phi = getRegion(m_mem, m_func_regions, m_params, phi, phi);
+	      Region rgn_phi_v = getRegion(m_mem, m_func_regions, m_params, phi, v);
 	      // rgn_phi and rgn_phi_v should be same region
 	      if (!rgn_phi.isUnknown() && !rgn_phi_v.isUnknown()) {
 		m_bb.gep_ref(lhs, mkCrabRegion(rgn_phi),
@@ -886,20 +886,20 @@ bool CrabInstVisitor::AllUsesAreNonTrackMem(Value *V) const {
   for (auto &U : V->uses()) {
     if (StoreInst *SI = dyn_cast<StoreInst>(U.getUser())) {
       if (isa<Instruction>(V)) {
-        if (getRegion(m_mem, m_func_regions, m_params, SI, SI->getPointerOperand())
+        if (getRegion(m_mem, m_func_regions, m_params, *SI, *SI->getPointerOperand())
                 .isUnknown() &&
             (!SI->getValueOperand()->getType()->isPointerTy() ||
-             getRegion(m_mem, m_func_regions, m_params, SI, SI->getValueOperand())
+             getRegion(m_mem, m_func_regions, m_params, *SI, *SI->getValueOperand())
                  .isUnknown()))
           continue;
       }
       return false;
     } else if (LoadInst *LI = dyn_cast<LoadInst>(U.getUser())) {
       if (Instruction *I = dyn_cast<Instruction>(V)) {
-        if (getRegion(m_mem, m_func_regions, m_params, LI, LI->getPointerOperand())
+        if (getRegion(m_mem, m_func_regions, m_params, *LI, *LI->getPointerOperand())
                 .isUnknown() &&
             (!I->getType()->isPointerTy() ||
-             getRegion(m_mem, m_func_regions, m_params, LI, LI).isUnknown()))
+             getRegion(m_mem, m_func_regions, m_params, *LI, *LI).isUnknown()))
           continue;
       }
       return false;
@@ -1490,8 +1490,8 @@ void CrabInstVisitor::visitCastInst(CastInst &I) {
 	  return;
         } else {
           assert(src->isVar());
-	  Region rgn_src = getRegion(m_mem, m_func_regions, m_params, &I, I.getOperand(0));
-	  Region rgn_dst = getRegion(m_mem, m_func_regions, m_params, &I, &I);
+	  Region rgn_src = getRegion(m_mem, m_func_regions, m_params, I, *(I.getOperand(0)));
+	  Region rgn_dst = getRegion(m_mem, m_func_regions, m_params, I, I);
 	  // rgn_src should be the same than rgn_dst
 	  if (!rgn_src.isUnknown() && !rgn_dst.isUnknown()) {
 	    m_bb.gep_ref(dst->getVar(), mkCrabRegion(rgn_dst),
@@ -1669,7 +1669,7 @@ void CrabInstVisitor::doAllocFn(Instruction &I) {
     crab_lit_ref_t ref = m_lfac.getLit(I);
     assert(ref->isVar());
     if (isReference(I, m_params)) {
-      Region rgn = getRegion(m_mem, m_func_regions, m_params, &I, &I);
+      Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
       if (!rgn.isUnknown()) {
 	m_bb.make_ref(ref->getVar(), mkCrabRegion(rgn));
       }
@@ -1702,7 +1702,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
          (lhs.get_bitwidth() == base.getValue().get_bitwidth()));
 
   // -- All Gep operands should have the same region
-  Region rgn = getRegion(m_mem, m_func_regions, m_params, &I, &I);
+  Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
   if (rgn.isUnknown()) {
     return;
   }
@@ -1880,7 +1880,7 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
   }
   
   CRAB_LOG("cfg-gep", llvm::errs() << "Translating " << I << "\n");
-  Region rgn = getRegion(m_mem, m_func_regions, m_params, &I, &I);
+  Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
   if (rgn.isUnknown()) {
     // we don't keep track of the memory region, we bail out ...
     return;
@@ -2031,7 +2031,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
     return;
   }
   
-  Region rgn = getRegion(m_mem, m_func_regions, m_params, &I, I.getPointerOperand());
+  Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *I.getPointerOperand());
   if (rgn.isUnknown()) {
     // The Heap analysis is imprecise with the region so we bail out
     return;
@@ -2164,7 +2164,7 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
   }
 
   
-  Region rgn = getRegion(m_mem, m_func_regions, m_params, &I, I.getPointerOperand());
+  Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *I.getPointerOperand());
   if (rgn.isUnknown()) {
     // The Heap analysis is imprecise with the region so we bail out
     return;
@@ -2232,7 +2232,7 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
 }
 
 void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
-  Region rgn = getRegion(m_mem, m_func_regions, m_params, &I, &I);
+  Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
   if (rgn.isUnknown()) {
     return;
   }
@@ -3118,7 +3118,7 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
 	entry.assign(i->getVar(), fresh_i);
 	inputs.push_back(fresh_i);
       } else if (i->isRef()) {
-	Region arg_rgn = getRegion(m_mem, m_func_regions, m_params, nullptr, &arg);
+	Region arg_rgn = getRegion(m_mem, m_func_regions, m_params, m_func, arg);
 	if (!arg_rgn.isUnknown()) {
 	  var_t fresh_i = m_lfac.mkRefVar();
 	  entry.gep_ref(i->getVar(), mkCrabRegion(arg_rgn),
