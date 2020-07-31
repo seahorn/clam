@@ -9,24 +9,34 @@
 
 #include "CfgBuilderUtils.hh"
 
+#include <set>
+
 /**
  *  Convenient utilities to extract memory regions from LLVM
  *  instructions.
  **/
 namespace clam {
 
-typedef typename HeapAbstraction::RegionVec RegionVec;
+using RegionVec = typename HeapAbstraction::RegionVec;
+using RegionSet = std::set<Region>;
 
 // Return the region associated to ptr
-inline Region getRegion(HeapAbstraction &mem, const llvm::DataLayout &dl /*unused*/,
-			llvm::Instruction *user, llvm::Value *ptr) {
+inline Region getRegion(HeapAbstraction &mem, RegionSet &Regions, const CrabBuilderParams &params,
+			const llvm::Instruction *user, const llvm::Value *ptr) {
   // Use the Heap analysis (mem) to access to the cell pointed by the pointer.
-  llvm::Function *fun = user->getParent()->getParent();
-  Region res = mem.getRegion(*fun, user, ptr);
-  if (res.getRegionInfo().containScalar()) {
-    return res;
+  const llvm::Function *fun = user->getParent()->getParent();
+  Region rgn = mem.getRegion(*fun, user, ptr);
+  if (params.trackMemory()) {
+    Regions.insert(rgn);
+    return rgn; 
+  } else {
+    if (rgn.getRegionInfo().containScalar()) {
+      Regions.insert(rgn);      
+      return rgn;
+    } else {
+      return Region();
+    }
   }
-  return Region();
 }
 
 // Return whether the region contains a singleton alias class.
@@ -44,38 +54,50 @@ inline const llvm::Value *getSingletonValue(Region r, bool enable_unique_scalars
 
 // v is either a llvm::Function or llvm::CallInst.
 template <typename V>
-inline RegionVec getReadOnlyRegions(HeapAbstraction &mem, V &v) {
-  RegionVec res;
+inline RegionVec getInputRegions(HeapAbstraction &mem, const CrabBuilderParams &params, V &v) {
   auto regions = mem.getOnlyReadRegions(v);
-  std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
-               [](Region r) {
-                 return r.getRegionInfo().containScalar();
-               });
-  return res;
+  if (params.trackMemory()) {
+    return regions;
+  } else {
+    RegionVec scalar_regions;
+    std::copy_if(regions.begin(), regions.end(), std::back_inserter(scalar_regions),
+		 [](Region r) {
+		   return r.getRegionInfo().containScalar();
+		 });
+    return scalar_regions;
+  }
 }
 
 // v is either a llvm::Function or llvm::CallInst.
 template <typename V>
-inline RegionVec getModifiedRegions(HeapAbstraction &mem, V &v) {
-  RegionVec res;
+inline RegionVec getInputOutputRegions(HeapAbstraction &mem, const CrabBuilderParams &params, V &v) {
   auto regions = mem.getModifiedRegions(v);
-  std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
-               [](Region r) {
-                 return r.getRegionInfo().containScalar();
-               });
-  return res;
+  if (params.trackMemory()) {
+    return regions;
+  } else {
+    RegionVec scalar_regions;
+    std::copy_if(regions.begin(), regions.end(), std::back_inserter(scalar_regions),
+		 [](Region r) {
+		   return r.getRegionInfo().containScalar();
+		 });
+    return scalar_regions;
+  }
 }
 
 // v is either a llvm::Function or llvm::CallInst.
 template <typename V>
-inline RegionVec getNewRegions(HeapAbstraction &mem, V &v) {
-  RegionVec res;
+inline RegionVec getOutputRegions(HeapAbstraction &mem, const CrabBuilderParams &params, V &v) {
   auto regions = mem.getNewRegions(v);
-  std::copy_if(regions.begin(), regions.end(), std::back_inserter(res),
-               [](Region r) {
-                 return r.getRegionInfo().containScalar();
-               });
-  return res;
+  if (params.trackMemory()) {
+    return regions;
+  } else {
+    RegionVec scalar_regions;
+    std::copy_if(regions.begin(), regions.end(), std::back_inserter(scalar_regions),
+		 [](Region r) {
+		   return r.getRegionInfo().containScalar();
+		 });
+    return scalar_regions;
+  }
 }
 
 } // end namespace clam
