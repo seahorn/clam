@@ -68,9 +68,10 @@ SeaDsaHeapAbstraction::getId(const Cell &c) {
   return id + offset;
 }
 
-// compute and cache the set of read, mod and new nodes of a whole
-// function such that mod nodes are a subset of the read nodes and
-// the new nodes are disjoint from mod nodes.
+// compute and cache the set of read, mod and new reachable nodes from
+// globals and function's parameters and returns such that mod nodes
+// are a subset of the read nodes and the new nodes are disjoint from
+// mod nodes.
 void SeaDsaHeapAbstraction::computeReadModNewNodes(
     const llvm::Function &f) {
 
@@ -92,28 +93,31 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
     if (!n->isRead() && !n->isModified()) {
       continue;
     }
-    // Iterate over all cells of the node and extract regions from there
-    // FIXME: n->types does not return pairs sorted by offset
-    // build a vector of <cells, regions> if cells or regions do not match
-    // error? if a cell is not disambiguate then region is untyped.
+    // Iterate over all cells of the node and extract regions from
+    // there.
     for (auto &kv : n->types()) {
-
       Cell c(const_cast<Node *>(n), kv.first);
       RegionInfo r_info =
-          SeaDsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
-                      m_disambiguate_external);
+          SeaDsaToRegion(c, m_dl,
+			 m_disambiguate_unknown,
+			 m_disambiguate_ptr_cast,
+			 m_disambiguate_external);
 
       if (r_info.getType() != region_type_t::UNTYPED_REGION) {
-        Region reg(mkRegion(c, r_info));
-        if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
-          reads.push_back(reg);
-        }
-        if (n->isModified() && !retReach.count(n)) {
-          mods.push_back(reg);
-        }
-        if (n->isModified() && retReach.count(n)) {
-          news.push_back(reg);
-        }
+        Region rgn(mkRegion(c, r_info));
+	if (!retReach.count(n)) {
+	  // reachable from function arguments or globals
+	  reads.push_back(rgn);
+	  if (n->isModified()) {
+	    mods.push_back(rgn);
+	  } 
+	} else {
+	  // not reachable from function arguments or globals but
+	  // reachable from return
+	  if (n->isModified()) {
+	    news.push_back(rgn);
+	  } 
+	}
       }
     }
   }
@@ -123,17 +127,17 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
 
   CRAB_LOG("heap-abs-regions",
 	   llvm::errs() << "### " << f.getName() << " ###\n";
-	   llvm::errs() << "Read-only regions {";
+	   llvm::errs() << "Read-only regions reachable from arguments and globals {";
 	   for (auto &r: reads) {
 	     llvm::errs() << r << ";";
 	   }
 	   llvm::errs() << "}\n";
-	   llvm::errs() << "Modified regions {";
+	   llvm::errs() << "Modified regions reachable from arguments and globals {";
 	   for (auto &r: mods) {
 	     llvm::errs() << r << ";";
 	   }
 	   llvm::errs() << "}\n";
-	   llvm::errs() << "New regions for {";
+	   llvm::errs() << "New regions (only reachable from returns) {";
 	   for (auto &r: news) {
 	     llvm::errs() << r << ";";
 	   }
@@ -190,9 +194,6 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
       continue;
 
     // Iterate over all cells of the node and extract regions
-    // FIXME: n->types does not return pairs sorted by offset
-    // build a vector of <cells, regions> if cells or regions do not match
-    // error? if a cell is not disambiguate then region is untyped.
     for (auto &kv : n->types()) {
 
       Cell calleeC(const_cast<Node *>(n), kv.first);
@@ -227,15 +228,14 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
          **/
         bool is_consistent_callsite = (calleeRI == callerRI);
         Region reg(mkRegion(callerC, calleeRI));
-        if ((n->isRead() || n->isModified()) && !retReach.count(n)) {
-          reads.push_back({reg, is_consistent_callsite});
-        }
-        if (n->isModified() && !retReach.count(n)) {
-          mods.push_back({reg, is_consistent_callsite});
-        }
-        if (n->isModified() && retReach.count(n)) {
-          news.push_back({reg, is_consistent_callsite});
-        }
+	if (!retReach.count(n)) {
+	  reads.push_back({reg, is_consistent_callsite});
+	  if (n->isModified()) {
+	    mods.push_back({reg, is_consistent_callsite});
+	  }	  
+	} else {
+          news.push_back({reg, is_consistent_callsite});	  
+	}
       } else {
         // if a callee's region is untyped then we should be ok
         // because when we extract regions from the function
@@ -254,17 +254,19 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 
   CRAB_LOG("heap-abs-regions",
 	   llvm::errs() << "### " << I << " ###\n";
-	   llvm::errs() << "Read-only regions {";
+	   llvm::errs() << "Read-only regions at caller mapped to "
+	                << "those reachable from callee's arguments and globals {";
 	   for (auto &r: reads) {
 	     llvm::errs() << r.first << "#" << r.second << ";";
 	   }
 	   llvm::errs() << "}\n";
-	   llvm::errs() << "Modified regions {";
+	   llvm::errs() << "Modified regions at caller mapped to "
+	                << "those reachable from calle's arguments and globals {";
 	   for (auto &r: mods) {
 	     llvm::errs() << r.first << "#" << r.second << ";";
 	   }
 	   llvm::errs() << "}\n";
-	   llvm::errs() << "New regions {";
+	   llvm::errs() << "New regions at the caller (only reachable from callee's returns) {";
 	   for (auto &r: news) {
 	     llvm::errs() << r.first << "#" << r.second << ";";
 	   }
@@ -466,8 +468,8 @@ SeaDsaHeapAbstraction::~SeaDsaHeapAbstraction() {
 // f is used to know in which Graph we should search for V
 Region
 SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
-                                       const llvm::Instruction *I /*unused*/,
-                                       const llvm::Value *V) {
+				 const llvm::Instruction *I /*unused*/,
+				 const llvm::Value *V) {
   if (!m_dsa || !m_dsa->hasGraph(fn)) {
     return Region();
   }
@@ -494,9 +496,9 @@ SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
 }
 
 Region SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
-                                              const llvm::Value &V,
-                                              unsigned offset,
-                                              const Type &AccessedType) {
+					const llvm::Value &V,
+					unsigned offset,
+					const Type &AccessedType) {
 
   if (!m_dsa || !m_dsa->hasGraph(fn)) {
     return Region();
@@ -541,11 +543,6 @@ SeaDsaHeapAbstraction::getSingleton(RegionId region) const {
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getAccessedRegions(const llvm::Function &fn) {
-  return m_func_accessed[&fn];
-}
-
-SeaDsaHeapAbstraction::RegionVec
 SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {
   RegionVec v1 = m_func_accessed[&fn];
   RegionVec v2 = m_func_mods[&fn];
@@ -570,11 +567,6 @@ SeaDsaHeapAbstraction::getModifiedRegions(const llvm::Function &fn) {
 SeaDsaHeapAbstraction::RegionVec
 SeaDsaHeapAbstraction::getNewRegions(const llvm::Function &fn) {
   return m_func_news[&fn];
-}
-
-SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getAccessedRegions(const llvm::CallInst &I) {
-  return m_callsite_accessed[&I];
 }
 
 SeaDsaHeapAbstraction::RegionVec

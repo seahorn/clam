@@ -193,6 +193,8 @@ public:
 
   virtual ClassId getClassId() const = 0;
 
+  virtual llvm::StringRef getName() const = 0;
+  
   // TODO: mark all these methods as const.
 
   // fun is used to know in which function ptr lives.
@@ -201,31 +203,30 @@ public:
                            const llvm::Instruction *i,
                            const llvm::Value *ptr) = 0;
 
-  // read and written regions by the function
-  virtual RegionVec getAccessedRegions(const llvm::Function &) = 0;
-
-  // only read regions by the function
+  /**========  These functions allow to purify functions ========**/
+  
+  // Read-Only regions reachable by function parameters and globals
+  // but not returns
   virtual RegionVec getOnlyReadRegions(const llvm::Function &) = 0;
 
-  // written regions by the function
+  // Written regions reachable by function parameters and globals but
+  // not returns
   virtual RegionVec getModifiedRegions(const llvm::Function &) = 0;
 
-  // regions that are reachable only from the return of the function
+  // Regions that are reachable only from the return of the function
   virtual RegionVec getNewRegions(const llvm::Function &) = 0;
 
-  // read and written regions by the callee
-  virtual RegionVec getAccessedRegions(const llvm::CallInst &) = 0;
-
-  // only read regions by the function
+  // Read-only regions at the caller that are mapped to callee's
+  // formal parameters and globals.
   virtual RegionVec getOnlyReadRegions(const llvm::CallInst &) = 0;
 
-  // written regions by the callee
+  // Written regions at the caller that are mapped to callee's formal
+  // parameters and globals.
   virtual RegionVec getModifiedRegions(const llvm::CallInst &) = 0;
 
-  // regions that are reachable only from the return of the callee
+  // Regions at the caller that are mapped to those that are only
+  // reachable from callee's returns.
   virtual RegionVec getNewRegions(const llvm::CallInst &) = 0;
-
-  virtual llvm::StringRef getName() const = 0;
 };
 
 } // namespace clam

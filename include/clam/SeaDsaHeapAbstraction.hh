@@ -101,15 +101,11 @@ public:
   Region getRegion(const llvm::Function &F, const llvm::Value &V,
                    unsigned offset, const llvm::Type &AccessedType);
 
-  virtual RegionVec getAccessedRegions(const llvm::Function &F) override;
-
   virtual RegionVec getOnlyReadRegions(const llvm::Function &F) override;
 
   virtual RegionVec getModifiedRegions(const llvm::Function &F) override;
 
   virtual RegionVec getNewRegions(const llvm::Function &F) override;
-
-  virtual RegionVec getAccessedRegions(const llvm::CallInst &I) override;
 
   virtual RegionVec getOnlyReadRegions(const llvm::CallInst &I) override;
 
