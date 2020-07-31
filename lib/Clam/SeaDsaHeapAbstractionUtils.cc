@@ -69,6 +69,9 @@ void markReachableNodes(const Node *n, NodeSet &set) {
       markReachableNodes(edg.second->getNode(), set);
 }
 
+/// Computes the set of all nodes reachable by fn in graph g.
+/// Sets inputReach to nodes reachable from arguments or globals
+/// Sets retReach to nodes from return value  
 void reachableNodes(const Function &fn, Graph &g, NodeSet &inputReach,
                     NodeSet &retReach) {
   // formal parameters
@@ -94,7 +97,8 @@ void reachableNodes(const Function &fn, Graph &g, NodeSet &inputReach,
 
 /// Computes Node reachable from the call arguments in the graph.
 /// reach - all reachable nodes
-/// outReach - subset of reach that is only reachable from the return node
+/// outReach - subset of reach that is only reachable from return (and
+/// not reachable from the arguments or globals).
 void argReachableNodes(const llvm::Function &fn, Graph &G, NodeSet &reach,
                        NodeSet &outReach) {
   reachableNodes(fn, G, reach, outReach);

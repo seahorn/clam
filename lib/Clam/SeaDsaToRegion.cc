@@ -222,9 +222,9 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
     if (isDisjointCell(c, dl)) {
       CRAB_LOG("heap-abs-seadsa-to-region",
 	       errs() << "\tDisambiguation succeed!\n"
-	       << "Found INT_REGION at offset " << offset
+	       << "\tFound INT_REGION at offset " << offset
 	       << " with bitwidth=" << int_pred.m_bitwidth
-	       << "\n\t" << *n << "\n";);
+	       << "\n";);
                                   
       return RegionInfo(region_type_t::INT_REGION, int_pred.m_bitwidth, c.getNode()->isArray());
     } else {
@@ -239,9 +239,8 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
     if (isDisjointCell(c, dl)) {
       CRAB_LOG("heap-abs-seadsa-to-region",
 	       errs() << "\tDisambiguation succeed!\n"
-	       << "Found BOOL_REGION at offset " << offset
-	       << " with bitwidth=1\n"
-	       << "\t" << *n << "\n";);
+	       << "\tFound BOOL_REGION at offset " << offset
+	       << " with bitwidth=1\n";);
       return RegionInfo(region_type_t::BOOL_REGION, 1, c.getNode()->isArray());
     } else {
       CRAB_LOG("heap-abs-seadsa-to-region",
@@ -255,8 +254,7 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
     if (isDisjointCell(c, dl)) {
       CRAB_LOG("heap-abs-seadsa-to-region",
 	       errs() << "\tDisambiguation succeed!\n"
-	       << "Found POINTER_REGION at offset " << offset << "\n"
-	       << "\t" << *n << "\n";);
+	       << "\tFound POINTER_REGION at offset " << offset << "\n";);
       return RegionInfo(region_type_t::PTR_REGION, dl.getPointerSizeInBits(), c.getNode()->isArray());
     } else {
       CRAB_LOG("heap-abs-seadsa-to-region",
@@ -265,7 +263,6 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
     }
   }
   
-  // TODO: modify here to consider cells containing pointers.
   CRAB_LOG(
       "heap-abs-seadsa-to-region",
       errs() << "\tCannot be converted to region: do not contain integer.\n";);

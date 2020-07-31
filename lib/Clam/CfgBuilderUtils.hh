@@ -60,7 +60,7 @@ crab::cfg::debug_info getDebugLoc(const llvm::Instruction *inst);
 
 uint64_t storageSize(const llvm::Type *t, const llvm::DataLayout &dl);
 
-// Convert GT integer comparisons  to GE
+// Convert GT and GE integer comparisons to LE and LT
 void normalizeCmpInst(llvm::CmpInst &I);
 
 bool isIntToBool(const llvm::CastInt &I);
