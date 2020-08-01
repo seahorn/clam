@@ -261,8 +261,6 @@ public:
 
   var_t mkBoolArrayVar();
 
-  var_t mkRefArrayVar();
-
   var_t mkArrayVar(Region r, const llvm::Value *name = nullptr);
 
   var_t mkArraySingletonVar(Region r, const llvm::Value *name = nullptr);
