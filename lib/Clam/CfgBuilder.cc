@@ -439,8 +439,8 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
               if (phi_val_ref->isVar()) {
 		Region rgn_phi_val = getRegion(m_mem, m_func_regions, m_params, *phi_v, *phi_v);
 		if (!rgn_phi_val.isUnknown()) {
-		  m_bb.gep_ref(lhs, mkCrabRegion(rgn_phi_val),
-			       phi_val_ref->getVar(), mkCrabRegion(rgn_phi_val));
+		  m_bb.gep_ref(phi_val_ref->getVar(), mkCrabRegion(rgn_phi_val),
+			       lhs, mkCrabRegion(rgn_phi_val));
 		}
               } else {
                 m_bb.assume_ref(ref_cst_t::mk_null(lhs));
@@ -482,8 +482,8 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
         } else if (isReference(phi, m_lfac.getCfgBuilderParams())) {
 	  Region rgn_phi = getRegion(m_mem, m_func_regions, m_params, phi, phi);
 	  if (!rgn_phi.isUnknown()) {
-	    m_bb.gep_ref(lhs, mkCrabRegion(rgn_phi),
-			 it->second, mkCrabRegion(rgn_phi));
+	    m_bb.gep_ref(it->second, mkCrabRegion(rgn_phi),
+			 lhs, mkCrabRegion(rgn_phi));
 	  }
         }
       } else {
@@ -504,8 +504,8 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
 	      Region rgn_phi_v = getRegion(m_mem, m_func_regions, m_params, phi, v);
 	      // rgn_phi and rgn_phi_v should be same region
 	      if (!rgn_phi.isUnknown() && !rgn_phi_v.isUnknown()) {
-		m_bb.gep_ref(lhs, mkCrabRegion(rgn_phi),
-			     phi_val_ref->getVar(), mkCrabRegion(rgn_phi_v));
+		m_bb.gep_ref(phi_val_ref->getVar(), mkCrabRegion(rgn_phi_v),
+			     lhs, mkCrabRegion(rgn_phi));
 	      }
             } else {
               m_bb.assume_ref(ref_cst_t::mk_null(lhs));
@@ -689,7 +689,7 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   DenseMap<const GetElementPtrInst *, var_t> &m_gep_map;
   // reverse **partial** map from Crab statements to LLVM instructions
   DenseMap<const statement_t *, const Instruction *> &m_rev_map;
-  // HACK: to perform strong updates with SINGLETON_MEMORY
+  // HACK: to translate to strong updates with SINGLETON_MEMORY
   RegionSet &m_regions_with_store;
 
   unsigned fieldOffset(const StructType *t, unsigned field) const;
@@ -721,6 +721,8 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
    */
   bool AllUsesAreNonTrackMem(Value *V) const;
 
+  void addNonNullAssumption(var_t ref);
+  
   /* Most of the translation work happens in these methods */
   void doBinOp(unsigned op, var_t lhs, lin_exp_t op1, lin_exp_t op2);
   void doArithmetic(crab_lit_ref_t ref, BinaryOperator &i);
@@ -917,6 +919,11 @@ bool CrabInstVisitor::AllUsesAreNonTrackMem(Value *V) const {
   return true;
 }
 
+void CrabInstVisitor::addNonNullAssumption(var_t ref) {
+  assert(ref.get_type() == REF_TYPE);
+  m_bb.assume_ref(ref_cst_t::mk_le_null(ref).negate());
+}
+  
 void CrabInstVisitor::doBinOp(unsigned op, var_t lhs, lin_exp_t op1,
                               lin_exp_t op2) {
   switch (op) {
@@ -1494,8 +1501,8 @@ void CrabInstVisitor::visitCastInst(CastInst &I) {
 	  Region rgn_dst = getRegion(m_mem, m_func_regions, m_params, I, I);
 	  // rgn_src should be the same than rgn_dst
 	  if (!rgn_src.isUnknown() && !rgn_dst.isUnknown()) {
-	    m_bb.gep_ref(dst->getVar(), mkCrabRegion(rgn_dst),
-			 src->getVar(), mkCrabRegion(rgn_src));
+	    m_bb.gep_ref(src->getVar(), mkCrabRegion(rgn_src),
+			 dst->getVar(), mkCrabRegion(rgn_dst));
 	    return;
 	  }
         }
@@ -1672,6 +1679,7 @@ void CrabInstVisitor::doAllocFn(Instruction &I) {
       Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
       if (!rgn.isUnknown()) {
 	m_bb.make_ref(ref->getVar(), mkCrabRegion(rgn));
+	addNonNullAssumption(ref->getVar());
       }
     } else if (isTracked(I, m_params)) {
       // -- havoc return value
@@ -1722,7 +1730,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
 	if (!base.hasValue()) {
 	  CRAB_ERROR("doGEP expects a base pointer");
 	}
-	m_bb.gep_ref(lhs, crab_rgn, base.getValue(), crab_rgn, lin_exp_t(o));
+	m_bb.gep_ref(base.getValue(), crab_rgn, lhs, crab_rgn, lin_exp_t(o));
 	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":=" << base.getValue() << "+"
 	                        	 << o << "\n");
       } else if (lhs.get_type() == INT_TYPE) {
@@ -1757,8 +1765,9 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
 	  if (!(already_assigned || base.hasValue())) {
 	    CRAB_ERROR("doGEP expects a base pointer");
 	  }
-	  m_bb.gep_ref(lhs, crab_rgn,
-		       (!already_assigned) ? base.getValue() : lhs, crab_rgn, offset);
+	  m_bb.gep_ref((!already_assigned) ? base.getValue() : lhs, crab_rgn,
+		       lhs, crab_rgn,
+		       offset);
           CRAB_LOG(
               "cfg-gep",
 		   if (!already_assigned) {
@@ -1827,8 +1836,8 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
 	if (!(already_assigned || base.hasValue())) {
 	  CRAB_ERROR("doGEP expects a base pointer");
 	}
-	m_bb.gep_ref(lhs, crab_rgn,
-		     (!already_assigned) ? base.getValue() : lhs, crab_rgn, offset);	
+	m_bb.gep_ref((!already_assigned) ? base.getValue() : lhs, crab_rgn,
+		     lhs, crab_rgn, offset);	
         CRAB_LOG(
             "cfg-gep",
 		 if (!already_assigned) {
@@ -2106,7 +2115,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
 	// TODO: we ignore for now the case if we store a null
 	// pointer.  We should create a fresh reference and add a
 	// constraint saying is equal to null.
-	CLAM_WARNING("Missing a store of a null value " << I);
+	CLAM_WARNING("TODO Missing a store of a null value " << I);
       } else { /* unreachable */
       } 
     } else {
@@ -2118,7 +2127,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
       /// uint64_t elem_size = clam::storageSize(I.getValueOperand()->getType(), *m_dl);
       /// assert(elem_size > 0);
       ///
-      CLAM_WARNING("Missing a store to a sequence region " << I);
+      CLAM_WARNING("TODO Missing a store to a sequence region " << I);
     }
   }
 }
@@ -2163,7 +2172,6 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
     return;
   }
 
-  
   Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *I.getPointerOperand());
   if (rgn.isUnknown()) {
     // The Heap analysis is imprecise with the region so we bail out
@@ -2224,7 +2232,7 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
       
       /// uint64_t elem_size = clam::storageSize(I.getPointerOperand()->getType(), *m_dl);
       /// assert(elem_size > 0);
-      CLAM_WARNING("Missing a load from a sequence region " << I);
+      CLAM_WARNING("TODO Missing a load from a sequence region " << I);
     }
   }
 
@@ -2241,6 +2249,7 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());          
     m_bb.make_ref(lhs->getVar(), mkCrabRegion(rgn));
+    addNonNullAssumption(lhs->getVar());    
   } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
 	     rgn.getRegionInfo().containScalar()) {
     // Memory allocated in the stack is uninitialized.
@@ -2343,7 +2352,8 @@ void CrabInstVisitor::doCallSite(CallInst &I) {
     } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
       inputs.push_back(m_lfac.mkArrayVar(rgn));
     } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-      CLAM_WARNING("Missing read-only region " << rgn << " from callsite " << I);
+      CLAM_WARNING("TODO: missing outputparameter for region " << rgn
+		   << " from callsite " << I);
     }
   }
 
@@ -2357,20 +2367,13 @@ void CrabInstVisitor::doCallSite(CallInst &I) {
     if (lowerToScalar) {
       // Promote the global to a scalar
       inputs.push_back(m_lfac.mkArraySingletonVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
-      inputs.push_back(m_lfac.mkArrayVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-      CLAM_WARNING("Missing modified region " << rgn << " from callsite " << I);      
-    }
-    
-    // -- output version
-    if (lowerToScalar) {
-      // Promote the global to a scalar
       outputs.push_back(m_lfac.mkArraySingletonVar(rgn));
     } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
-      outputs.push_back(m_lfac.mkArrayVar(rgn));
+      inputs.push_back(m_lfac.mkArrayVar(rgn));
+      outputs.push_back(m_lfac.mkArrayVar(rgn));      
     } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-      // TODO
+      CLAM_WARNING("TODO: missing input/output parameter for region " << rgn
+		   << " from callsite " << I);
     }
   }
   
@@ -2381,7 +2384,8 @@ void CrabInstVisitor::doCallSite(CallInst &I) {
     if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {    
       outputs.push_back(m_lfac.mkArrayVar(rgn));
     } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-      CLAM_WARNING("Missing new region " << rgn << " from callsite " << I);            
+      CLAM_WARNING("TODO: missing output parameter for region " << rgn
+		   << " from callsite " << I);            
     }
   }
   
@@ -3083,7 +3087,7 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
 	ret_val = m_lfac.mkIntVar(bitwidth);
       } else {
 	assert(RT.isPointerTy());
-	 ret_val = m_lfac.mkRefVar();
+	ret_val = m_lfac.mkRefVar();
       }
     }
   }
@@ -3121,8 +3125,8 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
 	Region arg_rgn = getRegion(m_mem, m_func_regions, m_params, m_func, arg);
 	if (!arg_rgn.isUnknown()) {
 	  var_t fresh_i = m_lfac.mkRefVar();
-	  entry.gep_ref(i->getVar(), mkCrabRegion(arg_rgn),
-			fresh_i, mkCrabRegion(arg_rgn));
+	  entry.gep_ref(fresh_i, mkCrabRegion(arg_rgn),
+			i->getVar(), mkCrabRegion(arg_rgn));
 	  inputs.push_back(fresh_i);
 	}
       } else {
@@ -3154,8 +3158,7 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
 	inputs.push_back(m_lfac.mkArrayVar(rgn));
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-	CLAM_WARNING("Missing read-only region " << rgn << " from function declaration "
-		     << m_func.getName());
+	CLAM_WARNING("TODO: missing input formal argument for region " << rgn);
       }
     }
       
@@ -3165,9 +3168,9 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
 	continue;
       }
 	
-      // -- for each parameter `a` we create a fresh version `a_in`
-      //    where `a_in` acts as the input version of the parameter
-      //    and `a` is the output version.
+      // -- for each parameter `arg` we create a fresh version `arg_in`
+      //    where `arg_in` acts as the input version of the parameter
+      //    and `arg` is the output version.
       
       /** Added in the entry block of the function **/
       entry.set_insert_point_front();
@@ -3175,10 +3178,10 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
       bool change = false;
       if (const Value *v =
 	  getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
-	 
+	// Promote the global to a scalar
 	if (rgn.getRegionInfo().containScalar()) {
+	  // input version
 	  change = true;
-	  // Promote the global to a scalar
 	  Type *ty = cast<PointerType>(v->getType())->getElementType();
 	  var_t s = m_lfac.mkArraySingletonVar(rgn);
 	  if (isInteger(ty)) {
@@ -3199,17 +3202,18 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
       }
       
       if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+	// input version
 	switch (rgn.getRegionInfo().getType()) {
 	case region_type_t::INT_REGION: {
 	  var_t a_in = m_lfac.mkIntArrayVar(rgn.getRegionInfo().getBitwidth());
-	  inputs.push_back(a_in);	  
-	  entry.array_assign(m_lfac.mkArrayVar(rgn), a_in);	  
+	  entry.array_assign(m_lfac.mkArrayVar(rgn), a_in);
+	  inputs.push_back(a_in);	  	  
 	  break;
 	}
 	case region_type_t::BOOL_REGION: {
 	  var_t a_in = m_lfac.mkBoolArrayVar();
-	  inputs.push_back(a_in);	  
-	  entry.array_assign(m_lfac.mkArrayVar(rgn), a_in);	  	  
+	  entry.array_assign(m_lfac.mkArrayVar(rgn), a_in);
+	  inputs.push_back(a_in);	  	  
 	  break;
 	}
 	default: /*unreachable*/;
@@ -3217,8 +3221,14 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
 	// output version
 	outputs.push_back(m_lfac.mkArrayVar(rgn));
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-	CLAM_WARNING("Missing modified region " << rgn << " from function declaration "
-		     << m_func.getName());
+	//// input version
+	// var_t a_in = m_lfac.mkRefVar();
+	// entry.gep_ref(a_in, mkCrabRegion(rgn),
+	// 	      m_lfac.mkRefVar(rgn), mkCrabRegion(rgn));
+	// inputs.push_back(a_in);
+	//// output version
+	CLAM_WARNING("TODO: missing input/output formal parameter for region " << rgn);
+	
       }
     }
     
@@ -3227,8 +3237,7 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
       if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
 	outputs.push_back(m_lfac.mkArrayVar(rgn));
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-	CLAM_WARNING("Missing new region " << rgn << " from function declaration "
-		     << m_func.getName());
+	CLAM_WARNING("TODO: missing output formal parameter for region " << rgn);
       }      
     }
   }
