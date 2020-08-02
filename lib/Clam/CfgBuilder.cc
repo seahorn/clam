@@ -631,7 +631,7 @@ public:
       bool changed = false;
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
 	// Promote the global to an integer/boolean scalar
-	var_t a = m_lfac.mkArraySingletonVar(rgn);
+	var_t a = m_lfac.mkScalarVar(rgn);
 	if (isInteger(Val.getType())) {
 	  assert(!val_ref->isVar() && val_ref->isInt());
 	  m_bb.assign(a, m_lfac.getIntCst(val_ref));
@@ -2071,7 +2071,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
   bool change = false;
   if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
     // Promote the singleton global to an integer/boolean scalar
-    var_t v = m_lfac.mkArraySingletonVar(rgn);
+    var_t v = m_lfac.mkScalarVar(rgn);
     if (isInteger(*I.getValueOperand())) {
       assert(val->isInt());
       m_bb.assign(v, m_lfac.getExp(val));
@@ -2204,10 +2204,10 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
   if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
     // Promote the global to an integer/boolean scalar
     if (isInteger(I)) {
-      m_bb.assign(lhs->getVar(), m_lfac.mkArraySingletonVar(rgn));
+      m_bb.assign(lhs->getVar(), m_lfac.mkScalarVar(rgn));
       change = true;
     } else if (isBool(I)) {
-      m_bb.bool_assign(lhs->getVar(), m_lfac.mkArraySingletonVar(rgn), false);
+      m_bb.bool_assign(lhs->getVar(), m_lfac.mkScalarVar(rgn), false);
       change = true;
     } 
   }
@@ -2348,7 +2348,7 @@ void CrabInstVisitor::doCallSite(CallInst &I) {
   for (auto rgn : inRegions) {
     if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
       // Promote the global to a scalar
-      inputs.push_back(m_lfac.mkArraySingletonVar(rgn));
+      inputs.push_back(m_lfac.mkScalarVar(rgn));
     } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
       inputs.push_back(m_lfac.mkArrayVar(rgn));
     } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
@@ -2366,8 +2366,8 @@ void CrabInstVisitor::doCallSite(CallInst &I) {
     // -- input version
     if (lowerToScalar) {
       // Promote the global to a scalar
-      inputs.push_back(m_lfac.mkArraySingletonVar(rgn));
-      outputs.push_back(m_lfac.mkArraySingletonVar(rgn));
+      inputs.push_back(m_lfac.mkScalarVar(rgn));
+      outputs.push_back(m_lfac.mkScalarVar(rgn));
     } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
       inputs.push_back(m_lfac.mkArrayVar(rgn));
       outputs.push_back(m_lfac.mkArrayVar(rgn));      
@@ -2473,7 +2473,7 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
     RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, I);
     for (auto rgn : inOutRegions) {
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases))
-	m_bb.havoc(m_lfac.mkArraySingletonVar(rgn));
+	m_bb.havoc(m_lfac.mkScalarVar(rgn));
       else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
 	m_bb.havoc(m_lfac.mkArrayVar(rgn));
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
@@ -3154,7 +3154,7 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
     for (auto rgn : inRegions) {
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
 	// Promote the global to a scalar
-	inputs.push_back(m_lfac.mkArraySingletonVar(rgn));
+	inputs.push_back(m_lfac.mkScalarVar(rgn));
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
 	inputs.push_back(m_lfac.mkArrayVar(rgn));
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
@@ -3183,7 +3183,7 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
 	  // input version
 	  change = true;
 	  Type *ty = cast<PointerType>(v->getType())->getElementType();
-	  var_t s = m_lfac.mkArraySingletonVar(rgn);
+	  var_t s = m_lfac.mkScalarVar(rgn);
 	  if (isInteger(ty)) {
 	    var_t a_in = m_lfac.mkIntVar(ty->getIntegerBitWidth());
 	    inputs.push_back(a_in);	  
@@ -3194,7 +3194,7 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
 	    entry.bool_assign(s, a_in, false);
 	  }
 	  // output version
-	  outputs.push_back(m_lfac.mkArraySingletonVar(rgn));
+	  outputs.push_back(m_lfac.mkScalarVar(rgn));
 	}
       }
       if (change) {

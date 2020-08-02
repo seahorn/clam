@@ -201,7 +201,7 @@ public:
   var_t mkArrayVar(Region r, const llvm::Value *name);
 
   // Create an scalar variable associated with region r.
-  var_t mkArraySingletonVar(Region r, const llvm::Value *name);
+  var_t mkScalarVar(Region r, const llvm::Value *name);
   
   // Create a fresh variable from a Value
   llvm::Optional<var_t> mkVar(const llvm::Value &v);
@@ -263,7 +263,7 @@ public:
 
   var_t mkArrayVar(Region r, const llvm::Value *name = nullptr);
 
-  var_t mkArraySingletonVar(Region r, const llvm::Value *name = nullptr);
+  var_t mkScalarVar(Region r, const llvm::Value *name = nullptr);
 
   /** direct accessors to crabLit subclasses **/
   bool isBoolTrue(const crab_lit_ref_t ref) const;

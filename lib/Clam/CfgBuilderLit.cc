@@ -72,7 +72,7 @@ var_t crabLitFactoryImpl::mkArrayVar(Region mem_region, const Value *name) {
   return var_t(varname, type, bitwidth);
 }
 
-var_t crabLitFactoryImpl::mkArraySingletonVar(Region mem_region,
+var_t crabLitFactoryImpl::mkScalarVar(Region mem_region,
                                               const Value *name) {
   crab::variable_type type = crab::UNK_TYPE;
   unsigned bitwidth = 0; /* unknown */
@@ -261,8 +261,8 @@ var_t crabLitFactory::mkArrayVar(Region r, const Value *name) {
   return m_impl->mkArrayVar(r, name);
 }
 
-var_t crabLitFactory::mkArraySingletonVar(Region r, const Value *name) {
-  return m_impl->mkArraySingletonVar(r, name);
+var_t crabLitFactory::mkScalarVar(Region r, const Value *name) {
+  return m_impl->mkScalarVar(r, name);
 }
 
 var_t crabLitFactory::mkIntVar(unsigned bitwidth) {
