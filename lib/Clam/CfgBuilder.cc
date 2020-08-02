@@ -2,8 +2,8 @@
  * Translate a LLVM function to a CFG language understood by Crab.
  *
  * Crab supports operations over boolean, integers and
- * pointers. Moreover, Crab supports unidimensional arrays. Arrays are
- * interpreted as sequence of consecutive bytes which are disjoint
+ * references. Moreover, Crab supports unidimensional arrays. Arrays
+ * are interpreted as sequence of consecutive bytes which are disjoint
  * from each other.
  *
  * The translation of LLVM integer operations (tracked precision = NUM)
@@ -34,7 +34,7 @@
  *
  * - Ignore floating point instructions.
  * - Ignore inttoptr/ptrtoint instructions.
- * - Almost ignore memset/memmove/memcpy.
+ * - Ignore memset/memmove/memcpy.
  * - Only if tracked precision = SINGLETON_MEM: if a `LoadInst`'s lhs
  *   (`StoreInst` value operand) is a pointer then the translation
  *   ignores safely the LLVM instruction and hence, it won't add the
@@ -367,7 +367,7 @@ crab::memory_region mkCrabRegion(clam::Region rgn) {
 }
   
 //! Translate PHI nodes
-struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
+struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
 
   crabLitFactory &m_lfac;
   HeapAbstraction &m_mem;
@@ -380,9 +380,9 @@ struct CrabPhiVisitor : public InstVisitor<CrabPhiVisitor> {
   // builder parameters
   const CrabBuilderParams &m_params;
 
-  CrabPhiVisitor(crabLitFactory &lfac, HeapAbstraction &mem, RegionSet &func_regions,
-		 const DataLayout &dl, basic_block_t &bb,
-                 const BasicBlock &inc_BB, const CrabBuilderParams &params)
+  CrabInterBlockBuilder(crabLitFactory &lfac, HeapAbstraction &mem, RegionSet &func_regions,
+			const DataLayout &dl, basic_block_t &bb,
+			const BasicBlock &inc_BB, const CrabBuilderParams &params)
     : m_lfac(lfac), m_mem(mem), m_func_regions(func_regions),
       m_dl(dl), m_bb(bb), m_inc_BB(inc_BB), m_params(params) {}
 
@@ -670,7 +670,7 @@ public:
 };
 
 //! Translate the rest of instructions
-class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
+class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   crabLitFactory &m_lfac;
   HeapAbstraction &m_mem;
   const DataLayout *m_dl;
@@ -681,7 +681,7 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   const CrabBuilderParams &m_params;
   /****
    * Here state that must survive through future invocations to
-   * CrabInstVisitor.
+   * CrabIntraBlockBuilder.
    ****/
   // Regions seen so far
   RegionSet &m_func_regions;
@@ -739,7 +739,7 @@ class CrabInstVisitor : public InstVisitor<CrabInstVisitor> {
   void LoadFromSingletonMem(LoadInst &I, var_t lhs, var_t rhs, Region rhs_region);
   void doCallSite(CallInst &CI);
 public:
-  CrabInstVisitor(
+  CrabIntraBlockBuilder(
       crabLitFactory &lfac, HeapAbstraction &mem, 
       const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
       const CrabBuilderParams &params,
@@ -776,7 +776,7 @@ public:
   void visitInstruction(Instruction &I);
 }; // end class
 
-CrabInstVisitor::CrabInstVisitor(
+CrabIntraBlockBuilder::CrabIntraBlockBuilder(
   crabLitFactory &lfac, HeapAbstraction &mem, 
   const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
   const CrabBuilderParams &params,
@@ -789,18 +789,18 @@ CrabInstVisitor::CrabInstVisitor(
     m_func_regions(func_regions),
     m_gep_map(gep_map), m_rev_map(rev_map), m_regions_with_store(regions_with_store) {}
   
-unsigned CrabInstVisitor::fieldOffset(const StructType *t,
+unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
                                       unsigned field) const {
   return m_dl->getStructLayout(const_cast<StructType *>(t))
       ->getElementOffset(field);
 }
 
-uint64_t CrabInstVisitor::storageSize(const Type *t) const {
+uint64_t CrabIntraBlockBuilder::storageSize(const Type *t) const {
   return clam::storageSize(t, *m_dl);
 }
 
-var_t CrabInstVisitor::getUnconstrainedArrayIdxVar(llvm_variable_factory &vfac,
-                                                   unsigned bitwidth) {
+var_t CrabIntraBlockBuilder::getUnconstrainedArrayIdxVar(llvm_variable_factory &vfac,
+							 unsigned bitwidth) {
   #if 0
   static var_t v(vfac.get(), crab::INT_TYPE, bitwidth);
   m_bb.havoc(v);
@@ -810,7 +810,7 @@ var_t CrabInstVisitor::getUnconstrainedArrayIdxVar(llvm_variable_factory &vfac,
   return v;
 }
 
-unsigned CrabInstVisitor::getMaxBitWidthFromGepIndexes(GetElementPtrInst &I) {
+unsigned CrabIntraBlockBuilder::getMaxBitWidthFromGepIndexes(GetElementPtrInst &I) {
   unsigned bitwidth = 0;
   for (unsigned i = 1, e = I.getNumOperands(); i < e; ++i) {
     if (IntegerType *ITy = cast<IntegerType>(I.getOperand(i)->getType())) {
@@ -825,7 +825,7 @@ unsigned CrabInstVisitor::getMaxBitWidthFromGepIndexes(GetElementPtrInst &I) {
   return bitwidth;
 }
 
-Optional<z_number> CrabInstVisitor::evalOffset(Value &v, LLVMContext &ctx) {
+Optional<z_number> CrabIntraBlockBuilder::evalOffset(Value &v, LLVMContext &ctx) {
   llvm::ObjectSizeOpts Opts;
   Opts.RoundToAlign = true;
   Opts.EvalMode = llvm::ObjectSizeOpts::Mode::Max;
@@ -843,9 +843,9 @@ Optional<z_number> CrabInstVisitor::evalOffset(Value &v, LLVMContext &ctx) {
 //
 // v is a pointer operand. It tries to figure out its numerical
 // offset. If it can it returns an unconstrained variable.
-lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx,
-                                           Region reg,
-                                           llvm_variable_factory &vfac) {
+lin_exp_t CrabIntraBlockBuilder::inferArrayIndex(Value *v, LLVMContext &ctx,
+						 Region reg,
+						 llvm_variable_factory &vfac) {
   auto offsetOpt = evalOffset(*v, ctx);
   if (offsetOpt.hasValue()) {
     // we were able to get the offset statically
@@ -876,13 +876,13 @@ lin_exp_t CrabInstVisitor::inferArrayIndex(Value *v, LLVMContext &ctx,
   }
 }
 
-void CrabInstVisitor::insertRevMap(const statement_t *s, Instruction &inst) {
+void CrabIntraBlockBuilder::insertRevMap(const statement_t *s, Instruction &inst) {
   if (!m_params.simplify) {
     m_rev_map.insert({s, &inst});
   }
 }
 
-bool CrabInstVisitor::AllUsesAreNonTrackMem(Value *V) const {
+bool CrabIntraBlockBuilder::AllUsesAreNonTrackMem(Value *V) const {
   // XXX: not sure if we should strip pointers here
   V = V->stripPointerCasts();
   for (auto &U : V->uses()) {
@@ -919,13 +919,13 @@ bool CrabInstVisitor::AllUsesAreNonTrackMem(Value *V) const {
   return true;
 }
 
-void CrabInstVisitor::addNonNullAssumption(var_t ref) {
+void CrabIntraBlockBuilder::addNonNullAssumption(var_t ref) {
   assert(ref.get_type() == REF_TYPE);
   m_bb.assume_ref(ref_cst_t::mk_le_null(ref).negate());
 }
   
-void CrabInstVisitor::doBinOp(unsigned op, var_t lhs, lin_exp_t op1,
-                              lin_exp_t op2) {
+void CrabIntraBlockBuilder::doBinOp(unsigned op, var_t lhs, lin_exp_t op1,
+				    lin_exp_t op2) {
   switch (op) {
   case BinaryOperator::Add:
     if (op1.get_variable() && op2.get_variable())
@@ -1011,7 +1011,7 @@ void CrabInstVisitor::doBinOp(unsigned op, var_t lhs, lin_exp_t op1,
   CLAM_ERROR("unexpected problem with binary operator");
 }
 
-void CrabInstVisitor::doArithmetic(crab_lit_ref_t ref, BinaryOperator &i) {
+void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t ref, BinaryOperator &i) {
   if (!ref || !ref->isVar() || !(ref->isInt())) {
     CLAM_ERROR("lhs of arithmetic operation must be an integer");
   }
@@ -1089,7 +1089,7 @@ void CrabInstVisitor::doArithmetic(crab_lit_ref_t ref, BinaryOperator &i) {
   }
 }
 
-var_t CrabInstVisitor::doBoolLogicOp(Instruction::BinaryOps op,
+var_t CrabIntraBlockBuilder::doBoolLogicOp(Instruction::BinaryOps op,
                                      /* ref can be null */
                                      crab_lit_ref_t ref, const Value &v1,
                                      const Value &v2) {
@@ -1176,7 +1176,7 @@ var_t CrabInstVisitor::doBoolLogicOp(Instruction::BinaryOps op,
   return lhs;
 }
 
-void CrabInstVisitor::doIntLogicOp(crab_lit_ref_t ref, BinaryOperator &i) {
+void CrabIntraBlockBuilder::doIntLogicOp(crab_lit_ref_t ref, BinaryOperator &i) {
   assert(ref && ref->isVar());
 
   if (!(ref->isInt())) {
@@ -1215,7 +1215,7 @@ void CrabInstVisitor::doIntLogicOp(crab_lit_ref_t ref, BinaryOperator &i) {
 }
 
 /* special functions for verification */
-void CrabInstVisitor::doVerifierCall(CallInst &I) {
+void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
   CallSite CS(&I);
 
   const Value *calleeV = CS.getCalledValue();
@@ -1323,7 +1323,7 @@ void CrabInstVisitor::doVerifierCall(CallInst &I) {
 /// I is already translated if it is the condition of a branch or
 /// a select's condition.  Here we cover cases where I is an
 /// operand of other instructions.
-void CrabInstVisitor::visitCmpInst(CmpInst &I) {
+void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
 
   if (!isTracked(I, m_params))
     return;
@@ -1371,7 +1371,7 @@ void CrabInstVisitor::visitCmpInst(CmpInst &I) {
   }
 }
 
-void CrabInstVisitor::visitBinaryOperator(BinaryOperator &I) {
+void CrabIntraBlockBuilder::visitBinaryOperator(BinaryOperator &I) {
   if (!isTracked(I, m_params))
     return;
 
@@ -1406,7 +1406,7 @@ void CrabInstVisitor::visitBinaryOperator(BinaryOperator &I) {
   }
 }
 
-void CrabInstVisitor::visitCastInst(CastInst &I) {
+void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
   if (!isTracked(I, m_params))
     return;
 
@@ -1525,7 +1525,7 @@ void CrabInstVisitor::visitCastInst(CastInst &I) {
 // llvm frontend will simplify them. If this is not possible or
 // undesirable then we try to deal with the select instruction
 // here.
-void CrabInstVisitor::visitSelectInst(SelectInst &I) {
+void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
   if (!isTracked(I, m_params))
     return;
 
@@ -1670,7 +1670,7 @@ void CrabInstVisitor::visitSelectInst(SelectInst &I) {
 
   
 /* malloc-like functions */
-void CrabInstVisitor::doAllocFn(Instruction &I) {
+void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
 
   if (!I.getType()->isVoidTy()) {
     crab_lit_ref_t ref = m_lfac.getLit(I);
@@ -1689,7 +1689,7 @@ void CrabInstVisitor::doAllocFn(Instruction &I) {
 }
 
 /* memcpy/memmove/memset functions */
-void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
+void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
   CLAM_WARNING("Skipped memory intrinsics " << I);
 }
   
@@ -1701,9 +1701,9 @@ void CrabInstVisitor::doMemIntrinsic(MemIntrinsic &I) {
 //   GEP it is translated as a sequence of Crab arithmetic statements
 //   to be used by a Crab array statement. If base.hasValue() is false
 //   then the base pointer of GEP is zero.
-void CrabInstVisitor::doGep(GetElementPtrInst &I, 
-                            unsigned max_index_bitwidth, var_t lhs,
-                            llvm::Optional<var_t> base) {
+void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I, 
+				  unsigned max_index_bitwidth, var_t lhs,
+				  llvm::Optional<var_t> base) {
   assert(lhs.get_type() == INT_TYPE || lhs.get_type() == REF_TYPE);
   assert(max_index_bitwidth == lhs.get_bitwidth());
   assert(!base.hasValue() ||
@@ -1883,7 +1883,7 @@ void CrabInstVisitor::doGep(GetElementPtrInst &I,
  bitwidth then we would have truncate operations which can
  overflow. We try to avoid that.
 */
-void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
+void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
   if (m_params.precision_level == CrabBuilderPrecision::NUM) {
     return;
   }
@@ -1970,8 +1970,8 @@ void CrabInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
 }
 
 /* Translate a StoreInt into a Crab array or assign statement */
-void CrabInstVisitor::StoreIntoSingletonMem(StoreInst &I, var_t v,
-					    crab_lit_ref_t val, Region reg) {
+void CrabIntraBlockBuilder::StoreIntoSingletonMem(StoreInst &I, var_t v,
+						  crab_lit_ref_t val, Region reg) {
   assert(m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM);
   
   lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), reg,
@@ -2020,7 +2020,7 @@ void CrabInstVisitor::StoreIntoSingletonMem(StoreInst &I, var_t v,
   }
 }
 
-void CrabInstVisitor::visitStoreInst(StoreInst &I) {
+void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
   /**
    * The LLVM store instruction will be translated to *either*: 
    * (a) crab array store if SINGLETON_MEM, or
@@ -2138,7 +2138,7 @@ void CrabInstVisitor::visitStoreInst(StoreInst &I) {
  * lhs_v and rhs_v are crab typed variables.
  * reg is the region associated with the load's pointer operand.
  */
-void CrabInstVisitor::LoadFromSingletonMem(LoadInst &I, var_t lhs_v, var_t rhs_v, Region reg) {
+void CrabIntraBlockBuilder::LoadFromSingletonMem(LoadInst &I, var_t lhs_v, var_t rhs_v, Region reg) {
   assert(m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM);
   
   var_t tmp = lhs_v;
@@ -2163,7 +2163,7 @@ void CrabInstVisitor::LoadFromSingletonMem(LoadInst &I, var_t lhs_v, var_t rhs_v
   }
 }
 
-void CrabInstVisitor::visitLoadInst(LoadInst &I) {
+void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
   /*
     This case is symmetric to StoreInst.
    */
@@ -2239,7 +2239,7 @@ void CrabInstVisitor::visitLoadInst(LoadInst &I) {
   havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
 }
 
-void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
+void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
   Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
   if (rgn.isUnknown()) {
     return;
@@ -2279,9 +2279,9 @@ void CrabInstVisitor::visitAllocaInst(AllocaInst &I) {
  *    - a_i1,...,a_in are read-only and modified regions by foo.
  *    - a_o1,...,a_om are modified and new regions created inside foo.
  *
- * The regions are actually translated to array or reference variables.
+ * The regions are actually translated to array variables.
  **/
-void CrabInstVisitor::doCallSite(CallInst &I) {
+void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   CallSite CS(&I);
   const Function *calleeF = dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts());
   assert(calleeF);  
@@ -2397,7 +2397,7 @@ void CrabInstVisitor::doCallSite(CallInst &I) {
   }
 }
     
-void CrabInstVisitor::visitCallInst(CallInst &I) {
+void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   CallSite CS(&I);
   const Value *calleeV = CS.getCalledValue();
   const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
@@ -2501,12 +2501,12 @@ void CrabInstVisitor::visitCallInst(CallInst &I) {
   doCallSite(I);
 }
 
-void CrabInstVisitor::visitUnreachableInst(UnreachableInst &I) {
+void CrabIntraBlockBuilder::visitUnreachableInst(UnreachableInst &I) {
   m_bb.unreachable();
 }
 
 /// base case. if all else fails.
-void CrabInstVisitor::visitInstruction(Instruction &I) {
+void CrabIntraBlockBuilder::visitInstruction(Instruction &I) {
   if (!isTracked(I, m_params))
     return;
   CLAM_WARNING("Skipped " << I);
@@ -2874,8 +2874,8 @@ void CfgBuilderImpl::buildCfg() {
       continue;
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
-    CrabInstVisitor v(m_lfac, m_mem, m_dl, tli, *bb, m_params,
-		      m_func_regions, m_rev_map, regions_with_store, gep_map);
+    CrabIntraBlockBuilder v(m_lfac, m_mem, m_dl, tli, *bb, m_params,
+			    m_func_regions, m_rev_map, regions_with_store, gep_map);
                       
     v.visit(B);
     // hook for seahorn
@@ -2918,7 +2918,8 @@ void CfgBuilderImpl::buildCfg() {
 
         // -- phi nodes in dst are translated into assignments in
         //    the predecessor
-        CrabPhiVisitor v(m_lfac, m_mem, m_func_regions, *m_dl, (mid_bb ? *mid_bb : *bb), B, m_params);
+        CrabInterBlockBuilder v(m_lfac, m_mem, m_func_regions, *m_dl,
+				(mid_bb ? *mid_bb : *bb), B, m_params);
         v.visit(const_cast<BasicBlock &>(*dst));
       }
     }
@@ -3067,8 +3068,8 @@ void CfgBuilderImpl::buildCfg() {
  * It ensures that the set {a_i1,...,a_in} is disjoint from
  * {a_o1,....,a_om}, otherwise crab will complain.
  *
- *  The regions are actually translated to either array or reference
- *  crab variables.
+ *  The regions are actually translated to either crab array
+ *  variables.
  **/
 void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
   std::vector<var_t> inputs, outputs;
