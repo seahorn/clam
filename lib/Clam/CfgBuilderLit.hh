@@ -169,69 +169,11 @@ public:
 
 typedef std::shared_ptr<crabLit> crab_lit_ref_t;
 
-/* Implementation of a factory to create literals */
-class crabLitFactoryImpl {
-public:
-  crabLitFactoryImpl(llvm_variable_factory &vfac,
-                     const CrabBuilderParams &params);
-
-  llvm_variable_factory &getVFac() { return m_vfac; }
-
-  const CrabBuilderParams &getCfgBuilderParams() const { return m_params; }
-
-  // Translate v into a crab literal based on v's type
-  crab_lit_ref_t getLit(const llvm::Value &v);
-
-  // Create a fresh integer array variable
-  var_t mkIntArrayVar(unsigned bitwidth);
-
-  // Create a fresh boolean array variable
-  var_t mkBoolArrayVar();
-
-  // Create a fresh integer variable of bitwidth bits
-  var_t mkIntVar(unsigned bitwidth);
-
-  // Create a fresh boolean variable
-  var_t mkBoolVar();
-
-  // Create a fresh reference variable
-  var_t mkRefVar();
-
-  // Create an array variable associated with region r.
-  var_t mkArrayVar(Region r, const llvm::Value *name);
-
-  // Create an scalar variable associated with region r.
-  var_t mkScalarVar(Region r, const llvm::Value *name);
-  
-  // Create a fresh variable from a Value
-  llvm::Optional<var_t> mkVar(const llvm::Value &v);
-
-  // Common accessors to crab_lit_ref_t subclasses.
-  bool isBoolTrue(const crab_lit_ref_t ref) const;
-
-  bool isBoolFalse(const crab_lit_ref_t ref) const;
-
-  bool isRefNull(const crab_lit_ref_t ref) const;
-
-  number_t getIntCst(const crab_lit_ref_t ref) const;
-
-  lin_exp_t getExp(const crab_lit_ref_t ref) const;
-
-private:
-  typedef std::unordered_map<const llvm::Value *, crab_lit_ref_t> lit_cache_t;
-  typedef typename lit_cache_t::value_type binding_t;
-
-  llvm_variable_factory &m_vfac;
-  const CrabBuilderParams &m_params;
-  lit_cache_t m_lit_cache;
-
-  llvm::Optional<crabBoolLit> getBoolLit(const llvm::Value &v);
-  llvm::Optional<crabIntLit> getIntLit(const llvm::Value &v);
-  llvm::Optional<crabRefLit> getRefLit(const llvm::Value &v);
-};
+class crabLitFactoryImpl;
 
 /**
- *  Factory to create crab literals: typed variable or number.
+ *  Factory to create crab literals: typed variable or number.  This
+ *  factory also maps Heap Analysis' regions to crab typed variables.
  **/
 class crabLitFactory {
 public:
@@ -248,32 +190,28 @@ public:
   /** convert a Value to a crabLit **/
   crab_lit_ref_t getLit(const llvm::Value &v);
 
-  /** make typed variables **/
+  /** make fresh typed variables. 
+   ** Each call returns a new fresh variable 
+   **/
   var_t mkIntVar(unsigned bitwidth);
-
   var_t mkBoolVar();
-
   var_t mkRefVar();
-
   llvm::Optional<var_t> mkVar(const llvm::Value &v);
+  var_t mkArrayVar(RegionInfo rgnInfo);
+  var_t mkRegionVar(RegionInfo rgnInfo);
 
-  var_t mkIntArrayVar(unsigned bitwidth);
-
-  var_t mkBoolArrayVar();
-
-  var_t mkArrayVar(Region r, const llvm::Value *name = nullptr);
-
-  var_t mkScalarVar(Region r, const llvm::Value *name = nullptr);
+  /** make typed variables associated with regions.
+   ** Multiple calls with same parameters return the same variable.
+   **/
+  var_t mkArrayVar(Region rgn);
+  var_t mkRegionVar(Region rgn);
+  var_t mkScalarVar(Region rgn);
 
   /** direct accessors to crabLit subclasses **/
   bool isBoolTrue(const crab_lit_ref_t ref) const;
-
   bool isBoolFalse(const crab_lit_ref_t ref) const;
-
   bool isRefNull(const crab_lit_ref_t ref) const;
-
   lin_exp_t getExp(const crab_lit_ref_t ref) const;
-
   number_t getIntCst(const crab_lit_ref_t ref) const;
 
 private:
