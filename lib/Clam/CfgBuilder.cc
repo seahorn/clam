@@ -21,10 +21,10 @@
  * case of global and stack variables.
  *
  * If tracked precision = MEM then all LLVM pointer operations are
- * translated to Crab reference operations. This translation is almost
- * one-to-one but it also requires the use of the Heap
- * Analysis. Sometimes, the LLVM instruction can be safely ignored if
- * the Heap Analysis is too imprecise.
+ * translated to Crab region abstract domain operations. This
+ * translation is almost one-to-one but it also requires the use of
+ * the Heap Analysis. Sometimes, the LLVM instruction can be safely
+ * ignored if the Heap Analysis is too imprecise.
  *
  * The translation of function calls is also straightforward except
  * that all functions are _purified_ if tracked precision != NUM. That

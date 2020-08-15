@@ -12,7 +12,7 @@
 
 #include <crab/domains/array_adaptive.hpp>
 #include <crab/domains/flat_boolean_domain.hpp>
-#include <crab/domains/reference_domain.hpp>
+#include <crab/domains/region_domain.hpp>
 #include <crab/domains/term_equiv.hpp>
 
 namespace clam {
@@ -31,9 +31,9 @@ using namespace ikos;
 #define BOOL_NUM(DOM) flat_boolean_numerical_domain<DOM>
 // Array functor domain where the parameter domain is DOM
 #define ARRAY_FUN(DOM) array_adapt_domain<DOM>
-// Reference functor domain -- the root of the hierarchy of domains.
-#define REF_FUN(DOM) \
-  reference_domain<reference_domain_impl::Params<z_number, varname_t, DOM>>
+// Region functor domain -- the root of the hierarchy of domains.
+#define RGN_FUN(DOM) \
+  region_domain<region_domain_impl::Params<z_number, varname_t, DOM>>
 /* ====================================================================== */    
 /* END MACROS to create the hierarchy of domains. Only for internal use   */
 /* ====================================================================== */    
@@ -57,12 +57,12 @@ using array_adapt_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;
 /* ====================================================================== */      
 
 /* ====================================================================== */        
-/* BEGIN reference domain                                                 */
+/* BEGIN region domain                                                    */
 /* ====================================================================== */  
 using domvar_allocator = crab::var_factory_impl::str_var_alloc_col;
 using dom_varname_t = domvar_allocator::varname_t;
 /* ====================================================================== */    
-/* END reference domain                                                   */
+/* END region domain                                                      */
 /* ====================================================================== */    
 } // end namespace clam
 // clang-format on

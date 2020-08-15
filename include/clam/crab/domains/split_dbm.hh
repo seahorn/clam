@@ -48,5 +48,5 @@ using BASE(split_dbm_domain_t) =
 #endif
 #endif
 using split_dbm_domain_t =
-    REF_FUN(ARRAY_FUN(BOOL_NUM(BASE(split_dbm_domain_t))));
+    RGN_FUN(ARRAY_FUN(BOOL_NUM(BASE(split_dbm_domain_t))));
 } // end namespace clam
