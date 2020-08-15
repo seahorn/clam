@@ -49,16 +49,18 @@ class RegionInfo {
   unsigned m_bitwidth; // number of bits
   // whether the region is coming from a "sequence" sea-dsa node
   bool m_is_sequence;
+  // whether the region is possibly allocated in the heap
+  bool m_is_heap;
 public:
-  RegionInfo(region_type_t t, unsigned b, bool is_seq)
-    : m_region_type(t), m_bitwidth(b), m_is_sequence(is_seq) {}
+  RegionInfo(region_type_t t, unsigned b, bool is_seq, bool is_heap)
+    : m_region_type(t), m_bitwidth(b), m_is_sequence(is_seq), m_is_heap(is_heap) {}
 
   RegionInfo(const RegionInfo &other) = default;
 
   RegionInfo &operator=(const RegionInfo &other) = default;
 
   bool operator==(const RegionInfo &o) {
-    // don't consider isSequence().
+    // don't consider isSequence() or isHeap().
     // We use this operation to compare a region between caller and callee. 
     return (getType() == o.getType() &&
 	    getBitwidth() == o.getBitwidth());
@@ -84,6 +86,10 @@ public:
 
   // Whether the region corresponds to a "sequence" node
   bool isSequence() const { return m_is_sequence;}
+
+  // Whether the region is potentially allocated via a malloc-like
+  // function.
+  bool isHeap() const { return m_is_heap;}
 };
 
 /**
@@ -112,7 +118,7 @@ public:
 
   Region()
     : m_id(0),
-      m_info(RegionInfo(region_type_t::UNTYPED_REGION, 0, false)),
+      m_info(RegionInfo(region_type_t::UNTYPED_REGION, 0, false, false)),
       m_singleton(nullptr) {}
 
   Region(const Region &other) = default;

@@ -20,22 +20,28 @@ namespace clam {
 using RegionVec = typename HeapAbstraction::RegionVec;
 using RegionSet = std::set<Region>;
 
+static bool isTrackedRegion(Region rgn,
+			    const CrabBuilderParams &params) {
+  if (params.precision_level == CrabBuilderPrecision::MEM) {
+    return true;
+  } else if (params.precision_level == CrabBuilderPrecision::SINGLETON_MEM) {
+    return (rgn.getRegionInfo().containScalar() &&
+	    !rgn.getRegionInfo().isHeap());
+  } else {
+    return false;
+  }
+}
+			    
 // Return the region associated to ptr
 inline Region getRegion(HeapAbstraction &mem, RegionSet &Regions,
 			const CrabBuilderParams &params,
 			const llvm::Function &fun, const llvm::Value &ptr) {
-  // Use the Heap analysis (mem) to access to the cell pointed by the pointer.
   Region rgn = mem.getRegion(fun, ptr);
-  if (params.trackMemory()) {
+  if (isTrackedRegion(rgn, params)) {
     Regions.insert(rgn);
     return rgn; 
-  } else {
-    if (rgn.getRegionInfo().containScalar()) {
-      Regions.insert(rgn);      
-      return rgn;
-    } else {
-      return Region();
-    }
+  }  else {
+    return Region();
   }
 }
 
@@ -68,8 +74,8 @@ inline RegionVec getInputRegions(HeapAbstraction &mem, const CrabBuilderParams &
   } else {
     RegionVec scalar_regions;
     std::copy_if(regions.begin(), regions.end(), std::back_inserter(scalar_regions),
-		 [](Region r) {
-		   return r.getRegionInfo().containScalar();
+		 [&params](Region r) {
+		   return isTrackedRegion(r, params);
 		 });
     return scalar_regions;
   }
@@ -84,8 +90,8 @@ inline RegionVec getInputOutputRegions(HeapAbstraction &mem, const CrabBuilderPa
   } else {
     RegionVec scalar_regions;
     std::copy_if(regions.begin(), regions.end(), std::back_inserter(scalar_regions),
-		 [](Region r) {
-		   return r.getRegionInfo().containScalar();
+		 [&params](Region r) {
+		   return isTrackedRegion(r, params);
 		 });
     return scalar_regions;
   }
@@ -100,8 +106,8 @@ inline RegionVec getOutputRegions(HeapAbstraction &mem, const CrabBuilderParams 
   } else {
     RegionVec scalar_regions;
     std::copy_if(regions.begin(), regions.end(), std::back_inserter(scalar_regions),
-		 [](Region r) {
-		   return r.getRegionInfo().containScalar();
+		 [&params](Region r) {
+		   return isTrackedRegion(r, params);
 		 });
     return scalar_regions;
   }

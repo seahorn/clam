@@ -171,7 +171,9 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
 			  bool disambiguate_unknown, bool disambiguate_ptr_cast,
 			  bool disambiguate_external) {
 
-  auto defaultRegionInfo = []() {return RegionInfo(region_type_t::UNTYPED_REGION, 0, false); };
+  auto defaultRegionInfo = []() {
+     return RegionInfo(region_type_t::UNTYPED_REGION, 0, false, false);
+  };
 			   
   if (c.isNull()) {
     return defaultRegionInfo();
@@ -226,7 +228,8 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
 	       << " with bitwidth=" << int_pred.m_bitwidth
 	       << "\n";);
                                   
-      return RegionInfo(region_type_t::INT_REGION, int_pred.m_bitwidth, c.getNode()->isArray());
+      return RegionInfo(region_type_t::INT_REGION, int_pred.m_bitwidth,
+			c.getNode()->isArray(), c.getNode()->isHeap());
     } else {
       CRAB_LOG("heap-abs-seadsa-to-region",
 	       errs() << "\tCannot be converted to region due to overlapping.\n";);
@@ -241,7 +244,8 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
 	       errs() << "\tDisambiguation succeed!\n"
 	       << "\tFound BOOL_REGION at offset " << offset
 	       << " with bitwidth=1\n";);
-      return RegionInfo(region_type_t::BOOL_REGION, 1, c.getNode()->isArray());
+      return RegionInfo(region_type_t::BOOL_REGION, 1,
+			c.getNode()->isArray(), c.getNode()->isHeap());
     } else {
       CRAB_LOG("heap-abs-seadsa-to-region",
 	       errs() << "\tCannot be converted to region due to overlapping.\n";);      
@@ -255,7 +259,8 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
       CRAB_LOG("heap-abs-seadsa-to-region",
 	       errs() << "\tDisambiguation succeed!\n"
 	       << "\tFound POINTER_REGION at offset " << offset << "\n";);
-      return RegionInfo(region_type_t::PTR_REGION, dl.getPointerSizeInBits(), c.getNode()->isArray());
+      return RegionInfo(region_type_t::PTR_REGION, dl.getPointerSizeInBits(),
+			c.getNode()->isArray(), c.getNode()->isHeap());
     } else {
       CRAB_LOG("heap-abs-seadsa-to-region",
 	       errs() << "\tCannot be converted to region due to overlapping.\n";);      
