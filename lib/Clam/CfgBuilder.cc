@@ -425,8 +425,8 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
 	      if (phi_val_lit->isVar()) {
 		Region rgn_phi_val = getRegion(m_mem, m_func_regions, m_params, *phi_v, *phi_v);
 		if (!rgn_phi_val.isUnknown()) {
-		  m_bb.gep_ref(phi_val_lit->getVar(), m_lfac.mkRegionVar(rgn_phi_val),
-			       lhs, m_lfac.mkRegionVar(rgn_phi_val));
+		  m_bb.gep_ref(lhs, m_lfac.mkRegionVar(rgn_phi_val),
+			       phi_val_lit->getVar(), m_lfac.mkRegionVar(rgn_phi_val));
 		}
 	      } else {
 		m_bb.assume_ref(ref_cst_t::mk_null(lhs));
@@ -468,8 +468,8 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
         } else if (isReference(phi, m_lfac.getCfgBuilderParams())) {
 	  Region rgn_phi = getRegion(m_mem, m_func_regions, m_params, phi, phi);
 	  if (!rgn_phi.isUnknown()) {
-	    m_bb.gep_ref(it->second, m_lfac.mkRegionVar(rgn_phi),
-			 lhs, m_lfac.mkRegionVar(rgn_phi));
+	    m_bb.gep_ref(lhs, m_lfac.mkRegionVar(rgn_phi),
+			 it->second, m_lfac.mkRegionVar(rgn_phi));
 	  }
         }
       } else {
@@ -491,8 +491,8 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
 	      Region rgn_phi_v = getRegion(m_mem, m_func_regions, m_params, phi, v);
 	      // rgn_phi and rgn_phi_v should be same region
 	      if (!rgn_phi.isUnknown() && !rgn_phi_v.isUnknown()) {
-		m_bb.gep_ref(phi_val_lit->getVar(), m_lfac.mkRegionVar(rgn_phi_v),
-			     lhs, m_lfac.mkRegionVar(rgn_phi));
+		m_bb.gep_ref(lhs, m_lfac.mkRegionVar(rgn_phi),
+			     phi_val_lit->getVar(), m_lfac.mkRegionVar(rgn_phi_v));
 	      }
             } else {
               m_bb.assume_ref(ref_cst_t::mk_null(lhs));
@@ -1484,8 +1484,8 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
 	  Region rgn_dst = getRegion(m_mem, m_func_regions, m_params, I, I);
 	  // rgn_src should be the same than rgn_dst
 	  if (!rgn_src.isUnknown() && !rgn_dst.isUnknown()) {
-	    m_bb.gep_ref(src->getVar(), m_lfac.mkRegionVar(rgn_src),
-			 dst->getVar(), m_lfac.mkRegionVar(rgn_dst));
+	    m_bb.gep_ref(dst->getVar(), m_lfac.mkRegionVar(rgn_dst),
+			 src->getVar(), m_lfac.mkRegionVar(rgn_src));
 	    return;
 	  }
         }
@@ -1718,7 +1718,7 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
 	}
 	var_t crab_rgn = m_lfac.mkRegionVar(rgn);
 	var_t crab_base_rgn = m_lfac.mkRegionVar(base_rgn);  
-	m_bb.gep_ref(base.getValue(), crab_base_rgn, lhs, crab_rgn, lin_exp_t(o));
+	m_bb.gep_ref(lhs, crab_rgn, base.getValue(), crab_base_rgn, lin_exp_t(o));
 	CRAB_LOG("cfg-gep", crab::outs() << "-- " << lhs << ":=" << base.getValue() << "+"
 	                        	 << o << "\n");
       } else if (lhs.get_type() == INT_TYPE) {
@@ -1755,8 +1755,9 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
 	  }
 	  var_t crab_rgn = m_lfac.mkRegionVar(rgn);
 	  var_t crab_base_rgn = m_lfac.mkRegionVar(base_rgn);  
-	  m_bb.gep_ref((!already_assigned) ? base.getValue() : lhs, crab_base_rgn,
-		       lhs, crab_rgn, offset);
+	  m_bb.gep_ref(lhs, crab_rgn,
+		       (!already_assigned) ? base.getValue() : lhs, crab_base_rgn,
+		       offset);
           CRAB_LOG(
               "cfg-gep",
 		   if (!already_assigned) {
@@ -1827,8 +1828,9 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
 	}
 	var_t crab_rgn = m_lfac.mkRegionVar(rgn);
 	var_t crab_base_rgn = m_lfac.mkRegionVar(base_rgn);  
-	m_bb.gep_ref((!already_assigned) ? base.getValue() : lhs, crab_base_rgn,
-		     lhs, crab_rgn, offset);	
+	m_bb.gep_ref(lhs, crab_rgn, 
+		     (!already_assigned) ? base.getValue() : lhs, crab_base_rgn,
+		     offset);	
         CRAB_LOG(
             "cfg-gep",
 		 if (!already_assigned) {
@@ -1883,19 +1885,23 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
   Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
   if (rgn.isUnknown()) {
     // we don't keep track of the memory region, we bail out ...
+    CRAB_LOG("cfg-gep", llvm::errs() << "-- unknown region " << rgn << "\n");
     return;
   }
   if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
     // the memory region is a non-sequence singleton so we bail out
     // because it will translated somewhere else (e.g., next Load or
     // Store)
+    CRAB_LOG("cfg-gep", llvm::errs() << "-- skipped singleton\n");    
     return;
   }
 
-  if (evalOffset(I, I.getContext()).hasValue()) {      
+  if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
+      evalOffset(I, I.getContext()).hasValue()) {      
     // Skip the GEP instruction because the offset is a known
     // constant. The next Load or Store will call evalOffset again
     // to obtain the constant index.
+    CRAB_LOG("cfg-gep", llvm::errs() << "-- skipped known base and constant offset\n");        
     return;
   }
 
@@ -2092,16 +2098,15 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
       if (val->isVar()) {
 	m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), val->getVar());
       } else if (val->isBool()) {
-	var_t normalized_val = m_lfac.mkBoolVar();
-	m_bb.bool_assign(normalized_val, m_lfac.isBoolTrue(val)
-			 ? lin_cst_t::get_true()
-			 : lin_cst_t::get_false());
-	m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), normalized_val);	
+	// var_t normalized_val = m_lfac.mkBoolVar();
+	// m_bb.bool_assign(normalized_val, m_lfac.isBoolTrue(val)
+	// 		 ? lin_cst_t::get_true()
+	// 		 : lin_cst_t::get_false());
+	m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
+			  /* normalized_val */
+			  m_lfac.isBoolTrue(val) ? number_t(1) : number_t(0));	
       } else if (val->isInt()) {
-	var_t normalized_val =
-	  m_lfac.mkIntVar(I.getValueOperand()->getType()->getIntegerBitWidth());
-	m_bb.assign(normalized_val, m_lfac.getIntCst(val));
-	m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), normalized_val);	
+	m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), m_lfac.getIntCst(val));	
       } else if (val->isRef() && m_lfac.isRefNull(val)) {
 	// TODO: we ignore for now the case if we store a null
 	// pointer.  We should create a fresh reference and add a
@@ -3116,8 +3121,8 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
 	Region arg_rgn = getRegion(m_mem, m_func_regions, m_params, m_func, arg);
 	if (!arg_rgn.isUnknown()) {
 	  var_t fresh_i = m_lfac.mkRefVar();
-	  entry.gep_ref(fresh_i, m_lfac.mkRegionVar(arg_rgn),
-			i->getVar(), m_lfac.mkRegionVar(arg_rgn));
+	  entry.gep_ref(i->getVar(), m_lfac.mkRegionVar(arg_rgn),
+			fresh_i, m_lfac.mkRegionVar(arg_rgn));
 	  inputs.push_back(fresh_i);
 	}
       } else {
@@ -3202,7 +3207,7 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
 	// input version
 	var_t rgn_in = m_lfac.mkRegionVar(rgn.getRegionInfo());
-	entry.region_assign(m_lfac.mkRegionVar(rgn), rgn_in);
+	entry.region_copy(m_lfac.mkRegionVar(rgn), rgn_in);
 	inputs.push_back(rgn_in);	  	  
 	// output version
 	outputs.push_back(m_lfac.mkRegionVar(rgn));
