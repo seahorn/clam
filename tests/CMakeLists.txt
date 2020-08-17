@@ -17,6 +17,13 @@ add_lit_testsuite(test-array-adapt "Run tests for the array adaptive domain"
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/array-adapt
   DEPENDS clam)
 
+add_lit_testsuite(test-mem "Run tests for --crab-track=mem"
+  -v
+  ${CMAKE_CURRENT_SOURCE_DIR}/mem  ## where .cfg file is located
+  PARAMS
+  test_dir=${CMAKE_CURRENT_BINARY_DIR}/mem
+  DEPENDS clam)
+
 add_lit_testsuite(test-readme "Run README.md tests"
   -v
   ${CMAKE_CURRENT_SOURCE_DIR}/demo  ## where .cfg file is located
