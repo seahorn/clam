@@ -45,6 +45,7 @@ RUN cmake --build . --target test-readme
 RUN cmake --build . --target test-ssh-simplified
 RUN cmake --build . --target test-ntdrivers-simplified
 RUN cmake --build . --target test-array-adapt
+RUN cmake --build . --target test-mem
 
 WORKDIR /clam
 
