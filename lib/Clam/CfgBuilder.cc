@@ -489,12 +489,16 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
             if (phi_val_lit->isVar()) {
 	      Region rgn_phi = getRegion(m_mem, m_func_regions, m_params, phi, phi);
 	      Region rgn_phi_v = getRegion(m_mem, m_func_regions, m_params, phi, v);
-	      // rgn_phi and rgn_phi_v should be same region
-	      if (!rgn_phi.isUnknown() && !rgn_phi_v.isUnknown()) {
-		m_bb.gep_ref(lhs, m_lfac.mkRegionVar(rgn_phi),
-			     phi_val_lit->getVar(), m_lfac.mkRegionVar(rgn_phi_v));
-	      }
+	      
+	      /// IMPORTANT: rgn_phi and rgn_phi_v should be same
+	      /// region but they might be unknown if the current
+	      /// function does not access to them. Still, we want to
+	      /// model PHI nodes with pointer values.
+	      
+	      m_bb.gep_ref(lhs, m_lfac.mkRegionVar(rgn_phi),
+			   phi_val_lit->getVar(), m_lfac.mkRegionVar(rgn_phi_v));
             } else {
+	      m_bb.havoc(lhs);
               m_bb.assume_ref(ref_cst_t::mk_null(lhs));
             }
           } else {
@@ -1318,8 +1322,15 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
       isReference(*I.getOperand(1), m_params)) {
 
     if (!AllUsesAreBrInst(I)) {
-      CLAM_WARNING("translation skipped comparison between pointers");
-      havoc(lit->getVar(), m_bb, m_params.include_useless_havoc);
+      Optional<ref_cst_t> ref_cst = cmpInstToCrabRef(I, m_lfac, false/*not negated*/);
+      if (ref_cst.hasValue()) {
+	m_bb.assume_ref(ref_cst.getValue());
+      } else {
+	CLAM_WARNING("translation skipped comparison between pointers " << I);	
+	havoc(lit->getVar(), m_bb, m_params.include_useless_havoc);	
+      }
+    } else {
+      // already lowered elsewhere
     }
     return;
   }
@@ -1516,7 +1527,7 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
   assert(lhs && lhs->isVar());
 
   if (isReference(I, m_params)) {
-    // We don't even bother with pointers
+    // TODO: select of pointers
     CLAM_WARNING("skipped " << I << "\n"
                             << "Enable --lower-select.");
     havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
@@ -2237,17 +2248,19 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
 
 void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
   Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
-  if (rgn.isUnknown()) {
-    return;
-  }
-  
   if (isReference(I, m_params)) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
-    assert(lhs && lhs->isVar());          
+    assert(lhs && lhs->isVar());
+
+    /// IMPORTANT: even if the region is unknown we want to add the
+    /// assumption about the reference. This can happen if the current
+    /// function doesn't use the region but pass it a callee who does
+    /// use it.
+    
     m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn));
     addNonNullAssumption(lhs->getVar());    
   } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
-	     rgn.getRegionInfo().containScalar()) {
+	     !rgn.isUnknown() && rgn.getRegionInfo().containScalar()) {
     // Memory allocated in the stack is uninitialized.
     // 
     // We assume they are zero initialized so that Crab's array
