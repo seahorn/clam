@@ -171,11 +171,13 @@ void crabLitFactoryImpl::regionTypeToCrabType(RegionInfo rgnInfo,
     type = REG_REF_TYPE;
     bitwidth = 32;
     break;
+  case region_type_t::UNTYPED_REGION:
+    break;
   // TODO:if the region is a sequence then we should create
   // REG_ARR_INT and REG_ARR_BOOL. For a PTR_REGION we should create
   // REG_ARR_INT and then call int_to_ref/ref_to_int to make sure we
   // always store/load integers from the region.    
-  default:
+  default: /* unreachable */
     CLAM_ERROR("unsupported region type ", rgnInfo);
   }
 }
