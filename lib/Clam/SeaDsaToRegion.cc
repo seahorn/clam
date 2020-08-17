@@ -166,7 +166,6 @@ using namespace llvm;
 using namespace seadsa;
 
 // SeaDsaToRegion succeeds if returned valued != UNTYPED_REGION
-// TODO: consider cells that contain pointers
 RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
 			  bool disambiguate_unknown, bool disambiguate_ptr_cast,
 			  bool disambiguate_external) {
@@ -189,9 +188,9 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
 
   if (!n->isModified() && !n->isRead()) {
     CRAB_LOG("heap-abs-seadsa-to-region",
-	     errs()
-	     << "\tWe do not bother to disambiguate it because "
-	     << "it is never accessed.\n";);
+  	     errs()
+  	     << "\tWe cannot disambiguate it because "
+  	     << "it is never accessed.\n";);
     return defaultRegionInfo();
   }
 
@@ -270,7 +269,7 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
   
   CRAB_LOG(
       "heap-abs-seadsa-to-region",
-      errs() << "\tCannot be converted to region: do not contain integer.\n";);
+      errs() << "\tCannot be converted to region: do not contain integer or pointer.\n";);
 
   return defaultRegionInfo();
 }
