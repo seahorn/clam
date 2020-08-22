@@ -46,9 +46,9 @@ public:
  /* options for array smashing */  
   enum { is_smashable = 1 };
   enum { smash_at_nonzero_offset = 1};
-  enum { max_smashable_cells = 1024};
+  enum { max_smashable_cells = 64};
   /* options for array expansion */  
-  enum { max_array_size = 1024 };
+  enum { max_array_size = 64 };
 };
 template<class Dom>
 using array_adapt_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;
