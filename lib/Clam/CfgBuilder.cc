@@ -241,6 +241,7 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
   default:;;
   }
   CLAM_WARNING("TODO: unsupported pointer comparison " << I);
+  return llvm::None;  
 }
 
 /* If possible, return a Crab linear constraint from CmpInst */
@@ -1326,7 +1327,6 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
       if (ref_cst.hasValue()) {
 	m_bb.assume_ref(ref_cst.getValue());
       } else {
-	CLAM_WARNING("translation skipped comparison between pointers " << I);	
 	havoc(lit->getVar(), m_bb, m_params.include_useless_havoc);	
       }
     } else {
