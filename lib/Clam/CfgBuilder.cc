@@ -187,63 +187,73 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
   if (!ref1 || !(ref1->isRef()))
     return llvm::None;
   
-  CmpInst::Predicate op = (isNegated ? I.getInversePredicate() : I.getPredicate());
-  switch (op) {
-  case CmpInst::ICMP_EQ:
+  switch (I.getPredicate()) {
+  case CmpInst::ICMP_EQ: {
+    ref_cst_t res;
     if (ref0->isVar() && lfac.isRefNull(ref1)) {
-      return ref_cst_t::mk_null(ref0->getVar());
+      res = ref_cst_t::mk_null(ref0->getVar());
     } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
-      return ref_cst_t::mk_null(ref1->getVar());
+      res = ref_cst_t::mk_null(ref1->getVar());
     } else if (ref0->isVar() && ref1->isVar()) {
-      return ref_cst_t::mk_eq(ref0->getVar(), ref1->getVar());
+      res = ref_cst_t::mk_eq(ref0->getVar(), ref1->getVar());
     } else {
-      return ref_cst_t::mk_true();
-    }    
-  case CmpInst::ICMP_NE:
+      res = ref_cst_t::mk_true();
+    }
+    return (!isNegated ? res : res.negate());
+  }
+  case CmpInst::ICMP_NE: {
+    ref_cst_t res;
     if (ref0->isVar() && lfac.isRefNull(ref1)) {
-      return ref_cst_t::mk_not_null(ref0->getVar());
+      res = ref_cst_t::mk_not_null(ref0->getVar());
     } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
-      return ref_cst_t::mk_not_null(ref1->getVar());
+      res = ref_cst_t::mk_not_null(ref1->getVar());
     } else if (ref0->isVar() && ref1->isVar()) {
-      return ref_cst_t::mk_not_eq(ref0->getVar(), ref1->getVar());
+      res = ref_cst_t::mk_not_eq(ref0->getVar(), ref1->getVar());
     } else {
-      return ref_cst_t::mk_false();
-    }    
+      res = ref_cst_t::mk_false();
+    }
+    return (!isNegated ? res : res.negate());
+  }
   case CmpInst::ICMP_ULT:
   case CmpInst::ICMP_SLT: {
+    ref_cst_t res;
     if (ref0->isVar() && lfac.isRefNull(ref1)) {
       // ref0 < null      
-      return ref_cst_t::mk_lt_null(ref0->getVar());
+      res =  ref_cst_t::mk_lt_null(ref0->getVar());
     } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
       // null < ref1 <--> negate(ref1 <= null) <--> ref1 > null
-      return ref_cst_t::mk_le_null(ref1->getVar()).negate();
+      res = ref_cst_t::mk_le_null(ref1->getVar()).negate();
     } else if (ref0->isVar() && ref1->isVar()) {
       // ref0 < ref1      
-      return ref_cst_t::mk_lt(ref0->getVar(), ref1->getVar());
+      res = ref_cst_t::mk_lt(ref0->getVar(), ref1->getVar());
     } else {
       break;
-    }    
+    }
+    return (!isNegated ? res : res.negate());
   }
   case CmpInst::ICMP_ULE:
   case CmpInst::ICMP_SLE: {
+    ref_cst_t res;
     if (ref0->isVar() && lfac.isRefNull(ref1)) {
       // ref0 <= null
-      return ref_cst_t::mk_le_null(ref0->getVar());      
+      res = ref_cst_t::mk_le_null(ref0->getVar());      
     } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
       // null <= ref1 <--> negate(ref1 < null) <--> ref1 >= null
-      return ref_cst_t::mk_lt_null(ref1->getVar()).negate();
+      res = ref_cst_t::mk_lt_null(ref1->getVar()).negate();
     } else if (ref0->isVar() && ref1->isVar()) {
       // ref0 <= ref1
+      res = ref_cst_t::mk_le(ref0->getVar(), ref1->getVar());
     } else {
       break;
-    }        
+    }
+    return (!isNegated ? res : res.negate());
   }
-  default:;;
+  default: ;;;
   }
-  CLAM_WARNING("TODO: unsupported pointer comparison " << I);
+  CLAM_ERROR("TODO: unsupported pointer comparison " << I);
   return llvm::None;  
 }
-
+ 
 /* If possible, return a Crab linear constraint from CmpInst */
 Optional<lin_cst_t> cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
                                      const bool isNegated = false) {
