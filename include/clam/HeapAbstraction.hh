@@ -59,13 +59,11 @@ public:
 
   RegionInfo &operator=(const RegionInfo &other) = default;
 
-  bool operator==(const RegionInfo &o) {
-    // don't consider isSequence() or isHeap().
-    // We use this operation to compare a region between caller and callee. 
+  bool hasSameType(const RegionInfo &o) const {
     return (getType() == o.getType() &&
-	    getBitwidth() == o.getBitwidth());
+	    getBitwidth() == o.getBitwidth());    
   }
-
+  
   bool containScalar() const {
     return m_region_type == region_type_t::BOOL_REGION ||
       m_region_type == region_type_t::INT_REGION;
@@ -90,6 +88,29 @@ public:
   // Whether the region is potentially allocated via a malloc-like
   // function.
   bool isHeap() const { return m_is_heap;}
+
+  void write(llvm::raw_ostream &o) const {
+    switch (getType()) {
+    case region_type_t::UNTYPED_REGION:
+      o << "U";
+      break;
+    case region_type_t::BOOL_REGION:
+      o << "B";
+      break;
+    case region_type_t::INT_REGION:
+      o << "I" << ":" << getBitwidth();
+      break;
+    case region_type_t::PTR_REGION:
+      o << "P";
+      break;
+    }
+  }
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &o, const RegionInfo &rgnInfo) {
+    rgnInfo.write(o);
+    return o;
+  }
+  
 };
 
 /**
@@ -140,25 +161,7 @@ public:
   bool operator==(const Region &o) const { return (m_id == o.m_id); }
 
   void write(llvm::raw_ostream &o) const {
-    if (isUnknown()) {
-      o << "unknown";
-    } else {
-      o << "R_" << m_id << ":";
-      switch (getRegionInfo().getType()) {
-      case region_type_t::UNTYPED_REGION:
-        o << "U";
-        break;
-      case region_type_t::BOOL_REGION:
-        o << "B";
-        break;
-      case region_type_t::INT_REGION:
-        o << "I";
-        break;
-      case region_type_t::PTR_REGION:
-        o << "P";
-        break;
-      }
-    }
+    o << "R_" << m_id << ":" << getRegionInfo();
   }
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &o, const Region &r) {
