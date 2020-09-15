@@ -76,8 +76,7 @@ private:
   llvm::Optional<crabIntLit> getIntLit(const llvm::Value &v);
   llvm::Optional<crabRefLit> getRefLit(const llvm::Value &v);
 
-  void regionTypeToCrabType(RegionInfo rgnInfo,
-			    crab::variable_type &type, unsigned &bitwidth);
+  crab::variable_type regionTypeToCrabType(RegionInfo rgnInfo);
   
 };
 
@@ -132,54 +131,41 @@ var_t crabLitFactoryImpl::mkArrayVar(Region rgn) {
     return it->second;
   }
   
-  crab::variable_type type = crab::UNK_TYPE;
-  unsigned bitwidth = 0; /* unknown */
+  crab::variable_type type(crab::UNK_TYPE, 0);
   auto info = rgn.getRegionInfo();
   switch (info.getType()) {
   case region_type_t::INT_REGION:
-    type = ARR_INT_TYPE;
-    bitwidth = info.getBitwidth();
+    type = crab::variable_type(ARR_INT_TYPE, 0);
     break;
   case region_type_t::BOOL_REGION:
-    type = ARR_BOOL_TYPE;
-    bitwidth = 1;
+    type = crab::variable_type(ARR_BOOL_TYPE, 0);    
     break;
   default:
     CLAM_ERROR("unsupported region type ", rgn);
   }
   
-  var_t res(m_vfac.get(), type, bitwidth);
+  var_t res(m_vfac.get(), type);
   m_rgn_cache.insert({rgn, res});
   return res;
 }
 
-void crabLitFactoryImpl::regionTypeToCrabType(RegionInfo rgnInfo,
-					      crab::variable_type &type, unsigned  &bitwidth) {
-  type = crab::UNK_TYPE;
-  bitwidth = 0; 
-  
+crab::variable_type crabLitFactoryImpl::regionTypeToCrabType(RegionInfo rgnInfo) {
+  crab::variable_type type(crab::UNK_TYPE, 0);  
   switch (rgnInfo.getType()) {
   case region_type_t::INT_REGION:
-    type = REG_INT_TYPE;
-    bitwidth = rgnInfo.getBitwidth();
+    type = crab::variable_type(REG_INT_TYPE, rgnInfo.getBitwidth());
     break;
   case region_type_t::BOOL_REGION:
-    type = REG_BOOL_TYPE;
-    bitwidth = 1;
+    type = crab::variable_type(REG_BOOL_TYPE, 1);
     break;
   case region_type_t::PTR_REGION:
-    type = REG_REF_TYPE;
-    bitwidth = 32;
+    type = crab::variable_type(REG_REF_TYPE, 32);
     break;
-  case region_type_t::UNTYPED_REGION:
-    break;
-  // TODO:if the region is a sequence then we should create
-  // REG_ARR_INT and REG_ARR_BOOL. For a PTR_REGION we should create
-  // REG_ARR_INT and then call int_to_ref/ref_to_int to make sure we
-  // always store/load integers from the region.    
-  default: /* unreachable */
+  //  case region_type_t::UNTYPED_REGION:
+  default: 
     CLAM_ERROR("unsupported region type ", rgnInfo);
   }
+  return type;
 }
   
 var_t crabLitFactoryImpl::mkRegionVar(Region rgn) {
@@ -192,11 +178,8 @@ var_t crabLitFactoryImpl::mkRegionVar(Region rgn) {
     return it->second;
   }
   
-  crab::variable_type type;
-  unsigned bitwidth;
-  regionTypeToCrabType(rgn.getRegionInfo(), type, bitwidth);
-
-  var_t res(m_vfac.get(), type, bitwidth);
+  crab::variable_type type = regionTypeToCrabType(rgn.getRegionInfo()); 
+  var_t res(m_vfac.get(), type);
   m_rgn_cache.insert({rgn, res});
   return res;
 }
@@ -207,8 +190,7 @@ var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
     return it->second;
   }
   
-  crab::variable_type type = crab::UNK_TYPE;
-  unsigned bitwidth = 0; /* unknown */
+  unsigned bitwidth = 0;
   if (const Value *v = rgn.getSingleton()) {
     Type *ty = cast<PointerType>(v->getType())->getElementType();
     bitwidth = ty->getIntegerBitWidth();
@@ -221,53 +203,54 @@ var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
   } else {
     CLAM_ERROR("Memory region does not belong to a global singleton");
   }
+
+  crab::variable_type type(crab::UNK_TYPE, 0);  
   switch (rgn.getRegionInfo().getType()) {
   case region_type_t::INT_REGION:
-    type = INT_TYPE;
+    type = crab::variable_type(INT_TYPE, bitwidth);
     break;
   case region_type_t::BOOL_REGION:
-    type = BOOL_TYPE;
+    type = crab::variable_type(BOOL_TYPE, 1);
     break;
   default:
     CLAM_ERROR("unsupported region type", rgn);
   }
 
-  var_t res(m_vfac.get(), type, bitwidth);
+  var_t res(m_vfac.get(), type);
   m_rgn_cache.insert({rgn, res});
   return res;
 }
 
 var_t crabLitFactoryImpl::mkIntVar(unsigned bitwidth) {
-  return var_t(m_vfac.get(), INT_TYPE, bitwidth);
+  return var_t(m_vfac.get(), crab::variable_type(INT_TYPE, bitwidth));
 }
 
 var_t crabLitFactoryImpl::mkBoolVar() {
-  return var_t(m_vfac.get(), BOOL_TYPE, 1);
+  return var_t(m_vfac.get(), crab::variable_type(BOOL_TYPE, 1));
 }
 
-var_t crabLitFactoryImpl::mkRefVar() { return var_t(m_vfac.get(), REF_TYPE); }
+var_t crabLitFactoryImpl::mkRefVar() {
+  return var_t(m_vfac.get(), crab::variable_type(REF_TYPE, 32));
+}
 
 var_t crabLitFactoryImpl::mkArrayVar(RegionInfo rgnInfo) {
   if (!m_params.trackOnlySingletonMemory()) {
     CLAM_ERROR("literal factory should not create a crab array variable"); 
   }
   
-  crab::variable_type type = crab::UNK_TYPE;
-  unsigned bitwidth = 0; /* unknown */
+  crab::variable_type type(crab::UNK_TYPE, 0);
   switch (rgnInfo.getType()) {
   case region_type_t::INT_REGION:
-    type = ARR_INT_TYPE;
-    bitwidth = rgnInfo.getBitwidth();
+    type = crab::variable_type(ARR_INT_TYPE, 0);
     break;
   case region_type_t::BOOL_REGION:
-    type = ARR_BOOL_TYPE;
-    bitwidth = 1;
+    type = crab::variable_type(ARR_BOOL_TYPE, 0);
     break;
   default:
     CLAM_ERROR("unsupported region type for making an array variable ",
 	       rgnInfo);
   }
-  return var_t(m_vfac.get(), type, bitwidth);
+  return var_t(m_vfac.get(), type);
 }
 
 var_t crabLitFactoryImpl::mkRegionVar(RegionInfo rgnInfo) {
@@ -275,11 +258,8 @@ var_t crabLitFactoryImpl::mkRegionVar(RegionInfo rgnInfo) {
     CLAM_ERROR("literal factory should not create a crab region variable"); 
   }
   
-  crab::variable_type type;
-  unsigned bitwidth = 0;
-  regionTypeToCrabType(rgnInfo, type, bitwidth);
-  
-  return var_t(m_vfac.get(), type, bitwidth);
+  crab::variable_type type = regionTypeToCrabType(rgnInfo);
+  return var_t(m_vfac.get(), type);
 }
 
 Optional<var_t> crabLitFactoryImpl::mkVar(const Value &v) {

@@ -142,6 +142,11 @@ public:
     return m_var.getValue();
   }
 
+  unsigned getBitwidth() const {
+    assert(getVar().get_type().is_integer());
+    return (getVar().get_type().get_integer_bitwidth());
+  }
+  
   bool isInt() const { return !isVar(); }
 
   number_t getInt() const {
