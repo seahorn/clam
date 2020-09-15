@@ -230,8 +230,8 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 
       // Sanity check
       if (!calleeRI.hasSameType(callerRI)) {
-	CLAM_WARN("Caller region info=" << callerRI
-		  << " different from callee region info=" << calleeRI);
+	CLAM_WARNING("Caller region info=" << callerRI
+		     << " different from callee region info=" << calleeRI);
       }
       
       bool is_consistent_callsite = calleeRI.hasSameType(callerRI);
