@@ -67,7 +67,7 @@ SeaDsaHeapAbstraction::getId(const Cell &c) {
   m_max_id += n->size();
   return id + offset;
 }
-
+  
 // compute and cache the set of read, mod and new reachable nodes from
 // globals and function's parameters and returns such that mod nodes
 // are a subset of the read nodes and the new nodes are disjoint from
@@ -87,39 +87,46 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
 
   seadsa_heap_abs_impl::NodeSet reach, retReach;
   seadsa_heap_abs_impl::argReachableNodes(f, G, reach, retReach);
-
+  
   RegionVec reads, mods, news;
   for (const Node *n : reach) {
     if (!n->isRead() && !n->isModified()) {
       continue;
     }
-    // Iterate over all cells of the node and extract regions from
-    // there.
-    for (auto &kv : n->types()) {
-      Cell c(const_cast<Node *>(n), kv.first);
-      RegionInfo r_info =
-          SeaDsaToRegion(c, m_dl,
-			 m_disambiguate_unknown,
-			 m_disambiguate_ptr_cast,
-			 m_disambiguate_external);
 
-      if (r_info.getType() != region_type_t::UNTYPED_REGION) {
-        Region rgn(mkRegion(c, r_info));
-	if (!retReach.count(n)) {
-	  // reachable from function arguments or globals
-	  reads.push_back(rgn);
-	  if (n->isModified()) {
-	    mods.push_back(rgn);
-	  } 
-	} else {
-	  // not reachable from function arguments or globals but
-	  // reachable from return
-	  if (n->isModified()) {
-	    news.push_back(rgn);
-	  } 
-	}
+    // Extract all fields from the node
+    std::vector<unsigned> fields;
+    if (n->isOffsetCollapsed()) {
+      fields.push_back(0);
+    } else {
+      for (auto &kv : n->types()) {
+	fields.push_back(kv.first);
       }
     }
+
+    // Create a region for each node's field
+    for (auto field: fields) {
+      Cell c(const_cast<Node *>(n), field);
+      RegionInfo r_info = SeaDsaToRegion(c, m_dl,
+					 m_disambiguate_unknown,
+					 m_disambiguate_ptr_cast,
+					 m_disambiguate_external);
+      Region rgn =  mkRegion(c, r_info);
+      if (!retReach.count(n)) {
+	// reachable from function arguments or globals
+	reads.push_back(rgn);
+	if (n->isModified()) {
+	  mods.push_back(rgn);
+	} 
+      } else {
+	  // not reachable from function arguments or globals but
+	  // reachable from return
+	if (n->isModified()) {
+	  news.push_back(rgn);
+	} 
+      }
+    }
+    
   }
   m_func_accessed[&f] = reads;
   m_func_mods[&f] = mods;
@@ -193,53 +200,49 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
     if (!n->isRead() && !n->isModified())
       continue;
 
-    // Iterate over all cells of the node and extract regions
-    for (auto &kv : n->types()) {
+    // Extract all fields from the node
+    std::vector<unsigned> fields;
+    if (n->isOffsetCollapsed()) {
+      fields.push_back(0);
+    } else {
+      for (auto &kv : n->types()) {
+	fields.push_back(kv.first);
+      }
+    }
 
-      Cell calleeC(const_cast<Node *>(n), kv.first);
+    for (auto field : fields) {
+      Cell calleeC(const_cast<Node *>(n), field);
       RegionInfo calleeRI =
           SeaDsaToRegion(calleeC, m_dl, m_disambiguate_unknown,
 			 m_disambiguate_ptr_cast, m_disambiguate_external);
 
-      if (calleeRI.getType() != region_type_t::UNTYPED_REGION) {
-        // Map the callee node to the node in the caller's callsite
-        Cell callerC = simMap.get(calleeC);
-        if (callerC.isNull()) {
-          // This can cause an inconsistency between the number of
-          // regions between a callsite and the callee's declaration.
-          CLAM_ERROR("caller cell cannot be mapped to callee cell");
-        }
+      // Map the callee node to the node in the caller's callsite
+      Cell callerC = simMap.get(calleeC);
+      if (callerC.isNull()) {
+	// This can cause an inconsistency between the number of
+	// regions between a callsite and the callee's declaration.
+	CLAM_ERROR("caller cell cannot be mapped to callee cell");
+      }
+      
+      RegionInfo callerRI =
+	SeaDsaToRegion(callerC, m_dl, m_disambiguate_unknown,
+		       m_disambiguate_ptr_cast, m_disambiguate_external);
 
-        RegionInfo callerRI =
-            SeaDsaToRegion(callerC, m_dl, m_disambiguate_unknown,
-			   m_disambiguate_ptr_cast, m_disambiguate_external);
-        /**
-         * FIXME: assert(calleeRI == callerRI) should always hold.
-         *
-         * However, there are sometimes inconsistencies between caller
-         * and callee at the callsite. This is possibly a problem in
-         * sea-dsa. For instance, we saw in the caller cells with
-         * offset 10 but size=10 while callee is offset 10 and
-         * size=12. This means that the caller is accessing
-         * out-of-bounds which shouldn't happen while the callee is
-         * ok. We temporary solve the problem by having a boolean that
-         * says whether caller and callee agree. Only consistent
-         * regions are exposed to clients.
-         **/
-        bool is_consistent_callsite = (calleeRI == callerRI);
-        Region reg(mkRegion(callerC, calleeRI));
-	if (!retReach.count(n)) {
-	  reads.push_back({reg, is_consistent_callsite});
-	  if (n->isModified()) {
-	    mods.push_back({reg, is_consistent_callsite});
-	  }	  
-	} else {
-          news.push_back({reg, is_consistent_callsite});	  
-	}
+      // Sanity check
+      if (!calleeRI.hasSameType(callerRI)) {
+	CLAM_WARN("Caller region info=" << callerRI
+		  << " different from callee region info=" << calleeRI);
+      }
+      
+      bool is_consistent_callsite = calleeRI.hasSameType(callerRI);
+      Region reg(mkRegion(callerC, callerRI));
+      if (!retReach.count(n)) {
+	reads.push_back({reg, is_consistent_callsite});
+	if (n->isModified()) {
+	  mods.push_back({reg, is_consistent_callsite});
+	}	  
       } else {
-        // if a callee's region is untyped then we should be ok
-        // because when we extract regions from the function
-        // declaration that region should be untyped.
+	news.push_back({reg, is_consistent_callsite});	  
       }
     }
   }
@@ -485,12 +488,7 @@ SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn, const llvm::Value &V)
   RegionInfo r_info =
       SeaDsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
 		     m_disambiguate_external);
-
-  if (r_info.getType() == region_type_t::UNTYPED_REGION) {
-    return Region();
-  } else {
-    return mkRegion(c, r_info);
-  }
+  return mkRegion(c, r_info);
 }
 
 Region SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
@@ -513,9 +511,7 @@ Region SeaDsaHeapAbstraction::getRegion(const llvm::Function &fn,
       RegionInfo r_info =
           SeaDsaToRegion(c, m_dl, m_disambiguate_unknown, m_disambiguate_ptr_cast,
 			 m_disambiguate_external);
-      if (r_info.getType() != region_type_t::UNTYPED_REGION) {
-        return mkRegion(c, r_info);
-      }
+      return mkRegion(c, r_info);
     }
   }
   return Region();
