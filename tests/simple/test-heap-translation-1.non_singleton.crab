@@ -28,8 +28,8 @@ _call:
   @V_4[0...3] := 5;
   @V_9[0...3] := 3;
   @V_11[0...39] := 0;
-; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call foo\(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)
-  (@V_4,@V_9,@V_11)= call foo(@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\));
+; CHECK: \(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)= call foo\(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)
+  (@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\))= call foo(@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\));
   .0 = 0;
   goto _.0;
 _.0:
@@ -61,8 +61,8 @@ __@bb_9:
   assume(-.0 <= -10);
   goto _call4;
 _call4:
-; CHECK: \(@V_[0-9]+,@V_[0-9]+,@V_[0-9]+\)= call bar\(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)
-  (@V_4,@V_9,@V_11)= call bar(@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\));
+; CHECK: \(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)= call bar\(@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\),@V_[0-9]+:arr\(int\)\)
+  (@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\))= call bar(@V_4:arr\(int\),@V_9:arr\(int\),@V_11:arr\(int\));
   _17 = .0+-1;
   _19 = array_load(@V_11,@V_36,sz=4);
   _20 = (_19 <=_u 6);
