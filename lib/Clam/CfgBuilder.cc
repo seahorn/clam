@@ -2866,6 +2866,16 @@ void CfgBuilderImpl::buildCfg() {
         MemoryInitializer MI(m_lfac, m_mem, m_func_regions, *m_dl, m_params, m_func, entry);
         MI.InitGlobalMemory(gv, *(gv.getInitializer()), 0);
       }
+
+      if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+	Region rgn = getRegion(m_mem, m_func_regions, m_params, m_func, gv);
+	crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
+	assert(gv_lit && gv_lit->isVar());
+	assert(gv_lit->getVar().get_type().is_reference());
+	// Add assumption global variable is not null
+	entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));
+	entry.assume_ref(ref_cst_t::mk_le_null(gv_lit->getVar()).negate());
+      }
     }
   }
 
@@ -2941,14 +2951,25 @@ void CfgBuilderImpl::buildCfg() {
   if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
     // Initialize regions
     basic_block_t *entry = lookup(m_func.getEntryBlock());
-    auto inRegions = getInputRegions(m_mem, m_params, m_func);
-    auto inOutRegions = getInputOutputRegions(m_mem, m_params, m_func);
-    RegionSet reachRegions(inRegions.begin(), inRegions.end());
-    reachRegions.insert(inOutRegions.begin(), inOutRegions.end());
+
+    RegionSet notOwnRegions;   
+    if (!m_func.getName().equals("main")) {
+      // Any region that is input or input/ouput to the function
+      // should be initialized by some function's caller, except if
+      // main.
+      auto inRegions = getInputRegions(m_mem, m_params, m_func);
+      auto inOutRegions = getInputOutputRegions(m_mem, m_params, m_func);
+      notOwnRegions.insert(inRegions.begin(), inRegions.end());
+      notOwnRegions.insert(inOutRegions.begin(), inOutRegions.end());
+    }
     CRAB_LOG("cfg-mem", llvm::errs() << "Regions for " << m_func.getName() << "{";);
+    // FIXME: we might call region_init twice on the same region if
+    // the region is an output parameter of a function call and used
+    // in the caller after.
+    
     for (auto rgn: m_func_regions) {
       CRAB_LOG("cfg-mem", llvm::errs() << rgn << ";";);
-      if (reachRegions.count(rgn) <= 0) {
+      if (notOwnRegions.count(rgn) <= 0) {
 	entry->set_insert_point_front();	
 	entry->region_init(m_lfac.mkRegionVar(rgn));
       }
