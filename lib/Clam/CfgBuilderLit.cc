@@ -131,14 +131,14 @@ var_t crabLitFactoryImpl::mkArrayVar(Region rgn) {
     return it->second;
   }
   
-  crab::variable_type type(crab::UNK_TYPE, 0);
+  crab::variable_type type(crab::UNK_TYPE);
   auto info = rgn.getRegionInfo();
   switch (info.getType()) {
   case region_type_t::INT_REGION:
-    type = crab::variable_type(ARR_INT_TYPE, 0);
+    type = crab::variable_type(ARR_INT_TYPE);
     break;
   case region_type_t::BOOL_REGION:
-    type = crab::variable_type(ARR_BOOL_TYPE, 0);    
+    type = crab::variable_type(ARR_BOOL_TYPE);    
     break;
   default:
     CLAM_ERROR("unsupported region type ", rgn);
@@ -150,7 +150,7 @@ var_t crabLitFactoryImpl::mkArrayVar(Region rgn) {
 }
 
 crab::variable_type crabLitFactoryImpl::regionTypeToCrabType(RegionInfo rgnInfo) {
-  crab::variable_type type(crab::UNK_TYPE, 0);  
+  crab::variable_type type(crab::UNK_TYPE);  
   switch (rgnInfo.getType()) {
   case region_type_t::INT_REGION:
     type = crab::variable_type(REG_INT_TYPE, rgnInfo.getBitwidth());
@@ -161,7 +161,9 @@ crab::variable_type crabLitFactoryImpl::regionTypeToCrabType(RegionInfo rgnInfo)
   case region_type_t::PTR_REGION:
     type = crab::variable_type(REG_REF_TYPE, 32);
     break;
-  //  case region_type_t::UNTYPED_REGION:
+  case region_type_t::UNTYPED_REGION:
+    type = crab::variable_type(REG_UNKNOWN_TYPE);
+    break;
   default: 
     CLAM_ERROR("unsupported region type ", rgnInfo);
   }
@@ -204,7 +206,7 @@ var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
     CLAM_ERROR("Memory region does not belong to a global singleton");
   }
 
-  crab::variable_type type(crab::UNK_TYPE, 0);  
+  crab::variable_type type(crab::UNK_TYPE);  
   switch (rgn.getRegionInfo().getType()) {
   case region_type_t::INT_REGION:
     type = crab::variable_type(INT_TYPE, bitwidth);
@@ -238,13 +240,13 @@ var_t crabLitFactoryImpl::mkArrayVar(RegionInfo rgnInfo) {
     CLAM_ERROR("literal factory should not create a crab array variable"); 
   }
   
-  crab::variable_type type(crab::UNK_TYPE, 0);
+  crab::variable_type type(crab::UNK_TYPE);
   switch (rgnInfo.getType()) {
   case region_type_t::INT_REGION:
-    type = crab::variable_type(ARR_INT_TYPE, 0);
+    type = crab::variable_type(ARR_INT_TYPE);
     break;
   case region_type_t::BOOL_REGION:
-    type = crab::variable_type(ARR_BOOL_TYPE, 0);
+    type = crab::variable_type(ARR_BOOL_TYPE);
     break;
   default:
     CLAM_ERROR("unsupported region type for making an array variable ",
