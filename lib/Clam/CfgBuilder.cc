@@ -706,8 +706,6 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
    */
   bool AllUsesAreNonTrackMem(Value *V) const;
 
-  void addNonNullAssumption(var_t ref);
-  
   /* Most of the translation work happens in these methods */
   void doBinOp(unsigned op, var_t lhs, lin_exp_t op1, lin_exp_t op2);
   void doArithmetic(crab_lit_ref_t lit, BinaryOperator &i);
@@ -902,11 +900,6 @@ bool CrabIntraBlockBuilder::AllUsesAreNonTrackMem(Value *V) const {
   return true;
 }
 
-void CrabIntraBlockBuilder::addNonNullAssumption(var_t ref) {
-  assert(ref.get_type().is_reference());
-  m_bb.assume_ref(ref_cst_t::mk_le_null(ref).negate());
-}
-  
 void CrabIntraBlockBuilder::doBinOp(unsigned op, var_t lhs, lin_exp_t op1,
 				    lin_exp_t op2) {
   switch (op) {
@@ -1664,7 +1657,6 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
     if (isReference(I, m_params)) {
       Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
       m_bb.make_ref(lit->getVar(), m_lfac.mkRegionVar(rgn));
-      addNonNullAssumption(lit->getVar());
     } else if (isTracked(I, m_params)) {
       // -- havoc return value
       havoc(lit->getVar(), m_bb, m_params.include_useless_havoc);
@@ -2257,14 +2249,9 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
   if (isReference(I, m_params)) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
-
-    /// IMPORTANT: even if the region is unknown we want to add the
-    /// assumption about the reference. This can happen if the current
-    /// function doesn't use the region but pass it a callee who does
-    /// use it.
-    
     m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn));
-    addNonNullAssumption(lhs->getVar());    
+    // ASSUMPTION: pointers allocated in the stack cannot be null
+    m_bb.assume_ref(ref_cst_t::mk_le_null(lhs->getVar()).negate());
   } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
 	     !rgn.isUnknown() && rgn.getRegionInfo().containScalar()) {
     // Memory allocated in the stack is uninitialized.
@@ -2872,8 +2859,8 @@ void CfgBuilderImpl::buildCfg() {
 	crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
 	assert(gv_lit && gv_lit->isVar());
 	assert(gv_lit->getVar().get_type().is_reference());
-	// Add assumption global variable is not null
 	entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));
+	// ASSUMPTION: global variables are not null
 	entry.assume_ref(ref_cst_t::mk_le_null(gv_lit->getVar()).negate());
       }
     }
