@@ -55,6 +55,9 @@
 #include "CfgBuilderMemRegions.hh"
 #include "CfgBuilderUtils.hh"
 
+#include "seadsa/Global.hh"
+#include "seadsa/Graph.hh"
+
 #include "clam/CfgBuilder.hh"
 #include "clam/DummyHeapAbstraction.hh"
 #include "clam/HeapAbstraction.hh"       
@@ -203,9 +206,13 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
   case CmpInst::ICMP_NE: {
     ref_cst_t res;
     if (ref0->isVar() && lfac.isRefNull(ref1)) {
-      res = ref_cst_t::mk_not_null(ref0->getVar());
+      //res = ref_cst_t::mk_not_null(ref0->getVar());
+      // XX: disequalities are not good for crab
+      res = ref_cst_t::mk_gt_null(ref0->getVar());
     } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
-      res = ref_cst_t::mk_not_null(ref1->getVar());
+      //res = ref_cst_t::mk_not_null(ref1->getVar());
+      // XX: disequalities are not good for crab      
+      res = ref_cst_t::mk_gt_null(ref1->getVar());
     } else if (ref0->isVar() && ref1->isVar()) {
       res = ref_cst_t::mk_not_eq(ref0->getVar(), ref1->getVar());
     } else {
@@ -220,8 +227,8 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
       // ref0 < null      
       res =  ref_cst_t::mk_lt_null(ref0->getVar());
     } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
-      // null < ref1 <--> negate(ref1 <= null) <--> ref1 > null
-      res = ref_cst_t::mk_le_null(ref1->getVar()).negate();
+      // null < ref1
+      res = ref_cst_t::mk_gt_null(ref1->getVar());
     } else if (ref0->isVar() && ref1->isVar()) {
       // ref0 < ref1      
       res = ref_cst_t::mk_lt(ref0->getVar(), ref1->getVar());
@@ -237,8 +244,8 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
       // ref0 <= null
       res = ref_cst_t::mk_le_null(ref0->getVar());      
     } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
-      // null <= ref1 <--> negate(ref1 < null) <--> ref1 >= null
-      res = ref_cst_t::mk_lt_null(ref1->getVar()).negate();
+      // null <= ref1 
+      res = ref_cst_t::mk_ge_null(ref1->getVar());
     } else if (ref0->isVar() && ref1->isVar()) {
       // ref0 <= ref1
       res = ref_cst_t::mk_le(ref0->getVar(), ref1->getVar());
@@ -664,6 +671,9 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   unsigned int m_object_id;
   bool m_has_seahorn_fail;
   const CrabBuilderParams &m_params;
+  // global variables accessed by a function and its callees
+  // a pointer in case no globals found for some unexpected reason
+  const DenseMap<const Function*, std::vector<const Value*>> &m_func_globals;
   /****
    * Here state that must survive through future invocations to
    * CrabIntraBlockBuilder.
@@ -676,6 +686,7 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   DenseMap<const statement_t *, const Instruction *> &m_rev_map;
   // HACK: to translate to strong updates with SINGLETON_MEMORY
   RegionSet &m_regions_with_store;
+  
 
   unsigned fieldOffset(const StructType *t, unsigned field) const;
   uint64_t storageSize(const Type *t) const;
@@ -726,6 +737,7 @@ public:
       crabLitFactory &lfac, HeapAbstraction &mem, 
       const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
       const CrabBuilderParams &params,
+      const DenseMap<const Function*, std::vector<const Value*>> &func_globals,
       RegionSet &func_regions,
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       RegionSet &regions_with_store,
@@ -759,13 +771,14 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
   crabLitFactory &lfac, HeapAbstraction &mem, 
   const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
   const CrabBuilderParams &params,
+  const DenseMap<const Function*, std::vector<const Value*>> &func_globals,
   RegionSet &func_regions,
   llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
   RegionSet &regions_with_store,
   DenseMap<const GetElementPtrInst *, var_t> &gep_map)
   : m_lfac(lfac), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb),
     m_object_id(0), m_has_seahorn_fail(false), m_params(params),
-    m_func_regions(func_regions),
+    m_func_globals(func_globals), m_func_regions(func_regions),
     m_gep_map(gep_map), m_rev_map(rev_map), m_regions_with_store(regions_with_store) {}
   
 unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
@@ -1313,7 +1326,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
     if (!AllUsesAreBrInst(I)) {
       Optional<ref_cst_t> ref_cst = cmpInstToCrabRef(I, m_lfac, false/*not negated*/);
       if (ref_cst.hasValue()) {
-	m_bb.assume_ref(ref_cst.getValue());
+	m_bb.bool_assign(lit->getVar(), ref_cst.getValue());
       } else {
 	havoc(lit->getVar(), m_bb, m_params.include_useless_havoc);	
       }
@@ -2251,7 +2264,7 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
     assert(lhs && lhs->isVar());
     m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn));
     // ASSUMPTION: pointers allocated in the stack cannot be null
-    m_bb.assume_ref(ref_cst_t::mk_le_null(lhs->getVar()).negate());
+    m_bb.assume_ref(ref_cst_t::mk_gt_null(lhs->getVar()));
   } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
 	     !rgn.isUnknown() && rgn.getRegionInfo().containScalar()) {
     // Memory allocated in the stack is uninitialized.
@@ -2276,12 +2289,11 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
  *     o := foo(i1,...,i_n)
  *
  * into a crab callsite or intrinsic
- *     (o,a_o1,...,a_om) := foo(i1,...,in,a_i1,...,a_in) where
- *
+ *     (o,a_o1,...,a_om) := foo(i1,...,in,g1,...,gk,a_i1,...,a_in) where
+ *    - g1,...,gk are the globals accessed by foo and its callees.
+ *      They are always read-only.
  *    - a_i1,...,a_in are read-only and modified regions by foo.
  *    - a_o1,...,a_om are modified and new regions created inside foo.
- *
- * The regions are actually translated to array variables.
  **/
 void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   CallSite CS(&I);
@@ -2298,6 +2310,22 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
     inputs.push_back(normalizeFuncParamOrRet(*v, m_bb, m_lfac));
   }
 
+  if (m_params.precision_level == CrabBuilderPrecision::MEM) {      
+    // -- add the globals accessed by the function and its callees
+    auto it = m_func_globals.find(calleeF);
+    if (it !=  m_func_globals.end()) {
+      for (auto gv: it->second) {
+	// TODO: we can filter out those which are unique scalars.
+	crab_lit_ref_t ref = m_lfac.getLit(*gv);
+	if (!ref->isVar() || !ref->isRef()) {
+	  // this shouldn't happen
+	  continue;
+	}
+	inputs.push_back(ref->getVar());
+      }
+    }
+  }
+  
   // -- add the return value of the llvm calliste: o
   if (ShouldCallSiteReturn(I, m_params)) {
     if (DoesCallSiteReturn(I, m_params)) {
@@ -2433,6 +2461,7 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   }
 
   if (isAllocationFn(&I, m_tli)) {
+    // TODO: probably also if callee->returnDoesNotAlias()
     doAllocFn(I);
     return;
   }
@@ -2467,6 +2496,7 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
       assert(lhs && lhs->isVar());
       havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
     }
+    
     // -- havoc all modified regions by the callee
     // Note that even if the code is not available for the callee, the
     // pointer analysis might be able to model its pointer semantics.
@@ -2522,10 +2552,7 @@ namespace clam {
 
 class CfgBuilderImpl {
 public:
-  CfgBuilderImpl(const llvm::Function &func, llvm_variable_factory &vfac,
-                 HeapAbstraction &mem, 
-                 llvm::TargetLibraryInfoWrapperPass *tli,
-                 const CrabBuilderParams &params);
+  CfgBuilderImpl(const llvm::Function &func, CrabBuilderManager &man);
 
   void buildCfg();
 
@@ -2549,11 +2576,11 @@ public:
 
   // Most crab statements have back pointers to LLVM operands so it
   // is always possible to find the corresponding LLVM
-  // instruction. Array crab operations are an exception.
+  // instruction. Array/Region crab operations are an exception.
   //
-  // This method maps an **array** crab statement to its
-  // corresponding llvm instruction. Return null if the the array
-  // instruction is not mapped to a LLVM instruction.
+  // This method maps (partially) a crab statement to its
+  // corresponding llvm instruction. Return null if the mapping cannot
+  // be found.
   const llvm::Instruction *getInstruction(const statement_t &s) const;
 
 private:
@@ -2598,7 +2625,7 @@ private:
   //
   // In most of the crab statements, their operands have back
   // pointers to their corresponding LLVM values. However, this is
-  // not the case for array instructions. For those case, we keep
+  // not the case for array or region instructions. For those case, we keep
   // explicitly the reverse mapping.
   llvm::DenseMap<const statement_t *, const llvm::Instruction *> m_rev_map;
   // information about LLVM pointers
@@ -2606,7 +2633,10 @@ private:
   llvm::TargetLibraryInfoWrapperPass *m_tli;
   // cfg builder parameters
   const CrabBuilderParams &m_params;
-
+  // global variables accessed by the function and its callees
+  // a pointer in case no globals found for some unexpected reason
+  const DenseMap<const Function*, std::vector<const Value*>> &m_globals;
+  
   /// Helpers for buildCfg
 
   // Given a llvm basic block return its corresponding crab basic block
@@ -2630,17 +2660,18 @@ private:
                                               const llvm::BasicBlock *dst);
 }; // end class CfgBuilderImpl
 
-CfgBuilderImpl::CfgBuilderImpl(const Function &func,
-                               llvm_variable_factory &vfac,
-                               HeapAbstraction &mem, 
-                               TargetLibraryInfoWrapperPass *tli,
-                               const CrabBuilderParams &params)
+CfgBuilderImpl::CfgBuilderImpl(const Function &func, CrabBuilderManager &man)
     : m_is_cfg_built(false),
       // HACK: it's safe to remove constness because we know that the
       // Builder never modifies the bitcode.
-      m_func(const_cast<Function &>(func)), m_lfac(vfac, params), m_mem(mem),
+      m_func(const_cast<Function &>(func)),
+      m_lfac(man.getVarFactory(), man.getCfgBuilderParams()),
+      m_mem(man.getHeapAbstraction()),
       m_cfg(nullptr), m_id(0),
-      m_dl(&(func.getParent()->getDataLayout())), m_tli(tli), m_params(params) {
+      m_dl(&(func.getParent()->getDataLayout())),
+      m_tli(&(man.getTLIWrapper())),
+      m_params(man.getCfgBuilderParams()),
+      m_globals(man.m_globals) {
   m_cfg =
       std::make_unique<cfg_t>(makeCrabBasicBlockLabel(&m_func.getEntryBlock()));
 }
@@ -2861,7 +2892,7 @@ void CfgBuilderImpl::buildCfg() {
 	assert(gv_lit->getVar().get_type().is_reference());
 	entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));
 	// ASSUMPTION: global variables are not null
-	entry.assume_ref(ref_cst_t::mk_le_null(gv_lit->getVar()).negate());
+	entry.assume_ref(ref_cst_t::mk_gt_null(gv_lit->getVar()));
       }
     }
   }
@@ -2884,7 +2915,7 @@ void CfgBuilderImpl::buildCfg() {
       continue;
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
-    CrabIntraBlockBuilder v(m_lfac, m_mem, m_dl, tli, *bb, m_params,
+    CrabIntraBlockBuilder v(m_lfac, m_mem, m_dl, tli, *bb, m_params, m_globals,
 			    m_func_regions, m_rev_map, regions_with_store, gep_map);
                       
     v.visit(B);
@@ -3074,23 +3105,21 @@ void CfgBuilderImpl::buildCfg() {
  *
  * into a crab function declaration
  *
- *   o, a_o1,...,a_om foo (i1,...,in,a_i1,...,a_in) where
+ *   o, a_o1,...,a_om foo (i1,...,in,g1,...,gk,a_i1,...,a_in) where
  *
  *   - o is the **returned value** of the function (translation
  *     ensures there is always one return instruction and the
  *     returned value is a variable, i.e., cannot be a
  *     constant).
- *
+ *   - g1,...,gk are the globals accessed by foo and its callees.
+ *     They are always read-only.
  *   - a_i1,...,a_in are read-only and modified regions in function foo
- *
  *   - a_o1,....,a_om are modified and new regions created inside
  *     foo.
  *
  * It ensures that the set {a_i1,...,a_in} is disjoint from
  * {a_o1,....,a_om}, otherwise crab will complain.
  *
- *  The regions are actually translated to either crab array
- *  variables.
  **/
 void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
   std::vector<var_t> inputs, outputs;
@@ -3159,7 +3188,24 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
   }
   
   if (!m_func.getName().equals("main")) {    
-    // -- Purify the function
+    //// -- Purify the function
+
+    if (m_params.precision_level == CrabBuilderPrecision::MEM) {    
+      // -- add the globals accessed by the function and its callees
+      auto it = m_globals.find(&m_func);
+      if (it !=  m_globals.end()) {
+	for (auto gv: it->second) {
+	  // TODO: we can filter out those which are unique scalars.
+	  crab_lit_ref_t ref = m_lfac.getLit(*gv);
+	  if (!ref->isVar() || !ref->isRef()) {
+	    // this shouldn't happen
+	    continue;
+	  }
+	  inputs.push_back(ref->getVar());
+	}
+      }
+    }
+    
     RegionVec inRegions = getInputRegions(m_mem, m_params, m_func);
     RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, m_func);
     RegionVec outRegions = getOutputRegions(m_mem, m_params, m_func);
@@ -3307,11 +3353,8 @@ void CrabBuilderParams::write(raw_ostream &o) const {
 
 /* CFG Builder class */
 CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManager &man)
-    : m_impl(std::make_unique<CfgBuilderImpl>(
-          func, man.getVarFactory(), man.getHeapAbstraction(),
-          &(man.getTLIWrapper()),
-          man.getCfgBuilderParams())),
-      m_ls(nullptr) {}
+  : m_impl(std::make_unique<CfgBuilderImpl>(func, man)),
+    m_ls(nullptr) {}
 
 CfgBuilder::~CfgBuilder() {}
 
@@ -3382,6 +3425,39 @@ CrabBuilderManager::~CrabBuilderManager() {}
 
 CrabBuilderManager::CfgBuilderPtr
 CrabBuilderManager::mkCfgBuilder(const Function &f) {
+  auto extractGlobals = [this](const Module &M) {
+       if (m_mem->getClassId() != HeapAbstraction::ClassId::SEA_DSA) {
+	 CLAM_WARNING(
+	     "Memory analysis does not support extraction of globals used by a function");
+	 return;
+       }
+       seadsa::GlobalAnalysis *dsa =
+	 static_cast<SeaDsaHeapAbstraction *>(&*m_mem)->getSeaDsa();
+       for (auto &F: M) {
+	 if (F.empty()) continue; // isDeclaration, Intrinsics, etc.
+	 std::vector<const Value*> globals_vec;
+	 if (dsa->hasGraph(F)) {
+	   auto &graph = dsa->getGraph(F);
+	   globals_vec.reserve(std::distance(graph.globals_begin(), graph.globals_end()));
+	   for (auto &kv: graph.globals()) {
+	     if (isa<GlobalVariable>(kv.first)) {
+	       globals_vec.push_back(kv.first);
+	     }
+	   }
+	 }
+	 m_globals[&F] = globals_vec;
+       }};
+
+  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    // Compute only once and right before the first function is
+    // translated
+    static bool globals_computed = false;
+    if (!globals_computed) {
+      extractGlobals(*(f.getParent()));
+      globals_computed = true;
+    }
+  }
+  
   auto it = m_cfg_builder_map.find(&f);
   if (it == m_cfg_builder_map.end()) {
     CfgBuilderPtr builder(new CfgBuilder(f, *this));

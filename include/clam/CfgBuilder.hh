@@ -135,7 +135,7 @@ public:
   llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
 
   HeapAbstraction &getHeapAbstraction();
-
+  
 private:
   // User-definable parameters for building the Crab CFGs
   CrabBuilderParams m_params;
@@ -148,6 +148,9 @@ private:
   variable_factory_t m_vfac;
   // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
+  // Global variables accessed by the function and its callees
+  friend class CfgBuilderImpl; // to access to m_globals    
+  llvm::DenseMap<const llvm::Function*, std::vector<const llvm::Value*>> m_globals;
 };
 
 } // end namespace clam

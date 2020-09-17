@@ -90,6 +90,10 @@ public:
     return HeapAbstraction::ClassId::SEA_DSA;
   }
 
+  seadsa::GlobalAnalysis *getSeaDsa() {
+    return m_dsa;
+  }
+  
   // Use F and V to get sea-dsa cell associated to it.
   virtual Region
   getRegion(const llvm::Function &F, const llvm::Value &V) override;
