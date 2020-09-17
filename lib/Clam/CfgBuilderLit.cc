@@ -52,13 +52,15 @@ public:
   var_t mkScalarVar(Region rgn);
   
 
-  // Common accessors to crab_lit_ref_t subclasses.
+  // Unsafe common accessors to crab_lit_ref_t subclasses.
   bool isBoolTrue(const crab_lit_ref_t ref) const;
 
   bool isBoolFalse(const crab_lit_ref_t ref) const;
 
   bool isRefNull(const crab_lit_ref_t ref) const;
 
+  var_or_num_t getTypedConst(const crab_lit_ref_t ref) const;
+  
   number_t getIntCst(const crab_lit_ref_t ref) const;
 
   lin_exp_t getExp(const crab_lit_ref_t ref) const;
@@ -297,6 +299,34 @@ bool crabLitFactoryImpl::isRefNull(const crab_lit_ref_t ref) const {
   return lit->isNull();
 }
 
+var_or_num_t crabLitFactoryImpl::getTypedConst(const crab_lit_ref_t ref) const {
+  if (ref->isBool()) {
+    auto b = std::static_pointer_cast<const crabBoolLit>(ref);
+    if (b->isConst()) {
+      return b->getTypedConst();
+    } else {
+      CLAM_ERROR("Called getTypedConst on a non-constant literal");
+    }
+  } else if (ref->isInt()) {
+    auto i = std::static_pointer_cast<const crabIntLit>(ref);
+    if (i->isInt()) {
+      return i->getTypedConst();
+    } else {
+      CLAM_ERROR("Called getTypedConst on a non-constant literal");
+    }
+  } else if (ref->isRef()) {
+    auto r = std::static_pointer_cast<const crabRefLit>(ref);
+    if (r->isNull()) {
+      return r->getTypedConst();
+    } else {
+      CLAM_ERROR("called getTypedConst on a non-constant literal");
+    }
+  } else { /*unreachable*/
+    CLAM_ERROR("called getTypedConst on an unexpected literal");
+  }
+}
+
+  
 lin_exp_t crabLitFactoryImpl::getExp(const crab_lit_ref_t ref) const {
   if (!ref || !ref->isInt())
     CLAM_ERROR("Literal is not an integer");
@@ -355,10 +385,11 @@ Optional<crabIntLit> crabLitFactoryImpl::getIntLit(const Value &v) {
   if (isInteger(v)) {
     if (const ConstantInt *c = dyn_cast<const ConstantInt>(&v)) {
       // -- constant integer
+      unsigned bitwidth = c->getType()->getIntegerBitWidth();      
       bool is_bignum;
       ikos::z_number n = getIntConstant(c, m_params, is_bignum);
       if (!is_bignum) {
-        return crabIntLit(n);
+        return crabIntLit(n, bitwidth);
       }
     } else if (!isa<ConstantExpr>(v)) {
       // -- integer variable
@@ -439,6 +470,10 @@ bool crabLitFactory::isRefNull(const crab_lit_ref_t ref) const {
   return m_impl->isRefNull(ref);
 }
 
+var_or_num_t crabLitFactory::getTypedConst(const crab_lit_ref_t ref) const {
+  return m_impl->getTypedConst(ref);
+}
+  
 lin_exp_t crabLitFactory::getExp(const crab_lit_ref_t ref) const {
   return m_impl->getExp(ref);
 }

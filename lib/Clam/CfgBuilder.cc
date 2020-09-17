@@ -2109,37 +2109,25 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
     // -- value is an integer/bool -> add array statement
     StoreIntoSingletonMem(I, m_lfac.mkArrayVar(rgn), val, rgn);
   } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+
+    //if (rgn.getRegionInfo().isSequence()) {
+    /// TODO: translate to store_to_arr_ref. This might increase precision.
+    /// 
+    /// The translation needs to add an ref_to_int statement if the
+    /// stored value is a pointer.
+    /// 
+    /// uint64_t elem_size = clam::storageSize(I.getValueOperand()->getType(), *m_dl);
+    /// assert(elem_size > 0);
+    ///
+    // }
     
-    if (!rgn.getRegionInfo().isSequence()) {
-      if (val->isVar()) {
-	m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), val->getVar());
-      } else if (val->isBool()) {
-	// var_t normalized_val = m_lfac.mkBoolVar();
-	// m_bb.bool_assign(normalized_val, m_lfac.isBoolTrue(val)
-	// 		 ? lin_cst_t::get_true()
-	// 		 : lin_cst_t::get_false());
-	m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
-			  /* normalized_val */
-			  m_lfac.isBoolTrue(val) ? number_t(1) : number_t(0));	
-      } else if (val->isInt()) {
-	m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), m_lfac.getIntCst(val));	
-      } else if (val->isRef() && m_lfac.isRefNull(val)) {
-	// TODO: we ignore for now the case if we store a null
-	// pointer.  We should create a fresh reference and add a
-	// constraint saying is equal to null.
-	CLAM_WARNING("TODO Missing a store of a null value " << I);
-      } else { /* unreachable */
-      } 
+    if (val->isVar()) {
+      m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
+			val->getVar());
     } else {
-      /// TODO: translate to store_to_arr_ref
-      /// 
-      /// The translation needs to add an ref_to_int statement if the
-      /// stored value is a pointer.
-      /// 
-      /// uint64_t elem_size = clam::storageSize(I.getValueOperand()->getType(), *m_dl);
-      /// assert(elem_size > 0);
-      ///
-      CLAM_WARNING("TODO Missing a store to a sequence region " << I);
+      // val is a constant
+      m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
+			m_lfac.getTypedConst(val));
     }
   }
 }
@@ -2238,19 +2226,17 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
     LoadFromSingletonMem(I, lhs->getVar(), m_lfac.mkArrayVar(rgn), rgn);
     return;
   } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-    if (!rgn.getRegionInfo().isSequence()) {
-      m_bb.load_from_ref(lhs->getVar(), ptr->getVar(), m_lfac.mkRegionVar(rgn));
-      return;
-    } else {
-      /// TODO: translate to load_from_arr_ref
-      /// 
-      /// The translation needs to add an int_to_ref statement if the
-      /// loaded value is a pointer.
-      
-      /// uint64_t elem_size = clam::storageSize(I.getPointerOperand()->getType(), *m_dl);
-      /// assert(elem_size > 0);
-      CLAM_WARNING("TODO Missing a load from a sequence region " << I);
-    }
+    // if (rgn.getRegionInfo().isSequence()) {
+    /// TODO: translate to load_from_arr_ref. This might increase precision.
+    /// 
+    /// The translation needs to add an int_to_ref statement if the
+    /// loaded value is a pointer.
+    /// uint64_t elem_size = clam::storageSize(I.getPointerOperand()->getType(), *m_dl);
+    /// assert(elem_size > 0);
+    // }
+    
+    m_bb.load_from_ref(lhs->getVar(), ptr->getVar(), m_lfac.mkRegionVar(rgn));
+    return;
   }
 
   havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);

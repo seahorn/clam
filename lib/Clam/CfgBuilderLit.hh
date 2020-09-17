@@ -81,6 +81,16 @@ public:
     return !m_cst;
   }
 
+  var_or_num_t getTypedConst() const {
+    assert(isConst());
+    
+    if (isTrue()) {
+      return var_or_num_t(number_t(1), crab::variable_type(crab::BOOL_TYPE));
+    } else {
+      return var_or_num_t(number_t(0), crab::variable_type(crab::BOOL_TYPE));
+    }
+  }
+  
   void write(crab::crab_os &out) const override {
     if (isVar()) {
       out << getVar();
@@ -112,6 +122,11 @@ public:
 
   bool isNull() const { return !isVar(); }
 
+  var_or_num_t getTypedConst() const {
+    assert(isNull());
+    return var_or_num_t(number_t(0), crab::variable_type(crab::REF_TYPE));
+  }
+  
   void write(crab::crab_os &out) const override {
     if (isVar()) {
       out << getVar();
@@ -127,12 +142,15 @@ class crabIntLit : public crabLit {
 
   number_t m_num; // only considered if !m_var.hasValue()
   llvm::Optional<var_t> m_var;
-
+  unsigned m_bitwidth;
+  
   // If z_number != number_t we assume that number_t has a
   // constructor for z_number.
-  explicit crabIntLit(ikos::z_number n) : crabLit(CRAB_LITERAL_INT), m_num(n) {}
+  explicit crabIntLit(ikos::z_number n, unsigned bitwidth)
+    : crabLit(CRAB_LITERAL_INT), m_num(n), m_bitwidth(bitwidth) {}
 
-  explicit crabIntLit(var_t v) : crabLit(CRAB_LITERAL_INT), m_var(v) {}
+  explicit crabIntLit(var_t v):
+    crabLit(CRAB_LITERAL_INT), m_var(v), m_bitwidth(v.get_type().get_integer_bitwidth()) {}
 
 public:
   bool isVar() const override { return m_var.hasValue(); }
@@ -142,13 +160,17 @@ public:
     return m_var.getValue();
   }
 
+  bool isInt() const { return !isVar(); }
+  
+  var_or_num_t getTypedConst() const {
+    assert(isInt());
+    return var_or_num_t(getInt(), crab::variable_type(crab::INT_TYPE, getBitwidth()));
+  }
+
   unsigned getBitwidth() const {
-    assert(getVar().get_type().is_integer());
-    return (getVar().get_type().get_integer_bitwidth());
+    return m_bitwidth;
   }
   
-  bool isInt() const { return !isVar(); }
-
   number_t getInt() const {
     assert(isInt());
     return m_num;
@@ -216,8 +238,12 @@ public:
   bool isBoolTrue(const crab_lit_ref_t ref) const;
   bool isBoolFalse(const crab_lit_ref_t ref) const;
   bool isRefNull(const crab_lit_ref_t ref) const;
+  /** error if the literal is not an integer **/
   lin_exp_t getExp(const crab_lit_ref_t ref) const;
-  number_t getIntCst(const crab_lit_ref_t ref) const;
+  /** error if the literal is not a constant **/
+  var_or_num_t getTypedConst(const crab_lit_ref_t ref) const;
+  /** error if the literal is not an integer constant **/  
+  number_t getIntCst(const crab_lit_ref_t ref) const;  
 
 private:
   crabLitFactoryImpl *m_impl;
