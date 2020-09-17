@@ -5,6 +5,7 @@
 // CHECK: ^0  Number of total warning checks$
 
 extern void __CRAB_assert(int);
+extern void __CRAB_assume(int);
 extern int int_nd(void);
 
 typedef struct node{
@@ -14,13 +15,14 @@ typedef struct node{
 } *List;
 
 #define N 10000
-#define NOT_NULL(PTR) PTR <= 0
 
 List mk_list(int n, int*p, int*q) {
   List l = 0;
   
   /* first loop unrolling */
   List tmp = (List) malloc(sizeof(struct node));
+  __CRAB_assume(tmp > 0);
+  
   tmp->f = 0;
   if (int_nd()) {
     tmp->s = p;
@@ -34,6 +36,8 @@ List mk_list(int n, int*p, int*q) {
   int i;
   for (i=1; i<n;i++) {
     List tmp = (List) malloc(sizeof(struct node));
+    __CRAB_assume(tmp > 0);    
+    
     tmp->f = i;
     if (int_nd()) {
       tmp->s = p;
@@ -56,7 +60,7 @@ int main() {
   int acc = 0;
   while (aux) {
     __CRAB_assert(aux->f <= N-1); // SAFE
-    __CRAB_assert(NOT_NULL(aux->s));   // SAFE
+    __CRAB_assert(aux->s > 0);    // SAFE
     acc += aux->f;
     aux = aux->n;
   }
