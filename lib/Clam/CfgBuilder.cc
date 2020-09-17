@@ -101,9 +101,16 @@ bool checkAllDefinitionsHaveNames(const Function &F) {
   return true;
 }
 
-void havoc(var_t v, basic_block_t &bb, bool include_useless_havoc) {
+std::string valueToStr(const Value &V) {
+  std::string res;
+  raw_string_ostream os(res);
+  os << V;
+  return res;
+}
+  
+void havoc(var_t v, std::string comment, basic_block_t &bb, bool include_useless_havoc) {
   if (include_useless_havoc) {
-    bb.havoc(v);
+    bb.havoc(v, comment);
   }
 }
 
@@ -125,13 +132,13 @@ void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac, basic_block_t &bb) {
 
   crab_lit_ref_t ref0 = lfac.getLit(v0);
   if (!ref0 || !(ref0->isInt())) {
-    havoc(lhs, bb, lfac.getCfgBuilderParams().include_useless_havoc);
+    havoc(lhs, valueToStr(I), bb, lfac.getCfgBuilderParams().include_useless_havoc);
     return;
   }
 
   crab_lit_ref_t ref1 = lfac.getLit(v1);
   if (!ref1 || !(ref1->isInt())) {
-    havoc(lhs, bb, lfac.getCfgBuilderParams().include_useless_havoc);
+    havoc(lhs, valueToStr(I), bb, lfac.getCfgBuilderParams().include_useless_havoc);
     return;
   }
 
@@ -505,7 +512,7 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
 	      m_bb.gep_ref(lhs, m_lfac.mkRegionVar(rgn_phi),
 			   phi_val_lit->getVar(), m_lfac.mkRegionVar(rgn_phi_v));
             } else {
-	      m_bb.havoc(lhs);
+	      m_bb.havoc(lhs, valueToStr(phi));
               m_bb.assume_ref(ref_cst_t::mk_null(lhs));
             }
           } else {
@@ -514,7 +521,7 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
         } else {
           // we can be here if the incoming value is a bignum and we
           // don't allow bignums.
-          m_bb.havoc(lhs);
+          m_bb.havoc(lhs, valueToStr(phi));
         }
       }
     }
@@ -795,7 +802,7 @@ var_t CrabIntraBlockBuilder::getUnconstrainedArrayIdxVar(llvm_variable_factory &
 							 unsigned bitwidth) {
   #if 0
   static var_t v(vfac.get(), crab::variable_type(crab::INT_TYPE, bitwidth));
-  m_bb.havoc(v);
+  m_bb.havoc(v, "unknown array index");
   #else
   var_t v(vfac.get(), crab::variable_type(crab::INT_TYPE, bitwidth));
   #endif
@@ -1011,13 +1018,13 @@ void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit, BinaryOperator &i) 
 
   crab_lit_ref_t lit1 = m_lfac.getLit(v1);
   if (!lit1 || !(lit1->isInt())) {
-    havoc(lhs, m_bb, m_params.include_useless_havoc);
+    havoc(lhs, valueToStr(i), m_bb, m_params.include_useless_havoc);
     return;
   }
 
   crab_lit_ref_t lit2 = m_lfac.getLit(v2);
   if (!lit2 || !(lit2->isInt())) {
-    havoc(lhs, m_bb, m_params.include_useless_havoc);
+    havoc(lhs, valueToStr(i), m_bb, m_params.include_useless_havoc);
     return;
   }
 
@@ -1079,9 +1086,9 @@ void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit, BinaryOperator &i) 
 }
 
 var_t CrabIntraBlockBuilder::doBoolLogicOp(Instruction::BinaryOps op,
-                                     /* ref can be null */
-                                     crab_lit_ref_t lit, const Value &v1,
-                                     const Value &v2) {
+					   /* ref can be null */
+					   crab_lit_ref_t lit, const Value &v1,
+					   const Value &v2) {
 
   if (lit && !(lit->isBool())) {
     CLAM_ERROR("lhs of arithmetic operation must be an Boolean");
@@ -1091,13 +1098,13 @@ var_t CrabIntraBlockBuilder::doBoolLogicOp(Instruction::BinaryOps op,
 
   crab_lit_ref_t b1 = m_lfac.getLit(v1);
   if (!b1 || !(b1->isBool())) {
-    havoc(lhs, m_bb, m_params.include_useless_havoc);
+    havoc(lhs, valueToStr(v1) + " is not Boolean",  m_bb, m_params.include_useless_havoc);
     return lhs;
   }
 
   crab_lit_ref_t b2 = m_lfac.getLit(v2);
   if (!b2 || !(b2->isBool())) {
-    havoc(lhs, m_bb, m_params.include_useless_havoc);
+    havoc(lhs,  valueToStr(v2) + " is not Boolean", m_bb, m_params.include_useless_havoc);
     return lhs;
   }
 
@@ -1160,7 +1167,7 @@ var_t CrabIntraBlockBuilder::doBoolLogicOp(Instruction::BinaryOps op,
   default:
     CLAM_WARNING("translation skipped bool logic operation at line "
                  << __LINE__);
-    havoc(lhs, m_bb, m_params.include_useless_havoc);
+    havoc(lhs, "unsupported boolean operator", m_bb, m_params.include_useless_havoc);
   }
   return lhs;
 }
@@ -1178,13 +1185,13 @@ void CrabIntraBlockBuilder::doIntLogicOp(crab_lit_ref_t lit, BinaryOperator &i) 
 
   crab_lit_ref_t lit1 = m_lfac.getLit(v1);
   if (!lit1 || !(lit1->isInt())) {
-    havoc(lhs, m_bb, m_params.include_useless_havoc);
+    havoc(lhs, valueToStr(i), m_bb, m_params.include_useless_havoc);
     return;
   }
 
   crab_lit_ref_t lit2 = m_lfac.getLit(v2);
   if (!lit2 || !(lit2->isInt())) {
-    havoc(lhs, m_bb, m_params.include_useless_havoc);
+    havoc(lhs, valueToStr(i), m_bb, m_params.include_useless_havoc);
     return;
   }
 
@@ -1199,7 +1206,7 @@ void CrabIntraBlockBuilder::doIntLogicOp(crab_lit_ref_t lit, BinaryOperator &i) 
     break;
   default:
     CLAM_WARNING("translation skipped " << i << " at line " << __LINE__);
-    havoc(lhs, m_bb, m_params.include_useless_havoc);
+    havoc(lhs, valueToStr(i), m_bb, m_params.include_useless_havoc);
   }
 }
 
@@ -1328,7 +1335,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
       if (ref_cst.hasValue()) {
 	m_bb.bool_assign(lit->getVar(), ref_cst.getValue());
       } else {
-	havoc(lit->getVar(), m_bb, m_params.include_useless_havoc);	
+	havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);	
       }
     } else {
       // already lowered elsewhere
@@ -1339,7 +1346,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
   // make sure we only translate if both operands are integers or booleans
   if (!I.getOperand(0)->getType()->isIntegerTy() ||
       !I.getOperand(1)->getType()->isIntegerTy()) {
-    havoc(lit->getVar(), m_bb, m_params.include_useless_havoc);
+    havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     return;
   }
 
@@ -1397,7 +1404,7 @@ void CrabIntraBlockBuilder::visitBinaryOperator(BinaryOperator &I) {
       doIntLogicOp(lit, I);
     break;
   default:
-    havoc(lit->getVar(), m_bb, m_params.include_useless_havoc);
+    havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
   }
 }
 
@@ -1422,7 +1429,7 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
   assert(dst && dst->isVar());
   crab_lit_ref_t src = m_lfac.getLit(*(I.getOperand(0)));
   if (!src) {
-    havoc(dst->getVar(), m_bb, m_params.include_useless_havoc);
+    havoc(dst->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     return;
   }
 
@@ -1431,7 +1438,7 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
     if (I.getSrcTy() == I.getDestTy()) {
       // assume the frontend removes useless casts.
       CLAM_WARNING("translation does not support non-op integer casts");
-      havoc(dst->getVar(), m_bb, m_params.include_useless_havoc);
+      havoc(dst->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     } else {
       if (!src->isVar()) {
         // We store the constant into a variable
@@ -1502,7 +1509,7 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
       CLAM_WARNING("translation skipped " << I << " at line " << __LINE__);
     }
   }
-  havoc(dst->getVar(), m_bb, m_params.include_useless_havoc);
+  havoc(dst->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
 }
 
 // Analysis of select instructions is cumbersome since it requires
@@ -1528,7 +1535,7 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     // TODO: select of pointers
     CLAM_WARNING("skipped " << I << "\n"
                             << "Enable --lower-select.");
-    havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+    havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     return;
   }
 
@@ -1543,11 +1550,11 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
   if (isBool(I)) {
     // --- All operands are BOOL
     if (!op1->isBool()) {
-      havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
     if (!op2->isBool()) {
-      havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
 
@@ -1604,11 +1611,11 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 
     // --- All operands except the condition are INTEGERS
     if (!op1->isInt()) {
-      havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
     if (!op2->isInt()) {
-      havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
 
@@ -1638,25 +1645,16 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     }
 
 // The condition is a boolean but neither select or
-// bool_select are the right choice. The latter is only when
+// bool_select support that. The latter is only when
 // all operands are booleans. The former will have this form
 // (select (x:= cond >=1 ? e1: e2). This will be propagated
 // only to numerical domain which doesn't know anything about
 // cond. One solution is to zext cond to an integer. But maybe
 // another solution is to allow select to be a variable rather
 // than constraint.
-#if 1
     var_t icond = m_lfac.mkIntVar(8 /*any bitwdith >1*/);
     m_bb.zext(c->getVar(), icond);
     m_bb.select(lhs->getVar(), icond, e1, e2);
-#else
-    CLAM_WARNING(
-        "skipped "
-        << I << "\n"
-        << "Crab select does not support natively boolean conditions.\n"
-        << "Meanwhile, enable --lower-select or --crab-bool-as-int");
-    havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
-#endif
   }
 }
 
@@ -1672,7 +1670,7 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
       m_bb.make_ref(lit->getVar(), m_lfac.mkRegionVar(rgn));
     } else if (isTracked(I, m_params)) {
       // -- havoc return value
-      havoc(lit->getVar(), m_bb, m_params.include_useless_havoc);
+      havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     }
   }
 }
@@ -1680,6 +1678,8 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
 /* memcpy/memmove/memset functions */
 void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
   CLAM_WARNING("Skipped memory intrinsics " << I);
+  // HACK to add a comment
+  m_bb.havoc(m_lfac.mkIntVar(32), "Unsupported memory intrinsics " + valueToStr(I));
 }
   
 //
@@ -1717,7 +1717,7 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
     bool is_bignum = false;
     z_number o(toZNumber(offset, m_params, is_bignum));
     if (is_bignum) {
-      m_bb.havoc(lhs);
+      m_bb.havoc(lhs, valueToStr(I));
     } else {
       if (lhs.get_type().is_reference()) {
 	// reference statement
@@ -1920,12 +1920,12 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
     assert(lhs && lhs->isVar());
     crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
     if (!ptr) {
-      havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
     if (m_lfac.isRefNull(ptr)) {
       CLAM_WARNING(I << " doing pointer arithmetic with null pointer.");
-      havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
     assert(ptr->isVar());
@@ -2202,7 +2202,7 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
 
   if (isa<ConstantExpr>(I.getPointerOperand())) {
     // We don't handle constant expressions.
-    havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+    havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     return;
   }
   
@@ -2212,7 +2212,7 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
   }
   if (m_lfac.isRefNull(ptr)) {
     CLAM_WARNING(I << " is possibly dereferencing a null pointer");
-    havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+    havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     return;
   }
 
@@ -2253,7 +2253,7 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
     }
   }
 
-  havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+  havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
 }
 
 void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
@@ -2444,7 +2444,8 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
         // havoc return value
         crab_lit_ref_t lhs = m_lfac.getLit(I);
         assert(lhs && lhs->isVar());
-        havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+        havoc(lhs->getVar(), "Unresolved indirect call: " + valueToStr(I),
+	      m_bb, m_params.include_useless_havoc);
       }
     }
     return;
@@ -2475,7 +2476,8 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
         // -- havoc return value of the intrinsics
         crab_lit_ref_t lhs = m_lfac.getLit(I);
         assert(lhs && lhs->isVar());
-        havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+        havoc(lhs->getVar(), "LLVM intrinsics: " + valueToStr(I),
+	      m_bb, m_params.include_useless_havoc);
       }
     }
     return;
@@ -2494,7 +2496,8 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
     if (DoesCallSiteReturn(I, m_params) && ShouldCallSiteReturn(I, m_params)) {
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       assert(lhs && lhs->isVar());
-      havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+      havoc(lhs->getVar(), "External call: " + valueToStr(I),
+	    m_bb, m_params.include_useless_havoc);
     }
     
     // -- havoc all modified regions by the callee
@@ -2503,9 +2506,9 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
     RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, I);
     for (auto rgn : inOutRegions) {
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases))
-	m_bb.havoc(m_lfac.mkScalarVar(rgn));
+	m_bb.havoc(m_lfac.mkScalarVar(rgn), "havoc region");
       else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
-	m_bb.havoc(m_lfac.mkArrayVar(rgn));
+	m_bb.havoc(m_lfac.mkArrayVar(rgn), "havoc region");
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
 	CLAM_WARNING("TODO havoc " << rgn << " from callsite " << I);
       }
@@ -2542,7 +2545,8 @@ void CrabIntraBlockBuilder::visitInstruction(Instruction &I) {
   CLAM_WARNING("Skipped " << I);
   crab_lit_ref_t lhs = m_lfac.getLit(I);
   if (lhs && lhs->isVar()) {
-    havoc(lhs->getVar(), m_bb, m_params.include_useless_havoc);
+    havoc(lhs->getVar(), "Unsupported instruction " + valueToStr(I),
+	  m_bb, m_params.include_useless_havoc);
   }
 }
 
