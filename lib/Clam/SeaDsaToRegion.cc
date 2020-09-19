@@ -257,7 +257,10 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
       CRAB_LOG("heap-abs-seadsa-to-region",
 	       errs() << "\tDisambiguation succeed!\n"
 	       << "\tFound POINTER_REGION at offset " << offset << "\n";);
-      return RegionInfo(region_type_t::PTR_REGION, dl.getPointerSizeInBits(),
+      // We use a default 32 because Crab treats all references as 32
+      // bits.  Crab actually ignores the bitwidth of references but
+      // we are trying to avoid type-checking errors.
+      return RegionInfo(region_type_t::PTR_REGION, 32 /*dl.getPointerSizeInBits()*/,
 			n->isArray(), n->isHeap());
     } else {
       CRAB_LOG("heap-abs-seadsa-to-region",

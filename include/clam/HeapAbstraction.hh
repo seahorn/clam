@@ -59,9 +59,21 @@ public:
 
   RegionInfo &operator=(const RegionInfo &other) = default;
 
+  bool isUntyped() const {
+    return m_region_type == region_type_t::UNTYPED_REGION;
+  }
+  
   bool hasSameType(const RegionInfo &o) const {
     return (getType() == o.getType() &&
 	    getBitwidth() == o.getBitwidth());    
+  }
+
+  bool hasCompatibleType(const RegionInfo &o) const {
+    if (isUntyped() || o.isUntyped()) {
+      return true;
+    } else {
+      return hasSameType(o);
+    }
   }
   
   bool containScalar() const {

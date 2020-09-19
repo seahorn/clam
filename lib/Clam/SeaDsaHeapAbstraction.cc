@@ -229,20 +229,22 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 		       m_disambiguate_ptr_cast, m_disambiguate_external);
 
       // Sanity check
-      if (!calleeRI.hasSameType(callerRI)) {
+      if (!calleeRI.hasCompatibleType(callerRI)) {
 	CLAM_WARNING("Caller region info=" << callerRI
 		     << " different from callee region info=" << calleeRI);
       }
       
-      bool is_consistent_callsite = calleeRI.hasSameType(callerRI);
+      bool is_compat_callsite = calleeRI.hasCompatibleType(callerRI);
       Region reg(mkRegion(callerC, callerRI));
       if (!retReach.count(n)) {
-	reads.push_back({reg, is_consistent_callsite});
+	reads.push_back({reg, is_compat_callsite});
 	if (n->isModified()) {
-	  mods.push_back({reg, is_consistent_callsite});
+	  mods.push_back({reg, is_compat_callsite});
 	}	  
       } else {
-	news.push_back({reg, is_consistent_callsite});	  
+	if (n->isModified()) {
+	  news.push_back({reg, is_compat_callsite});
+	}
       }
     }
   }
