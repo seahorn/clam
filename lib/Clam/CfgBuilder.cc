@@ -2369,8 +2369,13 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
     m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn));
-    // ASSUMPTION: pointers allocated in the stack cannot be null
-    m_bb.assume_ref(ref_cst_t::mk_gt_null(lhs->getVar()));
+    
+    if (m_params.add_nonnull_assumptions &&
+	m_params.precision_level == CrabBuilderPrecision::MEM) {
+      // pointers allocated in the stack cannot be null
+      m_bb.assume_ref(ref_cst_t::mk_gt_null(lhs->getVar()));
+    }
+    
   } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
 	     !rgn.isUnknown() && rgn.getRegionInfo().containScalar()) {
     // Memory allocated in the stack is uninitialized.
@@ -2528,6 +2533,15 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
     m_bb.intrinsic(getCrabIntrinsicName(*calleeF), outputs, inputs);
   } else {
     m_bb.callsite(calleeF->getName().str(), outputs, inputs);
+  }
+
+  if (m_params.add_nonnull_assumptions &&
+      m_params.precision_level == CrabBuilderPrecision::MEM) {
+    if (I.getType()->isPointerTy() && calleeF->getDereferenceableBytes(0) > 0) {
+      crab_lit_ref_t ret = m_lfac.getLit(I);
+      assert(ret && ret->isVar() && ret->isRef());
+      m_bb.assume_ref(ref_cst_t::mk_gt_null(ret->getVar()));
+    }
   }
 }
     
@@ -2995,7 +3009,6 @@ void CfgBuilderImpl::buildCfg() {
       }
 
       if (m_params.precision_level == CrabBuilderPrecision::MEM) {
-	// ASSUMPTION: global variables are not null
 	Region rgn = getRegion(m_mem, m_func_regions, m_params, m_func, gv);
 	if (rgn.getSingleton()) {
 	  continue;
@@ -3004,17 +3017,26 @@ void CfgBuilderImpl::buildCfg() {
 	assert(gv_lit && gv_lit->isVar());
 	assert(gv_lit->getVar().get_type().is_reference());
 	entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));
-	entry.assume_ref(ref_cst_t::mk_gt_null(gv_lit->getVar()));
+
+	if (m_params.add_nonnull_assumptions &&
+	    m_params.precision_level == CrabBuilderPrecision::MEM) {
+	  // global variables are not null
+	  entry.assume_ref(ref_cst_t::mk_gt_null(gv_lit->getVar()));
+	}
       }
     }
 
-    // ASSUMPTION: all function addresses are not null
-    for (auto &F: M) {
-      if (F.hasAddressTaken()) {
-	crab_lit_ref_t funptr = m_lfac.getLit(F);
-	assert(funptr && funptr->isVar() && funptr->isRef());
-	entry.havoc(funptr->getVar(), "Function pointer for " + F.getName().str());
-	entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
+    if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+      for (auto &F: M) {
+	if (F.hasAddressTaken()) {
+	  crab_lit_ref_t funptr = m_lfac.getLit(F);
+	  assert(funptr && funptr->isVar() && funptr->isRef());
+	  entry.havoc(funptr->getVar(), "Function pointer for " + F.getName().str());
+	  if (m_params.add_nonnull_assumptions) {
+	    // all function addresses are not null	  
+	    entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
+	  }
+	}
       }
     }
   }
@@ -3429,6 +3451,21 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
     }
   }
   
+  if (m_params.add_nonnull_assumptions &&
+      m_params.precision_level == CrabBuilderPrecision::MEM) {
+    for (unsigned i=0, num_args=m_func.arg_size(); i<num_args; ++i) {
+      if (m_func.getArg(i)->getType()->isPointerTy() &&
+	  m_func.getParamDereferenceableBytes(i) > 0) {
+	crab_lit_ref_t arg_lit = m_lfac.getLit(*(m_func.getArg(i)));
+	assert(arg_lit && arg_lit->isVar() && arg_lit->isRef());
+	// add at the entry of the block
+	entry.set_insert_point_front();	
+	entry.assume_ref(ref_cst_t::mk_gt_null(arg_lit->getVar()));	
+      }
+    }
+  }
+
+  
   // -- Finally, we add the function declaration
    
   // Sanity check
@@ -3487,6 +3524,8 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tinterproc cfg: " << interprocedural << "\n";
   o << "\tlower singleton aliases into scalars: "
     << lower_singleton_aliases << "\n";
+  o << "\tadd non-nullity assumptions: "
+    << add_nonnull_assumptions << "\n";
   o << "\tenable big numbers: " << enable_bignums << "\n";
 }
 

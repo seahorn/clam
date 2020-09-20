@@ -44,6 +44,11 @@ CrabEnableBignums("crab-enable-bignums",
      cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."), 
      cl::init(false));
 
+cl::opt<bool>
+CrabAddNonNullity("crab-add-nonnull",
+     cl::desc("Add non-nullity assumptions (e.g., allocas cannot be null, etc)"), 
+     cl::init(true));
+
 /*** Crab Analysis Options ***/
 
 cl::opt<bool>

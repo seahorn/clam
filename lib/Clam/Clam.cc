@@ -795,7 +795,7 @@ bool ClamPass::runOnModule(Module &M) {
   /// Translate the module to Crab CFGs
   CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
                            CrabEnableUniqueScalars, CrabIncludeHavoc,
-                           CrabEnableBignums, CrabPrintCFG);
+                           CrabEnableBignums, CrabAddNonNullity, CrabPrintCFG);
 
   auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>();
 
