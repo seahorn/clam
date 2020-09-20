@@ -3010,7 +3010,7 @@ void CfgBuilderImpl::buildCfg() {
 
       if (m_params.precision_level == CrabBuilderPrecision::MEM) {
 	Region rgn = getRegion(m_mem, m_func_regions, m_params, m_func, gv);
-	if (rgn.getSingleton()) {
+	if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
 	  continue;
 	}
 	crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
@@ -3141,7 +3141,7 @@ void CfgBuilderImpl::buildCfg() {
     for (auto rgn: m_func_regions) {
       CRAB_LOG("cfg-mem", llvm::errs() << rgn << ";";);
       if (notOwnRegions.count(rgn) <= 0) {
-	if (rgn.getSingleton()) {
+	if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
 	  continue;
 	}
 	entry->set_insert_point_front();	
