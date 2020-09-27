@@ -2762,6 +2762,9 @@ private:
   
   /// Helpers for buildCfg
 
+  void initializeGlobalsAtMain(); 
+
+  
   // Given a llvm basic block return its corresponding crab basic block
   basic_block_t *lookup(const llvm::BasicBlock &bb) const;
 
@@ -2838,6 +2841,56 @@ CfgBuilderImpl::getCrabBasicBlock(const BasicBlock *src,
   }
 }
 
+void CfgBuilderImpl::initializeGlobalsAtMain(void) {
+  if (!m_func.getName().equals("main")) {
+    return;
+  }
+  
+  basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
+  Module &M = *(m_func.getParent());
+  for (GlobalVariable &gv : M.globals()) {
+    // Lower global initializers into main
+    if (gv.hasInitializer()) {
+      MemoryInitializer MI(m_lfac, m_mem, m_func_regions, *m_dl, m_params, m_func, entry);
+      MI.InitGlobalMemory(gv, *(gv.getInitializer()), 0);
+    }
+      // Add assumptions about global addresses
+    if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+      crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
+      assert(gv_lit && gv_lit->isVar());
+      assert(gv_lit->getVar().get_type().is_reference());
+      
+      Region rgn = getRegion(m_mem, m_func_regions, m_params, m_func, gv);	  	
+      if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+	if (m_params.add_nonnull_assumptions) {
+	  entry.havoc(gv_lit->getVar(), "singleton global variable");
+	}
+      } else {
+	entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));
+      }
+
+      if (m_params.add_nonnull_assumptions) {
+	// global variables are not null
+	entry.assume_ref(ref_cst_t::mk_gt_null(gv_lit->getVar()));
+      }
+    }
+  }
+  // Add assumptions about function addresses
+  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    for (auto &F: M) {
+      if (F.hasAddressTaken()) {
+	crab_lit_ref_t funptr = m_lfac.getLit(F);
+	assert(funptr && funptr->isVar() && funptr->isRef());
+	entry.havoc(funptr->getVar(), "Function pointer for " + F.getName().str());
+	if (m_params.add_nonnull_assumptions) {
+	  // all function addresses are not null	  
+	  entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
+	}
+      }
+    }
+  }
+}
+  
 // Given a llvm basic block return its corresponding crab basic block
 basic_block_t *CfgBuilderImpl::lookup(const BasicBlock &bb) const {
   auto it = m_node_to_crab_map.find(&bb);
@@ -2997,50 +3050,8 @@ void CfgBuilderImpl::buildCfg() {
     addBlock(B);
   }
 
+  initializeGlobalsAtMain();
   
-  if (m_func.getName().equals("main")) {
-    basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
-    Module &M = *(m_func.getParent());
-    for (GlobalVariable &gv : M.globals()) {
-      if (gv.hasInitializer()) {
-	// Lower global initializers into main
-        MemoryInitializer MI(m_lfac, m_mem, m_func_regions, *m_dl, m_params, m_func, entry);
-        MI.InitGlobalMemory(gv, *(gv.getInitializer()), 0);
-      }
-
-      if (m_params.precision_level == CrabBuilderPrecision::MEM) {
-	Region rgn = getRegion(m_mem, m_func_regions, m_params, m_func, gv);
-	if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
-	  continue;
-	}
-	crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
-	assert(gv_lit && gv_lit->isVar());
-	assert(gv_lit->getVar().get_type().is_reference());
-	entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));
-
-	if (m_params.add_nonnull_assumptions &&
-	    m_params.precision_level == CrabBuilderPrecision::MEM) {
-	  // global variables are not null
-	  entry.assume_ref(ref_cst_t::mk_gt_null(gv_lit->getVar()));
-	}
-      }
-    }
-
-    if (m_params.precision_level == CrabBuilderPrecision::MEM) {
-      for (auto &F: M) {
-	if (F.hasAddressTaken()) {
-	  crab_lit_ref_t funptr = m_lfac.getLit(F);
-	  assert(funptr && funptr->isVar() && funptr->isRef());
-	  entry.havoc(funptr->getVar(), "Function pointer for " + F.getName().str());
-	  if (m_params.add_nonnull_assumptions) {
-	    // all function addresses are not null	  
-	    entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
-	  }
-	}
-      }
-    }
-  }
-
   basic_block_t *ret_block = nullptr;
   llvm::Optional<var_t> ret_val;
   bool has_seahorn_fail = false;
