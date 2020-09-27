@@ -34,7 +34,7 @@ namespace clam {
 /**
     Build a Crab CFG from LLVM Function
 **/
-class CrabBuilderManager;
+class CrabBuilderManagerImpl;
 class IntraClam_Impl;
 class InterClam_Impl;
 
@@ -44,7 +44,7 @@ public:
   using varset = typename liveness_t::varset_domain_t;
 
 private:
-  friend class CrabBuilderManager;
+  friend class CrabBuilderManagerImpl;
   friend class IntraClamImpl;
   friend class InterClamImpl;
 
@@ -53,7 +53,7 @@ private:
   // live and dead symbols
   std::unique_ptr<liveness_t> m_ls;
 
-  CfgBuilder(const llvm::Function &func, CrabBuilderManager &man);
+  CfgBuilder(const llvm::Function &func, CrabBuilderManagerImpl &man);
 
   void buildCfg();
 
@@ -105,9 +105,10 @@ public:
  * A builder contains the crab CFG plus some extra information about
  * the translation.
  **/
+using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
+  
 class CrabBuilderManager {
 public:
-  using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
 
   CrabBuilderManager(CrabBuilderParams params,
                      llvm::TargetLibraryInfoWrapperPass &tli,
@@ -137,20 +138,7 @@ public:
   HeapAbstraction &getHeapAbstraction();
   
 private:
-  // User-definable parameters for building the Crab CFGs
-  CrabBuilderParams m_params;
-  // Map LLVM function to Crab CfgBuilder
-  llvm::DenseMap<const llvm::Function *, CfgBuilderPtr> m_cfg_builder_map;
-  // Used for the translation from bitcode to Crab CFG
-  llvm::TargetLibraryInfoWrapperPass &m_tli;
-  // All CFGs created by this manager are created using the same
-  // variable factory.
-  variable_factory_t m_vfac;
-  // Whole-program heap analysis
-  std::unique_ptr<HeapAbstraction> m_mem;
-  // Global variables accessed by the function and its callees
-  friend class CfgBuilderImpl; // to access to m_globals    
-  llvm::DenseMap<const llvm::Function*, std::vector<const llvm::Value*>> m_globals;
+  std::unique_ptr<CrabBuilderManagerImpl> m_impl;
 };
 
 } // end namespace clam

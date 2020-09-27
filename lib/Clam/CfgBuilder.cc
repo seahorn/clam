@@ -2675,7 +2675,7 @@ namespace clam {
 
 class CfgBuilderImpl {
 public:
-  CfgBuilderImpl(const llvm::Function &func, CrabBuilderManager &man);
+  CfgBuilderImpl(const llvm::Function &func, CrabBuilderManagerImpl &man);
 
   void buildCfg();
 
@@ -2786,21 +2786,6 @@ private:
                                               const llvm::BasicBlock *dst);
 }; // end class CfgBuilderImpl
 
-CfgBuilderImpl::CfgBuilderImpl(const Function &func, CrabBuilderManager &man)
-    : m_is_cfg_built(false),
-      // HACK: it's safe to remove constness because we know that the
-      // Builder never modifies the bitcode.
-      m_func(const_cast<Function &>(func)),
-      m_lfac(man.getVarFactory(), man.getCfgBuilderParams()),
-      m_mem(man.getHeapAbstraction()),
-      m_cfg(nullptr), m_id(0),
-      m_dl(&(func.getParent()->getDataLayout())),
-      m_tli(&(man.getTLIWrapper())),
-      m_params(man.getCfgBuilderParams()),
-      m_globals(man.m_globals) {
-  m_cfg =
-      std::make_unique<cfg_t>(makeCrabBasicBlockLabel(&m_func.getEntryBlock()));
-}
 
 CfgBuilderImpl::~CfgBuilderImpl() {}
 
@@ -3547,7 +3532,7 @@ void CrabBuilderParams::write(raw_ostream &o) const {
 }
 
 /* CFG Builder class */
-CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManager &man)
+CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManagerImpl &man)
   : m_impl(std::make_unique<CfgBuilderImpl>(func, man)),
     m_ls(nullptr) {}
 
@@ -3609,17 +3594,64 @@ CfgBuilder::getLiveSymbols(const BasicBlock *B) const {
 }
 
 /* CFG Manager class */
-CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
+
+class CrabBuilderManagerImpl {
+public:
+
+  CrabBuilderManagerImpl(CrabBuilderParams params,
+                     llvm::TargetLibraryInfoWrapperPass &tli,
+                     std::unique_ptr<HeapAbstraction> mem);
+
+  ~CrabBuilderManagerImpl() = default;
+
+  CrabBuilderManagerImpl(const CrabBuilderManager &o) = delete;
+
+  CrabBuilderManagerImpl &operator=(const CrabBuilderManagerImpl &o) = delete;
+
+  CfgBuilderPtr mkCfgBuilder(const llvm::Function &func);
+
+  bool hasCfg(const llvm::Function &f) const;
+
+  cfg_t &getCfg(const llvm::Function &f) const;
+
+  CfgBuilderPtr getCfgBuilder(const llvm::Function &f) const;
+
+  variable_factory_t &getVarFactory();
+
+  const CrabBuilderParams &getCfgBuilderParams() const;
+
+  const llvm::TargetLibraryInfo &getTLI(const llvm::Function &) const;
+  llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
+
+  HeapAbstraction &getHeapAbstraction();
+  
+private:
+  // User-definable parameters for building the Crab CFGs
+  CrabBuilderParams m_params;
+  // Map LLVM function to Crab CfgBuilder
+  llvm::DenseMap<const llvm::Function *, CfgBuilderPtr> m_cfg_builder_map;
+  // Used for the translation from bitcode to Crab CFG
+  llvm::TargetLibraryInfoWrapperPass &m_tli;
+  // All CFGs created by this manager are created using the same
+  // variable factory.
+  variable_factory_t m_vfac;
+  // Whole-program heap analysis
+  std::unique_ptr<HeapAbstraction> m_mem;
+  // Global variables accessed by the function and its callees
+  friend class CfgBuilderImpl; // to access to m_globals    
+  llvm::DenseMap<const llvm::Function*, std::vector<const llvm::Value*>> m_globals;
+};
+
+
+  
+CrabBuilderManagerImpl::CrabBuilderManagerImpl(CrabBuilderParams params,
                                        llvm::TargetLibraryInfoWrapperPass &tli,
                                        std::unique_ptr<HeapAbstraction> mem)
     : m_params(params), m_tli(tli), m_mem(std::move(mem)) {
   CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
 }
 
-CrabBuilderManager::~CrabBuilderManager() {}
-
-CrabBuilderManager::CfgBuilderPtr
-CrabBuilderManager::mkCfgBuilder(const Function &f) {
+CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
   auto extractGlobals = [this](const Module &M) {
        if (m_mem->getClassId() != HeapAbstraction::ClassId::SEA_DSA) {
 	 CLAM_WARNING(
@@ -3666,16 +3698,15 @@ CrabBuilderManager::mkCfgBuilder(const Function &f) {
   }
 }
 
-bool CrabBuilderManager::hasCfg(const Function &f) const {
+bool CrabBuilderManagerImpl::hasCfg(const Function &f) const {
   return m_cfg_builder_map.find(&f) != m_cfg_builder_map.end();
 }
 
-cfg_t &CrabBuilderManager::getCfg(const Function &f) const {
+cfg_t &CrabBuilderManagerImpl::getCfg(const Function &f) const {
   return getCfgBuilder(f)->getCfg();
 }
 
-CrabBuilderManager::CfgBuilderPtr
-CrabBuilderManager::getCfgBuilder(const Function &f) const {
+CfgBuilderPtr CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
   auto it = m_cfg_builder_map.find(&f);
   if (it == m_cfg_builder_map.end()) {
     CLAM_ERROR("Cannot find crab cfg for ", f.getName());
@@ -3683,21 +3714,82 @@ CrabBuilderManager::getCfgBuilder(const Function &f) const {
   return it->second;
 }
 
-variable_factory_t &CrabBuilderManager::getVarFactory() { return m_vfac; }
+variable_factory_t &CrabBuilderManagerImpl::getVarFactory() { return m_vfac; }
 
-const CrabBuilderParams &CrabBuilderManager::getCfgBuilderParams() const {
+const CrabBuilderParams &CrabBuilderManagerImpl::getCfgBuilderParams() const {
   return m_params;
 }
 
 const llvm::TargetLibraryInfo &
-CrabBuilderManager::getTLI(const Function &F) const {
+CrabBuilderManagerImpl::getTLI(const Function &F) const {
   return m_tli.getTLI(F);
 }
 
-llvm::TargetLibraryInfoWrapperPass &CrabBuilderManager::getTLIWrapper() const {
+llvm::TargetLibraryInfoWrapperPass &CrabBuilderManagerImpl::getTLIWrapper() const {
   return m_tli;
 }
 
-HeapAbstraction &CrabBuilderManager::getHeapAbstraction() { return *m_mem; }
+HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() { return *m_mem; }
 
+/* must be located after CrabBuilderManagerImpl is defined */
+CfgBuilderImpl::CfgBuilderImpl(const Function &func, CrabBuilderManagerImpl &man)
+    : m_is_cfg_built(false),
+      // HACK: it's safe to remove constness because we know that the
+      // Builder never modifies the bitcode.
+      m_func(const_cast<Function &>(func)),
+      m_lfac(man.getVarFactory(), man.getCfgBuilderParams()),
+      m_mem(man.getHeapAbstraction()),
+      m_cfg(nullptr), m_id(0),
+      m_dl(&(func.getParent()->getDataLayout())),
+      m_tli(&(man.getTLIWrapper())),
+      m_params(man.getCfgBuilderParams()),
+      m_globals(man.m_globals) {
+  m_cfg =
+      std::make_unique<cfg_t>(makeCrabBasicBlockLabel(&m_func.getEntryBlock()));
+}
+
+CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
+                                       llvm::TargetLibraryInfoWrapperPass &tli,
+                                       std::unique_ptr<HeapAbstraction> mem)
+  : m_impl(std::make_unique<CrabBuilderManagerImpl>(params, tli, std::move(mem))) {}
+
+CrabBuilderManager::~CrabBuilderManager() {}
+
+CfgBuilderPtr CrabBuilderManager::mkCfgBuilder(const Function &f) {
+  return m_impl->mkCfgBuilder(f);
+}
+
+bool CrabBuilderManager::hasCfg(const Function &f) const {
+  return m_impl->hasCfg(f);
+}
+
+cfg_t &CrabBuilderManager::getCfg(const Function &f) const {
+  return m_impl->getCfg(f);
+}
+
+CfgBuilderPtr CrabBuilderManager::getCfgBuilder(const Function &f) const {
+  return m_impl->getCfgBuilder(f);
+}
+
+variable_factory_t &CrabBuilderManager::getVarFactory() {
+  return m_impl->getVarFactory();
+}
+
+const CrabBuilderParams &CrabBuilderManager::getCfgBuilderParams() const {
+  return m_impl->getCfgBuilderParams();
+}
+
+const llvm::TargetLibraryInfo &
+CrabBuilderManager::getTLI(const Function &F) const {
+  return m_impl->getTLI(F);
+}
+
+llvm::TargetLibraryInfoWrapperPass &CrabBuilderManager::getTLIWrapper() const {
+  return m_impl->getTLIWrapper();
+}
+
+HeapAbstraction &CrabBuilderManager::getHeapAbstraction() {
+  return m_impl->getHeapAbstraction();
+}
+  
 } // end namespace clam
