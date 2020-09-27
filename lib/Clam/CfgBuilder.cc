@@ -3110,6 +3110,12 @@ void CfgBuilderImpl::buildCfg() {
         //    between bb and dst
         basic_block_t *mid_bb = execEdge(B, *dst);
 
+	if ((&B == dst) && mid_bb) {
+	  // If a self-loop then insert the assignments from PHI nodes
+	  // *before* the assume statements from execEdge.
+	  mid_bb->set_insert_point_front();
+	}
+	
         // -- phi nodes in dst are translated into assignments in
         //    the predecessor
         CrabInterBlockBuilder v(m_lfac, m_mem, m_func_regions, *m_dl,
