@@ -688,7 +688,6 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   const TargetLibraryInfo *m_tli;
   basic_block_t &m_bb;
   unsigned int m_object_id;
-  bool m_has_seahorn_fail;
   const CrabBuilderParams &m_params;
   // global variables accessed by a function and its callees
   // a pointer in case no globals found for some unexpected reason
@@ -697,6 +696,8 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
    * Here state that must survive through future invocations to
    * CrabIntraBlockBuilder.
    ****/
+  // HACK for SeaHorn: If visited special call to seahorn.fail
+  bool &m_has_seahorn_fail;
   // Regions seen so far
   RegionSet &m_func_regions;
   // map gep to a crab variable
@@ -757,12 +758,10 @@ public:
       const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
       const CrabBuilderParams &params,
       const DenseMap<const Function*, std::vector<const Value*>> &func_globals,
-      RegionSet &func_regions,
+      bool &has_seahorn_fail, RegionSet &func_regions,
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       RegionSet &regions_with_store,
       DenseMap<const GetElementPtrInst *, var_t> &gep_map);
-
-  bool hasSeaHornFail() { return m_has_seahorn_fail; }
 
   /// skip PHI nodes (processed elsewhere)
   void visitPHINode(PHINode &I) {}
@@ -791,13 +790,14 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
   const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
   const CrabBuilderParams &params,
   const DenseMap<const Function*, std::vector<const Value*>> &func_globals,
-  RegionSet &func_regions,
+  bool &has_seahorn_fail, RegionSet &func_regions,
   llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
   RegionSet &regions_with_store,
   DenseMap<const GetElementPtrInst *, var_t> &gep_map)
   : m_lfac(lfac), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb),
-    m_object_id(0), m_has_seahorn_fail(false), m_params(params),
-    m_func_globals(func_globals), m_func_regions(func_regions),
+    m_object_id(0), m_params(params),
+    m_func_globals(func_globals), m_has_seahorn_fail(has_seahorn_fail),
+    m_func_regions(func_regions),
     m_gep_map(gep_map), m_rev_map(rev_map), m_regions_with_store(regions_with_store) {}
   
 unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
@@ -1236,7 +1236,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
     return;
   }
 
-  if (isSeaHornFail(*callee)) {
+  if (isSeaHornFail(*callee) && I.getParent()->getParent()->getName() == "main") {
     // when seahorn inserts a call to "seahorn.fail" means that
     // the program is safe iff the function cannot return.  Note
     // that we cannot add "assert(false)" in the current
@@ -2762,9 +2762,12 @@ private:
   
   /// Helpers for buildCfg
 
-  void initializeGlobalsAtMain(); 
+  void initializeGlobalsAtMain(void); 
 
-  
+  void setExitBlock(void);
+
+  void addFunctionDeclaration(void);
+
   // Given a llvm basic block return its corresponding crab basic block
   basic_block_t *lookup(const llvm::BasicBlock &bb) const;
 
@@ -2777,8 +2780,6 @@ private:
 
   void addBlockInBetween(basic_block_t &src, basic_block_t &dst,
                          basic_block_t &between);
-
-  void addFunctionDeclaration(llvm::Optional<var_t> ret_val);
   
   basic_block_label_t makeCrabBasicBlockLabel(const llvm::BasicBlock *bb);
 
@@ -3017,6 +3018,86 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
   return nullptr;
 }
 
+void CfgBuilderImpl::setExitBlock() {
+  BasicBlock *RetBB = nullptr;
+  for (auto &B : m_func) {
+    if (isa<ReturnInst>(B.getTerminator())) {
+      if (RetBB) {
+        // Sanity check: UnifyFunctionExitNodes ensures *at most* one
+        // return instruction per function.
+        CLAM_ERROR("UnifyFunctionExitNodes pass should be run first");
+      } else {
+	RetBB = &B;
+      }
+    }
+  }
+
+  if (RetBB) {
+    addBlock(*RetBB); // do nothing if already exists
+    basic_block_t *exit = lookup(*RetBB);
+    assert(exit);
+    m_cfg->set_exit(exit->label());
+  } else {
+    
+    // (1) search for this pattern:
+    //   entry: goto loop;
+    //    loop: goto loop;
+    BasicBlock &entry = m_func.getEntryBlock();
+    auto entry_next = succs(entry);
+    if (std::distance(entry_next.begin(), entry_next.end()) == 1) {
+      const BasicBlock *succ = *(entry_next.begin());
+      auto succ_next = succs(*succ);
+      if (std::distance(succ_next.begin(), succ_next.end()) == 1) {
+        if ((*(succ_next.begin())) == succ) {
+	  addBlock(*succ); // do nothing if already exists
+	  basic_block_t *exit = lookup(*succ);
+	  assert(exit);
+	  m_cfg->set_exit(exit->label());
+        }
+      }
+    }
+
+    if (!m_cfg->has_exit()) {
+      // (2) We check if there is a block with an unreachable
+      // instruction. The pass UnifyFunctionExitNodes ensures that
+      // there is at most one unreachable instruction.
+      for (auto &B : m_func) {
+        for (auto &I : B) {
+          if (isa<UnreachableInst>(I)) {
+	    addBlock(B); // do nothing if already exists
+	    basic_block_t *exit = lookup(B);
+	    assert(exit);
+	    m_cfg->set_exit(exit->label());
+	    break;
+          }
+        }
+        if (m_cfg->has_exit()) {
+          break;
+        }
+      }
+    }
+
+    if (!m_cfg->has_exit()) {
+      // (3) Search for the first block without successors.
+      for (auto &B : m_func) {
+	auto BBSuccs = succs(B);
+	if (std::distance(BBSuccs.begin(), BBSuccs.end()) == 0) {
+	  addBlock(B); // do nothing if already exists
+	  basic_block_t *exit = lookup(B);
+	  assert(exit);
+	  m_cfg->set_exit(exit->label());
+	   
+	}
+      }
+    }
+    
+    if (!m_cfg->has_exit()) {
+      CLAM_WARNING("Could not identify exit block for ", m_func.getName());
+    }
+  }
+}
+
+  
 void CfgBuilderImpl::buildCfg() {
   if (m_is_cfg_built) {
     return;
@@ -3024,103 +3105,77 @@ void CfgBuilderImpl::buildCfg() {
   m_is_cfg_built = true;
   crab::ScopedCrabStats __st__("CFG Construction");
 
-  // Sanity check: pass NameValues must have been executed before
-  bool res = checkAllDefinitionsHaveNames(m_func);
-  if (!res) {
-    CLAM_ERROR("All blocks and definitions must have a name");
-  }
-
-  // Create create basic block for each LLVM block
-  for (auto &B : m_func) {
-    addBlock(B);
-  }
-
-  initializeGlobalsAtMain();
-  
-  basic_block_t *ret_block = nullptr;
-  llvm::Optional<var_t> ret_val;
+  // HACK: search for seahorn.fail 
   bool has_seahorn_fail = false;
   // HACK: keep track of which regions have at least one store to it
   RegionSet regions_with_store;
   // Map GEP instruction to a Crab variable
   DenseMap<const GetElementPtrInst *, var_t> gep_map;
+  const TargetLibraryInfo *tli = (m_tli ? &m_tli->getTLI(m_func) : nullptr);
+  
+  // Sanity check: pass NameValues must have been executed before
+  if (!checkAllDefinitionsHaveNames(m_func)) {
+    CLAM_ERROR("All blocks and definitions must have a name");
+  }
 
-  const TargetLibraryInfo *tli = nullptr;
-  if (m_tli)
-    tli = &m_tli->getTLI(m_func);
+  // Create a Crab basic block for each LLVM block
+  for (auto &B : m_func) {
+    addBlock(B);
+  }
+
+  // Add function declaration only if inter-procedural translation
+  if (m_params.interprocedural && !m_func.isVarArg()) {
+    addFunctionDeclaration();
+  }
+  
+  initializeGlobalsAtMain();
 
   for (auto &B : m_func) {
     basic_block_t *bb = lookup(B);
-    if (!bb)
+    
+    if (!bb) {
       continue;
+    }
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
     CrabIntraBlockBuilder v(m_lfac, m_mem, m_dl, tli, *bb, m_params, m_globals,
-			    m_func_regions, m_rev_map, regions_with_store, gep_map);
+			    has_seahorn_fail, m_func_regions, m_rev_map,
+			    regions_with_store, gep_map);
                       
     v.visit(B);
-    // hook for seahorn
-    has_seahorn_fail |= (v.hasSeaHornFail() && m_func.getName().equals("main"));
-
-    if (ReturnInst *RI = dyn_cast<ReturnInst>(B.getTerminator())) {
-      // -- process the exit block of the function and its returned value.
-      if (ret_block) {
-        // UnifyFunctionExitNodes ensures *at most* one return
-        // instruction per function.
-        CLAM_ERROR("UnifyFunctionExitNodes pass should be run first");
+    
+    // process the rest of basic blocks
+    std::vector<const BasicBlock *> succs_vector(succs(B).begin(),
+						 succs(B).end());
+    // The default destination of a switch instruction does not
+    // count as a successor but we want to consider it as a such.
+    if (SwitchInst *SI = dyn_cast<SwitchInst>(B.getTerminator())) {
+      succs_vector.push_back(SI->getDefaultDest());
+    }
+    for (const BasicBlock *dst : succs_vector) {
+      // -- move branch condition in bb to a new block inserted
+      //    between bb and dst
+      basic_block_t *mid_bb = execEdge(B, *dst);
+      
+      if ((&B == dst) && mid_bb) {
+	// If a self-loop then insert the assignments from PHI nodes
+	// *before* the assume statements from execEdge.
+	mid_bb->set_insert_point_front();
       }
-
-      ret_block = bb;
-      m_cfg->set_exit(ret_block->label());
-      if (has_seahorn_fail) {
-        ret_block->assertion(lin_cst_t::get_false(), getDebugLoc(RI));
-      }
-      if (m_params.interprocedural) {
-        if (Value *RV = RI->getReturnValue()) {
-          if (isTracked(*RV, m_params)) {
-	    // We rename the return value if it has the same name than
-	    // one of the formal parameters or a global value.
-	    bool force_renaming = (std::any_of(m_func.arg_begin(), m_func.arg_end(),
-					       [&RV](const Value &Arg) {
-						 return &Arg == RV;
-					       }));
-	    if (!force_renaming) {
-	      force_renaming = isa<GlobalValue>(RV); 
-	    }
-	    ret_val = normalizeFuncParamOrRet(*RV, *ret_block, m_lfac, force_renaming);
-	    bb->ret(ret_val.getValue());
-          }
-        }
-      }
-    } else {
-      // process the rest of basic blocks
-      std::vector<const BasicBlock *> succs_vector(succs(B).begin(),
-                                                   succs(B).end());
-      // The default destination of a switch instruction does not
-      // count as a successor but we want to consider it as a such.
-      if (SwitchInst *SI = dyn_cast<SwitchInst>(B.getTerminator())) {
-        succs_vector.push_back(SI->getDefaultDest());
-      }
-      for (const BasicBlock *dst : succs_vector) {
-        // -- move branch condition in bb to a new block inserted
-        //    between bb and dst
-        basic_block_t *mid_bb = execEdge(B, *dst);
-
-	if ((&B == dst) && mid_bb) {
-	  // If a self-loop then insert the assignments from PHI nodes
-	  // *before* the assume statements from execEdge.
-	  mid_bb->set_insert_point_front();
-	}
-	
-        // -- phi nodes in dst are translated into assignments in
-        //    the predecessor
-        CrabInterBlockBuilder v(m_lfac, m_mem, m_func_regions, *m_dl,
-				(mid_bb ? *mid_bb : *bb), B, m_params);
-        v.visit(const_cast<BasicBlock &>(*dst));
-      }
+      
+      // -- phi nodes in dst are translated into assignments in
+      //    the predecessor
+      CrabInterBlockBuilder v(m_lfac, m_mem, m_func_regions, *m_dl,
+			      (mid_bb ? *mid_bb : *bb), B, m_params);
+      v.visit(const_cast<BasicBlock &>(*dst));
     }
   }
 
+  if (has_seahorn_fail && m_cfg->has_exit()) {
+    basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
+    exit.assertion(lin_cst_t::get_false());
+  }
+  
   if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
     // Initialize regions
     basic_block_t *entry = lookup(m_func.getEntryBlock());
@@ -3153,11 +3208,6 @@ void CfgBuilderImpl::buildCfg() {
     CRAB_LOG("cfg-mem", llvm::errs() << "}\n";);
   }
   
-  /// Add function declaration only if inter-procedural translation
-  if (m_params.interprocedural && !m_func.isVarArg()) {
-    addFunctionDeclaration(ret_val);
-  }
-
   if (m_cfg->has_exit()) {
     // -- Connect all sink blocks with an unreachable instruction to
     //    the exit block.  For a forward analysis this doesn't have
@@ -3178,56 +3228,6 @@ void CfgBuilderImpl::buildCfg() {
           for (auto &I : B)
             if (isa<UnreachableInst>(I))
               *b >> exit;
-        }
-      }
-    }
-  } else {
-    // We did not find an exit block yet:
-
-    // (1) search for this pattern:
-    //   entry: goto loop;
-    //    loop: goto loop;
-    BasicBlock &entry = m_func.getEntryBlock();
-    auto entry_next = succs(entry);
-    if (std::distance(entry_next.begin(), entry_next.end()) == 1) {
-      const BasicBlock *succ = *(entry_next.begin());
-      auto succ_next = succs(*succ);
-      if (std::distance(succ_next.begin(), succ_next.end()) == 1) {
-        if ((*(succ_next.begin())) == succ) {
-          if (basic_block_t *exit = lookup(*succ)) {
-            m_cfg->set_exit(exit->label());
-          }
-        }
-      }
-    }
-
-    if (!m_cfg->has_exit()) {
-      // (2) We check if there is a block with an unreachable
-      // instruction. The pass UnifyFunctionExitNodes ensures that
-      // there is at most one unreachable instruction.
-      for (auto &B : m_func) {
-        for (auto &I : B) {
-          if (isa<UnreachableInst>(I)) {
-            if (basic_block_t *b = lookup(B)) {
-              m_cfg->set_exit(b->label());
-              break;
-            }
-          }
-        }
-        if (m_cfg->has_exit()) {
-          break;
-        }
-      }
-    }
-
-    if (!m_cfg->has_exit()) {
-      // (3) Search for the first block without successors.
-      for (auto &B : m_func) {
-        if (basic_block_t *b = lookup(B)) {
-          auto it_pair = b->next_blocks();
-          if (it_pair.first == it_pair.second) {
-            m_cfg->set_exit(b->label());
-          }
         }
       }
     }
@@ -3279,31 +3279,62 @@ void CfgBuilderImpl::buildCfg() {
  * {a_o1,....,a_om}, otherwise crab will complain.
  *
  **/
-void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
+  void CfgBuilderImpl::addFunctionDeclaration() {
+  if (!m_params.interprocedural) {
+    return;
+  }
+
+  llvm::Optional<var_t> retVal;
   std::vector<var_t> inputs, outputs;
   basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
-  
-  if (!ret_val.hasValue()) {
-    // special case: function that does not return but in its
-    // signature it has a return type. E.g., "int foo() {
-    // unreachable; }"
+    
+  // -- Add the return value if exists
+  Value *RV = nullptr;
+  for (auto &B : m_func) {
+    if (auto RI = dyn_cast<ReturnInst>(B.getTerminator())) {
+      RV = RI->getReturnValue();
+      break;
+    }
+  }
+  if (RV && isTracked(*RV, m_params)) {
+    // We rename the return value if it has the same name than
+    // one of the formal parameters or a global value.
+    bool needRenaming = isa<GlobalValue>(RV); 
+    if (!needRenaming) {
+      needRenaming = (std::any_of(m_func.arg_begin(), m_func.arg_end(),
+				   [&RV](const Value &Arg) {
+				     return &Arg == RV;
+				   }));
+    }
+    
+    assert(m_cfg->has_exit());
+    basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
+    retVal = normalizeFuncParamOrRet(*RV, exit, m_lfac, needRenaming);      
+    exit.ret(retVal.getValue());
+  } else {
+    // Function that does not return but in its signature it has a
+    // return type. E.g., "int foo() {unreachable;}"
     const Type &RT = *m_func.getReturnType();
     if (isTrackedType(RT, m_params)) {
       if (isBool(&RT)) {
-	ret_val = m_lfac.mkBoolVar();
+	retVal = m_lfac.mkBoolVar();
       } else if (isInteger(&RT)) {
 	unsigned bitwidth = RT.getIntegerBitWidth();
-	ret_val = m_lfac.mkIntVar(bitwidth);
+	retVal = m_lfac.mkIntVar(bitwidth);
       } else {
 	assert(RT.isPointerTy());
-	ret_val = m_lfac.mkRefVar();
+	retVal = m_lfac.mkRefVar();
+      }
+      if (m_cfg->has_exit()) {
+	basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
+	exit.havoc(retVal.getValue(), "dummy return value");
       }
     }
   }
-  
+      
   // -- add the returned value of the llvm function: o
-  if (ret_val.hasValue()) {
-    outputs.push_back(ret_val.getValue());
+  if (retVal.hasValue()) {
+    outputs.push_back(retVal.getValue());
   }
   
   // -- add input parameters i1,...,in
@@ -3319,7 +3350,7 @@ void CfgBuilderImpl::addFunctionDeclaration(llvm::Optional<var_t> ret_val) {
     
     crab_lit_ref_t i = m_lfac.getLit(arg);
     assert(i && i->isVar());
-    if (ret_val.hasValue() && i->getVar() == ret_val.getValue()) {
+    if (retVal.hasValue() && i->getVar() == retVal.getValue()) {
       // rename i to avoid having same name as output (crab requirement)
       if (i->isBool()) {
 	var_t fresh_i = m_lfac.mkBoolVar();
@@ -3746,6 +3777,7 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func, CrabBuilderManagerImpl &man
       m_globals(man.m_globals) {
   m_cfg =
       std::make_unique<cfg_t>(makeCrabBasicBlockLabel(&m_func.getEntryBlock()));
+  setExitBlock();
 }
 
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
