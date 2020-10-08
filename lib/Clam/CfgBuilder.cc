@@ -77,9 +77,7 @@ using namespace crab;
 using namespace ikos;
 using namespace crab::cfg;
 
-namespace {
-
-using namespace clam;
+namespace clam {
 
 bool checkAllDefinitionsHaveNames(const Function &F) {
   // for (auto &Arg : F.args()) {
@@ -692,6 +690,11 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   // global variables accessed by a function and its callees
   // a pointer in case no globals found for some unexpected reason
   const DenseMap<const Function*, std::vector<const Value*>> &m_func_globals;
+  // A fake basic block containing the return instruction and
+  // additional statements to normalize the returned value.
+  basic_block_t *m_ret_insts;
+  // To access to function declaration of callsite's callees
+  CrabBuilderManagerImpl &m_man;
   /****
    * Here state that must survive through future invocations to
    * CrabIntraBlockBuilder.
@@ -758,6 +761,7 @@ public:
       const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
       const CrabBuilderParams &params,
       const DenseMap<const Function*, std::vector<const Value*>> &func_globals,
+      basic_block_t *ret_insts, CrabBuilderManagerImpl &man,
       bool &has_seahorn_fail, RegionSet &func_regions,
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       RegionSet &regions_with_store,
@@ -769,8 +773,7 @@ public:
   void visitBranchInst(BranchInst &I) {}
   /// skip SwitchInst (processed elsewhere)
   void visitSwitchInst(SwitchInst &I) {}
-  /// skip ReturnInst (processed elsewhere)
-  void visitReturnInst(ReturnInst &I) {}
+  void visitReturnInst(ReturnInst &I);
   void visitCmpInst(CmpInst &I);
   void visitBinaryOperator(BinaryOperator &I);
   void visitCastInst(CastInst &I);
@@ -790,14 +793,15 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
   const DataLayout *dl, const TargetLibraryInfo *tli, basic_block_t &bb,
   const CrabBuilderParams &params,
   const DenseMap<const Function*, std::vector<const Value*>> &func_globals,
+  basic_block_t *ret_insts, CrabBuilderManagerImpl &man, 
   bool &has_seahorn_fail, RegionSet &func_regions,
   llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
   RegionSet &regions_with_store,
   DenseMap<const GetElementPtrInst *, var_t> &gep_map)
   : m_lfac(lfac), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb),
     m_object_id(0), m_params(params),
-    m_func_globals(func_globals), m_has_seahorn_fail(has_seahorn_fail),
-    m_func_regions(func_regions),
+    m_func_globals(func_globals), m_ret_insts(ret_insts), m_man(man),
+    m_has_seahorn_fail(has_seahorn_fail), m_func_regions(func_regions),
     m_gep_map(gep_map), m_rev_map(rev_map), m_regions_with_store(regions_with_store) {}
   
 unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
@@ -1327,7 +1331,13 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
   }
 }
 
-
+void CrabIntraBlockBuilder::visitReturnInst(ReturnInst &I) {
+  if (m_ret_insts) {
+    m_bb.copy_back(*m_ret_insts);
+    delete m_ret_insts;
+  }
+}
+  
 /// I is already translated if it is the condition of a branch or
 /// a select's condition.  Here we cover cases where I is an
 /// operand of other instructions.
@@ -2394,156 +2404,6 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
     MI.InitZeroInitializer(I, *ATy, 0);
   }
 }
-
-/**
- * Translate a LLVM callsite
- *     o := foo(i1,...,i_n)
- *
- * into a crab callsite or intrinsic
- *     (o,a_o1,...,a_om) := foo(i1,...,in,g1,...,gk,a_i1,...,a_in) where
- *    - g1,...,gk are the global values (variables and functions)
- *      accessed by foo and its callees.  They are always read-only.
- *    - a_i1,...,a_in are read-only and modified regions by foo.
- *    - a_o1,...,a_om are modified and new regions created inside foo.
- **/
-void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
-  CallSite CS(&I);
-  const Function *calleeF = dyn_cast<Function>(CS.getCalledValue()->stripPointerCastsAndAliases());
-  assert(calleeF);  
-  
-  std::vector<var_t> inputs, outputs;
-
-  // -- add the actual parameters of the llvm callsite: i1,...in.
-  for (auto &a : llvm::make_range(CS.arg_begin(), CS.arg_end())) {
-    Value *v = a.get();
-    if (!isTracked(*v, m_params))
-      continue;
-    inputs.push_back(normalizeFuncParamOrRet(*v, m_bb, m_lfac));
-  }
-
-  if (m_params.precision_level == CrabBuilderPrecision::MEM) {      
-    // -- add the global values accessed by the function and its callees
-    auto it = m_func_globals.find(calleeF);
-    if (it !=  m_func_globals.end()) {
-      for (auto gv: it->second) {
-	// TODO: we can filter out those which are unique scalars.
-	crab_lit_ref_t ref = m_lfac.getLit(*gv);
-	if (!ref->isVar() || !ref->isRef()) {
-	  // this shouldn't happen
-	  continue;
-	}
-	inputs.push_back(ref->getVar());
-      }
-    }
-  }
-  
-  // -- add the return value of the llvm calliste: o
-  if (ShouldCallSiteReturn(I, m_params)) {
-    if (DoesCallSiteReturn(I, m_params)) {
-      crab_lit_ref_t ret = m_lfac.getLit(I);
-      assert(ret && ret->isVar());
-      outputs.push_back(ret->getVar());
-    } else {
-      // The callsite should return something to match with the
-      // function signature but it doesn't: we create a fresh
-      // return value.
-      Type *RT = calleeF->getReturnType();
-      if (isBool(RT)) {
-        var_t fresh_ret = m_lfac.mkBoolVar();
-        outputs.push_back(fresh_ret);
-      } else if (isInteger(RT)) {
-        unsigned bitwidth = RT->getIntegerBitWidth();
-        var_t fresh_ret = m_lfac.mkIntVar(bitwidth);
-        outputs.push_back(fresh_ret);
-      } else if (isReference(RT, m_params)) {
-        var_t fresh_ret = m_lfac.mkRefVar();
-        outputs.push_back(fresh_ret);
-      } else {
-        // do nothing
-      }
-    }
-  } else {
-    if (DoesCallSiteReturn(I, m_params)) {
-      // LLVM shouldn't allow this.
-      CLAM_ERROR(
-          "Unexpected type mismatch between callsite and function signature");
-    }
-  }
-
-  // -- add the input and output parameters a_i1,...,a_in
-  // -- and a_o1,...,a_om.
-  RegionVec inRegions = getInputRegions(m_mem, m_params, I);
-  RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, I);
-  RegionVec outRegions = getOutputRegions(m_mem, m_params, I);
-  
-  CRAB_LOG("cfg-mem", llvm::errs()
-	   << "Callsite " << I << "\n"
-	   << "\tInput regions " << inRegions.size()
-	   << ": " << inRegions << "\n"
-	   << "\tInput/Output regions " << inOutRegions.size() << ": "
-	   << inOutRegions << "\n"
-	   << "\tOutput regions " << outRegions.size() << ": " << outRegions
-	   << "\n");
-
-  // -- add only read regions as input parameters
-  for (auto rgn : inRegions) {
-    if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
-      // Promote the global to a scalar
-      inputs.push_back(m_lfac.mkScalarVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
-      inputs.push_back(m_lfac.mkArrayVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-      inputs.push_back(m_lfac.mkRegionVar(rgn));
-    }
-  }
-
-  // -- add modified regions as both input and output parameters
-  for (auto rgn : inOutRegions) {
-    if (std::find(outRegions.begin(), outRegions.end(), rgn) != outRegions.end()) {
-      continue;
-    }
-    bool lowerToScalar = getSingletonValue(rgn, m_params.lower_singleton_aliases);
-    // -- input version
-    if (lowerToScalar) {
-      // Promote the global to a scalar
-      inputs.push_back(m_lfac.mkScalarVar(rgn));
-      outputs.push_back(m_lfac.mkScalarVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
-      inputs.push_back(m_lfac.mkArrayVar(rgn));
-      outputs.push_back(m_lfac.mkArrayVar(rgn));      
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-      inputs.push_back(m_lfac.mkRegionVar(rgn));
-      outputs.push_back(m_lfac.mkRegionVar(rgn));      
-    }
-  }
-  
-  // -- add more output parameters
-  for (auto rgn : outRegions) {
-    // New regions cannot be singletons so they are directly
-    // translated as arrays
-    if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {    
-      outputs.push_back(m_lfac.mkArrayVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-      outputs.push_back(m_lfac.mkRegionVar(rgn));      
-    }
-  }
-  
-  // -- Finally, add the callsite or crab intrinsic
-  if (isCrabIntrinsic(*calleeF)) {
-    m_bb.intrinsic(getCrabIntrinsicName(*calleeF), outputs, inputs);
-  } else {
-    m_bb.callsite(calleeF->getName().str(), outputs, inputs);
-  }
-
-  if (m_params.add_nonnull_assumptions &&
-      m_params.precision_level == CrabBuilderPrecision::MEM) {
-    if (I.getType()->isPointerTy() && calleeF->getDereferenceableBytes(0) > 0) {
-      crab_lit_ref_t ret = m_lfac.getLit(I);
-      assert(ret && ret->isVar() && ret->isRef());
-      m_bb.assume_ref(ref_cst_t::mk_gt_null(ret->getVar()));
-    }
-  }
-}
     
 void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   CallSite CS(&I);
@@ -2669,16 +2529,14 @@ void CrabIntraBlockBuilder::visitInstruction(Instruction &I) {
   }
 }
 
-} // end namespace
-
-namespace clam {
-
 class CfgBuilderImpl {
 public:
   CfgBuilderImpl(const llvm::Function &func, CrabBuilderManagerImpl &man);
 
-  void buildCfg();
+  void buildCfg(void);
 
+  void addFunctionDeclaration(void);
+  
   CfgBuilderImpl(const CfgBuilderImpl &o) = delete;
 
   CfgBuilderImpl &operator=(const CfgBuilderImpl &o) = delete;
@@ -2744,6 +2602,10 @@ private:
   edge_to_crab_block_map_t m_edge_to_crab_map;
   // Memory regions accessed by m_func
   RegionSet m_func_regions;
+  // A fake basic block containing the return instruction and
+  // additional statements to normalize the returned value.
+  basic_block_t *m_ret_insts;
+  
   // map Crab statement to its corresponding LLVM instruction
   //
   // In most of the crab statements, their operands have back
@@ -2759,14 +2621,14 @@ private:
   // global variables accessed by the function and its callees
   // a pointer in case no globals found for some unexpected reason
   const DenseMap<const Function*, std::vector<const Value*>> &m_globals;
+  // The manager to access to function declarations of other functions
+  CrabBuilderManagerImpl &m_man;
   
   /// Helpers for buildCfg
 
   void initializeGlobalsAtMain(void); 
 
   void setExitBlock(void);
-
-  void addFunctionDeclaration(void);
 
   // Given a llvm basic block return its corresponding crab basic block
   basic_block_t *lookup(const llvm::BasicBlock &bb) const;
@@ -3099,12 +2961,16 @@ void CfgBuilderImpl::setExitBlock() {
 
   
 void CfgBuilderImpl::buildCfg() {
+  crab::ScopedCrabStats __st__("CFG Construction");
+  
   if (m_is_cfg_built) {
     return;
+  } else {
+    m_is_cfg_built = true;
   }
-  m_is_cfg_built = true;
-  crab::ScopedCrabStats __st__("CFG Construction");
-
+  
+  CRAB_LOG("cfg", llvm::errs() << "buildCfg with " << m_func.getName() << "\n";);
+  
   // HACK: search for seahorn.fail 
   bool has_seahorn_fail = false;
   // HACK: keep track of which regions have at least one store to it
@@ -3123,11 +2989,6 @@ void CfgBuilderImpl::buildCfg() {
     addBlock(B);
   }
 
-  // Add function declaration only if inter-procedural translation
-  if (m_params.interprocedural && !m_func.isVarArg()) {
-    addFunctionDeclaration();
-  }
-  
   initializeGlobalsAtMain();
 
   for (auto &B : m_func) {
@@ -3138,7 +2999,7 @@ void CfgBuilderImpl::buildCfg() {
     }
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
-    CrabIntraBlockBuilder v(m_lfac, m_mem, m_dl, tli, *bb, m_params, m_globals,
+    CrabIntraBlockBuilder v(m_lfac, m_mem, m_dl, tli, *bb, m_params, m_globals, m_ret_insts, m_man,
 			    has_seahorn_fail, m_func_regions, m_rev_map,
 			    regions_with_store, gep_map);
                       
@@ -3279,11 +3140,15 @@ void CfgBuilderImpl::buildCfg() {
  * {a_o1,....,a_om}, otherwise crab will complain.
  *
  **/
-  void CfgBuilderImpl::addFunctionDeclaration() {
-  if (!m_params.interprocedural) {
+void CfgBuilderImpl::addFunctionDeclaration() {
+  crab::ScopedCrabStats __st__("CFG Construction");
+  
+  if (!m_params.interprocedural || m_func.isVarArg() || m_func.empty()) {
     return;
   }
-
+  
+  CRAB_LOG("cfg", llvm::errs() << "addFunctionDeclaration with " << m_func.getName() << "\n";);
+  
   llvm::Optional<var_t> retVal;
   std::vector<var_t> inputs, outputs;
   basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
@@ -3309,8 +3174,11 @@ void CfgBuilderImpl::buildCfg() {
     
     assert(m_cfg->has_exit());
     basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
-    retVal = normalizeFuncParamOrRet(*RV, exit, m_lfac, needRenaming);      
-    exit.ret(retVal.getValue());
+    // We don't add the statements directly to exit because otherwise,
+    // the rest of exit's statements will be added in the wrong order.
+    m_ret_insts = exit.clone();
+    retVal = normalizeFuncParamOrRet(*RV, *m_ret_insts, m_lfac, needRenaming);      
+    m_ret_insts->ret(retVal.getValue());
   } else {
     // Function that does not return but in its signature it has a
     // return type. E.g., "int foo() {unreachable;}"
@@ -3327,7 +3195,8 @@ void CfgBuilderImpl::buildCfg() {
       }
       if (m_cfg->has_exit()) {
 	basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
-	exit.havoc(retVal.getValue(), "dummy return value");
+	m_ret_insts = exit.clone();
+	m_ret_insts->havoc(retVal.getValue(), "dummy return value");
       }
     }
   }
@@ -3571,6 +3440,8 @@ CfgBuilder::~CfgBuilder() {}
 
 void CfgBuilder::buildCfg() { m_impl->buildCfg(); }
 
+void CfgBuilder::addFunctionDeclaration() { m_impl->addFunctionDeclaration(); }  
+
 cfg_t &CfgBuilder::getCfg() { return m_impl->getCfg(); }
 
 basic_block_label_t
@@ -3683,6 +3554,8 @@ CrabBuilderManagerImpl::CrabBuilderManagerImpl(CrabBuilderParams params,
 }
 
 CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
+  static bool initialization_done = false;
+
   auto extractGlobals = [this](const Module &M) {
        if (m_mem->getClassId() != HeapAbstraction::ClassId::SEA_DSA) {
 	 CLAM_WARNING(
@@ -3708,24 +3581,37 @@ CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
 	 m_globals[&F] = globals_vec;
        }};
 
-  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
-    // Compute only once and right before the first function is
-    // translated
-    static bool globals_computed = false;
-    if (!globals_computed) {
-      extractGlobals(*(f.getParent()));
-      globals_computed = true;
+  /*
+   * The Crab CFG for a LLVM function is built in two phases. First,
+   * we create the a Crab function declaration for each LLVM function
+   * and create an entry and an exit block. Second, we build the rest
+   * of the CFG. We need a two-step approach because we need at a
+   * callsite to know the inputs and outputs of the callee function.
+   */
+  
+  if (!initialization_done) {
+    const Module &M = *f.getParent();
+    if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+      extractGlobals(M);
     }
+    for (auto &F: M) {
+      if (!F.empty()) {
+	CfgBuilderPtr builder(new CfgBuilder(F, *this));
+	builder->addFunctionDeclaration();
+	m_cfg_builder_map[&F] = builder;
+      }
+    }
+    initialization_done = true;  
   }
   
+
   auto it = m_cfg_builder_map.find(&f);
-  if (it == m_cfg_builder_map.end()) {
-    CfgBuilderPtr builder(new CfgBuilder(f, *this));
+  if (it != m_cfg_builder_map.end()) {
+    auto builder = it->second; 
     builder->buildCfg();
-    m_cfg_builder_map.insert({&f, builder});
     return builder;
   } else {
-    return it->second;
+    CLAM_ERROR("Not found cfg builder for " + f.getName().str());
   }
 }
 
@@ -3762,7 +3648,235 @@ llvm::TargetLibraryInfoWrapperPass &CrabBuilderManagerImpl::getTLIWrapper() cons
 
 HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() { return *m_mem; }
 
-/* must be located after CrabBuilderManagerImpl is defined */
+// === Begin must be located after CrabBuilderManagerImpl is defined  === //
+/**
+ * Translate a LLVM callsite
+ *     o := foo(i1,...,i_n)
+ *
+ * into a crab callsite or intrinsic
+ *     (o,a_o1,...,a_om) := foo(i1,...,in,g1,...,gk,a_i1,...,a_in) where
+ *    - g1,...,gk are the global values (variables and functions)
+ *      accessed by foo and its callees.  They are always read-only.
+ *    - a_i1,...,a_in are read-only and modified regions by foo.
+ *    - a_o1,...,a_om are modified and new regions created inside foo.
+ **/
+void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
+  CallSite CS(&I);
+  const Function *calleeF = dyn_cast<Function>(CS.getCalledValue()->stripPointerCastsAndAliases());
+  assert(calleeF);  
+  
+  std::vector<var_t> inputs, outputs;
+
+  // -- add the actual parameters of the llvm callsite: i1,...in.
+  for (auto &a : llvm::make_range(CS.arg_begin(), CS.arg_end())) {
+    Value *v = a.get();
+    if (!isTracked(*v, m_params))
+      continue;
+    inputs.push_back(normalizeFuncParamOrRet(*v, m_bb, m_lfac));
+  }
+
+  if (m_params.precision_level == CrabBuilderPrecision::MEM) {      
+    // -- add the global values accessed by the function and its callees
+    auto it = m_func_globals.find(calleeF);
+    if (it !=  m_func_globals.end()) {
+      for (auto gv: it->second) {
+	// TODO: we can filter out those which are unique scalars.
+	crab_lit_ref_t ref = m_lfac.getLit(*gv);
+	if (!ref->isVar() || !ref->isRef()) {
+	  // this shouldn't happen
+	  continue;
+	}
+	inputs.push_back(ref->getVar());
+      }
+    }
+  }
+  
+  // -- add the return value of the llvm calliste: o
+  if (ShouldCallSiteReturn(I, m_params)) {
+    if (DoesCallSiteReturn(I, m_params)) {
+      crab_lit_ref_t ret = m_lfac.getLit(I);
+      assert(ret && ret->isVar());
+      outputs.push_back(ret->getVar());
+    } else {
+      // The callsite should return something to match with the
+      // function signature but it doesn't: we create a fresh
+      // return value.
+      Type *RT = calleeF->getReturnType();
+      if (isBool(RT)) {
+        var_t fresh_ret = m_lfac.mkBoolVar();
+        outputs.push_back(fresh_ret);
+      } else if (isInteger(RT)) {
+        unsigned bitwidth = RT->getIntegerBitWidth();
+        var_t fresh_ret = m_lfac.mkIntVar(bitwidth);
+        outputs.push_back(fresh_ret);
+      } else if (isReference(RT, m_params)) {
+        var_t fresh_ret = m_lfac.mkRefVar();
+        outputs.push_back(fresh_ret);
+      } else {
+        // do nothing
+      }
+    }
+  } else {
+    if (DoesCallSiteReturn(I, m_params)) {
+      // LLVM shouldn't allow this.
+      CLAM_ERROR(
+          "Unexpected type mismatch between callsite and function signature");
+    }
+  }
+
+  // -- add the input and output parameters a_i1,...,a_in
+  // -- and a_o1,...,a_om.
+  RegionVec inRegions = getInputRegions(m_mem, m_params, I);
+  RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, I);
+  RegionVec outRegions = getOutputRegions(m_mem, m_params, I);
+  
+  CRAB_LOG("cfg-mem", llvm::errs()
+	   << "Callsite " << I << "\n"
+	   << "\tInput regions " << inRegions.size()
+	   << ": " << inRegions << "\n"
+	   << "\tInput/Output regions " << inOutRegions.size() << ": "
+	   << inOutRegions << "\n"
+	   << "\tOutput regions " << outRegions.size() << ": " << outRegions
+	   << "\n");
+
+  // -- add only read regions as input parameters
+  for (auto rgn : inRegions) {
+    if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+      // Promote the global to a scalar
+      inputs.push_back(m_lfac.mkScalarVar(rgn));
+    } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+      inputs.push_back(m_lfac.mkArrayVar(rgn));
+    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+      inputs.push_back(m_lfac.mkRegionVar(rgn));
+    }
+  }
+
+  // -- add modified regions as both input and output parameters
+  for (auto rgn : inOutRegions) {
+    if (std::find(outRegions.begin(), outRegions.end(), rgn) != outRegions.end()) {
+      continue;
+    }
+    bool lowerToScalar = getSingletonValue(rgn, m_params.lower_singleton_aliases);
+    // -- input version
+    if (lowerToScalar) {
+      // Promote the global to a scalar
+      inputs.push_back(m_lfac.mkScalarVar(rgn));
+      outputs.push_back(m_lfac.mkScalarVar(rgn));
+    } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+      inputs.push_back(m_lfac.mkArrayVar(rgn));
+      outputs.push_back(m_lfac.mkArrayVar(rgn));      
+    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+      inputs.push_back(m_lfac.mkRegionVar(rgn));
+      outputs.push_back(m_lfac.mkRegionVar(rgn));      
+    }
+  }
+  
+  // -- add more output parameters
+  for (auto rgn : outRegions) {
+    // New regions cannot be singletons so they are directly
+    // translated as arrays
+    if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {    
+      outputs.push_back(m_lfac.mkArrayVar(rgn));
+    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+      outputs.push_back(m_lfac.mkRegionVar(rgn));      
+    }
+  }
+  
+  // -- Sanity checks if function declaration of the callee is available
+  const typename cfg_t::fdecl_t *calleeF_decl = nullptr;
+  if (m_man.hasCfg(*calleeF)) {
+    auto &callee_cfg = m_man.getCfg(*calleeF);
+    if (callee_cfg.has_func_decl()) {
+      calleeF_decl = &callee_cfg.get_func_decl();
+    }
+  }
+
+  // For pending type conversions 
+  std::vector<std::pair<var_t, var_t>> pendingInRgnCopies, pendingOutRgnCopies;
+  if (calleeF_decl) {
+    // Sanity checks
+    if (calleeF_decl->get_inputs().size() != inputs.size()) {
+      CLAM_ERROR("Mismatch of number of inputs between callsite and function declaration");
+    }
+    if (calleeF_decl->get_outputs().size() != outputs.size()) {
+      CLAM_ERROR("Mismatch of number of outputs between callsite and function declaration");
+    }
+    
+    if (m_params.precision_level != CrabBuilderPrecision::MEM) {
+      // More sanity checks
+      for (unsigned i=0, num_args = inputs.size(); i<num_args; ++i) {
+	if (calleeF_decl->get_input_type(i) != inputs[i].get_type()) 
+	  CLAM_ERROR("Mismatch between type of callsite and function declaration");
+      }
+      for (unsigned i=0, num_args = outputs.size(); i<num_args; ++i) {
+	if (calleeF_decl->get_output_type(i) != outputs[i].get_type()) 
+	  CLAM_ERROR("Mismatch between type of callsite and function declaration");
+      }
+    } else {
+      /**
+       * At this point, it's possible that the callee has a parameter
+       * with an untyped region and the callsite passes a typed
+       * region, or viceversa. We use, region_copy to do type
+       * conversion. Any other type type mismatch is considered an
+       * error.
+       **/
+      auto unifyRgnType = [this](var_t &cparam, const var_t &fparam,
+				 std::vector<std::pair<var_t,var_t>> &pendingRgnCopies)  {
+	   auto is_typed_region = [](const var_t &v) {
+		     return v.get_type().is_region() && !v.get_type().is_unknown_region();
+	   };
+	   if (cparam.get_type() == fparam.get_type()) {
+	     return false;
+	   } else if ((cparam.get_type().is_unknown_region() && is_typed_region(fparam)) ||
+		      (fparam.get_type().is_unknown_region() && is_typed_region(cparam))) {
+	     var_t tmp_rgn(m_lfac.getVFac().get(), fparam.get_type());
+	     pendingRgnCopies.push_back({cparam, tmp_rgn});	     
+	     cparam = tmp_rgn;
+	     return true;
+	   } else{
+	     CLAM_ERROR("Mismatch between type of callsite and function declaration");
+	   }
+      };
+      
+      for (unsigned i=0, num_args = inputs.size(); i<num_args; ++i) {
+	// o1 := foo(i1) ==> region_copy(i1', i1); o1 := foo(i1')
+	unifyRgnType(inputs[i], calleeF_decl->get_input_name(i), pendingInRgnCopies);
+      }
+      
+      for (unsigned i=0, num_args = outputs.size(); i<num_args; ++i) {
+	// o1 := foo(i1) ==> o1' := foo(i1); region_copy(o1, o1') 
+	unifyRgnType(outputs[i], calleeF_decl->get_output_name(i), pendingOutRgnCopies);
+      }
+    }
+  } else {
+    // here if intrinsics
+  }
+
+  
+  // -- Finally, add the callsite or crab intrinsic
+  if (isCrabIntrinsic(*calleeF)) {
+    m_bb.intrinsic(getCrabIntrinsicName(*calleeF), outputs, inputs);
+  } else {
+    for(unsigned i=0,sz=pendingInRgnCopies.size();i<sz;++i)
+      m_bb.region_copy(pendingInRgnCopies[i].second, pendingInRgnCopies[i].first);
+    
+    m_bb.callsite(calleeF->getName().str(), outputs, inputs);
+    
+    for(unsigned i=0,sz=pendingOutRgnCopies.size();i<sz;++i) 
+      m_bb.region_copy(pendingOutRgnCopies[i].first, pendingOutRgnCopies[i].second);
+  }
+  
+  
+  if (m_params.add_nonnull_assumptions &&
+      m_params.precision_level == CrabBuilderPrecision::MEM) {
+    if (I.getType()->isPointerTy() && calleeF->getDereferenceableBytes(0) > 0) {
+      crab_lit_ref_t ret = m_lfac.getLit(I);
+      assert(ret && ret->isVar() && ret->isRef());
+      m_bb.assume_ref(ref_cst_t::mk_gt_null(ret->getVar()));
+    }
+  }
+}
+  
 CfgBuilderImpl::CfgBuilderImpl(const Function &func, CrabBuilderManagerImpl &man)
     : m_is_cfg_built(false),
       // HACK: it's safe to remove constness because we know that the
@@ -3774,12 +3888,15 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func, CrabBuilderManagerImpl &man
       m_dl(&(func.getParent()->getDataLayout())),
       m_tli(&(man.getTLIWrapper())),
       m_params(man.getCfgBuilderParams()),
-      m_globals(man.m_globals) {
+      m_globals(man.m_globals),
+      m_ret_insts(nullptr),
+      m_man(man) {
   m_cfg =
       std::make_unique<cfg_t>(makeCrabBasicBlockLabel(&m_func.getEntryBlock()));
   setExitBlock();
 }
-
+// === End must be located after CrabBuilderManagerImpl is defined  === //
+  
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        llvm::TargetLibraryInfoWrapperPass &tli,
                                        std::unique_ptr<HeapAbstraction> mem)

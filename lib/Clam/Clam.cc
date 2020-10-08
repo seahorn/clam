@@ -259,7 +259,7 @@ public:
   }
 
 private:
-  CrabBuilderManager::CfgBuilderPtr m_cfg_builder;
+  CfgBuilderPtr m_cfg_builder;
   const Function &m_fun;
   variable_factory_t &m_vfac;
 

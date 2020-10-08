@@ -55,7 +55,9 @@ private:
 
   CfgBuilder(const llvm::Function &func, CrabBuilderManagerImpl &man);
 
-  void buildCfg();
+  void addFunctionDeclaration(void);
+  
+  void buildCfg(void);
 
   // return live symbols for the whole cfg. Return nullptr if
   // compute_live_symbols has not been called.
@@ -89,6 +91,8 @@ public:
   getCrabBasicBlock(const llvm::BasicBlock *src,
                     const llvm::BasicBlock *dst) const;
 
+  // DEPRECATED
+  //
   // Most crab statements have back pointers to LLVM operands so it
   // is always possible to find the corresponding LLVM
   // instruction. Array crab operations are an exceptions.
