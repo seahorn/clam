@@ -709,6 +709,10 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   DenseMap<const statement_t *, const Instruction *> &m_rev_map;
   // HACK: to translate to strong updates with SINGLETON_MEMORY
   RegionSet &m_regions_with_store;
+  // The map key is a verifier call (assert or assume) and the map
+  // value is its parameter. The operands of map value are guaranteed
+  // to be integers.
+  DenseMap<CallInst*, CmpInst*> &m_verif_calls;
   
 
   unsigned fieldOffset(const StructType *t, unsigned field) const;
@@ -765,7 +769,8 @@ public:
       bool &has_seahorn_fail, RegionSet &func_regions,
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       RegionSet &regions_with_store,
-      DenseMap<const GetElementPtrInst *, var_t> &gep_map);
+      DenseMap<const GetElementPtrInst *, var_t> &gep_map,
+      DenseMap<CallInst*, CmpInst*> &verif_calls);      
 
   /// skip PHI nodes (processed elsewhere)
   void visitPHINode(PHINode &I) {}
@@ -797,12 +802,14 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
   bool &has_seahorn_fail, RegionSet &func_regions,
   llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
   RegionSet &regions_with_store,
-  DenseMap<const GetElementPtrInst *, var_t> &gep_map)
+  DenseMap<const GetElementPtrInst *, var_t> &gep_map,
+  DenseMap<CallInst*, CmpInst*> &verif_calls)
   : m_lfac(lfac), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb),
     m_object_id(0), m_params(params),
     m_func_globals(func_globals), m_ret_insts(ret_insts), m_man(man),
     m_has_seahorn_fail(has_seahorn_fail), m_func_regions(func_regions),
-    m_gep_map(gep_map), m_rev_map(rev_map), m_regions_with_store(regions_with_store) {}
+    m_gep_map(gep_map), m_rev_map(rev_map), m_regions_with_store(regions_with_store),
+    m_verif_calls(verif_calls) {}
   
 unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
                                       unsigned field) const {
@@ -1282,50 +1289,66 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
       }
     }
   } else {
-    crab_lit_ref_t cond_lit = m_lfac.getLit(*cond);
-    assert(cond_lit->isVar());
-    var_t v = cond_lit->getVar();
-    // -- cond is variable
-    if (cond_lit->isBool()) {
-      if (isNotAssumeFn(*callee))
-        m_bb.bool_not_assume(v);
-      else if (isAssumeFn(*callee))
-        m_bb.bool_assume(v);
-      else {
-        assert(isAssertFn(*callee));
-        m_bb.bool_assert(v, getDebugLoc(&I));
-      }
-    } else if (cond_lit->isInt()) {
-
-      ZExtInst *ZEI = dyn_cast<ZExtInst>(cond);
-      if (ZEI && ZEI->getSrcTy()->isIntegerTy(1)) {
-        /* Special case to replace this pattern:
-             y:i32 = zext x:i1 to i32
-             assume (y>=1);
-           with
-             bool_assume(x);
-             This can help boolean/numerical propagation in the crab domains.
-        */
-        cond_lit = m_lfac.getLit(*(ZEI->getOperand(0)));
-        assert(cond_lit->isVar()); // boolean variable
-        v = cond_lit->getVar();
-        if (isNotAssumeFn(*callee)) {
-          m_bb.bool_not_assume(v);
-        } else if (isAssumeFn(*callee)) {
-          m_bb.bool_assume(v);
-        } else {
-          assert(isAssertFn(*callee));
-          m_bb.bool_assert(v, getDebugLoc(&I));
-        }
+    if (CmpInst *Cond = m_verif_calls[&I]) {
+      // Optimization step: avoid boolean statements
+      auto cst_opt = cmpInstToCrabInt(*Cond, m_lfac, isNotAssumeFn(*callee));
+      if (cst_opt.hasValue()) {
+	if (isAssertFn(*callee)) {
+	  m_bb.assertion(cst_opt.getValue(), getDebugLoc(&I));
+	} else {
+	  m_bb.assume(cst_opt.getValue());
+	}
       } else {
-        if (isNotAssumeFn(*callee)) {
-          m_bb.assume(v <= number_t(0));
-        } else if (isAssumeFn(*callee)) {
-          m_bb.assume(v >= number_t(1));
-        } else {
-          assert(isAssertFn(*callee));
-          m_bb.assertion(v >= number_t(1), getDebugLoc(&I));
-        }
+	// This shouldn't happen
+	CLAM_WARNING("Could not translate unexpectedly " << I);
+      }
+    } else {
+      
+      crab_lit_ref_t cond_lit = m_lfac.getLit(*cond);
+      assert(cond_lit->isVar());
+      var_t v = cond_lit->getVar();
+      // -- cond is variable
+      if (cond_lit->isBool()) {
+	if (isNotAssumeFn(*callee))
+	  m_bb.bool_not_assume(v);
+	else if (isAssumeFn(*callee))
+	  m_bb.bool_assume(v);
+	else {
+	  assert(isAssertFn(*callee));
+	  m_bb.bool_assert(v, getDebugLoc(&I));
+	}
+      } else if (cond_lit->isInt()) {
+	
+	ZExtInst *ZEI = dyn_cast<ZExtInst>(cond);
+	if (ZEI && ZEI->getSrcTy()->isIntegerTy(1)) {
+	  /* Special case to replace this pattern:
+                y:i32 = zext x:i1 to i32
+                assume (y>=1);
+	     with
+                bool_assume(x);
+             This can help boolean/numerical propagation in the crab domains.
+	  */
+	  cond_lit = m_lfac.getLit(*(ZEI->getOperand(0)));
+	  assert(cond_lit->isVar()); // boolean variable
+	  v = cond_lit->getVar();
+	  if (isNotAssumeFn(*callee)) {
+	    m_bb.bool_not_assume(v);
+	  } else if (isAssumeFn(*callee)) {
+	    m_bb.bool_assume(v);
+	  } else {
+	    assert(isAssertFn(*callee));
+	    m_bb.bool_assert(v, getDebugLoc(&I));
+	  }
+	} else {
+	  if (isNotAssumeFn(*callee)) {
+	    m_bb.assume(v <= number_t(0));
+	  } else if (isAssumeFn(*callee)) {
+	    m_bb.assume(v >= number_t(1));
+	  } else {
+	    assert(isAssertFn(*callee));
+	    m_bb.assertion(v >= number_t(1), getDebugLoc(&I));
+	  }
+	}
       }
     }
   }
@@ -1390,7 +1413,18 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
     if (AllUsesAreBrOrIntSelectCondInst(I)) {
       // do nothing: already lowered elsewhere
     } else {
-      cmpInstToCrabBool(I, m_lfac, m_bb);
+      SmallVector<CallInst*, 4> verifierCalls;
+      if (AllUsesAreVerifierCalls(I, 
+				  true /*goThroughIntegerCasts*/, 
+				  true /*nonBoolCond*/,
+				  verifierCalls)) {
+	for (CallInst *CI: verifierCalls) {
+	  m_verif_calls.insert({CI, &I});
+	}
+	// do nothing: lowered elsewhere
+      } else {
+	cmpInstToCrabBool(I, m_lfac, m_bb);
+      }
     }
   }
 }
@@ -2977,6 +3011,9 @@ void CfgBuilderImpl::buildCfg() {
   RegionSet regions_with_store;
   // Map GEP instruction to a Crab variable
   DenseMap<const GetElementPtrInst *, var_t> gep_map;
+  // Assert or assume instruction together with its parameter
+  DenseMap<CallInst*, CmpInst*> verif_calls;
+  
   const TargetLibraryInfo *tli = (m_tli ? &m_tli->getTLI(m_func) : nullptr);
   
   // Sanity check: pass NameValues must have been executed before
@@ -3001,7 +3038,7 @@ void CfgBuilderImpl::buildCfg() {
     // -- build a CFG block ignoring branches, phi-nodes, and return
     CrabIntraBlockBuilder v(m_lfac, m_mem, m_dl, tli, *bb, m_params, m_globals, m_ret_insts, m_man,
 			    has_seahorn_fail, m_func_regions, m_rev_map,
-			    regions_with_store, gep_map);
+			    regions_with_store, gep_map, verif_calls);
                       
     v.visit(B);
     

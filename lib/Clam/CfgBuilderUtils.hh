@@ -8,6 +8,7 @@ class Type;
 class Value;
 class Function;
 class Instruction;
+class CallInst;
 class APInt;
 class ConstantInt;
 class DataLayout;
@@ -105,8 +106,12 @@ bool AllUsesAreBrOrIntSelectCondInst(llvm::Value &V);
 bool AllUsesAreIndirectCalls(llvm::Value &V);
 
 // Return true if all uses are verifier calls (assume/assert)
+bool AllUsesAreVerifierCalls(llvm::Value &V,
+			     bool goThroughIntegerCasts,
+			     bool nonBoolCond,
+			     llvm::SmallVector<llvm::CallInst*, 4>&);
 bool AllUsesAreVerifierCalls(llvm::Value &V);
-
+  
 // Return true if all uses are GEPs
 bool AllUsesAreGEP(llvm::Value &V);
 
