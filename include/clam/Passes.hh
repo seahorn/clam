@@ -24,12 +24,29 @@ llvm::Pass *createDeadNondetElimPass();
 #include "llvm_seahorn/Transforms/InstCombine/SeaInstCombine.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 
-llvm::FunctionPass *
-createSeaInstructionCombiningPass(bool ExpensiveCombines = true);
+llvm::FunctionPass *createSeaInstructionCombiningPass(bool ExpensiveCombines,
+						      unsigned MaxIterations,
+						      bool AvoidBv,
+						      bool AvoidUnsignedICmp,
+						      bool AvoidIntToPtr,
+						      bool AvoidAliasing,
+						      bool AvoidDisequalities);
 
 namespace clam {
 inline llvm::FunctionPass *createInstCombine(bool ExpensiveCombines = true) {
-  return createSeaInstructionCombiningPass(ExpensiveCombines);
+  const unsigned MaxIterations = 1000; /*same value used by LLVM*/
+  const bool AvoidBv = true;
+  const bool AvoidUnsignedICmp = true;
+  const bool AvoidIntToPtr = true;
+  const bool AvoidAliasing = true;
+  const bool AvoidDisequalities = true;
+  return createSeaInstructionCombiningPass(ExpensiveCombines,
+					   MaxIterations,
+					   AvoidBv,
+					   AvoidUnsignedICmp,
+					   AvoidIntToPtr,
+					   AvoidAliasing,
+					   AvoidDisequalities);
 }
 } // namespace clam
 #else
