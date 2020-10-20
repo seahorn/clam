@@ -99,8 +99,13 @@ LowerUnsignedICmp("crab-lower-unsigned-icmp",
 
 static llvm::cl::opt<bool>
 OptimizeLoops("clam-pp-loops", 
-               llvm::cl::desc("Perform loop optimizations"),
-               llvm::cl::init(false));
+	      llvm::cl::desc("Perform loop optimizations"),
+	      llvm::cl::init(false));
+
+static llvm::cl::opt<unsigned>
+PeelLoops("clam-peel-loops",
+	  llvm::cl::desc("Number of iterations to peel"),
+	  llvm::cl::init(0));
 
 static llvm::cl::opt<bool>
 TurnUndefNondet("crab-turn-undef-nondet", 
@@ -293,15 +298,23 @@ int main(int argc, char **argv) {
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());
   pass_manager.add(llvm::createDeadInstEliminationPass());
   
-  if (OptimizeLoops) {
+  if (OptimizeLoops || PeelLoops > 0 ) {
     // canonical form for loops
     pass_manager.add(llvm::createLoopSimplifyPass());
     // cleanup unnecessary blocks     
-    pass_manager.add(llvm::createCFGSimplificationPass());  
+    pass_manager.add(llvm::createCFGSimplificationPass());
+    // rotate loops:
+    // we don't like rotated loops unless it's strictly necessary
+    if (PeelLoops > 0)    
+      pass_manager.add(llvm_seahorn::createLoopRotatePass(/*1023*/));    
     // loop-closed SSA 
     pass_manager.add(llvm::createLCSSAPass());
+    if (PeelLoops > 0)
+      pass_manager.add(clam::createLoopPeelerPass(PeelLoops));
     #ifdef HAVE_LLVM_SEAHORN
-    // induction variable
+    // induction variable requires loop-closed SSA 
+    pass_manager.add(llvm::createLCSSAPass());
+    // induction variable    
     pass_manager.add (llvm_seahorn::createIndVarSimplifyPass ());
     #endif
     // trivial invariants outside loops 

@@ -18,6 +18,7 @@ llvm::Pass *createPromoteAssumePass();
 llvm::Pass *createRenameNondetPass();
 llvm::Pass *createNondetInitPass();
 llvm::Pass *createDeadNondetElimPass();
+llvm::Pass *createLoopPeelerPass(unsigned Num);
 } // namespace clam
 
 #ifdef HAVE_LLVM_SEAHORN

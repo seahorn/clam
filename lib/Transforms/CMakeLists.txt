@@ -10,6 +10,7 @@ add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   PromoteAssume.cc  
   PromoteMalloc.cc
   NondetInit.cc
+  LoopPeeler.cc
   )
 
 llvm_map_components_to_libnames(LLVM_LIBS

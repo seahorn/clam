@@ -195,10 +195,13 @@ def parseArgs(argv):
     p.add_argument('--llvm-pp-loops',
                     help='Optimizing loops',
                     dest='pp_loops', default=False, action='store_true')
-    p.add_argument('--llvm-unroll-threshold', type=int,
-                    help='Unrolling threshold (default = 150)',
-                    dest='unroll_threshold',
-                    default=150, metavar='NUM')
+    p.add_argument('--llvm-peel-loops', dest='peel_loops',
+                    type=int, metavar='NUM', default=0,
+                    help='Number of iterations to peel (default = 0)')    
+    # p.add_argument('--llvm-unroll-threshold', type=int,
+    #                 help='Unrolling threshold (default = 150)',
+    #                 dest='unroll_threshold',
+    #                 default=150, metavar='NUM')
     p.add_argument('--inline', dest='inline', help='Inline all functions',
                     default=False, action='store_true')
     p.add_argument('--turn-undef-nondet',
@@ -545,10 +548,11 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
     
     ## Hack for OSX Mojave that no longer exposes libc and libstd headers by default
     osx_sdk_dirs = ['/Applications/Xcode.app/Contents/Developer/Platforms/' + \
-                    'MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk',
-                    '/Applications/Xcode.app/Contents/Developer/Platforms/' + \
-                    'MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk']
-
+                     'MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk',
+                     '/Applications/Xcode.app/Contents/Developer/Platforms/' + \
+                     'MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk'] + \
+                    ['/Library/Developer/CommandLineTools/SDKs/MacOSX10.15.sdk']
+    
     for osx_sdk_dir in osx_sdk_dirs:
         if os.path.isdir(osx_sdk_dir):
             clang_args.append('--sysroot=' + osx_sdk_dir)
@@ -606,9 +610,9 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.inline_threshold is not None:
         opt_args.append('--inline-threshold={t}'.format
                         (t=args.inline_threshold))
-    if args.unroll_threshold is not None:
-        opt_args.append('--unroll-threshold={t}'.format
-                        (t=args.unroll_threshold))
+    # if args.unroll_threshold is not None:
+    #     opt_args.append('--unroll-threshold={t}'.format
+    #                     (t=args.unroll_threshold))
     if args.print_after_all: opt_args.append('--print-after-all')
     if args.debug_pass: opt_args.append('--debug-pass=Structure')    
     opt_args.extend(extra_args)
@@ -649,6 +653,8 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append('--crab-inline-all')
     if args.pp_loops: 
         crabpp_args.append('--clam-pp-loops')
+    if args.peel_loops > 0:
+        crabpp_args.append('--clam-peel-loops={0}'.format(args.peel_loops))
     if args.undef_nondet:
         crabpp_args.append('--crab-turn-undef-nondet')
         
