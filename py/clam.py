@@ -574,7 +574,7 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         out_name = defOptName(in_name)
     opt_cmd, is_seaopt = getOptLlvm()
         
-    opt_args = [opt_cmd, '-f', '-funit-at-a-time']
+    opt_args = [opt_cmd, '-f']
     if out_name is not None: opt_args.extend(['-o', out_name])
     opt_args.append('-O{0}'.format(args.L))
 
@@ -584,28 +584,31 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     opt_args.append('--simplifycfg-sink-common=false')
 
     # disable always vectorization
-    opt_args.append('--disable-loop-vectorization')
+    ## With LLVM 10: loop vectorization must be enabled
+    # opt_args.append('--disable-loop-vectorization')
     opt_args.append('--disable-slp-vectorization')
 
-    if is_seaopt:
-        # disable always loop rotation. Loop rotation converts to loops
-        # that are much harder to reason about them using crab due to
-        # several reasons:
-        # 
-        # 1. Complex loops that break widening heuristics
-        # 2. Rewrite loop exits by adding often disequalities
-        # 3. Introduce new *unsigned* loop variables.
-        opt_args.append('--disable-loop-rotate')
+    ## Unavailable after porting to LLVM10
+    # if is_seaopt:
+    #     # disable always loop rotation. Loop rotation converts to loops
+    #     # that are much harder to reason about them using crab due to
+    #     # several reasons:
+    #     # 
+    #     # 1. Complex loops that break widening heuristics
+    #     # 2. Rewrite loop exits by adding often disequalities
+    #     # 3. Introduce new *unsigned* loop variables.
+    #     opt_args.append('--disable-loop-rotate')
     
     # These two should be optional
     #opt_args.append('--enable-indvar=true')
     #opt_args.append('--enable-loop-idiom=true')
 
-    if is_seaopt:
-        if args.undef_nondet: 
-            opt_args.append('--enable-nondet-init=true')
-        else: 
-            opt_args.append('--enable-nondet-init=false')
+    ## Unavailable after porting to LLVM10    
+    # if is_seaopt:
+    #     if args.undef_nondet: 
+    #         opt_args.append('--enable-nondet-init=true')
+    #     else: 
+    #         opt_args.append('--enable-nondet-init=false')
             
     if args.inline_threshold is not None:
         opt_args.append('--inline-threshold={t}'.format
