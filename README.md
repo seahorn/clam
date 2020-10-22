@@ -336,6 +336,18 @@ right after each LLVM load instruction. The option `all` injects
 invariants in all above locations. To see the final LLVM bitcode just
 add the option `-o out.bc`.
 
+## Yaml inteface ##
+
+To make easier reproducibility, you can write all the Clam options in
+a `yaml` file and use the command:
+
+    clam-yaml.py -y YCONFIG PROGRAM EXTRA
+	
+where `YCONFIG` is the Yaml file that contains all the options. See
+directory `yaml-configurations` for examples. The command
+`clam-yaml.py` simply calls `clam.py` with the options written in the
+`YCONFIG` file.
+
 # Example 2 #
 
 Consider the next program:

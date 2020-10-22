@@ -4,6 +4,7 @@ option(USE_PY_SETUP "Use python distutils to install python modules" OFF)
 
 if (PYTHON AND NOT USE_PY_SETUP)
   install(PROGRAMS clam.py  DESTINATION bin)
+  install(PROGRAMS clam-yaml.py  DESTINATION bin)  
   install(FILES stats.py    DESTINATION bin)
 endif()
 
@@ -15,6 +16,7 @@ if (PYTHON AND USE_PY_SETUP)
   set(DEPS
     stats.py
     clam.py
+    clam-yaml.py
     ${SETUP_PY_IN})
 
   configure_file(${SETUP_PY_IN} ${SETUP_PY})

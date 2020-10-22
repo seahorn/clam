@@ -3,7 +3,7 @@
 from distutils.core import setup
 from os.path import join
 
-scripts = ['clam.py']
+scripts = ['clam.py', 'clam-yaml.py']
 scripts = map(lambda x: join('${CMAKE_CURRENT_SOURCE_DIR}', x), scripts)
 
 setup(name='clam',

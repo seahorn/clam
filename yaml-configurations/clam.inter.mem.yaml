@@ -1,0 +1,46 @@
+clam_options:
+#
+# Optimization level
+#
+#  '-O3': ''
+#
+# Debug symbols
+#
+  '-g' : ''
+#   
+# PREPROCESSING
+#
+# convert unsigned icmp instructions into signed icmp instructions
+  lower-unsigned-icmp : ''
+# peel loops to improve precision of the region and array domains
+  llvm-peel-loops: '0'
+# weak support for function pointers. sea-dsa is better but less stable
+  devirt-functions: 'types'
+# disable lowering of vector operations into scalar ones
+  disable-scalarize: ''
+#  
+# ANALYSIS
+#
+# enable inter-procedural analysis
+  crab-inter : ''
+# highest precision level for the translation from LLVM to Crab
+  crab-track : 'mem'
+  crab-singleton-aliases : ''
+# pointer analysis to disambiguate memory: context-sensitive with types
+  crab-heap-analysis : 'cs-sea-dsa-types'
+# enable sanity checks
+  crab-sanity-checks : ''
+# do not print invariants
+# crab-do-not-print-invariants: ''
+# disable warnings
+  crab-disable-warnings: ''
+# keep intermediate results for debugging 
+#  save-temps: ''
+#  temp-dir: /tmp/clam
+# time and result stats
+  crab-stats: ''
+#
+# CHECKER
+#
+# Check for user-defined assertions
+  crab-check: 'assert'
