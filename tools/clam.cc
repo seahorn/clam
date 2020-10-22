@@ -91,6 +91,11 @@ PromoteAssume("crab-promote-assume",
 	       llvm::cl::desc("Promote verifier.assume to llvm.assume intrinsics"),
 	       llvm::cl::init(false));
 
+static llvm::cl::opt<bool>
+DotLLVMCFG("clam-llvm-cfg-dot", 
+	   llvm::cl::desc("Write a .dot file the analyzed LLVM CFG of each function"),
+	   llvm::cl::init(false));
+
 using namespace clam;
 
 // removes extension from filename if there is one
@@ -250,6 +255,8 @@ int main(int argc, char **argv) {
   if (!DisableCrab) {
     /// -- run the crab analyzer
     pass_manager.add(new clam::ClamPass());
+    if (DotLLVMCFG)
+      pass_manager.add(createAnnotatedCFGPrinterPass());
   }
 
   if(!AsmOutputFilename.empty()) {

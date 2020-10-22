@@ -186,9 +186,6 @@ def parseArgs(argv):
     p.add_argument('--llvm-dot-cfg',
                     help='Print LLVM CFG of function to dot file',
                     dest='dot_cfg', default=False, action='store_true')
-    p.add_argument('--llvm-view-cfg',
-                    help='View LLVM CFG of function',
-                    dest='view_cfg', default=False, action='store_true')
     p.add_argument('--llvm-inline-threshold', dest='inline_threshold',
                     type=int, metavar='NUM',
                     help='Inline threshold (default = 255)')
@@ -866,10 +863,11 @@ def main(argv):
         extra_opts = []
         if args.only_preprocess:
             extra_opts.append('-no-crab')
+        if args.dot_cfg:
+            extra_opts.append('--clam-llvm-cfg-dot')
+            
         clam(in_name, pp_out, args, extra_opts, cpu=args.cpu, mem=args.mem)
 
-    if args.dot_cfg: dot(pp_out)
-    if args.view_cfg: dot(pp_out, True)
     #stat('Progress', 'Clam')
 
     if args.asm_out_name is not None and args.asm_out_name != pp_out:

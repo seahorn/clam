@@ -19,6 +19,8 @@ llvm::Pass *createRenameNondetPass();
 llvm::Pass *createNondetInitPass();
 llvm::Pass *createDeadNondetElimPass();
 llvm::Pass *createLoopPeelerPass(unsigned Num);
+// Visualization passes
+llvm::Pass *createAnnotatedCFGPrinterPass();
 } // namespace clam
 
 #ifdef HAVE_LLVM_SEAHORN
