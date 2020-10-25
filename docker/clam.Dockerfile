@@ -10,6 +10,8 @@ FROM seahorn/buildpack-deps-seahorn:$BASE_IMAGE
 
 # Needed to run clang with -m32
 RUN apt-get install -yqq libc6-dev-i386
+# seadsa needs clang-format
+RUN apt-get install -yqq clang-format
 
 ARG BRANCH=dev10
 RUN cd / && rm -rf /clam && \
