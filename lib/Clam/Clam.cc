@@ -631,7 +631,8 @@ private:
     inter_params_t inter_params;
     inter_params.run_checker = (params.check != CheckerKind::NOCHECKS);
     inter_params.checker_verbosity = params.check_verbose;
-    inter_params.minimize_invariants = true;
+    inter_params.keep_cc_invariants = false;
+    inter_params.keep_invariants = params.store_invariants || params.print_invars;
     inter_params.max_call_contexts = params.max_calling_contexts;
     inter_params.live_map = (params.run_liveness ? &m_live_map : nullptr);
     inter_params.widening_delay = params.widening_delay;
