@@ -210,6 +210,7 @@ int main(int argc, char **argv) {
 
   // seadsa
   llvm::initializeCompleteCallGraphPass(Registry);
+  llvm::initializeRemovePtrToIntPass(Registry);
   
   // add an appropriate DataLayout instance for the module
   const llvm::DataLayout *dl = &module->getDataLayout();

@@ -10,6 +10,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "seadsa/CompleteCallGraph.hh"
+#include "seadsa/support/RemovePtrToInt.hh"
 
 llvm::cl::opt<clam::CallSiteResolverKind> DevirtResolver(
     "devirt-resolver",
@@ -80,6 +81,7 @@ public:
 
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     if (DevirtResolver == RESOLVER_SEA_DSA) {
+      AU.addRequired<seadsa::RemovePtrToInt>();      
       AU.addRequired<seadsa::CompleteCallGraph>();
     }
 
