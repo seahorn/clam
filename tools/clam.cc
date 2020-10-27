@@ -28,6 +28,7 @@
 #include "clam/Transforms/InsertInvariants.hh"
 
 #include "seadsa/InitializePasses.hh"
+#include "seadsa/support/RemovePtrToInt.hh"
 
 static llvm::cl::opt<std::string>
 InputFilename(llvm::cl::Positional, llvm::cl::desc("<input LLVM bitcode file>"),
@@ -195,7 +196,7 @@ int main(int argc, char **argv) {
   
   /**
    * Here only passes that are strictly necessary to avoid crashes or
-   * useless results. Passes that are only for improving precision
+   * too poor results. Passes that are only for improving precision
    * should be run in clam-pp.
    **/
     
@@ -242,6 +243,9 @@ int main(int argc, char **argv) {
     pass_manager.add(llvm::createCFGSimplificationPass());
     pass_manager.add(clam::createRemoveUnreachableBlocksPass());
   }
+
+  // -- remove ptrtoint and inttoptr instructions
+  pass_manager.add(seadsa::createRemovePtrToIntPass());        
   
   // -- must be the last ones before running crab.
   if (LowerSelect) {
@@ -249,7 +253,8 @@ int main(int argc, char **argv) {
   }
   
   // -- ensure one single exit point per function
-  // LowerUnsignedIcmpPass and LowerSelect can add multiple returns.
+  //    LowerUnsignedICmpPass and LowerSelect can add multiple
+  //    returns.
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
 
   if (!DisableCrab) {
