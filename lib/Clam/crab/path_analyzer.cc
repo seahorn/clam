@@ -404,7 +404,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
       if (enabled[i]) {
         m_core.push_back(core[i]);
         if (do_debugging) {
-          crab::outs() << "\t" << core[i] << "\n";
+          crab::outs() << "\t" << *(core[i]) << "\n";
         }
       }
     }
