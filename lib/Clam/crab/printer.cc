@@ -75,8 +75,10 @@ void unproven_assumption_annotation::print_begin(const statement_t &s,
 
 print_block::print_block(
     cfg_ref_t cfg, crab::crab_os &o,
+    const typename IntraClam::checks_db_t &checksdb,
     const std::vector<std::unique_ptr<block_annotation>> &annotations)
-    : m_cfg(cfg), m_o(o), m_annotations(annotations) {}
+  : m_cfg(cfg), m_o(o), m_checksdb(checksdb), m_annotations(annotations) {
+}
 
 void print_block::operator()(basic_block_label_t bbl) const {
   // do not print block if no annotations
@@ -99,7 +101,44 @@ void print_block::operator()(basic_block_label_t bbl) const {
     for (auto &p : m_annotations) {
       p->print_begin(s, m_o);
     }
+
+    if (s.is_assert() || s.is_ref_assert() || s.is_bool_assert()) {
+      const crab::cfg::debug_info &di = s.get_debug_info();
+      if (m_checksdb.has_checks(di)) {
+	m_o << "  // File:" << di.get_file() << " line:" << di.get_line() << " col:"<< di.get_column() << " "; 
+	m_o << "Result: ";
+	auto const& checks = m_checksdb.get_checks(di);
+	unsigned safe = 0;
+	unsigned warning = 0;
+	unsigned error = 0;
+	for (unsigned i=0, num_checks = checks.size(); i<num_checks;++i) {
+	  switch(checks[i]) {
+	  case crab::checker::_SAFE:
+	  case crab::checker::_UNREACH:
+	    safe++;break;
+	  case crab::checker::_ERR:
+	    error++;break;
+	  default:
+	    warning++; break;
+	  }
+	}
+	if (error == 0 && warning == 0) {
+	  m_o << " OK";
+	} else {
+	  m_o << " FAIL -- ";
+	  if (safe > 0)
+	    m_o << "num of safe=" << safe << " ";
+	  if (error > 0)
+	    m_o << "num of errors=" << error << " ";
+	  if (warning > 0)
+	    m_o << "num of warnings=" << warning << " ";
+	}
+	m_o << "\n";
+      }
+    }
+    
     m_o << "  " << s << ";\n";
+    
     for (auto &p : m_annotations) {
       p->print_end(s, m_o);
     }
@@ -155,8 +194,9 @@ template <typename T> void dfs(cfg_ref_t cfg, T f) {
 
 void print_annotations(
     cfg_ref_t cfg,
+    const typename IntraClam::checks_db_t &checksdb,
     const std::vector<std::unique_ptr<block_annotation>> &annotations) {
-  print_block f(cfg, crab::outs(), annotations);
+  print_block f(cfg, crab::outs(), checksdb, annotations);
   dfs(cfg, f);
 }
 

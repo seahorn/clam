@@ -1,5 +1,6 @@
 #include "clam/Clam.hh"
 #include "crab/analysis/dataflow/assumptions.hpp"
+#include "crab/checkers/checker.hpp"
 
 #include <functional>
 #include <string>
@@ -82,11 +83,13 @@ public:
 class print_block {
   cfg_ref_t m_cfg;
   crab::crab_os &m_o;
+  const typename IntraClam::checks_db_t &m_checksdb;
   const std::vector<std::unique_ptr<block_annotation>> &m_annotations;
 
 public:
   print_block(
       cfg_ref_t cfg, crab::crab_os &o,
+      const typename IntraClam::checks_db_t &checksdb,
       const std::vector<std::unique_ptr<block_annotation>> &annotations);
 
   void operator()(basic_block_label_t bbl) const;
@@ -94,6 +97,7 @@ public:
 
 void print_annotations(
     cfg_ref_t cfg,
+    const typename IntraClam::checks_db_t &checksdb,
     const std::vector<std::unique_ptr<block_annotation>> &annotations);
 
 } // namespace crab_pretty_printer

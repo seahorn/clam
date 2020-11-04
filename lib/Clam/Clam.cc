@@ -300,6 +300,21 @@ private:
     CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                            << "Finished intra-procedural analysis.\n");
 
+    // --- checking assertions
+    if (params.check == CheckerKind::ASSERTION) {
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+                             << "Checking assertions ... \n");
+      intra_checker_t checker(analyzer,
+                              {std::make_shared<assertion_property_checker_t>(
+                                  params.check_verbose)});
+      checker.run();
+      CRAB_VERBOSE_IF(1, llvm::outs() << "Function " << m_fun.getName() << "\n";
+                      checker.show(crab::outs()));
+      results.checksdb += checker.get_all_checks();
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+                             << "Finished assert checking.\n");
+    }
+    
     // -- store invariants
     if (params.store_invariants || params.print_invars) {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing invariants.\n");
@@ -348,7 +363,7 @@ private:
               m_vfac.get_shadow_vars().begin(), m_vfac.get_shadow_vars().end());
         }
         pool_annotations.emplace_back(std::make_unique<inv_annotation_t>(
-            results.premap, results.postmap, shadow_varnames, &lookup));
+	      results.premap, results.postmap, shadow_varnames, &lookup));
       }
 
       // XXX: it must be alive when print_annotations is called.
@@ -362,23 +377,10 @@ private:
                 m_cfg_builder->getCfg(), &unproven_assumption_analyzer));
       }
       crab_pretty_printer::print_annotations(m_cfg_builder->getCfg(),
+					     results.checksdb, 
                                              pool_annotations);
     }
 
-    // --- checking assertions
-    if (params.check == CheckerKind::ASSERTION) {
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                             << "Checking assertions ... \n");
-      intra_checker_t checker(analyzer,
-                              {std::make_shared<assertion_property_checker_t>(
-                                  params.check_verbose)});
-      checker.run();
-      CRAB_VERBOSE_IF(1, llvm::outs() << "Function " << m_fun.getName() << "\n";
-                      checker.show(crab::outs()));
-      results.checksdb += checker.get_all_checks();
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                             << "Finished assert checking.\n");
-    }
     return;
   }
 
@@ -700,8 +702,8 @@ private:
             }
             std::vector<std::unique_ptr<block_annotation_t>> annotations;
             annotations.emplace_back(std::make_unique<inv_annotation_t>(
-                results.premap, results.postmap, shadow_varnames, &lookup));
-            crab_pretty_printer::print_annotations(cfg, annotations);
+		  results.premap, results.postmap, shadow_varnames, &lookup));
+            crab_pretty_printer::print_annotations(cfg, results.checksdb, annotations);
           }
         }
       }
