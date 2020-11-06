@@ -143,6 +143,34 @@ def parseArgs(argv):
     import argparse as a
     from argparse import RawTextHelpFormatter
 
+    def str2bool(v):
+        if isinstance(v, bool):
+            return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise a.ArgumentTypeError('Boolean value expected.')
+    
+    def add_bool_argument(parser, name, default,
+                          help=None, dest=None, **kwargs):
+        """
+        Add boolean option that can be turned on and off
+        """
+        import argparse
+        dest_name = dest if dest else name
+        mutex_group = parser.add_mutually_exclusive_group(required=False)
+        mutex_group.add_argument('--' + name, dest=dest_name, type=str2bool,
+                                 nargs='?', const=True, help=help,
+                                 metavar='BOOL', **kwargs)
+        mutex_group.add_argument('--no-' + name, dest=dest_name,
+                                 type=lambda v: not(str2bool(v)),
+                                 nargs='?', const=False,
+                                 help=argparse.SUPPRESS, **kwargs)
+        default_value = {dest_name : default}
+        parser.set_defaults(**default_value)
+    
     p = a.ArgumentParser(description='Abstract Interpretation-based Analyzer for LLVM bitecode',
                          formatter_class=RawTextHelpFormatter)
     p.add_argument ('-oll', '--oll', dest='asm_out_name', metavar='FILE',
@@ -329,9 +357,9 @@ def parseArgs(argv):
                     help='Promote verifier.assume calls to llvm.assume intrinsics',
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
-                    help='Check user assertions (default no check)',
-                    choices=['none', 'assert'],
-                    dest='assert_check', default='none')
+                   help='Check properties (default no check)',
+                   choices=['none', 'assert', 'null'],
+                   dest='assert_check', default='none')
     p.add_argument('--crab-check-verbose', metavar='INT',
                     help='Print verbose information about checks\n' + 
                          '>=1: only error checks\n' + 
@@ -376,15 +404,12 @@ def parseArgs(argv):
     # Other hidden options
     ######################################################################
     # Choose between own crab way of naming values and instnamer
-    p.add_argument('--crab-name-values',
-                    help=a.SUPPRESS,
-                    dest='crab_name_values', default=True, action='store_false')
-    p.add_argument('--crab-keep-shadows',
-                    help=a.SUPPRESS,
-                    dest='crab_keep_shadows', default=False, action='store_true')
-    p.add_argument('--crab-enable-bignums',
-                    help=a.SUPPRESS,
-                    dest='crab_enable_bignums', default=False, action='store_true')
+    add_bool_argument(p, 'crab-name-values', default=True, 
+                      help=a.SUPPRESS, dest='crab_name_values')
+    add_bool_argument(p, 'crab-keep-shadows', default=False, 
+                      help=a.SUPPRESS, dest='crab_keep_shadows')
+    add_bool_argument(p, 'crab-enable-bignums', default=False, 
+                      help=a.SUPPRESS, dest='crab_enable_bignums')
     #### END CRAB
     
     args = p.parse_args(argv)
@@ -756,7 +781,12 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_live: clam_args.append('--crab-live')
     clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
     if args.crab_promote_assume: clam_args.append('--crab-promote-assume')
-    if args.assert_check: clam_args.append('--crab-check={0}'.format(args.assert_check))
+    if args.assert_check:
+        if args.assert_check == 'null':
+            clam_args.append('--crab-check-null')
+            clam_args.append('--crab-check=assert')
+        else:
+            clam_args.append('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:
         clam_args.append('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.print_summs: clam_args.append('--crab-print-summaries')
