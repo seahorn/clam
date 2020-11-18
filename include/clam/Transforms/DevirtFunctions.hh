@@ -19,6 +19,8 @@ class CallGraph;
 
 namespace clam {
 
+// #define USE_BOUNCE_FUNCTIONS
+  
 namespace devirt_impl {
 using AliasSetId = const llvm::PointerType *;
 
@@ -77,10 +79,12 @@ public:
   /* return all possible targets for CS */
   virtual const AliasSet *getTargets(llvm::CallSite &CS) = 0;
 
+#ifdef USE_BOUNCE_FUNCTIONS  
   /* for reusing bounce functions */
   virtual llvm::Function *getBounceFunction(llvm::CallSite &CS) = 0;
   virtual void cacheBounceFunction(llvm::CallSite &CS,
                                    llvm::Function *bounce) = 0;
+#endif   
 };
 
 /*
@@ -98,21 +102,26 @@ public:
 
   const AliasSet *getTargets(llvm::CallSite &CS);
 
+#ifdef USE_BOUNCE_FUNCTIONS  
   llvm::Function *getBounceFunction(llvm::CallSite &CS);
-
   void cacheBounceFunction(llvm::CallSite &CS, llvm::Function *bounce);
+#endif   
 
 private:
   /* invariant: the value in TargetsMap's entries is sorted */
   using TargetsMap = llvm::DenseMap<AliasSetId, AliasSet>;
+#ifdef USE_BOUNCE_FUNCTIONS  
   using BounceMap = llvm::DenseMap<AliasSetId, llvm::Function *>;
-
+#endif
+  
   // -- the module
   llvm::Module &m_M;
   // -- map from alias-id to the corresponding targets
   TargetsMap m_targets_map;
+#ifdef USE_BOUNCE_FUNCTIONS  
   // -- map alias set id to an existing bounce function
   BounceMap m_bounce_map;
+#endif   
 
   void populateTypeAliasSets(void);
 };
@@ -141,15 +150,18 @@ public:
 
   const AliasSet *getTargets(llvm::CallSite &CS);
 
+#ifdef USE_BOUNCE_FUNCTIONS  
   llvm::Function *getBounceFunction(llvm::CallSite &CS);
-
   void cacheBounceFunction(llvm::CallSite &CS, llvm::Function *bounceFunction);
+#endif   
 
 private:
   /* invariant: the value in TargetsMap's entries is sorted */
   using TargetsMap = llvm::DenseMap<llvm::Instruction *, AliasSet>;
+#ifdef USE_BOUNCE_FUNCTIONS  
   using BounceMap =
       std::multimap<AliasSetId, std::pair<const AliasSet *, llvm::Function *>>;
+#endif   
   // -- the module
   llvm::Module &m_M;
   // -- the pointer analysis to resolve function pointers
@@ -161,8 +173,10 @@ private:
   unsigned m_max_num_targets;
   // -- map from callsite to the corresponding alias set
   TargetsMap m_targets_map;
+#ifdef USE_BOUNCE_FUNCTIONS  
   // -- map from alias set id + dsa targets to an existing bounce function
   BounceMap m_bounce_map;
+#endif   
 };
 
 //
@@ -192,8 +206,10 @@ private:
   /// turn the indirect call-site into a direct one
   void mkDirectCall(llvm::CallSite CS, CallSiteResolver *CSR);
 
+#ifdef USE_BOUNCE_FUNCTIONS  
   /// create a bounce function that calls functions directly
   llvm::Function *mkBounceFn(llvm::CallSite &CS, CallSiteResolver *CSR);
+#endif   
 
 public:
   DevirtualizeFunctions(llvm::CallGraph *cg, bool allowIndirectCalls);
