@@ -198,9 +198,21 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
   case CmpInst::ICMP_EQ: {
     ref_cst_t res;
     if (ref0->isVar() && lfac.isRefNull(ref1)) {
-      res = ref_cst_t::mk_null(ref0->getVar());
+      if (!isNegated) {
+	return ref_cst_t::mk_null(ref0->getVar());
+      } else {
+	// XX: disequalities are not good for crab	
+	return ref_cst_t::mk_gt_null(ref0->getVar());
+      }
+      // res = ref_cst_t::mk_null(ref0->getVar());
     } else if (lfac.isRefNull(ref0) && ref1->isVar()) {
-      res = ref_cst_t::mk_null(ref1->getVar());
+      if (!isNegated) {
+	return ref_cst_t::mk_null(ref1->getVar());
+      } else {
+	// XX: disequalities are not good for crab		
+	return ref_cst_t::mk_gt_null(ref1->getVar());
+      }
+      // res = ref_cst_t::mk_null(ref1->getVar());
     } else if (ref0->isVar() && ref1->isVar()) {
       res = ref_cst_t::mk_eq(ref0->getVar(), ref1->getVar());
     } else {
@@ -674,6 +686,10 @@ public:
 		       val, elem_size, first /*strong update*/);
     } else if (m_params.precision_level == CrabBuilderPrecision::MEM) {
       CLAM_WARNING("TODO implement global initializer if CrabBuilderPrecision::MEM");
+      // m_bb.havoc(m_lfac.mkRegionVar(rgn),
+      // 		 "Missing initialization of " + valueToStr(Base) +
+      // 		 " at offset=" + std::to_string(offset) +
+      // 		 " with value=" + valueToStr(Val));
     }
   }
 };
@@ -1264,7 +1280,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
 
   if (!isTracked(*cond, m_params))
     return;
-
+  
   if (ConstantInt *CI = dyn_cast<ConstantInt>(cond)) {
     // -- cond is a constant
     bool is_bignum;
@@ -1299,8 +1315,17 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
 	  m_bb.assume(cst_opt.getValue());
 	}
       } else {
-	// This shouldn't happen
-	CLAM_WARNING("Could not translate unexpectedly " << I);
+	auto cst_ref_opt = cmpInstToCrabRef(*Cond, m_lfac, isNotAssumeFn(*callee));
+	if (cst_ref_opt.hasValue()) {
+	  if (isAssertFn(*callee)) {
+	    m_bb.assert_ref(cst_ref_opt.getValue(), getDebugLoc(&I));
+	  } else {
+	    m_bb.assume_ref(cst_ref_opt.getValue());
+	  }
+	} else {
+	  // This shouldn't happen
+	  CLAM_WARNING("Could not translate unexpectedly " << I);
+	}
       }
     } else {
       
@@ -1372,31 +1397,39 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
   crab_lit_ref_t lit = m_lfac.getLit(I);
   assert(lit->isVar());
 
-  if (isReference(*I.getOperand(0), m_params) &&
-      isReference(*I.getOperand(1), m_params)) {
-
-    if (!AllUsesAreBrInst(I)) {
-      Optional<ref_cst_t> ref_cst = cmpInstToCrabRef(I, m_lfac, false/*not negated*/);
-      if (ref_cst.hasValue()) {
-	m_bb.bool_assign(lit->getVar(), ref_cst.getValue());
-      } else {
-	havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);	
-      }
-    } else {
+  const Value &v0 = *(I.getOperand(0));
+  const Value &v1 = *(I.getOperand(1));
+  
+  if (isReference(v0, m_params) && isReference(v1, m_params)) {
+    if (AllUsesAreBrInst(I)) {
       // already lowered elsewhere
-    }
+    } else {
+      SmallVector<CallInst*, 4> verifierCalls;
+      if (AllUsesAreVerifierCalls(I, 
+				  true /*goThroughIntegerCasts*/, 
+				  true /*nonBoolCond*/,
+				  verifierCalls)) {
+	for (CallInst *CI: verifierCalls) {
+	  m_verif_calls.insert({CI, &I});
+	}
+	// do nothing: lowered elsewhere
+      } else {
+	Optional<ref_cst_t> ref_cst = cmpInstToCrabRef(I, m_lfac, false/*not negated*/);
+	if (ref_cst.hasValue()) {
+	  m_bb.bool_assign(lit->getVar(), ref_cst.getValue());
+	} else {
+	  havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);	
+	}
+      } 
+    } 
     return;
   }
 
   // make sure we only translate if both operands are integers or booleans
-  if (!I.getOperand(0)->getType()->isIntegerTy() ||
-      !I.getOperand(1)->getType()->isIntegerTy()) {
+  if (!v0.getType()->isIntegerTy() || !v1.getType()->isIntegerTy()) {
     havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     return;
   }
-
-  const Value &v0 = *(I.getOperand(0));
-  const Value &v1 = *(I.getOperand(1));
 
   if (isBool(v0) && isBool(v1)) {
     // we lower it here
@@ -1472,7 +1505,11 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
     return;
   }
 
-  if (isa<ZExtInst>(I) && I.getSrcTy()->isIntegerTy(1) &&
+  if (AllUsesAreIgnoredInst(I)) {
+    return;
+  }
+ 
+  if ((isa<SExtInst>(I) || isa<ZExtInst>(I)) && I.getSrcTy()->isIntegerTy(1) &&
       AllUsesAreVerifierCalls(I)) {
     /*
        y:i32 = zext x:i1 to i32
@@ -1548,12 +1585,13 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
     } else if (isa<IntToPtrInst>(I)) {
       // CLAM_WARNING("translation skipped integer to pointer cast");
     } else if (isa<BitCastInst>(I) && isReference(*I.getOperand(0), m_params)) {
-
+      
       if (src->isRef()) {
         if (m_lfac.isRefNull(src)) {
           m_bb.assume_ref(ref_cst_t::mk_null(dst->getVar()));
 	  return;
         } else {
+	  
           assert(src->isVar());
 	  Region rgn_src = getRegion(m_mem, m_func_regions, m_params, I, *(I.getOperand(0)));
 	  Region rgn_dst = getRegion(m_mem, m_func_regions, m_params, I, I);
@@ -1606,11 +1644,13 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
   if (isBool(I)) {
     // --- All operands are BOOL
     if (!op1->isBool()) {
-      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
+      CLAM_ERROR("Expected boolean select operands");
+      //havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
     if (!op2->isBool()) {
-      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
+      CLAM_ERROR("Expected boolean select operands");      
+      //havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
 
@@ -1667,11 +1707,13 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 
     // --- All operands except the condition are INTEGERS
     if (!op1->isInt()) {
-      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
+      CLAM_ERROR("Expected integer select operands");
+      //havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
     if (!op2->isInt()) {
-      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
+      CLAM_ERROR("Expected integer select operands");      
+      //havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
 
@@ -2730,6 +2772,8 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
   
   basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
   Module &M = *(m_func.getParent());
+
+  
   for (GlobalVariable &gv : M.globals()) {
     // Lower global initializers into main
     if (gv.hasInitializer()) {
@@ -2752,13 +2796,41 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
       }
 
       if (m_params.add_nonnull_assumptions) {
+	if (gv.hasInitializer()) {
+	  if (const ConstantDataSequential *CDS =
+	      dyn_cast<ConstantDataSequential>(gv.getInitializer())) {
+	    // XX: do not add nullity assumptions on constant C
+	    //     strings. We expect that any dereference to these
+	    //     are considered trivial by LLVM so we won't add an
+	    //     assertion anyway.
+	    if (CDS->isString() || CDS->isCString()) {
+	      continue;
+	    }
+	  }
+	}
 	// global variables are not null
 	entry.assume_ref(ref_cst_t::mk_gt_null(gv_lit->getVar()));
       }
     }
   }
-  // Add assumptions about function addresses
+
   if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    if (m_params.add_nonnull_assumptions) {
+      // Add assumption argv != NULL.
+      // But we are missing the assumption:
+      //    forall 0<=i< argc:: argv[i] != NULL and argv[argc] = NULL
+      if (m_func.arg_size() == 2) {
+	if (Value *Argv = m_func.getArg(1)) {
+	  if (Argv->getType()->isPointerTy()) {
+	    crab_lit_ref_t argv_lit = m_lfac.getLit(*Argv);
+	    assert(argv_lit->isVar());
+	    entry.assume_ref(ref_cst_t::mk_gt_null(argv_lit->getVar()));
+	  }
+	}
+      }
+    }
+    
+    // Add assumptions about function addresses
     for (auto &F: M) {
       if (F.hasAddressTaken()) {
 	crab_lit_ref_t funptr = m_lfac.getLit(F);

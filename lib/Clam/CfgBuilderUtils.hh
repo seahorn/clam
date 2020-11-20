@@ -115,4 +115,7 @@ bool AllUsesAreVerifierCalls(llvm::Value &V);
 // Return true if all uses are GEPs
 bool AllUsesAreGEP(llvm::Value &V);
 
+// Return true if all uses are ignored instructions 
+bool AllUsesAreIgnoredInst(llvm::Value &V);
+
 } // namespace clam

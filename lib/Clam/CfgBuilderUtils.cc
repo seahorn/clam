@@ -119,6 +119,14 @@ crab::cfg::debug_info getDebugLoc(const Instruction *inst) {
   std::string File = (*dloc).getFilename();
   if (File == "")
     File = "unknown file";
+
+  // HACK: append assertion ID to the filename for bookeeping
+  if (MDNode *MDN = inst->getMetadata("clam-assertion")) {
+    StringRef Check = cast<MDString>(MDN->getOperand(0))->getString();
+    if (Check != "") {
+      File += "#" + Check.str();
+    }
+  }
   return crab::cfg::debug_info(File, Line, Col);
 }
 
@@ -327,4 +335,19 @@ bool AllUsesAreGEP(Value &V) {
   return true;
 }
 
+bool AllUsesAreIgnoredInst(llvm::Value &V) {
+  for (auto &U : V.uses()) {
+    if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
+      if (Function * CalledF = dyn_cast<Function>(CI->getCalledOperand())) {
+	if (CalledF->getName().startswith("llvm.dbg.value") ||
+	    CalledF->getName().startswith("llvm.lifetime")) {
+	  continue;
+	}
+      }
+    }
+    return false;
+  }
+  return true;
+}
+  
 } // namespace clam
