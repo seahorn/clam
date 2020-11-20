@@ -59,7 +59,7 @@ public:
 
   bool isRefNull(const crab_lit_ref_t ref) const;
 
-  var_or_num_t getTypedConst(const crab_lit_ref_t ref) const;
+  var_or_cst_t getTypedConst(const crab_lit_ref_t ref) const;
   
   number_t getIntCst(const crab_lit_ref_t ref) const;
 
@@ -299,7 +299,7 @@ bool crabLitFactoryImpl::isRefNull(const crab_lit_ref_t ref) const {
   return lit->isNull();
 }
 
-var_or_num_t crabLitFactoryImpl::getTypedConst(const crab_lit_ref_t ref) const {
+var_or_cst_t crabLitFactoryImpl::getTypedConst(const crab_lit_ref_t ref) const {
   if (ref->isBool()) {
     auto b = std::static_pointer_cast<const crabBoolLit>(ref);
     if (b->isConst()) {
@@ -470,7 +470,7 @@ bool crabLitFactory::isRefNull(const crab_lit_ref_t ref) const {
   return m_impl->isRefNull(ref);
 }
 
-var_or_num_t crabLitFactory::getTypedConst(const crab_lit_ref_t ref) const {
+var_or_cst_t crabLitFactory::getTypedConst(const crab_lit_ref_t ref) const {
   return m_impl->getTypedConst(ref);
 }
   

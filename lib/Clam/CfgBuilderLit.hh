@@ -81,13 +81,13 @@ public:
     return !m_cst;
   }
 
-  var_or_num_t getTypedConst() const {
+  var_or_cst_t getTypedConst() const {
     assert(isConst());
     
     if (isTrue()) {
-      return var_or_num_t(number_t(1), crab::variable_type(crab::BOOL_TYPE));
+      return var_or_cst_t::make_bool_true();
     } else {
-      return var_or_num_t(number_t(0), crab::variable_type(crab::BOOL_TYPE));
+      return var_or_cst_t::make_bool_false();
     }
   }
   
@@ -122,9 +122,9 @@ public:
 
   bool isNull() const { return !isVar(); }
 
-  var_or_num_t getTypedConst() const {
+  var_or_cst_t getTypedConst() const {
     assert(isNull());
-    return var_or_num_t(number_t(0), crab::variable_type(crab::REF_TYPE));
+    return var_or_cst_t::make_reference_null();
   }
   
   void write(crab::crab_os &out) const override {
@@ -162,9 +162,9 @@ public:
 
   bool isInt() const { return !isVar(); }
   
-  var_or_num_t getTypedConst() const {
+  var_or_cst_t getTypedConst() const {
     assert(isInt());
-    return var_or_num_t(getInt(), crab::variable_type(crab::INT_TYPE, getBitwidth()));
+    return var_or_cst_t(getInt(), crab::variable_type(crab::INT_TYPE, getBitwidth()));
   }
 
   unsigned getBitwidth() const {
@@ -241,7 +241,7 @@ public:
   /** error if the literal is not an integer **/
   lin_exp_t getExp(const crab_lit_ref_t ref) const;
   /** error if the literal is not a constant **/
-  var_or_num_t getTypedConst(const crab_lit_ref_t ref) const;
+  var_or_cst_t getTypedConst(const crab_lit_ref_t ref) const;
   /** error if the literal is not an integer constant **/  
   number_t getIntCst(const crab_lit_ref_t ref) const;  
 
