@@ -252,13 +252,14 @@ bool AllUsesAreBrInst(Value &V) {
 }
 
 // Return true if all uses are BranchInst's or Select's
-bool AllUsesAreBrOrIntSelectCondInst(Value &V) {
+bool AllUsesAreBrOrIntSelectCondInst(Value &V, const CrabBuilderParams &params) {
   // XXX: do not strip pointers here
   for (auto &U : V.uses()) {
     if ((!isa<BranchInst>(U.getUser())) && (!isa<SelectInst>(U.getUser())))
       return false;
     if (SelectInst *SI = dyn_cast<SelectInst>(U.getUser())) {
-      if (isBool(*SI) || SI->getCondition() != &V) {
+      if (isBool(*SI) || SI->getCondition() != &V ||
+	  isReference(*SI, params)) {
         // if the operands are bool or V is not the condition
         return false;
       }

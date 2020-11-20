@@ -1,8 +1,8 @@
 /*
  * Translate a LLVM function to a CFG language understood by Crab.
  *
- * Crab supports operations over boolean, integers and
- * references. Moreover, Crab supports unidimensional arrays. Arrays
+ * Crab supports operations over boolean, integers and references
+ * (pointers). Moreover, Crab supports unidimensional arrays. Arrays
  * are interpreted as sequence of consecutive bytes which are disjoint
  * from each other.
  *
@@ -1443,7 +1443,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
     }
   } else {
     assert(isInteger(v0) && isInteger(v1));
-    if (AllUsesAreBrOrIntSelectCondInst(I)) {
+    if (AllUsesAreBrOrIntSelectCondInst(I, m_params)) {
       // do nothing: already lowered elsewhere
     } else {
       SmallVector<CallInst*, 4> verifierCalls;
@@ -1624,22 +1624,85 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 
   crab_lit_ref_t lhs = m_lfac.getLit(I);
   assert(lhs && lhs->isVar());
-
-  if (isReference(I, m_params)) {
-    // TODO: select of pointers
-    CLAM_WARNING("skipped " << I << "\n"
-                            << "Enable --lower-select.");
-    havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
-    return;
-  }
-
-  Value &cond = *I.getCondition();
-  crab_lit_ref_t c = m_lfac.getLit(cond);
+  Value &condV = *I.getCondition();
+  crab_lit_ref_t c = m_lfac.getLit(condV);
   assert(c);
   crab_lit_ref_t op1 = m_lfac.getLit(*I.getTrueValue());
   assert(op1);
   crab_lit_ref_t op2 = m_lfac.getLit(*I.getFalseValue());
   assert(op2);
+  
+  if (isReference(I, m_params)) {
+    // --- All operands are pointers
+    if (!op1->isRef()) {
+      CLAM_ERROR("Expected pointer select operands");
+      return;
+    }
+    if (!op2->isRef()) {
+      CLAM_ERROR("Expected pointer select operands");      
+      return;
+    }
+
+    auto lhs_rgn = m_lfac.mkRegionVar(getRegion(m_mem, m_func_regions, m_params, I, I));
+    auto op1_rgn = m_lfac.mkRegionVar(getRegion(m_mem, m_func_regions, m_params, I, *I.getTrueValue()));
+    auto op2_rgn = m_lfac.mkRegionVar(getRegion(m_mem, m_func_regions, m_params, I, *I.getFalseValue()));    
+    
+    // -- simple cases first: we know the condition is either true or false
+    if (ConstantInt *ci = dyn_cast<ConstantInt>(&condV)) {
+      if (ci->isOne()) {
+	if (op1->isVar())  {
+	  m_bb.gep_ref(lhs->getVar(), lhs_rgn, op1->getVar(), op1_rgn);
+	} else {
+	  assert(m_lfac.isRefNull(op1));
+	  m_bb.havoc(lhs->getVar());
+	  m_bb.assume_ref(ref_cst_t::mk_null(lhs->getVar()));
+	}
+      } else {
+        if (!ci->isZero()) {
+          CLAM_ERROR("Unexpected select condition");
+	}
+	if (op2->isVar()) {
+	  m_bb.gep_ref(lhs->getVar(), lhs_rgn, op2->getVar(), op2_rgn);
+	} else {
+	  assert(m_lfac.isRefNull(op2));
+	  m_bb.havoc(lhs->getVar());
+	  m_bb.assume_ref(ref_cst_t::mk_null(lhs->getVar()));
+	} 
+      }
+      return;
+    }
+
+    crab_lit_ref_t cond = m_lfac.getLit(condV);    
+    assert(cond->isVar());
+    
+    if (op1->isVar() && op2->isVar()) {
+      m_bb.select_ref(lhs->getVar(), lhs_rgn,
+		      cond->getVar(),
+		      op1->getVar(), op1_rgn,
+		      op2->getVar(), op2_rgn);
+      
+    } else if (!op1->isVar()) {
+      m_bb.select_ref_null_true_value(lhs->getVar(), lhs_rgn, cond->getVar(),
+				      op2->getVar(), op2_rgn);
+      
+    } else if (!op2->isVar()) {
+      m_bb.select_ref_null_false_value(lhs->getVar(), lhs_rgn, cond->getVar(),
+				       op1->getVar(), op1_rgn);
+      
+    } else {
+      // both op1 and op2 should be null
+      if (m_lfac.isRefNull(op1) && m_lfac.isRefNull(op2)) {
+	m_bb.havoc(lhs->getVar());
+	m_bb.assume_ref(ref_cst_t::mk_null(lhs->getVar()));
+      } else {
+	CLAM_WARNING("skipped unexpected " << I << "\n"
+		     << "Enable --lower-select.");
+	havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
+      } 
+    }
+    return;
+  }
+
 
   if (isBool(I)) {
     // --- All operands are BOOL
@@ -1655,7 +1718,7 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     }
 
     // -- simple cases first: we know the condition is either true or false
-    if (ConstantInt *ci = dyn_cast<ConstantInt>(&cond)) {
+    if (ConstantInt *ci = dyn_cast<ConstantInt>(&condV)) {
       if (ci->isOne()) {
         if (!op1->isVar()) {
           m_bb.bool_assign(lhs->getVar(),
@@ -1721,7 +1784,7 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     lin_exp_t e2 = m_lfac.getExp(op2);
 
     // -- simple cases first: we know the condition is either true or false
-    if (ConstantInt *ci = dyn_cast<ConstantInt>(&cond)) {
+    if (ConstantInt *ci = dyn_cast<ConstantInt>(&condV)) {
       if (ci->isOne()) {
         m_bb.assign(lhs->getVar(), e1);
       } else {
@@ -1735,7 +1798,7 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     assert(c->isVar());
 
     // -- general case: we don't know whether the condition is true or not
-    if (CmpInst *CI = dyn_cast<CmpInst>(&cond)) {
+    if (CmpInst *CI = dyn_cast<CmpInst>(&condV)) {
       if (auto cst_opt = cmpInstToCrabInt(*CI, m_lfac)) {
         m_bb.select(lhs->getVar(), *cst_opt, e1, e2);
         return;
@@ -2946,7 +3009,7 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
           }
 	  if (!lower_cond_as_bool) {
 	    // Here we check the same condition we checked in visitCmpInt
-	    lower_cond_as_bool = !AllUsesAreBrOrIntSelectCondInst(*CI);
+	    lower_cond_as_bool = !AllUsesAreBrOrIntSelectCondInst(*CI, m_params);
 	  }
         } else {
           // If the boolean condition is passed directly (e.g.,

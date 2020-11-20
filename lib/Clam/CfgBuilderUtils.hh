@@ -100,7 +100,7 @@ bool isIntInitializer(const llvm::CallInst &CI);
 bool AllUsesAreBrInst(llvm::Value &V);
 
 // Return true if all uses are BranchInst's or Select's
-bool AllUsesAreBrOrIntSelectCondInst(llvm::Value &V);
+  bool AllUsesAreBrOrIntSelectCondInst(llvm::Value &V, const CrabBuilderParams &params);
 
 // Return true if all uses are the callee at callsites
 bool AllUsesAreIndirectCalls(llvm::Value &V);
