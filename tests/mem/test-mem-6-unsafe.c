@@ -2,12 +2,12 @@ extern void __CRAB_assert(int);
 extern int int_nd(void);
 
 // RUN: %clam -O0  --crab-inter --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
-// CHECK: ^0  Number of total safe checks$
-// CHECK: ^3  Number of total warning checks$
+// CHECK: ^2  Number of total safe checks$
+// CHECK: ^1  Number of total warning checks$
 
 
-// Clam cannot prove anything because the two stores in f are modeled
-// as weak updates.
+// The first store in f is a strong update and the second is a weak
+// update.
 
 
 // if p and q alias then *p=2 and *q=2
