@@ -1,7 +1,10 @@
 // RUN: %clam -O0 --devirt-functions=types --crab-inter --crab-check=assert --crab-sanity-checks --lower-unsigned-icmp "%s" 2>&1 | OutputCheck %s
-// CHECK: ^1  Number of total safe checks$
+// CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
-// CHECK: ^1  Number of total warning checks$
+// CHECK: ^0  Number of total warning checks$
+
+// If devirt-functions=types uses bounce functions then we cannot
+// prove the two checks.
 
 extern void __CRAB_assert(int);
 
