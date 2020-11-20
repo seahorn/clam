@@ -154,6 +154,16 @@ CrabInterMaxSummaries("crab-inter-max-summaries",
 		  "the interprocedural analysis"),
 	 cl::init(UINT_MAX));
 
+cl::opt<bool>
+CrabInterRecursiveFunctions("crab-inter-recursive", 
+	 cl::desc("Precise analysis of recursive analysis"),
+	 cl::init(false));
+
+cl::opt<bool>
+CrabInterExactSummaryReuse("crab-inter-exact-summary-reuse", 
+	 cl::desc("Reuse summaries without losing precision (more expensive)"),
+	 cl::init(true));
+
 cl::opt<heap_analysis_t>
 CrabHeapAnalysis("crab-heap-analysis",
    cl::desc("Heap analysis used for memory disambiguation"),

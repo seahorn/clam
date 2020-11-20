@@ -525,8 +525,8 @@ public:
         }
         cfg_t *cfg = &(m_crab_builder_man.getCfg(F));
         cfg_ref_vector.push_back(*cfg);
-        CRAB_VERBOSE_IF(1, llvm::outs()
-                               << "Built Crab CFG for " << F.getName() << "\n");
+        //CRAB_VERBOSE_IF(1, llvm::outs()
+	//<< "Built Crab CFG for " << F.getName() << "\n");
       } else {
         CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
                                         << F.getName() << "\n");
@@ -636,6 +636,8 @@ private:
     inter_params.keep_cc_invariants = false;
     inter_params.keep_invariants = params.store_invariants || params.print_invars;
     inter_params.max_call_contexts = params.max_calling_contexts;
+    inter_params.exact_summary_reuse = params.exact_summary_reuse;
+    inter_params.analyze_recursive_functions = params.analyze_recursive_functions;
     inter_params.live_map = (params.run_liveness ? &m_live_map : nullptr);
     inter_params.widening_delay = params.widening_delay;
     inter_params.descending_iters = params.narrowing_iters;
@@ -839,6 +841,8 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.run_backward = CrabBackward;
   m_params.run_inter = CrabInter;
   m_params.max_calling_contexts = CrabInterMaxSummaries;
+  m_params.analyze_recursive_functions = CrabInterRecursiveFunctions;
+  m_params.exact_summary_reuse = CrabInterExactSummaryReuse;
   m_params.run_liveness = CrabLive;
   m_params.relational_threshold = CrabRelationalThreshold;
   m_params.widening_delay = CrabWideningDelay;

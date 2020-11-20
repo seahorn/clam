@@ -332,6 +332,12 @@ def parseArgs(argv):
                     type=int, dest='inter_max_summaries', 
                     help='Max number of summaries per function',
                     default=1000000)
+    add_bool_argument(p, 'crab-inter-recursive-functions', default=False, 
+                      help='Precise analysis of recursive functions (more expensive). False by default',
+                      dest='crab_inter_recursive')
+    add_bool_argument(p, 'crab-inter-exact-summary-reuse', default=True, 
+                      help='Reuse summaries without losing precision (more expensive). True by default',
+                      dest='crab_inter_exact_summary_reuse')    
     p.add_argument('--crab-backward',
                     help='Run iterative forward/backward analysis for proving assertions (only intra version available and very experimental)',
                     dest='crab_backward', default=False, action='store_true')
@@ -776,7 +782,14 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_inter:
         clam_args.append('--crab-inter')
         clam_args.append('--crab-inter-max-summaries={0}'.format(args.inter_max_summaries))
-        
+        if args.crab_inter_recursive:
+            clam_args.append('--crab-inter-recursive=true')
+        else:
+            clam_args.append('--crab-inter-recursive=false')
+        if args.crab_inter_exact_summary_reuse:
+            clam_args.append('--crab-inter-exact-summary-reuse=true')
+        else:
+            clam_args.append('--crab-inter-exact-summary-reuse=false')
     if args.crab_backward: clam_args.append('--crab-backward')
     if args.crab_live: clam_args.append('--crab-live')
     clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
