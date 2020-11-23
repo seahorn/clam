@@ -271,7 +271,7 @@ LegacySeaDsaHeapAbstraction::LegacySeaDsaHeapAbstraction(
       "heap-abs", llvm::errs()
                       << "========= HeapAbstraction using sea-dsa =========\n");
 
-  CRAB_VERBOSE_IF(3, for (auto &F
+  CRAB_VERBOSE_IF(5, for (auto &F
                           : M) {
     if (m_dsa->hasGraph(F)) {
       auto &G = m_dsa->getGraph(F);

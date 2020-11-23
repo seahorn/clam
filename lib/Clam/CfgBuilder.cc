@@ -90,6 +90,10 @@
 #include "crab/common/stats.hpp"
 #include "crab/transforms/dce.hpp"
 
+#include "crab/cfg/cfg_bgl.hpp"
+//#include "crab/cfg/cfg.hpp"
+#include "crab/iterators/wto.hpp"
+
 #include "sea_dsa/ShadowMem.hh"
 
 #include <algorithm>
@@ -3417,6 +3421,43 @@ Optional<CfgBuilder::varset> CfgBuilder::get_live_symbols(const BasicBlock *B) c
   }
 }
 
+struct find_widening_set_visitor: public ikos::wto_component_visitor<cfg_ref_t> {
+  using wto_vertex_t = ikos::wto_vertex<cfg_ref_t>;
+  using wto_cycle_t = ikos::wto_cycle<cfg_ref_t>;
+  using widening_set_t = std::set<typename cfg_ref_t::basic_block_label_t>;
+  widening_set_t &m_widening_set;
+  find_widening_set_visitor(widening_set_t &widening_set)
+    : m_widening_set(widening_set) {}
+  void visit(wto_cycle_t &cycle) {
+    m_widening_set.insert(cycle.head());
+    for (auto &wto_component : cycle) {
+      wto_component.accept(this);
+    }
+  }
+  void visit(wto_vertex_t &vertex) {}
+};
+
+  
+CfgBuilder::widening_set_t &CfgBuilder::get_widening_points() {
+  if  (m_widening_set) {
+    return *m_widening_set;
+  }
+
+  m_widening_set.reset(new widening_set_t());
+  
+  // Build WTO
+  auto &cfg = m_impl->get_cfg();  
+  wto<cfg_ref_t> wto_cfg(cfg);
+
+  // Extract widening points
+  find_widening_set_visitor widening_vis(*m_widening_set);
+  wto_cfg.accept(&widening_vis);
+
+  return *m_widening_set;
+}
+
+
+  
 /* CFG Manager class */
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        const llvm::TargetLibraryInfo &tli,
@@ -3469,7 +3510,7 @@ bool CrabBuilderManager::has_cfg(const Function &f) const {
 cfg_t &CrabBuilderManager::get_cfg(const Function &f) const {
   return get_cfg_builder(f)->get_cfg();
 }
-
+  
 CrabBuilderManager::CfgBuilderPtr
 CrabBuilderManager::get_cfg_builder(const Function &f) const {
   auto it = m_cfg_builder_map.find(&f);

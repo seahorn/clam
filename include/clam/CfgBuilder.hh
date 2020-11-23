@@ -12,6 +12,7 @@
 #include "crab/analysis/dataflow/liveness.hpp"
 
 #include <memory>
+#include <set>
 
 // forward declarations
 namespace llvm {
@@ -46,17 +47,20 @@ public:
 
   using liveness_t = crab::analyzer::liveness<cfg_ref_t>;
   using varset = typename liveness_t::varset_domain_t;
+  using widening_set_t = std::set<typename cfg_ref_t::basic_block_label_t>;
 
 private:
   
   friend class CrabBuilderManager;
   friend class IntraClam_Impl;
   friend class InterClam_Impl;
-  
+
   // the actual cfg builder
   std::unique_ptr<CfgBuilderImpl> m_impl;
   // live symbols
   std::unique_ptr<crab::analyzer::liveness<cfg_ref_t>> m_ls;
+  // widening points
+  std::unique_ptr<widening_set_t> m_widening_set;
   
   CfgBuilder(const llvm::Function& func, CrabBuilderManager& man);
   
@@ -103,7 +107,8 @@ public:
   // corresponding llvm instruction. Return null if the the array
   // instruction is not mapped to a LLVM instruction.
   const llvm::Instruction* get_instruction(const statement_t& s) const;
-  
+
+  widening_set_t &get_widening_points();
 }; // end class CfgBuilder
   
   
@@ -139,7 +144,7 @@ public:
   bool has_cfg(const llvm::Function &f) const;
   
   cfg_t& get_cfg(const llvm::Function &f) const;
-  
+
   CfgBuilderPtr get_cfg_builder(const llvm::Function &f) const;
   
   variable_factory_t& get_var_factory();

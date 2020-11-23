@@ -49,6 +49,7 @@
 #include "crab/checkers/assertion.hpp"
 //#include "crab/checkers/null.hpp"
 #include "crab/checkers/checker.hpp"
+
 #include "crab/cg/cg.hpp"
 #include "crab/cg/cg_bgl.hpp"
 #include "./crab/path_analyzer.hpp"
@@ -67,6 +68,12 @@ using namespace crab::analyzer;
 using namespace crab::checker;
 
 #include "ClamOptions.def"
+
+cl::opt<bool>
+CompareInvariants("crab-compare-invariants",
+	 cl::desc("For TOPLAS paper"), 
+	 cl::init(false),
+	 cl::Hidden);
 
 // In C++11 we need to pass to std::bind "this" (if class member
 // functions are called) as well as all placeholders for each
@@ -97,7 +104,8 @@ namespace clam {
   #endif
 
   static bool isRelationalDomain(CrabDomain dom) {
-    return (dom == ZONES_SPLIT_DBM || dom == OCT ||
+    return (dom == ZONES_SPLIT_DBM || dom == ZONES || dom == OCT ||
+	    dom == PACK_ZONES ||  dom == PACK_OCT || 
 	    dom == PK || dom == TERMS_ZONES);
   }
 
@@ -380,7 +388,10 @@ namespace clam {
     case OCT_SPLIT_DBM:         return split_oct_domain_t::getDomainName();      
     case TERMS_DIS_INTERVALS:   return term_dis_int_domain_t::getDomainName();
     case TERMS_ZONES:           return num_domain_t::getDomainName();
+    case ZONES:                 return zones_domain_t::getDomainName();      
     case OCT:                   return oct_domain_t::getDomainName();
+    case PACK_ZONES:            return pack_zones_domain_t::getDomainName();            
+    case PACK_OCT:              return pack_oct_domain_t::getDomainName();      
     case PK:                    return pk_domain_t::getDomainName();
     case WRAPPED_INTERVALS:     return wrapped_interval_domain_t::getDomainName();
     default:                    return "none";
@@ -435,7 +446,7 @@ namespace clam {
       }
 
       const liveness_t* live = nullptr;
-      if (params.run_liveness || isRelationalDomain(params.dom)) {
+      if (params.run_liveness) {
 	// -- run liveness
 	m_cfg_builder->compute_live_symbols();
 	if (isRelationalDomain(params.dom)) {
@@ -519,7 +530,7 @@ namespace clam {
 
     // helper to get a reference to a crab cfg from the builder
     cfg_t& get_cfg() { return m_cfg_builder->get_cfg(); }
-    
+
     template<typename Dom>
     void analyzeCfg(const AnalysisParams &params,
 		    const BasicBlock *entry,
@@ -562,11 +573,33 @@ namespace clam {
 		   params.widening_delay, params.narrowing_iters, params.widening_jumpset);
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished intra-procedural analysis.\n"); 
 
+
+      std::set<basic_block_label_t> *widening_set = (CompareInvariants ?
+						     &m_cfg_builder->get_widening_points() :
+						     nullptr);      
       // -- store invariants
       if (params.store_invariants || params.print_invars) {
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing invariants.\n");       
 	for (basic_block_label_t bl: llvm::make_range(get_cfg().label_begin(),
 						      get_cfg().label_end())) {
+
+	  if (widening_set) {
+	    const BasicBlock *B = bl.get_basic_block();
+	    if (!B) {
+	      B = bl.get_edge().second;
+	    }
+	    
+	    if (B && widening_set->count(bl) > 0) {
+	      // We only store the invariants for widening points.
+	      CRAB_VERBOSE_IF(1,
+			      llvm::errs() << "\tStoring invariant only for widening point "
+			      << B->getName() << "\n";);
+	      auto pre = analyzer.get_pre(bl);
+	      update(results.premap, *B,  mkGenericAbsDomWrapper(pre));
+	    }
+	    continue;
+	  }	    
+	  
 	  if (bl.is_edge()) {
 	    // Note that we use get_post instead of get_pre:
 	    //   the crab block (bl) has an assume statement corresponding
@@ -576,14 +609,14 @@ namespace clam {
 	    if (analyzer.get_post(bl).is_bottom()) {
 	      results.infeasible_edges.insert({bl.get_edge().first, bl.get_edge().second});
 	    }
-	  } else if (const BasicBlock *B = bl.get_basic_block()) {
+	  } else if (const BasicBlock *B = bl.get_basic_block()) {	   	    
 	    // --- invariants that hold at the entry of the blocks
 	    auto pre = analyzer.get_pre(bl);
 	    update(results.premap, *B,  mkGenericAbsDomWrapper(pre));
 	    // --- invariants that hold at the exit of the blocks
 	    auto post = analyzer.get_post(bl);
 	    update(results.postmap, *B,  mkGenericAbsDomWrapper(post));
-	    #if 0
+            #if 0
 	    if (params.stats) {
 	      unsigned num_block_invars = 0;
 	      // XXX: for boxes it would be more useful to get a measure
@@ -593,7 +626,7 @@ namespace clam {
 	      num_invars += num_block_invars;
 	      if (num_block_invars > 0) num_nontrivial_blocks++;
 	    }
-	    #endif 
+            #endif
 	  } else {
 	    // this should be unreachable
 	    assert(false && "A Crab block should correspond to either an LLVM edge or block");
@@ -655,7 +688,6 @@ namespace clam {
 	results.checksdb += checker.get_all_checks();
 	CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished assert checking.\n");      
       }
-
       
       return;
     }
@@ -710,16 +742,19 @@ namespace clam {
       {
 	ZONES_SPLIT_DBM         , { bind_this(this, &IntraClam_Impl::analyzeCfg<split_dbm_domain_t>), "zones" }}	
       #ifdef HAVE_ALL_DOMAINS	
-      , { INTERVALS_CONGRUENCES , { bind_this(this, &IntraClam_Impl::analyzeCfg<ric_domain_t>), "reduced product of intervals and congruences" }}
-      , { DIS_INTERVALS         , { bind_this(this, &IntraClam_Impl::analyzeCfg<dis_interval_domain_t>), "disjunctive intervals" }}
-      , { TERMS_INTERVALS       , { bind_this(this, &IntraClam_Impl::analyzeCfg<term_int_domain_t>), "terms with intervals" }}
-      , { WRAPPED_INTERVALS     , { bind_this(this, &IntraClam_Impl::analyzeCfg<wrapped_interval_domain_t>), "wrapped intervals" }}
+      // , { INTERVALS_CONGRUENCES , { bind_this(this, &IntraClam_Impl::analyzeCfg<ric_domain_t>), "reduced product of intervals and congruences" }}
+      // , { DIS_INTERVALS         , { bind_this(this, &IntraClam_Impl::analyzeCfg<dis_interval_domain_t>), "disjunctive intervals" }}
+      // , { TERMS_INTERVALS       , { bind_this(this, &IntraClam_Impl::analyzeCfg<term_int_domain_t>), "terms with intervals" }}
+      // , { WRAPPED_INTERVALS     , { bind_this(this, &IntraClam_Impl::analyzeCfg<wrapped_interval_domain_t>), "wrapped intervals" }}
       , { OCT_SPLIT_DBM         , { bind_this(this, &IntraClam_Impl::analyzeCfg<split_oct_domain_t>), "octagons in SNF" }}      
-      , { TERMS_ZONES           , { bind_this(this, &IntraClam_Impl::analyzeCfg<num_domain_t>), "terms with zones" }}
-      , { TERMS_DIS_INTERVALS   , { bind_this(this, &IntraClam_Impl::analyzeCfg<term_dis_int_domain_t>), "terms with disjunctive intervals" }}
+      // , { TERMS_ZONES           , { bind_this(this, &IntraClam_Impl::analyzeCfg<num_domain_t>), "terms with zones" }}
+      // , { TERMS_DIS_INTERVALS   , { bind_this(this, &IntraClam_Impl::analyzeCfg<term_dis_int_domain_t>), "terms with disjunctive intervals" }}
+      , { ZONES                 , { bind_this(this, &IntraClam_Impl::analyzeCfg<zones_domain_t>), "zones" }}
+      , { PACK_ZONES            , { bind_this(this, &IntraClam_Impl::analyzeCfg<pack_zones_domain_t>), "pack(zones)" }}            
       , { OCT                   , { bind_this(this, &IntraClam_Impl::analyzeCfg<oct_domain_t>), "octagons" }}
-      , { BOXES                 , { bind_this(this, &IntraClam_Impl::analyzeCfg<boxes_domain_t>), "boxes" }}
-      , { PK                    , { bind_this(this, &IntraClam_Impl::analyzeCfg<pk_domain_t>), "polyhedra" }}
+      , { PACK_OCT              , { bind_this(this, &IntraClam_Impl::analyzeCfg<pack_oct_domain_t>), "pack(octagons)" }}      
+      // , { BOXES                 , { bind_this(this, &IntraClam_Impl::analyzeCfg<boxes_domain_t>), "boxes" }}
+      // , { PK                    , { bind_this(this, &IntraClam_Impl::analyzeCfg<pk_domain_t>), "polyhedra" }}
       , { INTERVALS             , { bind_this(this, &IntraClam_Impl::analyzeCfg<interval_domain_t>), "classical intervals" }} 	
       #endif 	
       
@@ -728,14 +763,14 @@ namespace clam {
 
     // Domains used for path-based analysis
     const std::map<CrabDomain, path_analysis> path_analyses {
-      {
-	ZONES_SPLIT_DBM       , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<split_dbm_domain_t>), "zones" }}
+      //{
+	//ZONES_SPLIT_DBM       , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<split_dbm_domain_t>), "zones" }}
       #ifdef HAVE_ALL_DOMAINS
-      , { INTERVALS             , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<interval_domain_t>), "classical intervals" }} 	
-      , { TERMS_INTERVALS       , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<term_int_domain_t>), "terms with intervals" }}
-      , { WRAPPED_INTERVALS     , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<wrapped_interval_domain_t>), "wrapped intervals" }}
-      , { TERMS_ZONES           , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<num_domain_t>), "terms with zones" }}
-      , { BOXES                 , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<boxes_domain_t>), "boxes" }}            
+      // , { INTERVALS             , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<interval_domain_t>), "classical intervals" }} 	
+      // , { TERMS_INTERVALS       , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<term_int_domain_t>), "terms with intervals" }}
+      // , { WRAPPED_INTERVALS     , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<wrapped_interval_domain_t>), "wrapped intervals" }}
+      // , { TERMS_ZONES           , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<num_domain_t>), "terms with zones" }}
+      // , { BOXES                 , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<boxes_domain_t>), "boxes" }}            
       #endif 	
       /* 
 	 To add new domains here make sure you add an explicit
@@ -867,7 +902,7 @@ namespace clam {
       /* Compute liveness information and choose statically the
 	 abstract domain */
 
-      if (params.run_liveness || isRelationalDomain(absdom)) {
+      if (params.run_liveness) {
 	unsigned max_live_per_blk = 0;
 	for (auto cg_node: llvm::make_range(vertices(*m_cg))) {
 	  const liveness_t* live = nullptr;
@@ -1119,66 +1154,66 @@ namespace clam {
     // Domains used for intra-procedural analysis
 #ifdef TOP_DOWN_INTER_ANALYSIS
     const std::map<CrabDomain, inter_analysis> inter_analyses {
-      #ifdef HAVE_INTER
-      { ZONES_SPLIT_DBM,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t>), "zones" }}
-      #ifdef HAVE_ALL_DOMAINS
-      , { INTERVALS,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<interval_domain_t>), "intervals" }}
-      , { WRAPPED_INTERVALS,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<wrapped_interval_domain_t>), "wrapped intervals" }}
-      , { OCT,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t>), "oct" }}
-      , { TERMS_ZONES,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<num_domain_t>), "terms+zones" }}
-      , { TERMS_DIS_INTERVALS,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<term_dis_int_domain_t>), "terms+dis_intervals" }}
-      , { BOXES,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<boxes_domain_t>), "boxes" }}
-      , { PK,
-	  { bind_this(this, &InterClam_Impl::analyzeCg<pk_domain_t>), "pk" }}
-      #endif
-      #endif 	
+      // #ifdef HAVE_INTER
+      // { ZONES_SPLIT_DBM,
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t>), "zones" }}
+      // #ifdef HAVE_ALL_DOMAINS
+      // , { INTERVALS,
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<interval_domain_t>), "intervals" }}
+      // , { WRAPPED_INTERVALS,
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<wrapped_interval_domain_t>), "wrapped intervals" }}
+      // , { OCT,
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t>), "oct" }}
+      // , { TERMS_ZONES,
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<num_domain_t>), "terms+zones" }}
+      // , { TERMS_DIS_INTERVALS,
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<term_dis_int_domain_t>), "terms+dis_intervals" }}
+      // , { BOXES,
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<boxes_domain_t>), "boxes" }}
+      // , { PK,
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<pk_domain_t>), "pk" }}
+      // #endif
+      // #endif 	
     };    
   };
 #else    
     const std::map<std::pair<CrabDomain,CrabDomain>, inter_analysis> inter_analyses {
-      #ifdef HAVE_INTER
-      {{ZONES_SPLIT_DBM, ZONES_SPLIT_DBM},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, split_dbm_domain_t>), "bottom-up:zones, top-down:zones" }}
-      #ifdef HAVE_ALL_DOMAINS
-      , {{ZONES_SPLIT_DBM, INTERVALS},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, interval_domain_t>), "bottom-up:zones, top-down:intervals" }}
-      , {{ZONES_SPLIT_DBM, WRAPPED_INTERVALS},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, wrapped_interval_domain_t>), "bottom-up:zones, top-down:wrapped intervals" }}
-      , {{ZONES_SPLIT_DBM, OCT},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, oct_domain_t>), "bottom-up:zones, top-down:oct" }}
-      , {{ZONES_SPLIT_DBM, TERMS_ZONES},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, num_domain_t>), "bottom-up:zones, top-down:terms+zones" }}
-      , {{ZONES_SPLIT_DBM, TERMS_DIS_INTERVALS},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, term_dis_int_domain_t>), "bottom-up:zones, top-down:terms+dis_intervals" }}
-      , {{ZONES_SPLIT_DBM, BOXES},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, boxes_domain_t>), "bottom-up:zones, top-down:boxes" }}
-      , {{ZONES_SPLIT_DBM, PK},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, pk_domain_t>), "bottom-up:zones, top-down:pk" }}	
-      , {{OCT, INTERVALS},
-	 { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, interval_domain_t>), "bottom-up:oct, top-down:intervals" }}
-      , {{OCT, WRAPPED_INTERVALS},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, wrapped_interval_domain_t>), "bottom-up:oct, top-down:wrapped intervals" }}
-      , {{OCT, ZONES_SPLIT_DBM},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, split_dbm_domain_t>), "bottom-up:oct, top-down:zones" }}
-      , {{OCT, BOXES},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, boxes_domain_t>), "bottom-up:oct, top-down:boxes" }}
-      , {{OCT, OCT},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, oct_domain_t>), "bottom-up:oct, top-down:oct" }}
-      , {{OCT, PK},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, pk_domain_t>), "bottom-up:oct, top-down:pk" }}
-      , {{OCT, TERMS_ZONES},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, num_domain_t>), "bottom-up:oct, top-down:terms+zones" }}
-      , {{OCT, TERMS_DIS_INTERVALS},
-	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, term_dis_int_domain_t>), "bottom-up:oct, top-down:terms+dis_intervals" }}
-      #endif
-      #endif 	
+      // #ifdef HAVE_INTER
+      // {{ZONES_SPLIT_DBM, ZONES_SPLIT_DBM},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, split_dbm_domain_t>), "bottom-up:zones, top-down:zones" }}
+      // #ifdef HAVE_ALL_DOMAINS
+      // , {{ZONES_SPLIT_DBM, INTERVALS},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, interval_domain_t>), "bottom-up:zones, top-down:intervals" }}
+      // , {{ZONES_SPLIT_DBM, WRAPPED_INTERVALS},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, wrapped_interval_domain_t>), "bottom-up:zones, top-down:wrapped intervals" }}
+      // , {{ZONES_SPLIT_DBM, OCT},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, oct_domain_t>), "bottom-up:zones, top-down:oct" }}
+      // , {{ZONES_SPLIT_DBM, TERMS_ZONES},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, num_domain_t>), "bottom-up:zones, top-down:terms+zones" }}
+      // , {{ZONES_SPLIT_DBM, TERMS_DIS_INTERVALS},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, term_dis_int_domain_t>), "bottom-up:zones, top-down:terms+dis_intervals" }}
+      // , {{ZONES_SPLIT_DBM, BOXES},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, boxes_domain_t>), "bottom-up:zones, top-down:boxes" }}
+      // , {{ZONES_SPLIT_DBM, PK},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t, pk_domain_t>), "bottom-up:zones, top-down:pk" }}	
+      // , {{OCT, INTERVALS},
+      // 	 { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, interval_domain_t>), "bottom-up:oct, top-down:intervals" }}
+      // , {{OCT, WRAPPED_INTERVALS},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, wrapped_interval_domain_t>), "bottom-up:oct, top-down:wrapped intervals" }}
+      // , {{OCT, ZONES_SPLIT_DBM},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, split_dbm_domain_t>), "bottom-up:oct, top-down:zones" }}
+      // , {{OCT, BOXES},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, boxes_domain_t>), "bottom-up:oct, top-down:boxes" }}
+      // , {{OCT, OCT},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, oct_domain_t>), "bottom-up:oct, top-down:oct" }}
+      // , {{OCT, PK},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, pk_domain_t>), "bottom-up:oct, top-down:pk" }}
+      // , {{OCT, TERMS_ZONES},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, num_domain_t>), "bottom-up:oct, top-down:terms+zones" }}
+      // , {{OCT, TERMS_DIS_INTERVALS},
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<oct_domain_t, term_dis_int_domain_t>), "bottom-up:oct, top-down:terms+dis_intervals" }}
+      // #endif
+      // #endif 	
     };    
   };
 #endif 
@@ -1265,7 +1300,7 @@ namespace clam {
 			     CrabEnableBignums, CrabPrintCFG);
     
     auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
-
+    
     /// Create the CFG builder manager
     if (!CrabMemShadows) {
       std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());    
@@ -1358,8 +1393,8 @@ namespace clam {
     if (CrabInter){
       InterClam_Impl inter_crab(M, *m_cfg_builder_man);
       AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
-      inter_crab.Analyze(m_params, assumption_map_t(), results);
-    } else {
+      inter_crab.Analyze(m_params, assumption_map_t(), results);            
+    } else {      
       unsigned fun_counter = 1;
       for (auto &F : M) {
 	if (!CrabInter && isTrackable(F)) {
@@ -1381,25 +1416,27 @@ namespace clam {
       print_checks(llvm::outs());
       llvm::outs() << "************** ANALYSIS RESULTS END*************\n";
 		      
-      if (CrabStats) {		     
-        llvm::outs() << "\n************** BRUNCH STATS ********************\n";
-        if (get_total_checks() == 0) {
-	  llvm::outs() << "BRUNCH_STAT Result NOCHECKS\n";
-        } else if (get_total_error_checks() > 0) {
- 	  llvm::outs() << "BRUNCH_STAT Result FALSE\n";
-        } else if (get_total_warning_checks() == 0) {
-	  llvm::outs() << "BRUNCH_STAT Result TRUE\n";
-        } else {
-  	  llvm::outs() << "BRUNCH_STAT Result INCONCLUSIVE\n";
-        }
-	#if 0
-        llvm::outs() << "BRUNCH_STAT NumOfBlocksWithInvariants "
- 	 	     << num_nontrivial_blocks << "\n";
-        llvm::outs() << "BRUNCH_STAT SizeOfInvariants "       
-		     << num_invars << "\n";
-	#endif 
-        llvm::outs() << "************** BRUNCH STATS END *****************\n\n";
+      //if (CrabStats) {		     
+      llvm::outs() << "\n************** BRUNCH STATS ********************\n";
+      if (get_total_checks() == 0) {
+	llvm::outs() << "BRUNCH_STAT Result NOCHECKS\n";
+      } else if (get_total_error_checks() > 0) {
+	llvm::outs() << "BRUNCH_STAT Result FALSE\n";
+      } else if (get_total_warning_checks() == 0) {
+	llvm::outs() << "BRUNCH_STAT Result TRUE\n";
+      } else {
+	llvm::outs() << "BRUNCH_STAT Result INCONCLUSIVE\n";
       }
+#if 0
+      llvm::outs() << "BRUNCH_STAT NumOfBlocksWithInvariants "
+		   << num_nontrivial_blocks << "\n";
+      llvm::outs() << "BRUNCH_STAT SizeOfInvariants "       
+		   << num_invars << "\n";
+#endif 
+      llvm::outs() << "************** BRUNCH STATS END *****************\n\n";
+      //}
+    } else {
+      llvm::outs() << "BRUNCH_STAT Result NOCHECKS\n";      
     }
     
    return false;
@@ -1407,8 +1444,104 @@ namespace clam {
 
   bool ClamPass::runOnFunction(Function &F) {
     IntraClam_Impl crab(F, *m_cfg_builder_man);
+
+    
     AnalysisResults results = { m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results);
+
+    if (CompareInvariants) {
+      /****************************** for TOPLAS *********************************/
+      
+      /** If we run split zones or split oct then we also run elina
+	  zones and elina octagons and compare invariants at the loop
+	  headers */
+      if (m_params.dom == ZONES_SPLIT_DBM) {
+	m_params.dom = ZONES;
+      } else if (m_params.dom == OCT_SPLIT_DBM) {
+	m_params.dom = OCT;
+      } else {
+	return false;
+      }
+      llvm::errs() << " == Running " << dom_to_str(m_params.dom) << " to compare invariants\n";
+      invariant_map_t pre_map, post_map;
+      edges_set infeasible_edges;
+      checks_db_t checks_db;
+      AnalysisResults results2 = { pre_map, post_map, infeasible_edges, checks_db};
+      crab.Analyze(m_params, &F.getEntryBlock(), assumption_map_t(), results2);
+      
+      llvm::errs() << " == Comparing invariants at loop headers for " << F.getName() << "\n";
+
+      llvm::errs() << "EntriesX=" << m_pre_map.size() << "\n";
+      llvm::errs() << "EntriesY=" << pre_map.size() << "\n";      
+      
+      // Compare results and results2
+      unsigned same_precise  = 0;
+      unsigned split_more_precise = 0;
+      unsigned elina_more_precise = 0;
+      unsigned num_loops = 0;
+      
+      for (BasicBlock &BB: F) {
+	// pre_map should only contains invariants for widening points
+	
+	auto it1 = m_pre_map.find(&BB);
+	if (it1  == m_pre_map.end()) {
+	  continue;
+	}
+	auto it2 = pre_map.find(&BB);
+	if (it2  == pre_map.end()) {
+	  continue;
+	}
+	auto inv1_ptr = it1->second;
+	auto inv2_ptr = it2->second;
+	if (inv1_ptr && inv2_ptr) {
+	  /// We should be here only if BB is a widening point
+	  if (inv1_ptr->getId() == GenericAbsDomWrapper::split_dbm &&
+	      inv2_ptr->getId() == GenericAbsDomWrapper::zones) {
+	    num_loops++;
+	    oct_domain_t szones, zones;
+	    szones += inv1_ptr->to_linear_constraints(); // ignore array constraints
+	    szones.normalize();
+	    zones  += inv2_ptr->to_linear_constraints(); // ignore array constraints
+	    llvm::errs() << "##Comparing " <<  BB.getName()  << ":\n"
+			 << "Split:" << szones << "\n"
+			 << "Elina:" <<  zones << "\n";
+	    bool szones_leq_zones = (szones <= zones);
+	    bool zones_leq_szones = (zones <= szones);
+	    if (szones_leq_zones && zones_leq_szones) {
+	      same_precise++;
+	    } else if (szones_leq_zones) {
+	      split_more_precise++;
+	    } else if (zones_leq_szones) {
+	      elina_more_precise++;
+	    }
+	  } else if (inv1_ptr->getId() == GenericAbsDomWrapper::split_oct &&
+		     inv2_ptr->getId() == GenericAbsDomWrapper::oct) {
+	    num_loops++;	      
+	    oct_domain_t soct, oct;
+	    soct += inv1_ptr->to_linear_constraints(); // ignore array constraints
+	    soct.normalize();
+	    oct  += inv2_ptr->to_linear_constraints(); // ignore array constraints
+	    llvm::errs() << "##Comparing " <<  BB.getName()  << ":\n"
+			 << "Split:" << soct << "\n"
+			 << "Elina:" <<  oct << "\n";
+	    bool soct_leq_oct = (soct <= oct);
+	    bool oct_leq_soct = (oct <= soct);
+	    if (soct_leq_oct && oct_leq_soct) {
+	      same_precise++;
+	    } else if (soct_leq_oct) {
+	      split_more_precise++;
+	    } else if (oct_leq_soct) {
+		elina_more_precise++;
+	    }
+	  }
+	}
+      }
+      llvm::outs() << "BRUNCH_STAT NumOfLoops "       << num_loops << "\n";
+      llvm::outs() << "BRUNCH_STAT SamePrecision "    << same_precise << "\n";
+      llvm::outs() << "BRUNCH_STAT SplitMorePrecise " << split_more_precise << "\n";
+      llvm::outs() << "BRUNCH_STAT ElinaMorePrecise " << elina_more_precise << "\n";             
+    } // end CompareInvariants
+    
     return false;
   }
   
@@ -1430,7 +1563,7 @@ namespace clam {
       runSeaDsa = (CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
 		   CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA);
     }
-    
+
     if (!CrabMemShadows && runSeaDsa) {
       AU.addRequired<sea_dsa::AllocWrapInfo>();
     }
@@ -1438,6 +1571,7 @@ namespace clam {
     if (CrabMemShadows) {
       AU.addRequired<sea_dsa::ShadowMemPass>();
     }
+
     AU.addRequired<UnifyFunctionExitNodes>();
     AU.addRequired<clam::NameValues>();
     AU.addRequired<CallGraphWrapperPass>();

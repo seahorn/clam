@@ -17,8 +17,12 @@ namespace clam {
     bool runOnModule (Module &M)
     {
       for (Function &F : M)
-        if (!F.isDeclaration () && F.hasLocalLinkage ())
+        if (!F.isDeclaration () && F.hasLocalLinkage ()) {
+	  F.setLinkage(GlobalValue::PrivateLinkage);
+	  F.removeFnAttr(Attribute::NoInline);
+	  F.removeFnAttr(Attribute::OptimizeNone);
           F.addFnAttr (Attribute::AlwaysInline);
+	}
       return true;
     }
 

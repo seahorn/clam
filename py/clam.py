@@ -254,7 +254,10 @@ def parseArgs(argv):
                     default=False)    
     p.add_argument('--crab-cfg-simplify',
                     help='Perform some crab CFG transformations',
-                    dest='crab_cfg_simplify', default=False, action='store_true')    
+                    dest='crab_cfg_simplify', default=False, action='store_true')
+    p.add_argument('--crab-toplas-compare',
+                    help='Compare invariants for TOPLAS paper',
+                    dest='crab_toplas_compare', default=False, action='store_true')    
     p.add_argument('--crab-dom',
                     help="Choose abstract domain:\n"
                           "- int: intervals\n"
@@ -264,14 +267,18 @@ def parseArgs(argv):
                           "- term-dis-int: dis-int with uninterpreted functions\n"
                           "- boxes: disjunctive intervals based on LDDs\n"
                           "- zones: zones domain using sparse DBM in Split Normal Form\n"
-                          "- soct: octagons domain using sparse DBM in Split Normal Form\n"                    
+                          "- soct: octagons domain using sparse DBM in Split Normal Form\n"
+                          "- ezones: (elina) zones domain\n"                   
                           "- oct: octagons domain\n"
+                          "- pack-zones: zones domain with static variable packing\n"                   
+                          "- pack-oct: octagons domain with static variable packing\n"
                           "- pk: polyhedra domain\n"
                           "- rtz: reduced product of term-dis-int with zones\n"
                           "- w-int: wrapped intervals\n",
                     choices=['int', 'ric', 'term-int',
                              'dis-int', 'term-dis-int', 'boxes',  
-                             'zones', 'soct', 'oct', 'pk', 'rtz',
+                             'zones', 'soct',
+                             'ezones', 'oct', 'pack-zones', 'pack-oct', 'pk', 'rtz',
                              'w-int'],
                     dest='crab_dom', default='zones')
     p.add_argument('--crab-widening-delay', 
@@ -326,15 +333,15 @@ def parseArgs(argv):
     p.add_argument('--crab-live',
                     help='Delete dead symbols: may lose precision with relational domains.',
                     dest='crab_live', default=False, action='store_true')        
-    p.add_argument('--crab-add-invariants',
-                    help='Instrument code with invariants at different locations',
-                    choices=['none',
-                             'dead-code',
-                             'block-entry',
-                             'loop-header',                             
-                             'after-load',
-                             'all'],
-                    dest='insert_inv_loc', default='none')
+    # p.add_argument('--crab-add-invariants',
+    #                 help='Instrument code with invariants at different locations',
+    #                 choices=['none',
+    #                          'dead-code',
+    #                          'block-entry',
+    #                          'loop-header',                             
+    #                          'after-load',
+    #                          'all'],
+    #                 dest='insert_inv_loc', default='none')
     p.add_argument('--crab-do-not-store-invariants',
                     help='Do not store invariants',
                     dest='store_invariants', default=True, action='store_false')        
@@ -755,6 +762,9 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-lower-switch=false')
     
     clam_args.append('--crab-dom={0}'.format(args.crab_dom))
+    if args.crab_toplas_compare:
+        clam_args.append('--crab-compare-invariants')
+        
     clam_args.append('--crab-widening-delay={0}'.format(args.widening_delay))
     clam_args.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
     clam_args.append('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))
@@ -783,7 +793,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         
     if args.crab_backward: clam_args.append('--crab-backward')
     if args.crab_live: clam_args.append('--crab-live')
-    clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
+    #clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
     if args.crab_promote_assume: clam_args.append('--crab-promote-assume')
     if args.assert_check: clam_args.append('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:

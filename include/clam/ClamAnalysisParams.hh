@@ -15,7 +15,6 @@ enum CrabDomain
       , INTERVALS_CONGRUENCES
       , BOXES
       , DIS_INTERVALS
-      /*, ZONES_SPARSE_DBM*/
       , ZONES_SPLIT_DBM
       , OCT_SPLIT_DBM      
       , TERMS_INTERVALS
@@ -23,8 +22,11 @@ enum CrabDomain
       //TERMS_INTERVALS x  ZONES_SPLIT_DBM
       , TERMS_ZONES 
       //(#live vars<threshold ? TERMS_INTERVALSxZONES_SPLIT_DBM, INTERVALS)
-      , ADAPT_TERMS_ZONES 
+      , ADAPT_TERMS_ZONES
+      , ZONES
       , OCT
+      , PACK_ZONES
+      , PACK_OCT
       , PK
       , WRAPPED_INTERVALS
   };

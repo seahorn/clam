@@ -38,6 +38,8 @@ namespace llvm {
   DUMP_TO_LLVM_STREAM(clam::boxes_domain_t)
   DUMP_TO_LLVM_STREAM(clam::dis_interval_domain_t)
   DUMP_TO_LLVM_STREAM(clam::num_domain_t)
+  DUMP_TO_LLVM_STREAM(clam::pack_zones_domain_t)  
+  DUMP_TO_LLVM_STREAM(clam::pack_oct_domain_t)
   
   template <typename DomInfo>
   inline llvm::raw_ostream& operator<<(llvm::raw_ostream& o, 
@@ -158,7 +160,7 @@ namespace clam {
 		   term_intv, term_dis_intv, 
 		   ric, 
 		   boxes, dis_intv,
-		   oct, pk,
+		   zones, pack_zones, oct, pack_oct, pk,
 		   num,
 		   w_intv} id_t;
     
@@ -216,8 +218,12 @@ namespace clam {
    DEFINE_WRAPPER(TermDisIntDomainWrapper,term_dis_int_domain_t,term_dis_intv)
    DEFINE_WRAPPER(BoxesDomainWrapper,boxes_domain_t,boxes)
    DEFINE_WRAPPER(DisIntervalDomainWrapper,dis_interval_domain_t,dis_intv)
-   DEFINE_WRAPPER(OctApronDomainWrapper,oct_domain_t,oct)
-   DEFINE_WRAPPER(PkApronDomainWrapper,pk_domain_t,pk)
-   DEFINE_WRAPPER(NumDomainWrapper,num_domain_t,num)
+   DEFINE_WRAPPER(NumDomainWrapper,num_domain_t,num)   
+   DEFINE_WRAPPER(ZonesDomainWrapper,zones_domain_t,zones)    // only for Elina
+   DEFINE_WRAPPER(OctDomainWrapper,oct_domain_t,oct)          // Elina or Apron
+   DEFINE_WRAPPER(PackOctDomainWrapper,pack_oct_domain_t,pack_oct) // Elina or Apron
+   DEFINE_WRAPPER(PackZonesDomainWrapper,pack_zones_domain_t,pack_zones)  // Elina or Apron     
+   DEFINE_WRAPPER(PkDomainWrapper,pk_domain_t,pk)
+
 
 } // end namespace clam
