@@ -3,7 +3,7 @@
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
 
-/** Example where polyhedra is more precise than octagons or zones **/
+/** Example where polyhedra is more precise than octagons or szones **/
 
 extern void __VERIFIER_error(void);
 extern void __VERIFIER_assume(int);

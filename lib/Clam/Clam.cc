@@ -104,7 +104,9 @@ namespace clam {
   #endif
 
   static bool isRelationalDomain(CrabDomain dom) {
-    return (dom == ZONES_SPLIT_DBM || dom == ZONES || dom == OCT ||
+    return (dom == ZONES_SPLIT_DBM || dom == OCT_SPLIT_DBM ||
+	    dom == PACK_ZONES_SPLIT_DBM || dom == PACK_OCT_SPLIT_DBM || 
+	    dom == ZONES || dom == OCT ||
 	    dom == PACK_ZONES ||  dom == PACK_OCT || 
 	    dom == PK || dom == TERMS_ZONES);
   }
@@ -385,12 +387,14 @@ namespace clam {
     case BOXES:                 return boxes_domain_t::getDomainName();
     case DIS_INTERVALS:         return dis_interval_domain_t::getDomainName();
     case ZONES_SPLIT_DBM:       return split_dbm_domain_t::getDomainName();
-    case OCT_SPLIT_DBM:         return split_oct_domain_t::getDomainName();      
+    case OCT_SPLIT_DBM:         return split_oct_domain_t::getDomainName();
+    case PACK_ZONES_SPLIT_DBM:  return pack_split_dbm_domain_t::getDomainName();
+    case PACK_OCT_SPLIT_DBM:    return pack_split_oct_domain_t::getDomainName();      
     case TERMS_DIS_INTERVALS:   return term_dis_int_domain_t::getDomainName();
     case TERMS_ZONES:           return num_domain_t::getDomainName();
     case ZONES:                 return zones_domain_t::getDomainName();      
     case OCT:                   return oct_domain_t::getDomainName();
-    case PACK_ZONES:            return pack_zones_domain_t::getDomainName();            
+    case PACK_ZONES:            return pack_zones_domain_t::getDomainName(); 
     case PACK_OCT:              return pack_oct_domain_t::getDomainName();      
     case PK:                    return pk_domain_t::getDomainName();
     case WRAPPED_INTERVALS:     return wrapped_interval_domain_t::getDomainName();
@@ -740,16 +744,18 @@ namespace clam {
     // Domains used for intra-procedural analysis
     const std::map<CrabDomain, intra_analysis> intra_analyses {
       {
-	ZONES_SPLIT_DBM         , { bind_this(this, &IntraClam_Impl::analyzeCfg<split_dbm_domain_t>), "zones" }}	
+	ZONES_SPLIT_DBM         , { bind_this(this, &IntraClam_Impl::analyzeCfg<split_dbm_domain_t>), "szones" }}	
       #ifdef HAVE_ALL_DOMAINS	
       // , { INTERVALS_CONGRUENCES , { bind_this(this, &IntraClam_Impl::analyzeCfg<ric_domain_t>), "reduced product of intervals and congruences" }}
       // , { DIS_INTERVALS         , { bind_this(this, &IntraClam_Impl::analyzeCfg<dis_interval_domain_t>), "disjunctive intervals" }}
       // , { TERMS_INTERVALS       , { bind_this(this, &IntraClam_Impl::analyzeCfg<term_int_domain_t>), "terms with intervals" }}
       // , { WRAPPED_INTERVALS     , { bind_this(this, &IntraClam_Impl::analyzeCfg<wrapped_interval_domain_t>), "wrapped intervals" }}
-      , { OCT_SPLIT_DBM         , { bind_this(this, &IntraClam_Impl::analyzeCfg<split_oct_domain_t>), "octagons in SNF" }}      
+      , { OCT_SPLIT_DBM         , { bind_this(this, &IntraClam_Impl::analyzeCfg<split_oct_domain_t>), "soct" }}
+      , { PACK_ZONES_SPLIT_DBM  , { bind_this(this, &IntraClam_Impl::analyzeCfg<pack_split_dbm_domain_t>), "pack(szones)" }}
+      , { PACK_OCT_SPLIT_DBM    , { bind_this(this, &IntraClam_Impl::analyzeCfg<pack_split_oct_domain_t>), "pack(soct)" }}            
       // , { TERMS_ZONES           , { bind_this(this, &IntraClam_Impl::analyzeCfg<num_domain_t>), "terms with zones" }}
       // , { TERMS_DIS_INTERVALS   , { bind_this(this, &IntraClam_Impl::analyzeCfg<term_dis_int_domain_t>), "terms with disjunctive intervals" }}
-      , { ZONES                 , { bind_this(this, &IntraClam_Impl::analyzeCfg<zones_domain_t>), "zones" }}
+      , { ZONES                 , { bind_this(this, &IntraClam_Impl::analyzeCfg<zones_domain_t>), "szones" }}
       , { PACK_ZONES            , { bind_this(this, &IntraClam_Impl::analyzeCfg<pack_zones_domain_t>), "pack(zones)" }}            
       , { OCT                   , { bind_this(this, &IntraClam_Impl::analyzeCfg<oct_domain_t>), "octagons" }}
       , { PACK_OCT              , { bind_this(this, &IntraClam_Impl::analyzeCfg<pack_oct_domain_t>), "pack(octagons)" }}      
@@ -764,7 +770,7 @@ namespace clam {
     // Domains used for path-based analysis
     const std::map<CrabDomain, path_analysis> path_analyses {
       //{
-	//ZONES_SPLIT_DBM       , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<split_dbm_domain_t>), "zones" }}
+	//ZONES_SPLIT_DBM       , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<split_dbm_domain_t>), "szones" }}
       #ifdef HAVE_ALL_DOMAINS
       // , { INTERVALS             , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<interval_domain_t>), "classical intervals" }} 	
       // , { TERMS_INTERVALS       , { bind_this(this, &IntraClam_Impl::wrapperPathAnalyze<term_int_domain_t>), "terms with intervals" }}
@@ -1156,7 +1162,7 @@ namespace clam {
     const std::map<CrabDomain, inter_analysis> inter_analyses {
       // #ifdef HAVE_INTER
       // { ZONES_SPLIT_DBM,
-      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t>), "zones" }}
+      // 	  { bind_this(this, &InterClam_Impl::analyzeCg<split_dbm_domain_t>), "szones" }}
       // #ifdef HAVE_ALL_DOMAINS
       // , { INTERVALS,
       // 	  { bind_this(this, &InterClam_Impl::analyzeCg<interval_domain_t>), "intervals" }}

@@ -1,4 +1,4 @@
-// RUN: %clam -O0 --crab-dom=zones --crab-inter --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --crab-dom=szones --crab-inter --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // RUN: %clam -O0 --crab-dom=oct --crab-inter --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$

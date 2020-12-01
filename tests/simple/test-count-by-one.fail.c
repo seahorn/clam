@@ -1,4 +1,4 @@
-// RUN: %clam -O0 --crab-dom=zones --crab-check=assert --inline --crab-widening-jump-set=20 --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --crab-dom=szones --crab-check=assert --inline --crab-widening-jump-set=20 --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // RUN: %clam -O0 --crab-dom=oct --crab-check=assert --inline --crab-widening-jump-set=20 --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // RUN: %clam -O0 --crab-dom=pk --crab-check=assert --inline --crab-widening-jump-set=20 --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$

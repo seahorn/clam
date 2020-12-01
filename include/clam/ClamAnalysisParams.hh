@@ -16,7 +16,9 @@ enum CrabDomain
       , BOXES
       , DIS_INTERVALS
       , ZONES_SPLIT_DBM
-      , OCT_SPLIT_DBM      
+      , OCT_SPLIT_DBM
+      , PACK_ZONES_SPLIT_DBM
+      , PACK_OCT_SPLIT_DBM      
       , TERMS_INTERVALS
       , TERMS_DIS_INTERVALS
       //TERMS_INTERVALS x  ZONES_SPLIT_DBM

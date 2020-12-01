@@ -142,13 +142,19 @@ namespace clam {
 					    BASE(split_dbm_domain_t),
 					    reduced_product_impl::term_dbm_params> BASE(num_domain_t);
 
-  // -- Elina/Apron octagon domain with variable packing
+  // -- Elina/Apron octagon domains with variable packing
   typedef var_packing_domain<BASE(oct_domain_t)> BASE(pack_oct_domain_t);
   typedef var_packing_domain<BASE(zones_domain_t)> BASE(pack_zones_domain_t);  
+
+  // -- SNF-based domains with variable packing
+  typedef var_packing_domain<BASE(split_dbm_domain_t)> BASE(pack_split_dbm_domain_t);
+  typedef var_packing_domain<BASE(split_oct_domain_t)> BASE(pack_split_oct_domain_t);
   
   ARRAY_BOOL_NUM(interval_domain_t);
   ARRAY_BOOL_NUM(split_dbm_domain_t);
-  ARRAY_BOOL_NUM(split_oct_domain_t);  
+  ARRAY_BOOL_NUM(split_oct_domain_t);
+  ARRAY_BOOL_NUM(pack_split_dbm_domain_t);  
+  ARRAY_BOOL_NUM(pack_split_oct_domain_t);  
   ARRAY_BOOL_NUM(dis_interval_domain_t);
   ARRAY_BOOL_NUM(zones_domain_t);  
   ARRAY_BOOL_NUM(oct_domain_t);
