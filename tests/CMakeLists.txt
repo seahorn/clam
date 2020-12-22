@@ -10,6 +10,13 @@ add_lit_testsuite(test-simple "Run simple tests"
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/simple
   DEPENDS clam)
 
+add_lit_testsuite(test-inter "Run inter-procedural tests"
+  -v
+  ${CMAKE_CURRENT_SOURCE_DIR}/inter  ## where .cfg file is located
+  PARAMS
+  test_dir=${CMAKE_CURRENT_BINARY_DIR}/inter
+  DEPENDS clam)
+
 add_lit_testsuite(test-array-adapt "Run tests for the array adaptive domain"
   -v
   ${CMAKE_CURRENT_SOURCE_DIR}/array-adapt  ## where .cfg file is located
