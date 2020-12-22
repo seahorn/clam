@@ -1,4 +1,4 @@
-// RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=int --crab-track=mem --crab-singleton-aliases --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=int --crab-track=mem --crab-singleton-aliases --crab-heap-analysis=cs-sea-dsa --llvm-peel-loops=1 --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 
 /** Same as test-arr-4.c but with --crab-track=mem **/

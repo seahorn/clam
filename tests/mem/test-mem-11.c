@@ -1,5 +1,9 @@
 // RUN: %clam -O0 --crab-inter --crab-inter-recursive-functions --crab-dom=int --crab-track=mem --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
+// XFAIL: *
+
+// We need to statically or dynamically peel the recursive function
+// one iteration to keep the invariant that forall i :: a[i] == 5.
 
 extern int int_nd(void);
 extern void __CRAB_assert(int);
@@ -13,6 +17,7 @@ void rec_init(int* a, int n) {
     return;
   }
   else {
+    __CRAB_assert(n > 0);
     a[n] = 5;
     rec_init(a, n-1);
   }

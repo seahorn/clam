@@ -1,19 +1,10 @@
 #include <stdlib.h>
 
-// RUN: %clam -O0  --crab-inter --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
-// CHECK: ^2  Number of total safe checks$
-// CHECK: ^1  Number of total warning checks$
-// XFAIL: *
+// RUN: %clam -O0  --crab-inter --crab-dom=zones --crab-track=mem --llvm-peel-loops=1 --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// CHECK: ^6  Number of total safe checks$
+// CHECK: ^0  Number of total warning checks$
 extern void __CRAB_assert(int);
 extern int int_nd(void);
-
-/** 
- * Clam cannot prove the upper bound on aux->f. The problem is that
- * typically narrowing does a pretty good job recovering upper-bounds
- * after widening. However, at the time narrowing is trigerred only
- * weak updates are possible and those are not strong enough to
- * recover the upper-bound for aux->f.
- */
 
 typedef struct node{
   int f;
@@ -46,7 +37,7 @@ int main() {
   List aux = l;
   int acc = 0;
   while (aux) {
-    __CRAB_assert(aux->f <= N-1); // WARNING
+    __CRAB_assert(aux->f <= N-1); // SAFE
     __CRAB_assert(aux->s >= N*2); // SAFE
     __CRAB_assert(aux->s <= N*3); // SAFE
      acc += aux->f;
