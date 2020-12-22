@@ -364,7 +364,7 @@ def parseArgs(argv):
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
                    help='Check properties (default no check)',
-                   choices=['none', 'assert', 'null'],
+                   choices=['none', 'assert'],
                    dest='assert_check', default='none')
     p.add_argument('--crab-check-verbose', metavar='INT',
                     help='Print verbose information about checks\n' + 
@@ -373,11 +373,15 @@ def parseArgs(argv):
                          '>=3: error, warning, and safe checks',
                     dest='check_verbose', type=int, default=0)
     p.add_argument('--crab-print-summaries',
-                    help='Display computed summaries (if --crab-inter)',
-                    dest='print_summs', default=False, action='store_true')
+                   #help='Display computed summaries (if --crab-inter)',
+                   help=a.SUPPRESS,
+                   dest='print_summs', default=False, action='store_true')
     p.add_argument('--crab-print-cfg',
                     help='Display crab CFG',
                     dest='print_cfg', default=False, action='store_true')
+    add_bool_argument(p, 'crab-dot-cfg', default=False,
+                      help='Print Crab CFG of function to dot file',
+                      dest='crab_dot_cfg')
     p.add_argument('--crab-do-not-print-invariants',
                     help='Do not print invariants',
                     dest='crab_print_invariants', default=True, action='store_false')    
@@ -778,6 +782,14 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     elif args.crab_heap_analysis == 'cs-sea-dsa-types':
         clam_args.append('--crab-heap-analysis=cs-sea-dsa')
         clam_args.append('--sea-dsa-type-aware=true')
+    # if context-sensitive then we run the analysis on a callgraph
+    # where indirect calls have been resolved already by seadsa. This
+    # is important among other things to avoid errors with callee/caller
+    # simulation relation.
+    if args.crab_heap_analysis == 'cs-sea-dsa' or \
+       args.crab_heap_analysis == 'cs-sea-dsa-types':
+        clam_args.append('--sea-dsa-devirt')
+        
     if args.crab_singleton_aliases: clam_args.append('--crab-singleton-aliases')
     if args.crab_inter:
         clam_args.append('--crab-inter')
@@ -795,11 +807,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
     if args.crab_promote_assume: clam_args.append('--crab-promote-assume')
     if args.assert_check:
-        if args.assert_check == 'null':
-            clam_args.append('--crab-check-null')
-            clam_args.append('--crab-check=assert')
-        else:
-            clam_args.append('--crab-check={0}'.format(args.assert_check))
+        clam_args.append('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:
         clam_args.append('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.print_summs: clam_args.append('--crab-print-summaries')
@@ -815,7 +823,11 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.store_invariants:
         clam_args.append('--crab-store-invariants=true')
     else:
-        clam_args.append('--crab-store-invariants=false')    
+        clam_args.append('--crab-store-invariants=false')
+    if args.crab_dot_cfg:
+        clam_args.append('--crab-dot-cfg=true')
+    else:
+        clam_args.append('--crab-dot-cfg=false')
     # begin hidden options
     if args.crab_dsa_unknown: clam_args.append('--crab-dsa-disambiguate-unknown')
     if args.crab_dsa_ptr_cast: clam_args.append('--crab-dsa-disambiguate-ptr-cast')
