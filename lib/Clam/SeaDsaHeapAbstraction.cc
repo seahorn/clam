@@ -2,6 +2,9 @@
 
 /**
  * Heap abstraction based on sea-dsa (https://github.com/seahorn/sea-dsa).
+ * 
+ * The implementation currently ignore InvokeInst and assume that the
+ * callgraph is complete.
  */
 
 #include "llvm/ADT/Optional.h"
@@ -16,6 +19,7 @@
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/DsaLibFuncInfo.hh"
 #include "seadsa/Global.hh"
+#include "seadsa/CallSite.hh"
 #include "seadsa/Graph.hh"
 
 #include "SeaDsaToRegion.hh"
@@ -32,6 +36,7 @@ namespace clam {
 using namespace seadsa;
 using namespace llvm;
 
+  
 Region SeaDsaHeapAbstraction::mkRegion(const Cell &c, RegionInfo ri) {
   auto id = getId(c);
   return Region(id, ri, getSingleton(id));
@@ -85,12 +90,15 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
   if (f.getName().startswith("shadow.mem"))
     return;
 
+  
   seadsa_heap_abs_impl::NodeSet reach, retReach;
   seadsa_heap_abs_impl::argReachableNodes(f, G, reach, retReach);
   
   RegionVec reads, mods, news;
   for (const Node *n : reach) {
-    if (!n->isRead() && !n->isModified()) {
+    bool is_returned = retReach.count(n) > 0;
+    
+    if (!is_returned && !n->isRead() && !n->isModified()) {
       continue;
     }
 
@@ -102,6 +110,9 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
       for (auto &kv : n->types()) {
 	fields.push_back(kv.first);
       }
+      if (fields.empty() && is_returned) {
+	fields.push_back(0);
+      }
     }
 
     // Create a region for each node's field
@@ -112,18 +123,19 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
 					 m_disambiguate_ptr_cast,
 					 m_disambiguate_external);
       Region rgn =  mkRegion(c, r_info);
-      if (!retReach.count(n)) {
+
+      if (!is_returned) {
 	// reachable from function arguments or globals
 	reads.push_back(rgn);
 	if (n->isModified()) {
 	  mods.push_back(rgn);
 	} 
       } else {
-	  // not reachable from function arguments or globals but
-	  // reachable from return
-	if (n->isModified()) {
-	  news.push_back(rgn);
-	} 
+	// not reachable from function arguments or globals but
+	// reachable from return
+	//if (n->isModified()) {
+	news.push_back(rgn);
+	//} 
       }
     }
     
@@ -133,7 +145,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
   m_func_news[&f] = news;
 
   CRAB_LOG("heap-abs-regions",
-	   llvm::errs() << "### " << f.getName() << " ###\n";
+	   llvm::errs() << "### HEAP_ABS: " << f.getName() << " ###\n";
 	   llvm::errs() << "Read-only regions reachable from arguments and globals {";
 	   for (auto &r: reads) {
 	     llvm::errs() << r << ";";
@@ -149,8 +161,6 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
 	     llvm::errs() << r << ";";
 	   }
 	   llvm::errs() << "}\n";);
-	   
-	   
 }
 
 // Compute and cache the set of read, mod and new nodes of a
@@ -169,20 +179,26 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   ImmutableCallSite ICS(&I);
   DsaCallSite CS(ICS);
 
-  if (!CS.getCallee())
+  if (!CS.getCallee()) {
+    CRAB_LOG("heap-abs-regions",
+	     llvm::errs() << "HEAP_ABS: skipped " << I << "\n";);
     return;
+  }
 
   // hook: skip shadow mem functions created by SeaHorn
   // We treat them as readnone functions
-  if (CS.getCallee()->getName().startswith("shadow.mem"))
+  if (CS.getCallee()->getName().startswith("shadow.mem")) {
     return;
+  }
 
   const Function &CalleeF = *CS.getCallee();
   const Function &CallerF = *CS.getCaller();
-  if (!m_dsa->hasGraph(CalleeF))
+  if (!m_dsa->hasGraph(CalleeF)) {
     return;
-  if (!m_dsa->hasGraph(CallerF))
+  }
+  if (!m_dsa->hasGraph(CallerF)) {
     return;
+  }
 
   Graph &callerG = m_dsa->getGraph(CallerF);
   Graph &calleeG = m_dsa->getGraph(CalleeF);
@@ -197,8 +213,11 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 
   std::vector<region_bool_t> reads, mods, news;
   for (const Node *n : reach) {
-    if (!n->isRead() && !n->isModified())
+    bool is_returned = retReach.count(n) > 0;
+    
+    if (!is_returned && !n->isRead() && !n->isModified()) {
       continue;
+    }
 
     // Extract all fields from the node
     std::vector<unsigned> fields;
@@ -208,57 +227,54 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
       for (auto &kv : n->types()) {
 	fields.push_back(kv.first);
       }
+      if (fields.empty() && is_returned) {
+	fields.push_back(0);
+      }
     }
 
     for (auto field : fields) {
       Cell calleeC(const_cast<Node *>(n), field);
-      RegionInfo calleeRI =
-          SeaDsaToRegion(calleeC, m_dl, m_disambiguate_unknown,
-			 m_disambiguate_ptr_cast, m_disambiguate_external);
-
       // Map the callee node to the node in the caller's callsite
       Cell callerC = simMap.get(calleeC);
       if (callerC.isNull()) {
-	// This can cause an inconsistency between the number of
-	// regions between a callsite and the callee's declaration.
 	CLAM_ERROR("caller cell cannot be mapped to callee cell");
       }
-      
       RegionInfo callerRI =
 	SeaDsaToRegion(callerC, m_dl, m_disambiguate_unknown,
 		       m_disambiguate_ptr_cast, m_disambiguate_external);
+      Region rgn(mkRegion(callerC, callerRI));
 
-      // Sanity check
+
+      //  == begin sanity check ==
+      RegionInfo calleeRI =
+	SeaDsaToRegion(calleeC, m_dl, m_disambiguate_unknown,
+		       m_disambiguate_ptr_cast, m_disambiguate_external);      
       if (!calleeRI.hasCompatibleType(callerRI)) {
 	CLAM_WARNING("Caller region info=" << callerRI
 		     << " different from callee region info=" << calleeRI);
       }
-      
       bool is_compat_callsite = calleeRI.hasCompatibleType(callerRI);
-      Region reg(mkRegion(callerC, callerRI));
-      if (!retReach.count(n)) {
-	reads.push_back({reg, is_compat_callsite});
+      //  == end sanity check ==
+
+      if (!is_returned) {
+	reads.push_back({rgn, is_compat_callsite});
 	if (n->isModified()) {
-	  mods.push_back({reg, is_compat_callsite});
+	  mods.push_back({rgn, is_compat_callsite});
 	}	  
       } else {
-	if (n->isModified()) {
-	  news.push_back({reg, is_compat_callsite});
-	}
+	//if (n->isModified()) {
+	news.push_back({rgn, is_compat_callsite});
+	//}
       }
     }
   }
-
-  // -- add the region of the lhs of the call site
-  // Region ret = getRegion(*(I.getParent()->getParent()), I);
-  // if (!ret.isUnknown()) mods.push_back(ret);
 
   accessed_map[&I] = reads;
   mods_map[&I] = mods;
   news_map[&I] = news;
 
-  CRAB_LOG("heap-abs-regions",
-	   llvm::errs() << "### " << I << " ###\n";
+  CRAB_LOG("heap-abs-regions2",
+	   llvm::errs() << "### HEAP_ABS: " << I << " ###\n";
 	   llvm::errs() << "Read-only regions at caller mapped to "
 	                << "those reachable from callee's arguments and globals {";
 	   for (auto &r: reads) {
@@ -295,19 +311,32 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 	}
       });
 
-  callsite_map_t cs_accessed, cs_mods, cs_news;
+  callsite_map_t CSAccessed, CSMods, CSNews;
+  // For the sanity check implemented below
+  DenseMap<const Function*, std::vector<DsaCallSite>> FunctionCallsMap;
   for (auto const &F : M) {
     computeReadModNewNodes(F);
     auto InstIt = inst_begin(F), InstItEnd = inst_end(F);
     for (; InstIt != InstItEnd; ++InstIt) {
-      if (const llvm::CallInst *Call =
-              llvm::dyn_cast<llvm::CallInst>(&*InstIt)) {
-        computeReadModNewNodesFromCallSite(*Call, cs_accessed, cs_mods,
-                                           cs_news);
+      if (const CallInst *CI = dyn_cast<llvm::CallInst>(&*InstIt)) {
+        computeReadModNewNodesFromCallSite(*CI, CSAccessed, CSMods, CSNews);
+
+	// For the sanity check implemented below
+	ImmutableCallSite ICS(CI);
+	DsaCallSite CS(ICS);
+	if (const Function *calleeF = CS.getCallee()) {
+	  if (!calleeF->empty()) {
+	    FunctionCallsMap[calleeF].push_back(CS);
+	  }
+	}	
       }
     }
   }
 
+  /// Sanity check: compatibility check between function regions and
+  /// all its callsites' regions. The check should always pass. Note
+  /// that whether two region's types are compatible is defined by
+  /// "hasCompatibleType".
   for (auto const &F : M) {
     RegionVec &readsF = m_func_accessed[&F];
     RegionVec &modsF = m_func_mods[&F];
@@ -319,38 +348,33 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
     std::vector<bool> modsB(modsF.size(), true);
     std::vector<bool> newsB(newsF.size(), true);
 
-    std::vector<CallInst *> worklist;
     /// First pass: for each memory region we check whether caller and
     /// callee agree on it.
-    for (const Use &U : F.uses()) {
-      CallSite CS(U.getUser());
-      // Must be a direct call instruction
-      if (CS.getInstruction() == nullptr || !CS.isCallee(&U)) {
-        continue;
-      }
-      CallInst *CI = dyn_cast<CallInst>(CS.getInstruction());
-      if (!CI) {
-        continue;
-      }
-      worklist.push_back(CI);
+    std::vector<const CallInst *> FCalls;
+    for (DsaCallSite CS: FunctionCallsMap[&F]) {
+      const Function *calleeF = CS.getCallee();
+      assert(calleeF);
+      assert(!calleeF->empty());
+      const CallInst *CI = cast<CallInst>(CS.getInstruction());
+      FCalls.push_back(CI);
 
-      std::vector<region_bool_t> &readsC = cs_accessed[CI];
-      std::vector<region_bool_t> &modsC = cs_mods[CI];
-      std::vector<region_bool_t> &newsC = cs_news[CI];
+      std::vector<region_bool_t> &readsC = CSAccessed[CI];
+      std::vector<region_bool_t> &modsC = CSMods[CI];
+      std::vector<region_bool_t> &newsC = CSNews[CI];
 
       // Check that at the beginning caller and callee agree on the
       // number of memory regions, othewrwise there is nothing we can do.
       if (readsC.size() != readsF.size()) {
-        CLAM_ERROR("Different num of regions between callsite and its callee "
-                   << F.getName());
+        CLAM_ERROR("Different num of read and modified regions between callsite and its callee "
+                   << F.getName() << " and callsite=" << *CI);
       }
       if (modsC.size() != modsF.size()) {
-        CLAM_ERROR("Different num of regions between callsite and its callee "
-                   << F.getName());
+        CLAM_ERROR("Different num of modified regions between callsite and its callee "
+                   << F.getName() << " and callsite=" << *CI);
       }
       if (newsC.size() != newsF.size()) {
-        CLAM_ERROR("Different num of regions between callsite and its callee "
-                   << F.getName());
+        CLAM_ERROR("Different num of new regions between callsite and its callee "
+                   << F.getName() << " and callsite=" << *CI);
       }
 
       // Keep track of inconsistent memory regions (i.e., regions on
@@ -388,14 +412,13 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
     m_func_mods[&F] = modsF_out;
     m_func_news[&F] = newsF_out;
 
-    while (!worklist.empty()) {
-      CallInst *CI = worklist.back();
-      worklist.pop_back();
-
+    while (!FCalls.empty()) {
+      const CallInst *CI = FCalls.back();
+      FCalls.pop_back();
       RegionVec readsC_out, modsC_out, newsC_out;
-      std::vector<region_bool_t> &readsC = cs_accessed[CI];
-      std::vector<region_bool_t> &modsC = cs_mods[CI];
-      std::vector<region_bool_t> &newsC = cs_news[CI];
+      std::vector<region_bool_t> &readsC = CSAccessed[CI];
+      std::vector<region_bool_t> &modsC = CSMods[CI];
+      std::vector<region_bool_t> &newsC = CSNews[CI];
       for (unsigned i = 0, e = readsB.size(); i < e; i++) {
         if (readsB[i]) {
           readsC_out.push_back(readsC[i].first);
@@ -411,9 +434,30 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
           newsC_out.push_back(newsC[i].first);
         }
       }
+      
       m_callsite_accessed[CI] = readsC_out;
       m_callsite_mods[CI] = modsC_out;
       m_callsite_news[CI] = newsC_out;
+      CRAB_LOG("heap-abs-regions",
+	   llvm::errs() << "### HEAP_ABS: " << *CI << " ###\n";
+	   llvm::errs() << "Read-only regions at caller mapped to "
+	                << "those reachable from callee's arguments and globals {";
+	   for (auto &r: readsC_out) {
+	     llvm::errs() << r << ";";
+	   }
+	   llvm::errs() << "}\n";
+	   llvm::errs() << "Modified regions at caller mapped to "
+	                << "those reachable from calle's arguments and globals {";
+	   for (auto &r: modsC_out) {
+	     llvm::errs() << r << ";";
+	   }
+	   llvm::errs() << "}\n";
+	   llvm::errs() << "New regions at the caller (only reachable from callee's returns) {";
+	   for (auto &r: newsC_out) {
+	     llvm::errs() << r  << ";";
+	   }
+	   llvm::errs() << "}\n";);
+      
     }
   }
 }
@@ -538,21 +582,40 @@ SeaDsaHeapAbstraction::getSingleton(RegionId region) const {
   return nullptr;
 }
 
+// Return v1 \ v2 by keeping the same ordering in v1.
+// Precondition: v1 can have duplicates but v2 cannot.
+// 
+// e.g., [1,3,3,4] \ [1,3] = [3,4]
+// e.g., [1,3,3,3,4,5] \ [1,3,3] = [3,4,5] 
+static SeaDsaHeapAbstraction::RegionVec
+stable_difference(SeaDsaHeapAbstraction::RegionVec &v1,
+		  SeaDsaHeapAbstraction::RegionVec &v2) {
+  // v1 and v2 can be modified because we pass copies
+  
+  std::sort(v2.begin(), v2.end());
+  SeaDsaHeapAbstraction::RegionVec out;
+  out.reserve(v1.size());
+  for (auto rgn: v1) {
+    auto lower = std::lower_bound(v2.begin(), v2.end(), rgn);
+    if (lower != v2.end() && rgn == *lower) {
+      // found
+      // 
+      // remove from v2 so we handle correctly duplicates
+      // FIXME: do not use erase, it's expensive
+      v2.erase(lower);
+    } else if (lower == v2.end() || rgn < *lower) {
+      // not found
+      out.push_back(rgn);
+    }
+  }
+  return out;
+} 
+  
 SeaDsaHeapAbstraction::RegionVec
 SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {
   RegionVec v1 = m_func_accessed[&fn];
   RegionVec v2 = m_func_mods[&fn];
-  std::set<Region> s2(v2.begin(), v2.end());
-
-  // return v1 \ s2
-  RegionVec out;
-  out.reserve(v1.size());
-  for (unsigned i = 0, e = v1.size(); i < e; ++i) {
-    if (!s2.count(v1[i])) {
-      out.push_back(v1[i]);
-    }
-  }
-  return out;
+  return stable_difference(v1, v2);
 }
 
 SeaDsaHeapAbstraction::RegionVec
@@ -569,17 +632,7 @@ SeaDsaHeapAbstraction::RegionVec
 SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) {
   RegionVec v1 = m_callsite_accessed[&I];
   RegionVec v2 = m_callsite_mods[&I];
-  std::set<Region> s2(v2.begin(), v2.end());
-
-  // return v1 \ s2
-  RegionVec out;
-  out.reserve(v1.size());
-  for (unsigned i = 0, e = v1.size(); i < e; ++i) {
-    if (!s2.count(v1[i])) {
-      out.push_back(v1[i]);
-    }
-  }
-  return out;
+  return stable_difference(v1, v2);
 }
 
 SeaDsaHeapAbstraction::RegionVec
