@@ -33,6 +33,8 @@
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/DsaLibFuncInfo.hh"
 #include "seadsa/InitializePasses.hh"
+#include "seadsa/support/Debug.h"
+#include "seadsa/CompleteCallGraph.hh"
 
 #include "crab/config.h"
 #include "crab/analysis/bwd_analyzer.hpp"
@@ -45,6 +47,7 @@
 #include "crab/checkers/checker.hpp"
 #include "crab/support/debug.hpp"
 #include "crab/support/stats.hpp"
+#include "crab/cfg/cfg_to_dot.hpp"
 
 #include <functional>
 #include <memory>
@@ -176,8 +179,8 @@ public:
         m_cfg_builder = man.getCfgBuilder(m_fun);
       }
     } else {
-      CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
-                                      << fun.getName() << "\n");
+      //CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
+      //                                << fun.getName() << "\n");
     }
   }
 
@@ -788,6 +791,7 @@ bool InterClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
 ClamPass::ClamPass() : llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {
   // initialize sea-dsa dependencies
   llvm::initializeAllocWrapInfoPass(*llvm::PassRegistry::getPassRegistry());
+  llvm::initializeCompleteCallGraphPass(*llvm::PassRegistry::getPassRegistry());
 }
 
 void ClamPass::releaseMemory() {
@@ -798,9 +802,10 @@ void ClamPass::releaseMemory() {
 
 bool ClamPass::runOnModule(Module &M) {
   /// Translate the module to Crab CFGs
-  CrabBuilderParams params(CrabTrackLev, CrabCFGSimplify, true,
-                           CrabEnableUniqueScalars, CrabIncludeHavoc,
-                           CrabEnableBignums, CrabAddNonNullity, CrabPrintCFG);
+  CrabBuilderParams builder_params(CrabTrackLev, CrabCFGSimplify, true,
+				   CrabEnableUniqueScalars, CrabIncludeHavoc,
+				   CrabEnableBignums, CrabAddNonNullity,
+				   CrabPrintCFG, CrabDotCFG);
 
   auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>();
 
@@ -811,7 +816,8 @@ bool ClamPass::runOnModule(Module &M) {
   case heap_analysis_t::CS_SEA_DSA: {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream()
 		      << "Started sea-dsa analysis\n";);
-      CallGraph &cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
+      //CallGraph &cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
+      CallGraph &cg = getAnalysis<seadsa::CompleteCallGraph>().getCompleteCallGraph();
       seadsa::AllocWrapInfo &allocWrapInfo = getAnalysis<seadsa::AllocWrapInfo>();
       // FIXME: if we pass "this" then allocWrapInfo can be more
       // precise because it can use LoopInfo. However, I get some
@@ -833,7 +839,19 @@ bool ClamPass::runOnModule(Module &M) {
   default:
     CLAM_WARNING("running clam without heap analysis");
   }
-  m_cfg_builder_man.reset(new CrabBuilderManager(params, tli, std::move(mem)));
+  m_cfg_builder_man.reset(new CrabBuilderManager(builder_params, tli, std::move(mem)));
+
+  unsigned num_analyzed_funcs = 0;
+  CRAB_VERBOSE_IF(1,
+		  for (auto &F : M) {
+		    if (isTrackable(F)) {
+		      num_analyzed_funcs++;
+		    }
+		  }
+		  crab::get_msg_stream() << "Started clam\n";
+                  crab::get_msg_stream()
+                  << "Total number of analyzed functions:" << num_analyzed_funcs
+                  << "\n";);
   
   /// Run the analysis
 
@@ -848,7 +866,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.widening_delay = CrabWideningDelay;
   m_params.narrowing_iters = CrabNarrowingIters;
   m_params.widening_jumpset = CrabWideningJumpSet;
-  m_params.stats = CrabStats;
+  m_params.stats = CrabStats.getValue();
   m_params.print_invars = CrabPrintAns;
   m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
   m_params.print_summaries = CrabPrintSumm;
@@ -857,19 +875,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.check = CrabCheck;
   m_params.check_verbose = CrabCheckVerbose;
 
-  unsigned num_analyzed_funcs = 0;
-  for (auto &F : M) {
-    if (!isTrackable(F))
-      continue;
-    num_analyzed_funcs++;
-  }
-
-  CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started clam\n";
-                  crab::get_msg_stream()
-                  << "Total number of analyzed functions:" << num_analyzed_funcs
-                  << "\n";);
-
-  if (CrabInter) {
+  if (m_params.run_inter) {
     InterClamImpl inter_crab(M, *m_cfg_builder_man);
     AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
     /* -- empty assumptions */
@@ -880,7 +886,7 @@ bool ClamPass::runOnModule(Module &M) {
   } else {
     unsigned fun_counter = 1;
     for (auto &F : M) {
-      if (!CrabInter && isTrackable(F)) {
+      if (!m_params.run_inter && isTrackable(F)) {
         CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                                << "###Function " << fun_counter << "/"
                                << num_analyzed_funcs << "###\n";);
@@ -889,17 +895,51 @@ bool ClamPass::runOnModule(Module &M) {
       }
     }
   }
-
-  if (CrabStats) {
+  
+  if (builder_params.dot_cfg) {  
+    for (auto &F : M) {
+      if (m_cfg_builder_man->hasCfg(F)) {
+    	cfg_t &cfg = m_cfg_builder_man->getCfg(F);
+	#if 1
+	auto pre_fn = [this](const basic_block_label_t &node)
+	  -> boost::optional<clam_abstract_domain> {
+		if (const BasicBlock *BB = node.get_basic_block()) {
+		   llvm::Optional<clam_abstract_domain> res = getPre(BB);
+		   if (res.hasValue()) {
+		     return res.getValue();
+		   }
+		}
+		return boost::optional<clam_abstract_domain>();
+	};
+	auto post_fn = [this](const basic_block_label_t &node)
+	  -> boost::optional<clam_abstract_domain> {
+		if (const BasicBlock *BB = node.get_basic_block()) {
+		   llvm::Optional<clam_abstract_domain> res = getPost(BB);
+		   if (res.hasValue()) {
+		     return res.getValue();
+		   }
+		}
+		return boost::optional<clam_abstract_domain>();
+	};
+	
+	cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn, m_checks_db);
+        #else
+	cfg_to_dot(cfg);
+	#endif 
+      }
+    }
+  }
+  
+  if (m_params.stats) {
     crab::CrabStats::PrintBrunch(crab::outs());
   }
 
-  if (CrabCheck != CheckerKind::NOCHECKS) {
+  if (m_params.check != CheckerKind::NOCHECKS) {
     llvm::outs() << "\n************** ANALYSIS RESULTS ****************\n";
     printChecks(llvm::outs());
     llvm::outs() << "************** ANALYSIS RESULTS END*************\n";
 
-    if (CrabStats) {
+    if (m_params.stats) {
       llvm::outs() << "\n************** BRUNCH STATS ********************\n";
       if (getTotalChecks() == 0) {
         llvm::outs() << "BRUNCH_STAT Result NOCHECKS\n";
@@ -914,6 +954,7 @@ bool ClamPass::runOnModule(Module &M) {
     }
   }
 
+  
   return false;
 }
 
@@ -944,7 +985,10 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
 
   AU.addRequired<UnifyFunctionExitNodes>();
   AU.addRequired<clam::NameValues>();
-  AU.addRequired<CallGraphWrapperPass>();
+
+  // More precise than LLVM callgraph
+  AU.addRequired<seadsa::CompleteCallGraph>();
+  //AU.addRequired<CallGraphWrapperPass>();
 }
 
 /**
