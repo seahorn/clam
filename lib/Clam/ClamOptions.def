@@ -20,6 +20,11 @@ CrabPrintCFG("crab-print-cfg",
 	 cl::desc("Print Crab CFG"), 
 	 cl::init(false));
 
+cl::opt<bool>
+CrabDotCFG("crab-dot-cfg",
+	 cl::desc("Print Crab CFG of function to dot file"), 
+	 cl::init(false));
+
 /**
  * Translate singleton alias sets as scalar values.
  * This is specially useful for global variables.
@@ -66,10 +71,20 @@ CrabStoreInvariants("crab-store-invariants",
                cl::desc("Store invariants"),
                cl::init(true));
 
-cl::opt<bool>
+struct StatsOpt {
+  operator bool() const
+  { return crab::CrabStatsFlag; }
+  void operator=(bool val) const 
+  { crab::CrabEnableStats(val); } 
+};
+
+StatsOpt stats;
+
+static cl::opt<StatsOpt, true, cl::parser<bool>>
 CrabStats("crab-stats", 
            cl::desc("Show Crab statistics and analysis results"),
-           cl::init(false));
+	   cl::location(stats),
+	   llvm::cl::value_desc("bool"));
 
 cl::opt<bool>
 CrabBuildOnlyCFG("crab-only-cfg", 
@@ -220,8 +235,10 @@ CrabKeepShadows("crab-keep-shadows",
 /* Debugging/Logging/Sanity Checks options */
 
 struct LogOpt {
-  void operator=(const std::string &tag) const 
-  { crab::CrabEnableLog(tag); } 
+  void operator=(const std::string &tag) const {
+     crab::CrabEnableLog(tag);
+     seadsa::SeaDsaEnableLog(tag);
+  } 
 };
 
 LogOpt loc;
