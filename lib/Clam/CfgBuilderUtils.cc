@@ -92,7 +92,7 @@ bool isTracked(const Value &v, const CrabBuilderParams &params) {
 
 bool ShouldCallSiteReturn(CallInst &I, const CrabBuilderParams &params) {
   CallSite CS(&I);
-  if (Function *Callee = CS.getCalledFunction()) {
+  if (Function *Callee = dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts())) {
     Type *RT = Callee->getReturnType();
     return (!(RT->isVoidTy()) && isTrackedType(*RT, params));
   }
