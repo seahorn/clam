@@ -767,6 +767,7 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
                       const Value &v1, const Value &v2);
   void doIntLogicOp(crab_lit_ref_t lit, BinaryOperator &i);
   void doAllocFn(Instruction &I);
+  void doFreeFn(Instruction &I);
   void doMemIntrinsic(MemIntrinsic &I);
   void doVerifierCall(CallInst &I);
   void doGep(GetElementPtrInst &I, unsigned bitwidth,
@@ -1509,8 +1510,8 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
     return;
   }
  
-  if ((isa<SExtInst>(I) || isa<ZExtInst>(I)) && I.getSrcTy()->isIntegerTy(1) &&
-      AllUsesAreVerifierCalls(I)) {
+  if (isa<ZExtInst>(I) &&
+      I.getSrcTy()->isIntegerTy(1) && AllUsesAreVerifierCalls(I)) {
     /*
        y:i32 = zext x:i1 to i32
        assume (y>=1);
@@ -1822,7 +1823,6 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
   
 /* malloc-like functions */
 void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
-
   if (!I.getType()->isVoidTy()) {
     crab_lit_ref_t lit = m_lfac.getLit(I);
     assert(lit->isVar());
@@ -1836,6 +1836,18 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
   }
 }
 
+/* free-like functions */
+void CrabIntraBlockBuilder::doFreeFn(Instruction &I) {
+  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    CallSite CS(&I);
+    crab_lit_ref_t Ptr = m_lfac.getLit(*(CS.getArgument(0)));
+    if (Ptr->isVar() && Ptr->isRef()) {
+      Region RgnPtr = getRegion(m_mem, m_func_regions, m_params, I, *(CS.getArgument(0)));
+      m_bb.intrinsic("free",{},{m_lfac.mkRegionVar(RgnPtr), Ptr->getVar()});
+    }
+  }
+}
+  
 /* memcpy/memmove/memset functions */
 void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
   CLAM_WARNING("Skipped memory intrinsics " << I);
@@ -2519,8 +2531,7 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
     assert(lhs && lhs->isVar());
     m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn));
     
-    if (m_params.add_nonnull_assumptions &&
-	m_params.precision_level == CrabBuilderPrecision::MEM) {
+    if (m_params.addPointerAssumptions()) {
       // pointers allocated in the stack cannot be null
       m_bb.assume_ref(ref_cst_t::mk_gt_null(lhs->getVar()));
     }
@@ -2581,11 +2592,16 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   }
 
   if (isAllocationFn(&I, m_tli)) {
-    // TODO: probably also if callee->returnDoesNotAlias()
     doAllocFn(I);
     return;
   }
 
+  
+  if (isFreeCall(&I,  m_tli)) {
+    doFreeFn(I);
+    return;
+  }
+  
   if (callee->isIntrinsic()) {
     if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I)) {
       doMemIntrinsic(*MI);
@@ -2616,6 +2632,15 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
       assert(lhs && lhs->isVar());
       havoc(lhs->getVar(), "External call: " + valueToStr(I),
 	    m_bb, m_params.include_useless_havoc);
+
+      if (m_params.addPointerAssumptions()) {
+	// We cannot assume that the returned pointer is non-null but
+	// it's reasonable to assume that it's not dangling.
+	if (lhs->isRef()) {
+	  Region rgn_lhs = getRegion(m_mem, m_func_regions, m_params, I, I);
+	  m_bb.intrinsic("unfreed_or_null",{}, {m_lfac.mkRegionVar(rgn_lhs), lhs->getVar()});
+	}
+      }
     }
     
     // -- havoc all modified regions by the callee
@@ -2851,14 +2876,14 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
       
       Region rgn = getRegion(m_mem, m_func_regions, m_params, m_func, gv);	  	
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
-	if (m_params.add_nonnull_assumptions) {
+	if (m_params.addPointerAssumptions()) {
 	  entry.havoc(gv_lit->getVar(), "singleton global variable");
 	}
       } else {
 	entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));
       }
 
-      if (m_params.add_nonnull_assumptions) {
+      if (m_params.addPointerAssumptions()) {
 	if (gv.hasInitializer()) {
 	  if (const ConstantDataSequential *CDS =
 	      dyn_cast<ConstantDataSequential>(gv.getInitializer())) {
@@ -2877,32 +2902,31 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
     }
   }
 
-  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
-    if (m_params.add_nonnull_assumptions) {
-      // Add assumption argv != NULL.
-      // But we are missing the assumption:
-      //    forall 0<=i< argc:: argv[i] != NULL and argv[argc] = NULL
-      if (m_func.arg_size() == 2) {
-	if (Value *Argv = m_func.getArg(1)) {
-	  if (Argv->getType()->isPointerTy()) {
-	    crab_lit_ref_t argv_lit = m_lfac.getLit(*Argv);
-	    assert(argv_lit->isVar());
-	    entry.assume_ref(ref_cst_t::mk_gt_null(argv_lit->getVar()));
-	  }
+  if (m_params.addPointerAssumptions()) {
+    // Add assumption argv != NULL.
+    // But we are missing the assumption:
+    //    forall 0<=i< argc:: argv[i] != NULL and argv[argc] = NULL
+    if (m_func.arg_size() == 2) {
+      if (Value *Argv = m_func.getArg(1)) {
+	if (Argv->getType()->isPointerTy()) {
+	  crab_lit_ref_t argv_lit = m_lfac.getLit(*Argv);
+	  assert(argv_lit->isVar());
+	  entry.assume_ref(ref_cst_t::mk_gt_null(argv_lit->getVar()));
 	}
       }
     }
+  }
     
-    // Add assumptions about function addresses
-    for (auto &F: M) {
-      if (F.hasAddressTaken()) {
-	crab_lit_ref_t funptr = m_lfac.getLit(F);
-	assert(funptr && funptr->isVar() && funptr->isRef());
-	entry.havoc(funptr->getVar(), "Function pointer for " + F.getName().str());
-	if (m_params.add_nonnull_assumptions) {
-	  // all function addresses are not null	  
-	  entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
-	}
+  
+  for (auto &F: M) {
+    if (F.hasAddressTaken()) {
+      crab_lit_ref_t funptr = m_lfac.getLit(F);
+      assert(funptr && funptr->isVar() && funptr->isRef());
+      entry.havoc(funptr->getVar(), "Function pointer for " + F.getName().str());
+      if (m_params.addPointerAssumptions()) {
+	// Add assumptions about function addresses: all function
+	// addresses are not null
+	entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
       }
     }
   }
@@ -3254,13 +3278,15 @@ void CfgBuilderImpl::buildCfg() {
       if (basic_block_t *b = lookup(B)) {
         if (b->label() == m_cfg->exit())
           continue;
-
         auto it_pair = b->next_blocks();
         if (it_pair.first == it_pair.second) {
           // block has no successors and it is not the exit block
-          for (auto &I : B)
-            if (isa<UnreachableInst>(I))
+          for (auto &I : B) {
+            if (isa<UnreachableInst>(I)) {
+	      // TODO: havoc the return value at the end of b
               *b >> exit;
+	    }
+	  }
         }
       }
     }
@@ -3525,8 +3551,7 @@ void CfgBuilderImpl::addFunctionDeclaration() {
     }
   }
   
-  if (m_params.add_nonnull_assumptions &&
-      m_params.precision_level == CrabBuilderPrecision::MEM) {
+  if (m_params.addPointerAssumptions()) {
     for (unsigned i=0, num_args=m_func.arg_size(); i<num_args; ++i) {
       if (m_func.getArg(i)->getType()->isPointerTy() &&
 	  m_func.getParamDereferenceableBytes(i) > 0) {
@@ -3598,8 +3623,8 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tinterproc cfg: " << interprocedural << "\n";
   o << "\tlower singleton aliases into scalars: "
     << lower_singleton_aliases << "\n";
-  o << "\tadd non-nullity assumptions: "
-    << add_nonnull_assumptions << "\n";
+  o << "\tadd pointer assumptions: "
+    << addPointerAssumptions() << "\n";
   o << "\tenable big numbers: " << enable_bignums << "\n";
 }
 
@@ -3836,7 +3861,7 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   CallSite CS(&I);
   const Function *calleeF = dyn_cast<Function>(CS.getCalledValue()->stripPointerCastsAndAliases());
   assert(calleeF);  
-  
+
   std::vector<var_t> inputs, outputs;
 
   // -- add the actual parameters of the llvm callsite: i1,...in.
@@ -3904,6 +3929,7 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   
   CRAB_LOG("cfg-mem", llvm::errs()
 	   << "Callsite " << I << "\n"
+	   << "Callee " << calleeF->getName() << "\n"
 	   << "\tInput regions " << inRegions.size()
 	   << ": " << inRegions << "\n"
 	   << "\tInput/Output regions " << inOutRegions.size() << ": "
@@ -3953,7 +3979,7 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
       outputs.push_back(m_lfac.mkRegionVar(rgn));      
     }
   }
-  
+
   // -- Sanity checks if function declaration of the callee is available
   const typename cfg_t::fdecl_t *calleeF_decl = nullptr;
   if (m_man.hasCfg(*calleeF)) {
@@ -3968,9 +3994,15 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   if (calleeF_decl) {
     // Sanity checks
     if (calleeF_decl->get_inputs().size() != inputs.size()) {
+      crab::outs() << *calleeF_decl << "\n";
+      crab::outs() << "num of inputs at callsite=" << inputs.size() << "\n";
+      crab::outs() << "num of inputs at function=" << calleeF_decl->get_inputs().size() << "\n";      
       CLAM_ERROR("Mismatch of number of inputs between callsite and function declaration");
     }
     if (calleeF_decl->get_outputs().size() != outputs.size()) {
+      crab::outs() << *calleeF_decl << "\n";
+      crab::outs() << "num of outputs at callsite=" << outputs.size() << "\n";
+      crab::outs() << "num of outputs at function=" << calleeF_decl->get_outputs().size() << "\n";      
       CLAM_ERROR("Mismatch of number of outputs between callsite and function declaration");
     }
     
@@ -4027,7 +4059,21 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   
   // -- Finally, add the callsite or crab intrinsic
   if (isCrabIntrinsic(*calleeF)) {
-    m_bb.intrinsic(getCrabIntrinsicName(*calleeF), outputs, inputs);
+    std::string name = getCrabIntrinsicName(*calleeF);
+    if (m_params.precision_level == CrabBuilderPrecision::MEM &&
+	(name == "is_unfreed_or_null" ||
+	 name == "unfreed_or_null")) {
+      // Pass the region of the pointer
+      if (inputs.size() != 1) {
+	CLAM_ERROR("Intrinsic ", name, " should have only one input parameter");
+      }
+      Value *ptr = CS.getArgument(0);
+      Region rgn_ptr = getRegion(m_mem, m_func_regions, m_params, *(CS.getInstruction()), *ptr);
+      std::vector<var_t> new_inputs{m_lfac.mkRegionVar(rgn_ptr), inputs[0]};
+      m_bb.intrinsic(name, outputs, new_inputs);
+    } else {
+      m_bb.intrinsic(name, outputs, inputs);
+    }
   } else {
     for(unsigned i=0,sz=pendingInRgnCopies.size();i<sz;++i)
       m_bb.region_copy(pendingInRgnCopies[i].second, pendingInRgnCopies[i].first);
@@ -4039,8 +4085,7 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   }
   
   
-  if (m_params.add_nonnull_assumptions &&
-      m_params.precision_level == CrabBuilderPrecision::MEM) {
+  if (m_params.addPointerAssumptions()) {
     if (I.getType()->isPointerTy() && calleeF->getDereferenceableBytes(0) > 0) {
       crab_lit_ref_t ret = m_lfac.getLit(I);
       assert(ret && ret->isVar() && ret->isRef());
