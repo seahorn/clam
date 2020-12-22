@@ -184,7 +184,7 @@ public:
   bool runOnFunction(Function &F) override {
     auto &LI = getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
     auto &Clam = getAnalysis<ClamPass>();
-    std::string Filename = F.getName().str() + ".clam.cfg.dot";
+    std::string Filename = F.getName().str() + ".llvm.cfg.dot";
     writeGraph(F, LI, Clam, Filename);
     return false;
   }
