@@ -106,5 +106,29 @@ void argReachableNodes(const llvm::Function &fn, Graph &G, NodeSet &reach,
   set_union(reach, outReach);
 }
 
+/// Computes the set of nodes which are local to the function fn. A
+/// node is local if it is not reachable from input parameters or
+/// globals or return parameters.
+void localNodes(const Function &fn, Graph &g, NodeSet &nodes) {
+  NodeSet reach, retReach/*unused*/;
+  argReachableNodes(fn, g, reach, retReach);
+  
+  for (auto &kv : g.scalars()) {
+    const Value *V = kv.first;
+    if (!V || isa<GlobalValue>(V)) continue;
+    
+    const Cell *C = kv.second.get();
+    if (C->isNull()) continue;
+
+    const Node *N = C->getNode();
+    if (reach.count(N) > 0) continue;
+    
+    if (N->isRead() || N->isModified()) {
+      nodes.insert(N);
+    }
+  }
+}
+
+  
 } // end namespace seadsa_heap_abs_impl
 } // namespace clam

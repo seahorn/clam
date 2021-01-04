@@ -223,6 +223,10 @@ public:
   virtual Region getRegion(const llvm::Function &fun,
                            const llvm::Value &ptr) = 0;
 
+  // Regions created by the function that should be initialized by the
+  // function.
+  virtual RegionVec getInitRegions(const llvm::Function &) = 0;
+  
   /**========  These functions allow to purify functions ========**/
   
   // Read-Only regions reachable by function parameters and globals

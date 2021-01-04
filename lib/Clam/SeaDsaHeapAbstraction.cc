@@ -3,8 +3,8 @@
 /**
  * Heap abstraction based on sea-dsa (https://github.com/seahorn/sea-dsa).
  * 
- * The implementation currently ignore InvokeInst and assume that the
- * callgraph is complete.
+ * The implementation currently ignores InvokeInst and assumes that
+ * the callgraph is complete.
  */
 
 #include "llvm/ADT/Optional.h"
@@ -72,7 +72,22 @@ SeaDsaHeapAbstraction::getId(const Cell &c) {
   m_max_id += n->size();
   return id + offset;
 }
-  
+
+static std::vector<unsigned> extractFields(const Node *n, bool isRetReach = false) {
+  std::vector<unsigned> fields;
+  if (n->isOffsetCollapsed()) {
+    fields.push_back(0);
+  } else {
+    for (auto &kv : n->types()) {
+      fields.push_back(kv.first);
+    }
+    if (fields.empty() && isRetReach) {
+      fields.push_back(0);
+    }
+  }
+  return fields;
+}
+
 // compute and cache the set of read, mod and new reachable nodes from
 // globals and function's parameters and returns such that mod nodes
 // are a subset of the read nodes and the new nodes are disjoint from
@@ -96,24 +111,14 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
   
   RegionVec reads, mods, news;
   for (const Node *n : reach) {
-    bool is_returned = retReach.count(n) > 0;
+    bool isRetReach = retReach.count(n) > 0;
     
-    if (!is_returned && !n->isRead() && !n->isModified()) {
+    if (!isRetReach && !n->isRead() && !n->isModified()) {
       continue;
     }
 
     // Extract all fields from the node
-    std::vector<unsigned> fields;
-    if (n->isOffsetCollapsed()) {
-      fields.push_back(0);
-    } else {
-      for (auto &kv : n->types()) {
-	fields.push_back(kv.first);
-      }
-      if (fields.empty() && is_returned) {
-	fields.push_back(0);
-      }
-    }
+    std::vector<unsigned> fields = extractFields(n, isRetReach);
 
     // Create a region for each node's field
     for (auto field: fields) {
@@ -124,7 +129,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(
 					 m_disambiguate_external);
       Region rgn =  mkRegion(c, r_info);
 
-      if (!is_returned) {
+      if (!isRetReach) {
 	// reachable from function arguments or globals
 	reads.push_back(rgn);
 	if (n->isModified()) {
@@ -213,24 +218,14 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 
   std::vector<region_bool_t> reads, mods, news;
   for (const Node *n : reach) {
-    bool is_returned = retReach.count(n) > 0;
+    bool isRetReach = retReach.count(n) > 0;
     
-    if (!is_returned && !n->isRead() && !n->isModified()) {
+    if (!isRetReach && !n->isRead() && !n->isModified()) {
       continue;
     }
 
     // Extract all fields from the node
-    std::vector<unsigned> fields;
-    if (n->isOffsetCollapsed()) {
-      fields.push_back(0);
-    } else {
-      for (auto &kv : n->types()) {
-	fields.push_back(kv.first);
-      }
-      if (fields.empty() && is_returned) {
-	fields.push_back(0);
-      }
-    }
+    std::vector<unsigned> fields = extractFields(n, isRetReach);
 
     for (auto field : fields) {
       Cell calleeC(const_cast<Node *>(n), field);
@@ -256,7 +251,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
       bool is_compat_callsite = calleeRI.hasCompatibleType(callerRI);
       //  == end sanity check ==
 
-      if (!is_returned) {
+      if (!isRetReach) {
 	reads.push_back({rgn, is_compat_callsite});
 	if (n->isModified()) {
 	  mods.push_back({rgn, is_compat_callsite});
@@ -610,6 +605,62 @@ stable_difference(SeaDsaHeapAbstraction::RegionVec &v1,
   }
   return out;
 } 
+
+SeaDsaHeapAbstraction::RegionVec
+SeaDsaHeapAbstraction::getInitRegions(const llvm::Function &f) {
+  RegionVec res;
+  if (!m_dsa || !(m_dsa->hasGraph(f))) {
+    return res;
+  }
+
+  // -- Regions that are not reachable from input parameters or
+  //    globals and escape f
+  res = getNewRegions(f);
+  
+  // Local nodes
+  Graph &G = m_dsa->getGraph(f);  
+  seadsa_heap_abs_impl::NodeSet locals;
+  seadsa_heap_abs_impl::localNodes(f, G, locals);
+  // Local regions but created by callees
+  std::set<Region> calleeRgns;
+  for (inst_iterator It = inst_begin(*(const_cast<Function*>(&f))),
+	 E = inst_end(*(const_cast<Function*>(&f))); It != E; ++It) {
+    if (CallInst *CI = dyn_cast<CallInst>(&*It)) {
+      auto outRgns = getNewRegions(*CI);
+      calleeRgns.insert(outRgns.begin(), outRgns.end());
+    }
+  }
+  // -- Regions from local nodes after filtering out those created by
+  //    callees.
+  for (const Node *n: locals) {
+    std::vector<unsigned> fields = extractFields(n);
+    for (auto field: fields) {
+      Cell c(const_cast<Node *>(n), field);
+	RegionInfo r_info = SeaDsaToRegion(c, m_dl,
+					   m_disambiguate_unknown,
+					   m_disambiguate_ptr_cast,
+					   m_disambiguate_external);
+	Region rgn =  mkRegion(c, r_info);
+	if (calleeRgns.count(rgn) <= 0) {
+	  res.push_back(rgn);
+	}
+    }
+  }
+  std::sort(res.begin(), res.end());
+
+  // -- (if main) Regions reachable from input parameters and globals
+  if (f.getName().equals("main")) {
+    const RegionVec &reachFromParamsAndGlobals = m_func_accessed[&f];
+    for (auto &rgn: reachFromParamsAndGlobals) {
+      auto lower = std::lower_bound(res.begin(), res.end(), rgn);
+      if (lower == res.end() || rgn < *lower) { // not found
+	res.push_back(rgn);
+      }
+    }
+  } 
+  
+  return res;
+}
   
 SeaDsaHeapAbstraction::RegionVec
 SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {

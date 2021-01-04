@@ -1281,7 +1281,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
 
   if (!isTracked(*cond, m_params))
     return;
-  
+
   if (ConstantInt *CI = dyn_cast<ConstantInt>(cond)) {
     // -- cond is a constant
     bool is_bignum;
@@ -2764,7 +2764,7 @@ private:
   node_to_crab_block_map_t m_node_to_crab_map;
   // map llvm CFG edges to crab basic block ids
   edge_to_crab_block_map_t m_edge_to_crab_map;
-  // Memory regions accessed by m_func
+  // **Unused**: memory regions accessed by m_func 
   RegionSet m_func_regions;
   // A fake basic block containing the return instruction and
   // additional statements to normalize the returned value.
@@ -2792,6 +2792,8 @@ private:
 
   void initializeGlobalsAtMain(void); 
 
+  void initializeRegions(void);
+  
   void setExitBlock(void);
 
   // Given a llvm basic block return its corresponding crab basic block
@@ -2931,6 +2933,26 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
     }
   }
 }
+
+
+void CfgBuilderImpl::initializeRegions(void) {
+  if (m_lfac.getTrack() != CrabBuilderPrecision::MEM) {
+    return;
+  }
+  basic_block_t *entry = lookup(m_func.getEntryBlock());
+  CRAB_LOG("cfg-mem", llvm::errs() << "Regions initialized by " << m_func.getName() << "{";);
+
+  for (auto rgn: m_mem.getInitRegions(m_func)) {
+    CRAB_LOG("cfg-mem", llvm::errs() << rgn << ";";);
+    if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+      continue;
+    }
+    entry->set_insert_point_front();	
+    entry->region_init(m_lfac.mkRegionVar(rgn));
+  }
+  CRAB_LOG("cfg-mem", llvm::errs() << "}\n";);
+}
+
   
 // Given a llvm basic block return its corresponding crab basic block
 basic_block_t *CfgBuilderImpl::lookup(const BasicBlock &bb) const {
@@ -3186,7 +3208,8 @@ void CfgBuilderImpl::buildCfg() {
   }
 
   initializeGlobalsAtMain();
-
+  initializeRegions();
+ 
   for (auto &B : m_func) {
     basic_block_t *bb = lookup(B);
     
@@ -3227,53 +3250,21 @@ void CfgBuilderImpl::buildCfg() {
       v.visit(const_cast<BasicBlock &>(*dst));
     }
   }
-
-  if (has_seahorn_fail && m_cfg->has_exit()) {
-    basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
-    exit.assertion(lin_cst_t::get_false());
-  }
-  
-  if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-    // Initialize regions
-    basic_block_t *entry = lookup(m_func.getEntryBlock());
-
-    RegionSet notOwnRegions;   
-    if (!m_func.getName().equals("main")) {
-      // Any region that is input or input/ouput to the function
-      // should be initialized by some function's caller, except if
-      // main.
-      auto inRegions = getInputRegions(m_mem, m_params, m_func);
-      auto inOutRegions = getInputOutputRegions(m_mem, m_params, m_func);
-      notOwnRegions.insert(inRegions.begin(), inRegions.end());
-      notOwnRegions.insert(inOutRegions.begin(), inOutRegions.end());
-    }
-    CRAB_LOG("cfg-mem", llvm::errs() << "Regions for " << m_func.getName() << "{";);
-    // FIXME: we might call region_init twice on the same region if
-    // the region is an output parameter of a function call and used
-    // in the caller after.
-    
-    for (auto rgn: m_func_regions) {
-      CRAB_LOG("cfg-mem", llvm::errs() << rgn << ";";);
-      if (notOwnRegions.count(rgn) <= 0) {
-	if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
-	  continue;
-	}
-	entry->set_insert_point_front();	
-	entry->region_init(m_lfac.mkRegionVar(rgn));
-      }
-    }
-    CRAB_LOG("cfg-mem", llvm::errs() << "}\n";);
-  }
   
   if (m_cfg->has_exit()) {
+    basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
+
+    if (has_seahorn_fail) {
+      exit.assertion(lin_cst_t::get_false());
+    }
+
     // -- Connect all sink blocks with an unreachable instruction to
     //    the exit block.  For a forward analysis this doesn't have
     //    any impact since unreachable becomes bottom anyway.
     //    However, a backward analysis starting with an invariant that
     //    says the exit is unreachable may incorrectly infer that the
     //    preconditions of the error states is false just because it
-    //    never propagates backwards from these special sink blocks.
-    basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
+    //    never propagates backwards from these special sink blocks.    
     for (auto &B : m_func) {
       if (basic_block_t *b = lookup(B)) {
         if (b->label() == m_cfg->exit())
@@ -3780,7 +3771,7 @@ CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
 
   /*
    * The Crab CFG for a LLVM function is built in two phases. First,
-   * we create the a Crab function declaration for each LLVM function
+   * we create the Crab function declaration for each LLVM function
    * and create an entry and an exit block. Second, we build the rest
    * of the CFG. We need a two-step approach because we need at a
    * callsite to know the inputs and outputs of the callee function.
@@ -3859,7 +3850,8 @@ HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() { return *m_mem; }
  **/
 void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   CallSite CS(&I);
-  const Function *calleeF = dyn_cast<Function>(CS.getCalledValue()->stripPointerCastsAndAliases());
+  const Function *calleeF =
+    dyn_cast<Function>(CS.getCalledValue()->stripPointerCastsAndAliases());
   assert(calleeF);  
 
   std::vector<var_t> inputs, outputs;

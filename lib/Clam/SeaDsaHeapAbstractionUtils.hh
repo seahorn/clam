@@ -37,6 +37,8 @@ void reachableNodes(const llvm::Function &fn, seadsa::Graph &g,
 void argReachableNodes(const llvm::Function &fn, seadsa::Graph &G,
                        NodeSet &reach, NodeSet &outReach);
 
+void localNodes(const llvm::Function &fn, seadsa::Graph &g, NodeSet &nodes);
+  
 struct isInteger : std::unary_function<const llvm::Type *, bool> {
   unsigned m_bitwidth; // bits
   isInteger() : m_bitwidth(0) {}

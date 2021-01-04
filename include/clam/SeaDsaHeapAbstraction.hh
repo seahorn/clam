@@ -103,6 +103,8 @@ public:
   Region getRegion(const llvm::Function &F, const llvm::Value &V,
                    unsigned offset, const llvm::Type &AccessedType);
 
+  virtual RegionVec getInitRegions(const llvm::Function &F) override;
+  
   virtual RegionVec getOnlyReadRegions(const llvm::Function &F) override;
 
   virtual RegionVec getModifiedRegions(const llvm::Function &F) override;
@@ -132,8 +134,11 @@ private:
   bool m_disambiguate_ptr_cast;
   bool m_disambiguate_external;
 
+  // read or modified regions reachable from inputs or globals
   llvm::DenseMap<const llvm::Function *, RegionVec> m_func_accessed;
+  // modified regions reachable from inputs or globals
   llvm::DenseMap<const llvm::Function *, RegionVec> m_func_mods;
+  // regions reachable only from return parameters
   llvm::DenseMap<const llvm::Function *, RegionVec> m_func_news;
   llvm::DenseMap<const llvm::CallInst *, RegionVec> m_callsite_accessed;
   llvm::DenseMap<const llvm::CallInst *, RegionVec> m_callsite_mods;
