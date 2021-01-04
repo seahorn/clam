@@ -53,6 +53,11 @@ DefaultDataLayout("default-data-layout",
         llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
 
 static llvm::cl::opt<bool>
+PromoteMalloc("crab-promote-malloc",
+	   llvm::cl::desc("Promote malloc to alloca"),
+           llvm::cl::init(true));
+
+static llvm::cl::opt<bool>
 InlineAll("crab-inline-all",
 	   llvm::cl::desc("Inline all functions"),
            llvm::cl::init(false));
@@ -221,8 +226,10 @@ int main(int argc, char **argv) {
 
   assert(dl && "Could not find Data Layout for the module");
 
-  // -- promote top-level mallocs to alloca
-  pass_manager.add(clam::createPromoteMallocPass());  
+  if (PromoteMalloc) {
+    // -- promote top-level mallocs to alloca
+    pass_manager.add(clam::createPromoteMallocPass());
+  }
 
   // -- turn all functions internal so that we can apply some global
   // -- optimizations inline them if requested
