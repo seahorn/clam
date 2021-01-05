@@ -81,7 +81,7 @@ using namespace crab::cfg;
 
 namespace clam {
 
-bool checkAllDefinitionsHaveNames(const Function &F) {
+static bool checkAllDefinitionsHaveNames(const Function &F) {
   for (const BasicBlock &BB : F) {
     if (!BB.hasName()) {
       return false;
@@ -95,21 +95,21 @@ bool checkAllDefinitionsHaveNames(const Function &F) {
   return true;
 }
 
-std::string valueToStr(const Value &V) {
+static std::string valueToStr(const Value &V) {
   std::string res;
   raw_string_ostream os(res);
   os << V;
   return res;
 }
   
-void havoc(var_t v, std::string comment, basic_block_t &bb, bool include_useless_havoc) {
+static void havoc(var_t v, std::string comment, basic_block_t &bb, bool include_useless_havoc) {
   if (include_useless_havoc) {
     bb.havoc(v, comment);
   }
 }
 
 // %x = icmp geq %y, 10  ---> bool_assign(%x, y >= 0)
-void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac, basic_block_t &bb) {
+static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac, basic_block_t &bb) {
   // The type of I is a boolean or vector of booleans
   normalizeCmpInst(I);
 
@@ -175,8 +175,8 @@ void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac, basic_block_t &bb) {
 }
 
 /* If possible, return a Crab reference constraint from CmpInst */
-Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
-                                     const bool isNegated) {
+static Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
+					    const bool isNegated) {
   normalizeCmpInst(I);
 
   const Value &v0 = *I.getOperand(0);
@@ -274,8 +274,8 @@ Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
 }
  
 /* If possible, return a Crab linear constraint from CmpInst */
-Optional<lin_cst_t> cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
-                                     const bool isNegated = false) {
+static Optional<lin_cst_t> cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
+					    const bool isNegated = false) {
   normalizeCmpInst(I);
 
   const Value &v0 = *I.getOperand(0);
@@ -340,8 +340,8 @@ Optional<lin_cst_t> cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
 // This function makes sure that all actual parameters and function
 // return values are variables. This is required by crab.
 // precondition: v is tracked.
-var_t normalizeFuncParamOrRet(Value &v, basic_block_t &bb,
-                              crabLitFactory &lfac, bool forceRenaming = false) {
+static var_t normalizeFuncParamOrRet(Value &v, basic_block_t &bb,
+				     crabLitFactory &lfac, bool forceRenaming = false) {
   if (crab_lit_ref_t v_lit = lfac.getLit(v)) {
     if (v_lit->isVar() && !forceRenaming) {
       return v_lit->getVar();
