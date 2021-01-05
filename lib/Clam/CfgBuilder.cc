@@ -14,7 +14,7 @@
  * over singleton memory objects are translated to Crab array
  * operations. This translation requires the Heap analysis used to
  * partition statically memory into disjoint regions. Then, each
- * memory region's _field_ (i.e., Burstall's memory model) is mapped
+ * memory region's _field_ (i.e., partitioning memory model) is mapped
  * to a Crab array and LLVM load/store are translated to array
  * read/write statements. A memory object is considered a singleton if
  * it represents a single allocated memory region. This is usually the
@@ -23,7 +23,9 @@
  * If tracked precision = MEM then all LLVM pointer operations are
  * translated to Crab region abstract domain operations over
  * references. This translation is almost one-to-one but it also
- * requires the use of the Heap Analysis.
+ * requires the use of the Heap Analysis. Each memory region's
+ * __field__ is mapped to a Crab region and LLVM load/store are
+ * translated to region load/store statements.
  *
  * The translation of function calls is also straightforward except
  * that all functions are _purified_ if tracked precision != NUM. That
@@ -80,12 +82,6 @@ using namespace crab::cfg;
 namespace clam {
 
 bool checkAllDefinitionsHaveNames(const Function &F) {
-  // for (auto &Arg : F.args()) {
-  //   if (!Arg.hasName()) {
-  // 	return false;
-  //   }
-  // }
-
   for (const BasicBlock &BB : F) {
     if (!BB.hasName()) {
       return false;
@@ -3478,7 +3474,11 @@ void CfgBuilderImpl::addFunctionDeclaration() {
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
 	inputs.push_back(m_lfac.mkArrayVar(rgn));
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-	inputs.push_back(m_lfac.mkRegionVar(rgn));
+	// IMPORTANT: ensure call-by-value semantics for input regions
+	// TODO: we should do it also for scalars.
+	var_t rgn_in = m_lfac.mkRegionVar(rgn.getRegionInfo());
+	entry.region_copy(m_lfac.mkRegionVar(rgn), rgn_in);
+	inputs.push_back(rgn_in);	  	  
       }
     }
       
