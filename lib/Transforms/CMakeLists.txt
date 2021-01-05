@@ -11,6 +11,9 @@ add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   PromoteMalloc.cc
   NondetInit.cc
   LoopPeeler.cc
+  PropertyInstrumentation/MemoryCheck.cc
+  PropertyInstrumentation/NullCheck.cc
+  PropertyInstrumentation/UseAfterFreeCheck.cc  
   )
 
 llvm_map_components_to_libnames(LLVM_LIBS

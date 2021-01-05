@@ -232,9 +232,12 @@ def parseArgs(argv):
     p.add_argument('--turn-undef-nondet',
                     help='Turn undefined behaviour into non-determinism',
                     dest='undef_nondet', default=False, action='store_true')
+    add_bool_argument(p, 'promote-malloc', 
+                    help='Promote top-level malloc to alloca',
+                      dest='promote_malloc', default=True)
     p.add_argument('--lower-select',
                     help='Lower select instructions',
-                    dest='lower_select', default=False, action='store_true')
+                    dest='lower_select', default=False, action='store_true')    
     p.add_argument('--lower-unsigned-icmp',
                     help='Lower ULT and ULE instructions',
                     dest='lower_unsigned_icmp', default=False, action='store_true')    
@@ -364,7 +367,7 @@ def parseArgs(argv):
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
                    help='Check properties (default no check)',
-                   choices=['none', 'assert'],
+                   choices=['none', 'assert', 'null', 'uaf'],
                    dest='assert_check', default='none')
     p.add_argument('--crab-check-verbose', metavar='INT',
                     help='Print verbose information about checks\n' + 
@@ -684,6 +687,11 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     # for now, there is no option to undo this switch
     crabpp_args.append('--simplifycfg-sink-common=false')
 
+    if args.promote_malloc:
+        crabpp_args.append('--crab-promote-malloc=true')
+    else:
+        crabpp_args.append('--crab-promote-malloc=false')
+        
     if args.inline: 
         crabpp_args.append('--crab-inline-all')
     if args.pp_loops: 
@@ -807,7 +815,14 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
     if args.crab_promote_assume: clam_args.append('--crab-promote-assume')
     if args.assert_check:
-        clam_args.append('--crab-check={0}'.format(args.assert_check))
+        if args.assert_check == 'null':
+            clam_args.append('--crab-check-null')
+            clam_args.append('--crab-check=assert')
+        elif  args.assert_check == 'uaf':
+            clam_args.append('--crab-check-uaf')
+            clam_args.append('--crab-check=assert')
+        else:
+            clam_args.append('--crab-check={0}'.format(args.assert_check))
     if args.check_verbose:
         clam_args.append('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.print_summs: clam_args.append('--crab-print-summaries')

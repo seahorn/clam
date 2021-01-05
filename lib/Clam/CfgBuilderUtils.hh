@@ -96,6 +96,8 @@ bool isIntInitializer(const llvm::Function &F);
 
 bool isIntInitializer(const llvm::CallInst &CI);
 
+std::string getAssertKindFromMetadata(const llvm::CallInst &CI);
+  
 // Return true if all uses are BranchInst's
 bool AllUsesAreBrInst(llvm::Value &V);
 

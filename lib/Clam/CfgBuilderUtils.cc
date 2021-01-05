@@ -242,6 +242,13 @@ bool isIntInitializer(const CallInst &CI) {
   return false;
 }
 
+std::string getAssertKindFromMetadata(const llvm::CallInst &I) {
+  if (MDNode *MDN = I.getMetadata("clam-assertion")) {
+    return cast<MDString>(MDN->getOperand(0))->getString();
+  }
+  return "";
+}
+  
 // Return true if all uses are BranchInst's
 bool AllUsesAreBrInst(Value &V) {
   // XXX: do not strip pointers here

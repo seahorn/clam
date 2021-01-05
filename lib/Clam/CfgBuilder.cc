@@ -1282,6 +1282,31 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
   if (!isTracked(*cond, m_params))
     return;
 
+  #if 1
+  if (isAssertFn(*callee)) {
+    std::string assertKind = getAssertKindFromMetadata(I);
+    // it can be one of these values: "nullity", "not_dangling"
+    if (assertKind.rfind("nullity", 0) == 0) { // starts with "nullity"
+      Value *Ptr = cond;
+      if (CastInst *CI = dyn_cast<CastInst>(Ptr)) {
+	Ptr = CI->getOperand(0);
+      }
+      if (ICmpInst *CmpI = dyn_cast<ICmpInst>(Ptr)) {
+	if (isa<ConstantPointerNull>(CmpI->getOperand(1))) {
+	  Ptr = CmpI->getOperand(0);
+	} else {
+	  Ptr = CmpI->getOperand(1);
+	}
+      } else {
+	CLAM_ERROR("Cannot extract pointer operand");	
+      }
+      if (getRegion(m_mem, m_func_regions, m_params, I, *Ptr).getRegionInfo().isUntyped()) {
+	return;
+      }
+    }
+  }
+  #endif 
+  
   if (ConstantInt *CI = dyn_cast<ConstantInt>(cond)) {
     // -- cond is a constant
     bool is_bignum;

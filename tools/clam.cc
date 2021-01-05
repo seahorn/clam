@@ -97,6 +97,16 @@ DotLLVMCFG("clam-llvm-cfg-dot",
 	   llvm::cl::desc("Write a .dot file the analyzed LLVM CFG of each function"),
 	   llvm::cl::init(false));
 
+static llvm::cl::opt<bool>
+NullCheck("crab-check-null",
+	 llvm::cl::desc("Check for null dereference errors"),
+	 llvm::cl::init(false));
+
+static llvm::cl::opt<bool>
+UafCheck("crab-check-uaf",
+	 llvm::cl::desc("Check for use-after-free errors"),
+	 llvm::cl::init(false));
+
 using namespace clam;
 
 // removes extension from filename if there is one
@@ -258,6 +268,11 @@ int main(int argc, char **argv) {
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
 
   if (!DisableCrab) {
+    /// -- Add some properties to check
+    if (NullCheck) 
+      pass_manager.add(clam::createNullCheckPass());
+    if (UafCheck) 
+      pass_manager.add(clam::createUseAfterFreeCheckPass());
     /// -- run the crab analyzer
     pass_manager.add(new clam::ClamPass());
     if (DotLLVMCFG)
@@ -277,9 +292,8 @@ int main(int argc, char **argv) {
     if (PromoteAssume) {
       // -- promote verifier.assume to llvm.assume intrinsics
       pass_manager.add(clam::createPromoteAssumePass());
-    }    
+    }   
   }
-
   
   if (!OutputFilename.empty()) {
     if (OutputAssembly)
