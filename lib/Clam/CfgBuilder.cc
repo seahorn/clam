@@ -959,92 +959,61 @@ bool CrabIntraBlockBuilder::AllUsesAreNonTrackMem(Value *V) const {
   }
   return true;
 }
+  
+#define CRAB_BINARY_OPERATION(CrabStmt, COp, StrOp)			\
+  if (op1.get_variable() && op2.get_variable())				\
+    m_bb.CrabStmt(lhs, (*op1.get_variable()), (*op2.get_variable()));	\
+ else if (op1.get_variable() && op2.is_constant())			\
+   m_bb.CrabStmt(lhs, (*op1.get_variable()), op2.constant());		\
+ else if (op1.is_constant() && op2.is_constant())			\
+   m_bb.assign(lhs, op1.constant() COp op2.constant());			\
+ else									\
+   m_bb.havoc(lhs, std::string(StrOp) + " with unsupported operands");	\
+  return;								\
 
+#define CRAB_BINARY_OPERATION_NO_BOTH_CONSTANT(CrabStmt, StrOp)		\
+  if (op1.get_variable() && op2.get_variable())				\
+    m_bb.CrabStmt(lhs, (*op1.get_variable()), (*op2.get_variable()));	\
+ else if (op1.get_variable() && op2.is_constant())			\
+   m_bb.CrabStmt(lhs, (*op1.get_variable()), op2.constant());		\
+ else									\
+   m_bb.havoc(lhs, std::string(StrOp) + " with unsupported operands");	\
+  return;								\
+  
+  
 void CrabIntraBlockBuilder::doBinOp(unsigned op, var_t lhs, lin_exp_t op1,
 				    lin_exp_t op2) {
   switch (op) {
   case BinaryOperator::Add:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.add(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.add(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION(add, +, "add")
   case BinaryOperator::Sub:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.sub(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.sub(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION(sub, -, "sub")
   case BinaryOperator::Mul:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.mul(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.mul(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION(mul, *, "mul")    
   case BinaryOperator::SDiv:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.div(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.div(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION(div, /, "div")    
   case BinaryOperator::UDiv:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.udiv(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.udiv(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION_NO_BOTH_CONSTANT(udiv, "udiv")    
   case BinaryOperator::SRem:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.rem(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.rem(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION_NO_BOTH_CONSTANT(rem, "srem")        
   case BinaryOperator::URem:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.urem(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.urem(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION_NO_BOTH_CONSTANT(urem, "urem")          
   case BinaryOperator::And:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.bitwise_and(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.bitwise_and(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION(bitwise_and, &, "and")        
   case BinaryOperator::Or:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.bitwise_or(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.bitwise_or(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION(bitwise_or, |, "or")            
   case BinaryOperator::Xor:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.bitwise_xor(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.bitwise_xor(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION(bitwise_xor, ^, "xor")                
   case BinaryOperator::Shl:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.shl(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.shl(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION(shl, <<, "shl")                    
   case BinaryOperator::AShr:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.ashr(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.ashr(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION(ashr, >>, "ashr")                    
   case BinaryOperator::LShr:
-    if (op1.get_variable() && op2.get_variable())
-      m_bb.lshr(lhs, (*op1.get_variable()), (*op2.get_variable()));
-    else if (op1.get_variable() && op2.is_constant())
-      m_bb.lshr(lhs, (*op1.get_variable()), op2.constant());
-    return;
+    CRAB_BINARY_OPERATION_NO_BOTH_CONSTANT(lshr, "lshr")                  
   default:;
     ;
   }
-  CLAM_ERROR("unexpected problem with binary operator");
+  CLAM_ERROR("unsupported LLVM binary operator");
 }
 
 void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit, BinaryOperator &i) {
@@ -1093,7 +1062,7 @@ void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit, BinaryOperator &i) 
     } break;
     default:
       // this should not happen
-      CLAM_ERROR("unexpected instruction");
+      CLAM_ERROR("unexpected LLVM binary instruction");
     }
     return;
   }
@@ -1121,7 +1090,7 @@ void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit, BinaryOperator &i) 
     break;
   default:
     // this should not happen
-    CLAM_ERROR("unexpected instruction");
+    CLAM_ERROR("unexpected LLVM binary instruction");
   }
 }
 
@@ -2884,6 +2853,16 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
   if (!m_func.getName().equals("main")) {
     return;
   }
+
+  auto IsCString = [](const GlobalVariable &gv) {
+		     if (gv.hasInitializer()) {
+		       if (const ConstantDataSequential *CDS =
+			   dyn_cast<ConstantDataSequential>(gv.getInitializer())) {
+			 return (CDS->isString() || CDS->isCString());
+		       }
+		     }
+		     return false;
+		   };
   
   basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
   Module &M = *(m_func.getParent());
@@ -2907,24 +2886,26 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	  entry.havoc(gv_lit->getVar(), "singleton global variable");
 	}
       } else {
-	entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));
-      }
-
-      if (m_params.addPointerAssumptions()) {
-	if (gv.hasInitializer()) {
-	  if (const ConstantDataSequential *CDS =
-	      dyn_cast<ConstantDataSequential>(gv.getInitializer())) {
-	    // XX: do not add nullity assumptions on constant C
-	    //     strings. We expect that any dereference to these
-	    //     are considered trivial by LLVM so we won't add an
-	    //     assertion anyway.
-	    if (CDS->isString() || CDS->isCString()) {
-	      continue;
-	    }
-	  }
+	if (IsCString(gv)) {
+	  // Ignore C strings
+	  // TODO: make this user optional
+	  entry.havoc(gv_lit->getVar(), "C string global variable");
+	} else {
+	  entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));	  
 	}
+      }
+      if (m_params.addPointerAssumptions()) {
 	// global variables are not null
-	entry.assume_ref(ref_cst_t::mk_gt_null(gv_lit->getVar()));
+	if (!IsCString(gv)) {
+	  // Ignore C strings
+	  // TODO: make this user optional	  
+	  // 
+	  // We do not add nullity assumptions on constant C
+	  // strings. We expect that any dereference to these are
+	  // considered trivial by LLVM so we won't add an assertion
+	  // anyway.
+	  entry.assume_ref(ref_cst_t::mk_gt_null(gv_lit->getVar()));
+	}
       }
     }
   }
@@ -3497,7 +3478,7 @@ void CfgBuilderImpl::addFunctionDeclaration() {
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
 	inputs.push_back(m_lfac.mkArrayVar(rgn));
       } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-	inputs.push_back(m_lfac.mkRegionVar(rgn));	
+	inputs.push_back(m_lfac.mkRegionVar(rgn));
       }
     }
       
