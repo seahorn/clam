@@ -15,9 +15,9 @@ struct MarkInternalInline : public ModulePass {
   bool runOnModule(Module &M) {
     for (Function &F : M)
       if (!F.isDeclaration() && F.hasLocalLinkage()) {
-	F.setLinkage(GlobalValue::PrivateLinkage);
-	F.removeFnAttr(Attribute::NoInline);
-	F.removeFnAttr(Attribute::OptimizeNone);	
+        F.setLinkage(GlobalValue::PrivateLinkage);
+        F.removeFnAttr(Attribute::NoInline);
+        F.removeFnAttr(Attribute::OptimizeNone);
         F.addFnAttr(Attribute::AlwaysInline);
       }
     return true;

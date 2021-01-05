@@ -259,15 +259,21 @@ static bool instrument_block(lin_cst_sys_t csts, llvm::BasicBlock *bb,
 // them locally across the statements of the basic block. This will
 // redo some work but it's more efficient than storing all
 // invariants at each program point.
-static bool instrument_loads(clam_abstract_domain inv, basic_block_t &bb, LLVMContext &ctx,
-                             CallGraph *cg, Function *assumeFn) {
-  // -- Forward propagation of inv through the basic block but ignoring callsites
-  using abs_tr_t = crab::analyzer::intra_abs_transformer<basic_block_t, clam_abstract_domain>;
+static bool instrument_loads(clam_abstract_domain inv, basic_block_t &bb,
+                             LLVMContext &ctx, CallGraph *cg,
+                             Function *assumeFn) {
+  // -- Forward propagation of inv through the basic block but ignoring
+  // callsites
+  using abs_tr_t = crab::analyzer::intra_abs_transformer<basic_block_t,
+                                                         clam_abstract_domain>;
 
   // -- Crab memory load statements
-  using array_load_t = array_load_stmt<basic_block_label_t, number_t, varname_t> ;
-  using load_from_ref_t = load_from_ref_stmt<basic_block_label_t, number_t, varname_t>;
-  using load_from_arr_ref_t = load_from_arr_ref_stmt<basic_block_label_t, number_t, varname_t>;
+  using array_load_t =
+      array_load_stmt<basic_block_label_t, number_t, varname_t>;
+  using load_from_ref_t =
+      load_from_ref_stmt<basic_block_label_t, number_t, varname_t>;
+  using load_from_arr_ref_t =
+      load_from_arr_ref_stmt<basic_block_label_t, number_t, varname_t>;
 
   IRBuilder<> Builder(ctx);
   bool change = false;
@@ -278,22 +284,21 @@ static bool instrument_loads(clam_abstract_domain inv, basic_block_t &bb, LLVMCo
     const LoadInst *I = nullptr;
     std::set<var_t> load_vs;
     if (s.is_arr_read()) {
-      const array_load_t *load_stmt =
-          static_cast<const array_load_t*>(&s);
+      const array_load_t *load_stmt = static_cast<const array_load_t *>(&s);
       if (auto v = load_stmt->lhs().name().get()) {
         I = dyn_cast<const LoadInst>(*v);
         load_vs.insert(load_stmt->lhs());
       }
     } else if (s.is_ref_load()) {
       const load_from_ref_t *load_stmt =
-          static_cast<const load_from_ref_t*>(&s);
+          static_cast<const load_from_ref_t *>(&s);
       if (auto v = load_stmt->lhs().name().get()) {
         I = dyn_cast<const LoadInst>(*v);
         load_vs.insert(load_stmt->lhs());
       }
     } else if (s.is_ref_arr_load()) {
       const load_from_arr_ref_t *load_stmt =
-	static_cast<const load_from_arr_ref_t*>(&s);
+          static_cast<const load_from_arr_ref_t *>(&s);
       if (auto v = load_stmt->lhs().name().get()) {
         I = dyn_cast<const LoadInst>(*v);
         load_vs.insert(load_stmt->lhs());
@@ -311,8 +316,8 @@ static bool instrument_loads(clam_abstract_domain inv, basic_block_t &bb, LLVMCo
     for (auto cst : next_inv.to_linear_constraint_system()) {
       std::vector<var_t> v_intersect;
       std::set_intersection(cst.variables().begin(), cst.variables().end(),
-			    load_vs.begin(), load_vs.end(),
-			    std::back_inserter(v_intersect));
+                            load_vs.begin(), load_vs.end(),
+                            std::back_inserter(v_intersect));
       if (!v_intersect.empty()) {
         rel_csts += cst;
       }
@@ -462,7 +467,8 @@ bool InsertInvariants::runOnFunction(Function &F) {
 
     auto cfg_builder_ptr = crab->getCfgBuilderMan().getCfgBuilder(F);
 
-    llvm::Optional<clam_abstract_domain> pre = crab->getPre(&B, false /*keep shadows*/);
+    llvm::Optional<clam_abstract_domain> pre =
+        crab->getPre(&B, false /*keep shadows*/);
     if (pre.hasValue()) {
       ///////
       /// First, we do dead code elimination.
@@ -505,15 +511,15 @@ bool InsertInvariants::runOnFunction(Function &F) {
     if (InvLoc == PER_LOAD || InvLoc == ALL) {
       // --- Instrument Load instructions
       if (reads_memory(B)) {
-	llvm::Optional<clam_abstract_domain> pre = crab->getPre(&B, true /*keep shadows*/);
+        llvm::Optional<clam_abstract_domain> pre =
+            crab->getPre(&B, true /*keep shadows*/);
         if (!pre.hasValue())
           continue;
 
-        basic_block_label_t bb_label =
-            cfg_builder_ptr->getCrabBasicBlock(&B);
+        basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
 
-	change |= instrument_loads(pre.getValue(), cfg.get_node(bb_label),
-				   F.getContext(), cg, m_assumeFn);
+        change |= instrument_loads(pre.getValue(), cfg.get_node(bb_label),
+                                   F.getContext(), cg, m_assumeFn);
       }
     }
   }

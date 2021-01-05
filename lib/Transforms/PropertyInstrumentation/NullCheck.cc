@@ -169,15 +169,16 @@ bool NullCheck::runOnFunction(Function &F) {
       errs() << "ERROR: unknown instruction " << *I << "\n";
       continue;
     }
-    
+
     // property_instrumentation::DerefPointer BasePair;
     // if (OptimizeChecks) {
     //   BasePair = property_instrumentation::getBasePtr(Ptr);
     // }
-    // insertNullCheck(BasePair.getPointer() ? BasePair.getPointer() : Ptr, B, I);
+    // insertNullCheck(BasePair.getPointer() ? BasePair.getPointer() : Ptr, B,
+    // I);
 
     insertNullCheck(Ptr, B, I);
-    
+
     if (AddMemSafety) {
       // -- Add extra memory safety assumption: successful load/store
       //    implies validity of their arguments.
@@ -254,7 +255,7 @@ bool NullCheck::runOnModule(llvm::Module &M) {
   errs() << "-- Inserted " << ChecksAdded;
   errs() << " null dereference checks ";
   errs() << " (skipped " << TrivialChecks << " trivial checks). "
-	 << "Considering only Load and Store instructions.\n";    
+         << "Considering only Load and Store instructions.\n";
 
   return change;
 }

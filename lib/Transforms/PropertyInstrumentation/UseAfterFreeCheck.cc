@@ -53,17 +53,18 @@ private:
 
 public:
   UseAfterFreeCheck()
-    : llvm::ModulePass(ID), ChecksAdded(0), TrivialChecks(0),
-      AssertFn(nullptr), AssumeFn(nullptr), NotDanglingFn(nullptr),
-      CG(nullptr) {}
-  
+      : llvm::ModulePass(ID), ChecksAdded(0), TrivialChecks(0),
+        AssertFn(nullptr), AssumeFn(nullptr), NotDanglingFn(nullptr),
+        CG(nullptr) {}
+
   virtual bool runOnModule(llvm::Module &M) override;
   bool runOnFunction(Function &F);
   virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
   virtual StringRef getPassName() const override { return "UseAfterFreeCheck"; }
 };
 
-void UseAfterFreeCheck::insertNonDanglingCheck(Value *Ptr, IRBuilder<> B, Instruction *I) {
+void UseAfterFreeCheck::insertNonDanglingCheck(Value *Ptr, IRBuilder<> B,
+                                               Instruction *I) {
   static unsigned id = 0;
   ChecksAdded++;
   B.SetInsertPoint(I);
@@ -101,16 +102,16 @@ bool UseAfterFreeCheck::runOnFunction(Function &F) {
         if (OptimizeChecks) {
           auto BasePair = property_instrumentation::getBasePtr(I);
           if (Value *BasePtr = BasePair.getPointer()) {
-	    if (isa<GlobalValue>(BasePtr) || isa<AllocaInst>(BasePtr)) {
-	      // Note that the fact that the base is dereferenceable
-	      // doesn't avoid use-after-free errors because it can be
-	      // freed in between.
+            if (isa<GlobalValue>(BasePtr) || isa<AllocaInst>(BasePtr)) {
+              // Note that the fact that the base is dereferenceable
+              // doesn't avoid use-after-free errors because it can be
+              // freed in between.
               UAF_LOG(errs() << "Skipped " << *BasePtr
-		             << " because it points to a global or alloca!\n";);
+                             << " because it points to a global or alloca!\n";);
               TrivialChecks++;
               continue;
             }
-	    
+
             // We've checked BasePtr in the current BB.
             if (!TempsToInstrument.insert(BasePtr).second) {
               UAF_LOG(errs() << "Skipped " << *BasePtr
@@ -144,7 +145,8 @@ bool UseAfterFreeCheck::runOnFunction(Function &F) {
     // if (OptimizeChecks) {
     //   BasePair = property_instrumentation::getBasePtr(Ptr);
     // }
-    // insertNonDanglingCheck(BasePair.getPointer() ? BasePair.getPointer() : Ptr, B, I);
+    // insertNonDanglingCheck(BasePair.getPointer() ? BasePair.getPointer() :
+    // Ptr, B, I);
 
     insertNonDanglingCheck(Ptr, B, I);
     change = true;
@@ -210,7 +212,7 @@ bool UseAfterFreeCheck::runOnModule(llvm::Module &M) {
   errs() << "-- Inserted " << ChecksAdded;
   errs() << " use-after-free pointer checks ";
   errs() << " (skipped " << TrivialChecks << " trivial checks). "
-	 << "Considering only Load and Store instructions.\n";
+         << "Considering only Load and Store instructions.\n";
 
   return change;
 }

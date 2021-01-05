@@ -92,7 +92,8 @@ bool isTracked(const Value &v, const CrabBuilderParams &params) {
 
 bool ShouldCallSiteReturn(CallInst &I, const CrabBuilderParams &params) {
   CallSite CS(&I);
-  if (Function *Callee = dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts())) {
+  if (Function *Callee =
+          dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts())) {
     Type *RT = Callee->getReturnType();
     return (!(RT->isVoidTy()) && isTrackedType(*RT, params));
   }
@@ -248,7 +249,7 @@ std::string getAssertKindFromMetadata(const llvm::CallInst &I) {
   }
   return "";
 }
-  
+
 // Return true if all uses are BranchInst's
 bool AllUsesAreBrInst(Value &V) {
   // XXX: do not strip pointers here
@@ -259,14 +260,14 @@ bool AllUsesAreBrInst(Value &V) {
 }
 
 // Return true if all uses are BranchInst's or Select's
-bool AllUsesAreBrOrIntSelectCondInst(Value &V, const CrabBuilderParams &params) {
+bool AllUsesAreBrOrIntSelectCondInst(Value &V,
+                                     const CrabBuilderParams &params) {
   // XXX: do not strip pointers here
   for (auto &U : V.uses()) {
     if ((!isa<BranchInst>(U.getUser())) && (!isa<SelectInst>(U.getUser())))
       return false;
     if (SelectInst *SI = dyn_cast<SelectInst>(U.getUser())) {
-      if (isBool(*SI) || SI->getCondition() != &V ||
-	  isReference(*SI, params)) {
+      if (isBool(*SI) || SI->getCondition() != &V || isReference(*SI, params)) {
         // if the operands are bool or V is not the condition
         return false;
       }
@@ -291,37 +292,35 @@ bool AllUsesAreIndirectCalls(Value &V) {
 }
 
 // Return true if all uses are verifier calls (assume/assert)
-bool AllUsesAreVerifierCalls(Value &V,
-			     bool goThroughIntegerCasts, bool nonBoolCond,
-			     SmallVector<CallInst*, 4> &verifierCalls) {
+bool AllUsesAreVerifierCalls(Value &V, bool goThroughIntegerCasts,
+                             bool nonBoolCond,
+                             SmallVector<CallInst *, 4> &verifierCalls) {
   for (auto &U : V.uses()) {
     Value *User = U.getUser();
     if (goThroughIntegerCasts) {
       if (isa<ZExtInst>(User) || isa<SExtInst>(User)) {
-	return AllUsesAreVerifierCalls(*User,
-				       goThroughIntegerCasts, nonBoolCond,
-				       verifierCalls);
+        return AllUsesAreVerifierCalls(*User, goThroughIntegerCasts,
+                                       nonBoolCond, verifierCalls);
       }
     }
-    
+
     if (CallInst *CI = dyn_cast<CallInst>(User)) {
       CallSite CS(CI);
       const Value *calleeV = CS.getCalledValue();
       const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
       if (callee && (isAssertFn(*callee) || isAssumeFn(*callee) ||
                      isNotAssumeFn(*callee))) {
-	if (nonBoolCond) {
-	  FunctionType *FTy = callee->getFunctionType();
-	  if (!FTy->isVarArg() &&
-	      FTy->getReturnType()->isVoidTy() &&
-	      FTy->getNumParams() == 1 && !isBool(FTy->getParamType(0))) {
-	    verifierCalls.push_back(CI);
-	    continue;
-	  }
-	} else {
-	  verifierCalls.push_back(CI);	  
-	  continue;
-	}
+        if (nonBoolCond) {
+          FunctionType *FTy = callee->getFunctionType();
+          if (!FTy->isVarArg() && FTy->getReturnType()->isVoidTy() &&
+              FTy->getNumParams() == 1 && !isBool(FTy->getParamType(0))) {
+            verifierCalls.push_back(CI);
+            continue;
+          }
+        } else {
+          verifierCalls.push_back(CI);
+          continue;
+        }
       }
     }
     verifierCalls.clear();
@@ -331,10 +330,10 @@ bool AllUsesAreVerifierCalls(Value &V,
 }
 
 bool AllUsesAreVerifierCalls(Value &V) {
-  SmallVector<CallInst*, 4> verifierCalls /*unused*/;
+  SmallVector<CallInst *, 4> verifierCalls /*unused*/;
   return AllUsesAreVerifierCalls(V, false, false, verifierCalls);
 }
-  
+
 // Return true if all uses are GEPs
 bool AllUsesAreGEP(Value &V) {
   for (auto &U : V.uses())
@@ -346,16 +345,16 @@ bool AllUsesAreGEP(Value &V) {
 bool AllUsesAreIgnoredInst(llvm::Value &V) {
   for (auto &U : V.uses()) {
     if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
-      if (Function * CalledF = dyn_cast<Function>(CI->getCalledOperand())) {
-	if (CalledF->getName().startswith("llvm.dbg.value") ||
-	    CalledF->getName().startswith("llvm.lifetime")) {
-	  continue;
-	}
+      if (Function *CalledF = dyn_cast<Function>(CI->getCalledOperand())) {
+        if (CalledF->getName().startswith("llvm.dbg.value") ||
+            CalledF->getName().startswith("llvm.lifetime")) {
+          continue;
+        }
       }
     }
     return false;
   }
   return true;
 }
-  
+
 } // namespace clam

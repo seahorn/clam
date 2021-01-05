@@ -97,27 +97,27 @@ bool isIntInitializer(const llvm::Function &F);
 bool isIntInitializer(const llvm::CallInst &CI);
 
 std::string getAssertKindFromMetadata(const llvm::CallInst &CI);
-  
+
 // Return true if all uses are BranchInst's
 bool AllUsesAreBrInst(llvm::Value &V);
 
 // Return true if all uses are BranchInst's or Select's
-  bool AllUsesAreBrOrIntSelectCondInst(llvm::Value &V, const CrabBuilderParams &params);
+bool AllUsesAreBrOrIntSelectCondInst(llvm::Value &V,
+                                     const CrabBuilderParams &params);
 
 // Return true if all uses are the callee at callsites
 bool AllUsesAreIndirectCalls(llvm::Value &V);
 
 // Return true if all uses are verifier calls (assume/assert)
-bool AllUsesAreVerifierCalls(llvm::Value &V,
-			     bool goThroughIntegerCasts,
-			     bool nonBoolCond,
-			     llvm::SmallVector<llvm::CallInst*, 4>&);
+bool AllUsesAreVerifierCalls(llvm::Value &V, bool goThroughIntegerCasts,
+                             bool nonBoolCond,
+                             llvm::SmallVector<llvm::CallInst *, 4> &);
 bool AllUsesAreVerifierCalls(llvm::Value &V);
-  
+
 // Return true if all uses are GEPs
 bool AllUsesAreGEP(llvm::Value &V);
 
-// Return true if all uses are ignored instructions 
+// Return true if all uses are ignored instructions
 bool AllUsesAreIgnoredInst(llvm::Value &V);
 
 } // namespace clam

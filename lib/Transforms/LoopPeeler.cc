@@ -13,15 +13,13 @@
 
 namespace clam {
 
-using namespace llvm;  
+using namespace llvm;
 class LoopPeelerPass : public LoopPass {
 public:
   static char ID;
   // -- number of iterations to peel
   unsigned m_Num;
-  LoopPeelerPass(unsigned Num = 0) : LoopPass(ID) {
-    m_Num = Num;
-  }
+  LoopPeelerPass(unsigned Num = 0) : LoopPass(ID) { m_Num = Num; }
 
   bool runOnLoop(Loop *L, LPPassManager &LPM) override;
 
@@ -89,7 +87,8 @@ public:
  */
 
 bool LoopPeelerPass::runOnLoop(Loop *L, LPPassManager &LPM) {
-  if (m_Num == 0) return false;
+  if (m_Num == 0)
+    return false;
 
   auto *Header = L->getHeader();
   if (!Header)
@@ -115,7 +114,5 @@ char LoopPeelerPass::ID = 0;
 llvm::Pass *createLoopPeelerPass(unsigned Num) {
   return new LoopPeelerPass(Num);
 }
-  
-} // end namespace clam 
 
-
+} // end namespace clam

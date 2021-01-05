@@ -56,7 +56,7 @@ private:
   CfgBuilder(const llvm::Function &func, CrabBuilderManagerImpl &man);
 
   void addFunctionDeclaration(void);
-  
+
   void buildCfg(void);
 
   // return live symbols for the whole cfg. Return nullptr if
@@ -110,10 +110,9 @@ public:
  * the translation.
  **/
 using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
-  
+
 class CrabBuilderManager {
 public:
-
   CrabBuilderManager(CrabBuilderParams params,
                      llvm::TargetLibraryInfoWrapperPass &tli,
                      std::unique_ptr<HeapAbstraction> mem);
@@ -140,7 +139,7 @@ public:
   llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
 
   HeapAbstraction &getHeapAbstraction();
-  
+
 private:
   std::unique_ptr<CrabBuilderManagerImpl> m_impl;
 };

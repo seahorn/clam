@@ -71,10 +71,8 @@ public:
 
   // used by some crab datastructures
   virtual ikos::index_t index() const override { return m_id; }
-  
-  virtual void write(crab::crab_os &o) const override {
-    o << get_name();
-  }
+
+  virtual void write(crab::crab_os &o) const override { o << get_name(); }
 
 private:
   //
@@ -132,7 +130,7 @@ using variable_factory_t = llvm_variable_factory;
 using varname_t = typename variable_factory_t::varname_t;
 using number_t = ikos::z_number;
 using var_t = crab::variable<number_t, varname_t>;
-using var_or_cst_t = crab::variable_or_constant<number_t, varname_t>;  
+using var_or_cst_t = crab::variable_or_constant<number_t, varname_t>;
 using basic_block_label_t = llvm_basic_block_wrapper;
 using cfg_t = crab::cfg::cfg<basic_block_label_t, varname_t, number_t>;
 using cfg_ref_t = crab::cfg::cfg_ref<cfg_t>;

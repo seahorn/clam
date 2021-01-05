@@ -96,8 +96,7 @@ public:
 };
 
 void print_annotations(
-    cfg_ref_t cfg,
-    const typename IntraClam::checks_db_t &checksdb,
+    cfg_ref_t cfg, const typename IntraClam::checks_db_t &checksdb,
     const std::vector<std::unique_ptr<block_annotation>> &annotations);
 
 } // namespace crab_pretty_printer

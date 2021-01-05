@@ -7,7 +7,7 @@
 
 namespace clam {
 using namespace llvm;
-namespace property_instrumentation {  
+namespace property_instrumentation {
 DerefPointer getBasePtr(Value *V, SmallPtrSet<Instruction *, 8> &SeenInsts) {
   V = V->stripPointerCasts();
   if (Instruction *I = dyn_cast<Instruction>(V)) {
@@ -56,9 +56,8 @@ DerefPointer getBasePtr(Value *V, SmallPtrSet<Instruction *, 8> &SeenInsts) {
     // dereferenceable(<n>) does imply nonnull in addrspace(0) (which
     // is the default address space), except if the
     // null_pointer_is_valid function attribute is present.
-    return DerefPointer(V,
-			A->getDereferenceableBytes() > 0 ||
-			A->hasNonNullAttr());
+    return DerefPointer(V, A->getDereferenceableBytes() > 0 ||
+                               A->hasNonNullAttr());
   }
   if (isa<ConstantPointerNull>(V) || isa<UndefValue>(V))
     return DerefPointer(V, 0);
@@ -75,5 +74,5 @@ DerefPointer getBasePtr(Value *V) {
   SmallPtrSet<Instruction *, 8> SeenInsts;
   return getBasePtr(V, SeenInsts);
 }
-} // end namespace property_instrumentation  
+} // end namespace property_instrumentation
 } // end namespace clam

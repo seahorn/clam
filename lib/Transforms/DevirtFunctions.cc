@@ -98,7 +98,7 @@ static void promoteIndirectCall(CallSite &CS,
     }
   }
 }
-  
+
 namespace devirt_impl {
 AliasSetId typeAliasId(CallSite &CS, bool LookThroughCast) {
   assert(isIndirectCall(CS) && "Not an indirect call");
@@ -147,7 +147,6 @@ AliasSetId typeAliasId(const Function &F) {
 }
 } // namespace devirt_impl
 
-
 /***
  * Begin specific callsites resolvers
  ***/
@@ -189,7 +188,7 @@ void CallSiteResolverByTypes::populateTypeAliasSets() {
     // -- add F to its corresponding alias set (keep sorted the Targets)
     AliasSet &Targets = m_targets_map[devirt_impl::typeAliasId(F)];
     // XXX: ordered by pointer addresses. Ideally we should use
-    // something more deterministic.    
+    // something more deterministic.
     auto it = std::upper_bound(Targets.begin(), Targets.end(), &F);
     Targets.insert(it, &F);
   }
@@ -222,7 +221,7 @@ void CallSiteResolverByTypes::cacheBounceFunction(CallSite &CS,
   m_bounce_map.insert({id, bounce});
 }
 #endif
-  
+
 template <typename Dsa>
 CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
                                                   bool incomplete,
@@ -272,8 +271,8 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
                 continue;
               }
               // sort dsa_targets
-	      // XXX: ordered by pointer addresses. Ideally we should use
-	      // something more deterministic.    
+              // XXX: ordered by pointer addresses. Ideally we should use
+              // something more deterministic.
               std::sort(dsa_targets.begin(), dsa_targets.end());
 
               DEVIRT_LOG(errs() << "\nDsa-based targets: \n";
@@ -363,9 +362,9 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
 
 template <typename Dsa> CallSiteResolverByDsa<Dsa>::~CallSiteResolverByDsa() {
   m_targets_map.clear();
-#ifdef USE_BOUNCE_FUNCTIONS  
+#ifdef USE_BOUNCE_FUNCTIONS
   m_bounce_map.clear();
-#endif   
+#endif
 }
 
 template <typename Dsa>
@@ -405,7 +404,7 @@ void CallSiteResolverByDsa<Dsa>::cacheBounceFunction(CallSite &CS,
   }
 }
 #endif
-  
+
 /***
  * End specific callsites resolver
  ***/
@@ -421,7 +420,7 @@ DevirtualizeFunctions::~DevirtualizeFunctions() { m_stats.dump(); }
 /**
  * Creates a bounce function that calls functions in an alias set directly
  * All the work happens here.
- */  
+ */
 Function *DevirtualizeFunctions::mkBounceFn(CallSite &CS,
                                             CallSiteResolver *CSR) {
   assert(isIndirectCall(CS) && "Not an indirect call");
@@ -568,13 +567,13 @@ Function *DevirtualizeFunctions::mkBounceFn(CallSite &CS,
   return F;
 }
 #endif
-  
+
 void DevirtualizeFunctions::mkDirectCall(CallSite CS, CallSiteResolver *CSR) {
   m_stats.m_num_indirect_calls++;
 #ifndef USE_BOUNCE_FUNCTIONS
   const AliasSet *Targets = CSR->getTargets(CS);
   if (!Targets || Targets->empty()) {
-    // cannot resolve the indirect call    
+    // cannot resolve the indirect call
     return;
   }
   // HACK: remove constness
@@ -584,7 +583,7 @@ void DevirtualizeFunctions::mkDirectCall(CallSite CS, CallSiteResolver *CSR) {
                  [](const Function *fn) { return const_cast<Function *>(fn); });
   // promote indirect call to a bunch of direct calls
   promoteIndirectCall(CS, Callees, m_allowIndirectCalls);
-#else  
+#else
   const Function *bounceFn = mkBounceFn(CS, CSR);
   // -- something failed
   if (!bounceFn)
@@ -641,7 +640,7 @@ void DevirtualizeFunctions::mkDirectCall(CallSite CS, CallSiteResolver *CSR) {
     CI->replaceAllUsesWith(CN);
     CI->eraseFromParent();
   }
-#endif   
+#endif
 }
 
 void DevirtualizeFunctions::visitCallSite(CallSite CS) {

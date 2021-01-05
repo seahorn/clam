@@ -23,7 +23,7 @@ struct DummyHeapAbstraction : public HeapAbstraction {
   }
 
   RegionVec getInitRegions(const llvm::Function &) { return RegionVec(); }
-  
+
   RegionVec getOnlyReadRegions(const llvm::Function &) { return RegionVec(); }
 
   RegionVec getModifiedRegions(const llvm::Function &) { return RegionVec(); }

@@ -2,17 +2,17 @@
 
 namespace clam {
 CrabDomainParser::CrabDomainParser(llvm::cl::Option &O)
-  : llvm::cl::parser<CrabDomain::Type>(O) {}
+    : llvm::cl::parser<CrabDomain::Type>(O) {}
 
 void CrabDomainParser::addLiteralOption(llvm::StringRef Name, const unsigned &V,
-					llvm::StringRef HelpStr) {
+                                        llvm::StringRef HelpStr) {
   CrabDomain::Type TV;
   bool found = false;
   for (auto t : CrabDomain::List) {
     if (t.value() == V) {
       TV = t;
       found = true;
-	  break;
+      break;
     }
   }
   if (found) {
@@ -23,18 +23,19 @@ void CrabDomainParser::addLiteralOption(llvm::StringRef Name, const unsigned &V,
     // TODO: ERROR
   }
 }
-  
-  // parse - Return true on error.
+
+// parse - Return true on error.
 bool CrabDomainParser::parse(llvm::cl::Option &O, llvm::StringRef ArgName,
-			     const std::string &ArgValue, CrabDomain::Type &Val) {
+                             const std::string &ArgValue,
+                             CrabDomain::Type &Val) {
   bool found = false;
   for (auto t : CrabDomain::List) {
     if (t.name() == ArgValue) {
       Val = t;
       found = true;
       break;
-       }
+    }
   }
   return !found;
 }
-} //end namespace clam  
+} // end namespace clam

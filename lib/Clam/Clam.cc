@@ -31,23 +31,23 @@
 #include "clam/crab/crab_domains.hh"
 
 #include "seadsa/AllocWrapInfo.hh"
+#include "seadsa/CompleteCallGraph.hh"
 #include "seadsa/DsaLibFuncInfo.hh"
 #include "seadsa/InitializePasses.hh"
 #include "seadsa/support/Debug.h"
-#include "seadsa/CompleteCallGraph.hh"
 
-#include "crab/config.h"
 #include "crab/analysis/bwd_analyzer.hpp"
 #include "crab/analysis/dataflow/assumptions.hpp"
 #include "crab/analysis/fwd_analyzer.hpp"
 #include "crab/analysis/inter/top_down_inter_analyzer.hpp"
+#include "crab/cfg/cfg_to_dot.hpp"
 #include "crab/cg/cg.hpp"
 #include "crab/cg/cg_bgl.hpp"
 #include "crab/checkers/assertion.hpp"
 #include "crab/checkers/checker.hpp"
+#include "crab/config.h"
 #include "crab/support/debug.hpp"
 #include "crab/support/stats.hpp"
-#include "crab/cfg/cfg_to_dot.hpp"
 
 #include <functional>
 #include <memory>
@@ -111,8 +111,9 @@ public:
   checks_db_t &checksdb;
 
   AnalysisResults(abs_dom_map_t &pre, abs_dom_map_t &post,
-		  edges_set& false_edges, checks_db_t &db)
-    : premap(pre), postmap(post), infeasible_edges(false_edges), checksdb(db) {}
+                  edges_set &false_edges, checks_db_t &db)
+      : premap(pre), postmap(post), infeasible_edges(false_edges),
+        checksdb(db) {}
 };
 
 static bool isTrackable(const Function &fun) {
@@ -179,7 +180,7 @@ public:
         m_cfg_builder = man.getCfgBuilder(m_fun);
       }
     } else {
-      //CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
+      // CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
       //                                << fun.getName() << "\n");
     }
   }
@@ -317,7 +318,7 @@ private:
       CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                              << "Finished assert checking.\n");
     }
-    
+
     // -- store invariants
     if (params.store_invariants || params.print_invars) {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing invariants.\n");
@@ -366,7 +367,7 @@ private:
               m_vfac.get_shadow_vars().begin(), m_vfac.get_shadow_vars().end());
         }
         pool_annotations.emplace_back(std::make_unique<inv_annotation_t>(
-	      results.premap, results.postmap, shadow_varnames, &lookup));
+            results.premap, results.postmap, shadow_varnames, &lookup));
       }
 
       // XXX: it must be alive when print_annotations is called.
@@ -379,9 +380,8 @@ private:
             std::make_unique<unproven_assume_annotation_t>(
                 m_cfg_builder->getCfg(), &unproven_assumption_analyzer));
       }
-      crab_pretty_printer::print_annotations(m_cfg_builder->getCfg(),
-					     results.checksdb, 
-                                             pool_annotations);
+      crab_pretty_printer::print_annotations(
+          m_cfg_builder->getCfg(), results.checksdb, pool_annotations);
     }
 
     return;
@@ -435,7 +435,8 @@ CrabBuilderManager &IntraClam::getCfgBuilderMan() { return m_builder_man; }
 
 void IntraClam::analyze(AnalysisParams &params,
                         const abs_dom_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                             m_checks_db};
   lin_csts_map_t lin_csts_assumptions;
   m_impl->analyze(params, &(m_fun.getEntryBlock()), assumptions,
                   lin_csts_assumptions, results);
@@ -443,14 +444,16 @@ void IntraClam::analyze(AnalysisParams &params,
 
 void IntraClam::analyze(AnalysisParams &params, const llvm::BasicBlock *entry,
                         const abs_dom_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                             m_checks_db};
   lin_csts_map_t lin_csts_assumptions;
   m_impl->analyze(params, entry, assumptions, lin_csts_assumptions, results);
 }
 
 void IntraClam::analyze(AnalysisParams &params,
                         const lin_csts_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                             m_checks_db};
   abs_dom_map_t abs_dom_assumptions;
   m_impl->analyze(params, &(m_fun.getEntryBlock()), abs_dom_assumptions,
                   assumptions, results);
@@ -458,7 +461,8 @@ void IntraClam::analyze(AnalysisParams &params,
 
 void IntraClam::analyze(AnalysisParams &params, const llvm::BasicBlock *entry,
                         const lin_csts_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                             m_checks_db};
   abs_dom_map_t abs_dom_assumptions;
   m_impl->analyze(params, entry, abs_dom_assumptions, assumptions, results);
 }
@@ -502,10 +506,10 @@ IntraClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
 }
 
 bool IntraClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
-				const llvm::BasicBlock* b2) const {
+                                const llvm::BasicBlock *b2) const {
   return !(m_infeasible_edges.count({b1, b2}) > 0);
 }
-  
+
 const checks_db_t &IntraClam::getChecksDB() const { return m_checks_db; }
 /**
  *   End IntraClam methods
@@ -528,8 +532,8 @@ public:
         }
         cfg_t *cfg = &(m_crab_builder_man.getCfg(F));
         cfg_ref_vector.push_back(*cfg);
-        //CRAB_VERBOSE_IF(1, llvm::outs()
-	//<< "Built Crab CFG for " << F.getName() << "\n");
+        // CRAB_VERBOSE_IF(1, llvm::outs()
+        //<< "Built Crab CFG for " << F.getName() << "\n");
       } else {
         CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
                                         << F.getName() << "\n");
@@ -637,10 +641,12 @@ private:
     inter_params.run_checker = (params.check != CheckerKind::NOCHECKS);
     inter_params.checker_verbosity = params.check_verbose;
     inter_params.keep_cc_invariants = false;
-    inter_params.keep_invariants = params.store_invariants || params.print_invars;
+    inter_params.keep_invariants =
+        params.store_invariants || params.print_invars;
     inter_params.max_call_contexts = params.max_calling_contexts;
     inter_params.exact_summary_reuse = params.exact_summary_reuse;
-    inter_params.analyze_recursive_functions = params.analyze_recursive_functions;
+    inter_params.analyze_recursive_functions =
+        params.analyze_recursive_functions;
     inter_params.live_map = (params.run_liveness ? &m_live_map : nullptr);
     inter_params.widening_delay = params.widening_delay;
     inter_params.descending_iters = params.narrowing_iters;
@@ -707,8 +713,9 @@ private:
             }
             std::vector<std::unique_ptr<block_annotation_t>> annotations;
             annotations.emplace_back(std::make_unique<inv_annotation_t>(
-		  results.premap, results.postmap, shadow_varnames, &lookup));
-            crab_pretty_printer::print_annotations(cfg, results.checksdb, annotations);
+                results.premap, results.postmap, shadow_varnames, &lookup));
+            crab_pretty_printer::print_annotations(cfg, results.checksdb,
+                                                   annotations);
           }
         }
       }
@@ -742,14 +749,16 @@ CrabBuilderManager &InterClam::getCfgBuilderMan() { return m_builder_man; }
 
 void InterClam::analyze(AnalysisParams &params,
                         const abs_dom_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,  m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                             m_checks_db};
   lin_csts_map_t lin_csts_assumptions;
   m_impl->analyze(params, assumptions, lin_csts_assumptions, results);
 }
 
 void InterClam::analyze(AnalysisParams &params,
                         const lin_csts_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                             m_checks_db};
   abs_dom_map_t abs_dom_assumptions;
   m_impl->analyze(params, abs_dom_assumptions, assumptions, results);
 }
@@ -777,10 +786,10 @@ InterClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
 const checks_db_t &InterClam::getChecksDB() const { return m_checks_db; }
 
 bool InterClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
-				const llvm::BasicBlock* b2) const {
+                                const llvm::BasicBlock *b2) const {
   return !(m_infeasible_edges.count({b1, b2}) > 0);
 }
-  
+
 /**
  * End InterClam methods
  **/
@@ -803,9 +812,9 @@ void ClamPass::releaseMemory() {
 bool ClamPass::runOnModule(Module &M) {
   /// Translate the module to Crab CFGs
   CrabBuilderParams builder_params(CrabTrackLev, CrabCFGSimplify, true,
-				   CrabEnableUniqueScalars, CrabIncludeHavoc,
-				   CrabEnableBignums, CrabAddNonNullity,
-				   CrabPrintCFG, CrabDotCFG);
+                                   CrabEnableUniqueScalars, CrabIncludeHavoc,
+                                   CrabEnableBignums, CrabAddNonNullity,
+                                   CrabPrintCFG, CrabDotCFG);
 
   auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>();
 
@@ -814,45 +823,47 @@ bool ClamPass::runOnModule(Module &M) {
   switch (CrabHeapAnalysis) {
   case heap_analysis_t::CI_SEA_DSA:
   case heap_analysis_t::CS_SEA_DSA: {
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-		      << "Started sea-dsa analysis\n";);
-      //CallGraph &cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
-      CallGraph &cg = getAnalysis<seadsa::CompleteCallGraph>().getCompleteCallGraph();
-      seadsa::AllocWrapInfo &allocWrapInfo = getAnalysis<seadsa::AllocWrapInfo>();
-      // FIXME: if we pass "this" then allocWrapInfo can be more
-      // precise because it can use LoopInfo. However, I get some
-      // crash that I need to debug.
-      allocWrapInfo.initialize(M, nullptr /*this*/);
-      seadsa::DsaLibFuncInfo &dsaLibFuncInfo =
-	getAnalysis<seadsa::DsaLibFuncInfo>();      
-      
-      mem.reset(new SeaDsaHeapAbstraction(
-	  M, cg, tli, allocWrapInfo, dsaLibFuncInfo,
-          (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
-          CrabDsaDisambiguateUnknown, CrabDsaDisambiguatePtrCast,
-          CrabDsaDisambiguateExternal));
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                             << "Finished sea-dsa analysis\n";);
-      break;
+    CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
+    // CallGraph &cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
+    CallGraph &cg =
+        getAnalysis<seadsa::CompleteCallGraph>().getCompleteCallGraph();
+    seadsa::AllocWrapInfo &allocWrapInfo = getAnalysis<seadsa::AllocWrapInfo>();
+    // FIXME: if we pass "this" then allocWrapInfo can be more
+    // precise because it can use LoopInfo. However, I get some
+    // crash that I need to debug.
+    allocWrapInfo.initialize(M, nullptr /*this*/);
+    seadsa::DsaLibFuncInfo &dsaLibFuncInfo =
+        getAnalysis<seadsa::DsaLibFuncInfo>();
+
+    mem.reset(new SeaDsaHeapAbstraction(
+        M, cg, tli, allocWrapInfo, dsaLibFuncInfo,
+        (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
+        CrabDsaDisambiguateUnknown, CrabDsaDisambiguatePtrCast,
+        CrabDsaDisambiguateExternal));
+    CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+                           << "Finished sea-dsa analysis\n";);
+    break;
   }
   case heap_analysis_t::NONE:
   default:
     CLAM_WARNING("running clam without heap analysis");
   }
-  m_cfg_builder_man.reset(new CrabBuilderManager(builder_params, tli, std::move(mem)));
+  m_cfg_builder_man.reset(
+      new CrabBuilderManager(builder_params, tli, std::move(mem)));
 
   unsigned num_analyzed_funcs = 0;
-  CRAB_VERBOSE_IF(1,
-		  for (auto &F : M) {
-		    if (isTrackable(F)) {
-		      num_analyzed_funcs++;
-		    }
-		  }
-		  crab::get_msg_stream() << "Started clam\n";
-                  crab::get_msg_stream()
-                  << "Total number of analyzed functions:" << num_analyzed_funcs
-                  << "\n";);
-  
+  CRAB_VERBOSE_IF(
+      1,
+      for (auto &F
+           : M) {
+        if (isTrackable(F)) {
+          num_analyzed_funcs++;
+        }
+      } crab::get_msg_stream()
+          << "Started clam\n";
+      crab::get_msg_stream()
+      << "Total number of analyzed functions:" << num_analyzed_funcs << "\n";);
+
   /// Run the analysis
 
   m_params.dom = ClamDomain;
@@ -877,7 +888,8 @@ bool ClamPass::runOnModule(Module &M) {
 
   if (m_params.run_inter) {
     InterClamImpl inter_crab(M, *m_cfg_builder_man);
-    AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+    AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                               m_checks_db};
     /* -- empty assumptions */
     abs_dom_map_t abs_dom_assumptions;
     lin_csts_map_t lin_csts_assumptions;
@@ -895,41 +907,42 @@ bool ClamPass::runOnModule(Module &M) {
       }
     }
   }
-  
-  if (builder_params.dot_cfg) {  
+
+  if (builder_params.dot_cfg) {
     for (auto &F : M) {
       if (m_cfg_builder_man->hasCfg(F)) {
-    	cfg_t &cfg = m_cfg_builder_man->getCfg(F);
-	#if 1
-	auto pre_fn = [this](const basic_block_label_t &node)
-	  -> boost::optional<clam_abstract_domain> {
-		if (const BasicBlock *BB = node.get_basic_block()) {
-		   llvm::Optional<clam_abstract_domain> res = getPre(BB);
-		   if (res.hasValue()) {
-		     return res.getValue();
-		   }
-		}
-		return boost::optional<clam_abstract_domain>();
-	};
-	auto post_fn = [this](const basic_block_label_t &node)
-	  -> boost::optional<clam_abstract_domain> {
-		if (const BasicBlock *BB = node.get_basic_block()) {
-		   llvm::Optional<clam_abstract_domain> res = getPost(BB);
-		   if (res.hasValue()) {
-		     return res.getValue();
-		   }
-		}
-		return boost::optional<clam_abstract_domain>();
-	};
-	
-	cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn, m_checks_db);
-        #else
-	cfg_to_dot(cfg);
-	#endif 
+        cfg_t &cfg = m_cfg_builder_man->getCfg(F);
+#if 1
+        auto pre_fn = [this](const basic_block_label_t &node)
+            -> boost::optional<clam_abstract_domain> {
+          if (const BasicBlock *BB = node.get_basic_block()) {
+            llvm::Optional<clam_abstract_domain> res = getPre(BB);
+            if (res.hasValue()) {
+              return res.getValue();
+            }
+          }
+          return boost::optional<clam_abstract_domain>();
+        };
+        auto post_fn = [this](const basic_block_label_t &node)
+            -> boost::optional<clam_abstract_domain> {
+          if (const BasicBlock *BB = node.get_basic_block()) {
+            llvm::Optional<clam_abstract_domain> res = getPost(BB);
+            if (res.hasValue()) {
+              return res.getValue();
+            }
+          }
+          return boost::optional<clam_abstract_domain>();
+        };
+
+        cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn,
+                                                m_checks_db);
+#else
+        cfg_to_dot(cfg);
+#endif
       }
     }
   }
-  
+
   if (m_params.stats) {
     crab::CrabStats::PrintBrunch(crab::outs());
   }
@@ -954,13 +967,13 @@ bool ClamPass::runOnModule(Module &M) {
     }
   }
 
-  
   return false;
 }
 
 bool ClamPass::runOnFunction(Function &F) {
   IntraClamImpl intra_crab(F, *m_cfg_builder_man);
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges, m_checks_db};
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                             m_checks_db};
   /* -- empty assumptions */
   abs_dom_map_t abs_dom_assumptions;
   lin_csts_map_t lin_csts_assumptions;
@@ -975,10 +988,10 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
 
   bool runSeaDsa = (CrabHeapAnalysis == heap_analysis_t::CI_SEA_DSA ||
                     CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA);
-  
+
   if (runSeaDsa) {
     // dependency for immutable AllocWrapInfo
-    AU.addRequired<LoopInfoWrapperPass>();    
+    AU.addRequired<LoopInfoWrapperPass>();
     AU.addRequired<seadsa::AllocWrapInfo>();
     AU.addRequired<seadsa::DsaLibFuncInfo>();
   }
@@ -988,7 +1001,7 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
 
   // More precise than LLVM callgraph
   AU.addRequired<seadsa::CompleteCallGraph>();
-  //AU.addRequired<CallGraphWrapperPass>();
+  // AU.addRequired<CallGraphWrapperPass>();
 }
 
 /**
@@ -1029,10 +1042,10 @@ ClamPass::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
 }
 
 bool ClamPass::hasFeasibleEdge(const llvm::BasicBlock *b1,
-			       const llvm::BasicBlock* b2) const {
+                               const llvm::BasicBlock *b2) const {
   return !(m_infeasible_edges.count({b1, b2}) > 0);
 }
-  
+
 /**
  * For assertion checking
  **/
@@ -1075,14 +1088,14 @@ REGISTER_DOMAIN(CrabDomain::DIS_INTERVALS, dis_interval_domain_t)
 #if defined(HAVE_APRON) || defined(HAVE_ELINA)
 REGISTER_DOMAIN(CrabDomain::OCT, oct_domain_t)
 REGISTER_DOMAIN(CrabDomain::PK, pk_domain_t)
-#endif 
+#endif
 REGISTER_DOMAIN(CrabDomain::INTERVALS_CONGRUENCES, ric_domain_t)
 REGISTER_DOMAIN(CrabDomain::TERMS_INTERVALS, term_int_domain_t)
 REGISTER_DOMAIN(CrabDomain::TERMS_DIS_INTERVALS, term_dis_int_domain_t)
 REGISTER_DOMAIN(CrabDomain::TERMS_ZONES, num_domain_t)
 #ifdef HAVE_LDD
 REGISTER_DOMAIN(CrabDomain::BOXES, boxes_domain_t)
-#endif 
+#endif
 REGISTER_DOMAIN(CrabDomain::WRAPPED_INTERVALS, wrapped_interval_domain_t)
 
 char clam::ClamPass::ID = 0;

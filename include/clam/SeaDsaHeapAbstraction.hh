@@ -68,21 +68,20 @@ public:
   // This constructor creates and owns a sea-dsa GlobalAnalysis instance and
   // run it on M.
   SeaDsaHeapAbstraction(const llvm::Module &M, llvm::CallGraph &cg,
-			const llvm::TargetLibraryInfoWrapperPass &tli,
-			const seadsa::AllocWrapInfo &alloc_wrap_info,
-			const seadsa::DsaLibFuncInfo &spec_graph_info,			
-			bool is_context_sensitive,
-			bool disambiguate_unknown = false,
-			bool disambiguate_ptr_cast = false,
-			bool disambiguate_external = false);
+                        const llvm::TargetLibraryInfoWrapperPass &tli,
+                        const seadsa::AllocWrapInfo &alloc_wrap_info,
+                        const seadsa::DsaLibFuncInfo &spec_graph_info,
+                        bool is_context_sensitive,
+                        bool disambiguate_unknown = false,
+                        bool disambiguate_ptr_cast = false,
+                        bool disambiguate_external = false);
 
   // This constructor takes an existing sea-dsa Global Analysis instance.
   // It doesn't own it.
-  SeaDsaHeapAbstraction(const llvm::Module &M, 
-			seadsa::GlobalAnalysis &dsa,
-			bool disambiguate_unknown = false,
-			bool disambiguate_ptr_cast = false,
-			bool disambiguate_external = false);
+  SeaDsaHeapAbstraction(const llvm::Module &M, seadsa::GlobalAnalysis &dsa,
+                        bool disambiguate_unknown = false,
+                        bool disambiguate_ptr_cast = false,
+                        bool disambiguate_external = false);
 
   ~SeaDsaHeapAbstraction();
 
@@ -90,13 +89,11 @@ public:
     return HeapAbstraction::ClassId::SEA_DSA;
   }
 
-  seadsa::GlobalAnalysis *getSeaDsa() {
-    return m_dsa;
-  }
-  
+  seadsa::GlobalAnalysis *getSeaDsa() { return m_dsa; }
+
   // Use F and V to get sea-dsa cell associated to it.
-  virtual Region
-  getRegion(const llvm::Function &F, const llvm::Value &V) override;
+  virtual Region getRegion(const llvm::Function &F,
+                           const llvm::Value &V) override;
 
   // Use F and V to get the sea-dsa node associated to V and extracts
   // the region associated to nodes's field offset if any.
@@ -104,7 +101,7 @@ public:
                    unsigned offset, const llvm::Type &AccessedType);
 
   virtual RegionVec getInitRegions(const llvm::Function &F) override;
-  
+
   virtual RegionVec getOnlyReadRegions(const llvm::Function &F) override;
 
   virtual RegionVec getModifiedRegions(const llvm::Function &F) override;

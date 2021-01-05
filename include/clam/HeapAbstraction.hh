@@ -34,7 +34,7 @@ enum class heap_analysis_t {
   CS_SEA_DSA
 };
 
-enum class region_type_t{
+enum class region_type_t {
   UNTYPED_REGION = 0,
   BOOL_REGION = 1,
   INT_REGION = 2,
@@ -51,9 +51,11 @@ class RegionInfo {
   bool m_is_sequence;
   // whether the region is possibly allocated in the heap
   bool m_is_heap;
+
 public:
   RegionInfo(region_type_t t, unsigned b, bool is_seq, bool is_heap)
-    : m_region_type(t), m_bitwidth(b), m_is_sequence(is_seq), m_is_heap(is_heap) {}
+      : m_region_type(t), m_bitwidth(b), m_is_sequence(is_seq),
+        m_is_heap(is_heap) {}
 
   RegionInfo(const RegionInfo &other) = default;
 
@@ -62,10 +64,9 @@ public:
   bool isUntyped() const {
     return m_region_type == region_type_t::UNTYPED_REGION;
   }
-  
+
   bool hasSameType(const RegionInfo &o) const {
-    return (getType() == o.getType() &&
-	    getBitwidth() == o.getBitwidth());    
+    return (getType() == o.getType() && getBitwidth() == o.getBitwidth());
   }
 
   bool hasCompatibleType(const RegionInfo &o) const {
@@ -75,16 +76,16 @@ public:
       return hasSameType(o);
     }
   }
-  
+
   bool containScalar() const {
     return m_region_type == region_type_t::BOOL_REGION ||
-      m_region_type == region_type_t::INT_REGION;
+           m_region_type == region_type_t::INT_REGION;
   }
-  
+
   bool containPointer() const {
     return m_region_type == region_type_t::PTR_REGION;
   }
-      
+
   // Return region's type: boolean, integer or pointer.
   region_type_t getType() const { return m_region_type; }
 
@@ -95,11 +96,11 @@ public:
   unsigned getBitwidth() const { return m_bitwidth; }
 
   // Whether the region corresponds to a "sequence" node
-  bool isSequence() const { return m_is_sequence;}
+  bool isSequence() const { return m_is_sequence; }
 
   // Whether the region is potentially allocated via a malloc-like
   // function.
-  bool isHeap() const { return m_is_heap;}
+  bool isHeap() const { return m_is_heap; }
 
   void write(llvm::raw_ostream &o) const {
     switch (getType()) {
@@ -110,7 +111,8 @@ public:
       o << "B";
       break;
     case region_type_t::INT_REGION:
-      o << "I" << ":" << getBitwidth();
+      o << "I"
+        << ":" << getBitwidth();
       break;
     case region_type_t::PTR_REGION:
       o << "P";
@@ -118,11 +120,11 @@ public:
     }
   }
 
-  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &o, const RegionInfo &rgnInfo) {
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &o,
+                                       const RegionInfo &rgnInfo) {
     rgnInfo.write(o);
     return o;
   }
-  
 };
 
 /**
@@ -150,9 +152,9 @@ public:
       : m_id(id), m_info(info), m_singleton(singleton) {}
 
   Region()
-    : m_id(0),
-      m_info(RegionInfo(region_type_t::UNTYPED_REGION, 0, false, false)),
-      m_singleton(nullptr) {}
+      : m_id(0),
+        m_info(RegionInfo(region_type_t::UNTYPED_REGION, 0, false, false)),
+        m_singleton(nullptr) {}
 
   Region(const Region &other) = default;
 
@@ -162,7 +164,9 @@ public:
 
   RegionId getId() const { return m_id; }
 
-  bool isUnknown() const { return (m_info.getType() == region_type_t::UNTYPED_REGION); }
+  bool isUnknown() const {
+    return (m_info.getType() == region_type_t::UNTYPED_REGION);
+  }
 
   const llvm::Value *getSingleton() const { return m_singleton; }
 
@@ -215,7 +219,7 @@ public:
   virtual ClassId getClassId() const = 0;
 
   virtual llvm::StringRef getName() const = 0;
-  
+
   // TODO: mark all these methods as const.
 
   // fun is used to know in which function ptr lives.
@@ -226,9 +230,9 @@ public:
   // Regions created by the function that should be initialized by the
   // function.
   virtual RegionVec getInitRegions(const llvm::Function &) = 0;
-  
+
   /**========  These functions allow to purify functions ========**/
-  
+
   // Read-Only regions reachable by function parameters and globals
   // but not returns
   virtual RegionVec getOnlyReadRegions(const llvm::Function &) = 0;

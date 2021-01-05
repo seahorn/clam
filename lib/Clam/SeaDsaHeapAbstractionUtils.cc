@@ -58,7 +58,7 @@ bool isIntegerOrBool::operator()(const llvm::Type *t) const {
 bool isPointer::operator()(const llvm::Type *t) const {
   return t->isPointerTy();
 }
-  
+
 void markReachableNodes(const Node *n, NodeSet &set) {
   if (!n)
     return;
@@ -71,7 +71,7 @@ void markReachableNodes(const Node *n, NodeSet &set) {
 
 /// Computes the set of all nodes reachable by fn in graph g.
 /// Sets inputReach to nodes reachable from arguments or globals
-/// Sets retReach to nodes from return value  
+/// Sets retReach to nodes from return value
 void reachableNodes(const Function &fn, Graph &g, NodeSet &inputReach,
                     NodeSet &retReach) {
   // formal parameters
@@ -110,25 +110,27 @@ void argReachableNodes(const llvm::Function &fn, Graph &G, NodeSet &reach,
 /// node is local if it is not reachable from input parameters or
 /// globals or return parameters.
 void localNodes(const Function &fn, Graph &g, NodeSet &nodes) {
-  NodeSet reach, retReach/*unused*/;
+  NodeSet reach, retReach /*unused*/;
   argReachableNodes(fn, g, reach, retReach);
-  
+
   for (auto &kv : g.scalars()) {
     const Value *V = kv.first;
-    if (!V || isa<GlobalValue>(V)) continue;
-    
+    if (!V || isa<GlobalValue>(V))
+      continue;
+
     const Cell *C = kv.second.get();
-    if (C->isNull()) continue;
+    if (C->isNull())
+      continue;
 
     const Node *N = C->getNode();
-    if (reach.count(N) > 0) continue;
-    
+    if (reach.count(N) > 0)
+      continue;
+
     if (N->isRead() || N->isModified()) {
       nodes.insert(N);
     }
   }
 }
 
-  
 } // end namespace seadsa_heap_abs_impl
 } // namespace clam

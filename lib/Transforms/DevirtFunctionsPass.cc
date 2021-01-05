@@ -81,7 +81,7 @@ public:
 
   virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     if (DevirtResolver == RESOLVER_SEA_DSA) {
-      AU.addRequired<seadsa::RemovePtrToInt>();      
+      AU.addRequired<seadsa::RemovePtrToInt>();
       AU.addRequired<seadsa::CompleteCallGraph>();
     }
 

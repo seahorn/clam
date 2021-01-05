@@ -67,7 +67,7 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
         path_statements.push_back(&s);
       }
       s.accept(&abs_tr);
-      
+
       if (abs_tr.get_abs_value().is_bottom()) {
         break;
       } else {

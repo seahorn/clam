@@ -36,7 +36,7 @@ using clam_abstract_domain = crab::domains::abstract_domain_ref<var_t>;
  *    auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
  *    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
  *    CrabBuilderManager man(params, tli, std::move(mem));
- * 
+ *
  *    // Create an intra-procedural analysis
  *    IntraClam ic(fun, man);
  *
@@ -56,8 +56,9 @@ public:
   using lin_csts_map_t =
       llvm::DenseMap<const llvm::BasicBlock *, lin_cst_sys_t>;
   using checks_db_t = crab::checker::checks_db;
-  using edges_set = std::set<std::pair<const llvm::BasicBlock*, const llvm::BasicBlock*>>;
-  
+  using edges_set =
+      std::set<std::pair<const llvm::BasicBlock *, const llvm::BasicBlock *>>;
+
 private:
   std::unique_ptr<IntraClamImpl> m_impl;
   CrabBuilderManager &m_builder_man;
@@ -147,19 +148,20 @@ public:
   /**
    * Return true if there might be a feasible edge between b1 and b2
    **/
-  bool hasFeasibleEdge(const llvm::BasicBlock *b1, const llvm::BasicBlock* b2) const;
+  bool hasFeasibleEdge(const llvm::BasicBlock *b1,
+                       const llvm::BasicBlock *b2) const;
 };
 
 /**
  * Inter-procedural analysis of a module
- * 
+ *
  * Basic usage:
  *    // Create a crab cfg builder manager
  *    CrabBuilderParams params;
  *    auto tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
  *    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
  *    CrabBuilderManager man(params, tli, std::move(mem));
- * 
+ *
  *    // Create an inter-procedural analysis
  *    InterClam ic(m, man);
  *
@@ -180,7 +182,7 @@ public:
   using lin_csts_map_t = typename IntraClam::lin_csts_map_t;
   using checks_db_t = typename IntraClam::checks_db_t;
   using edges_set = typename IntraClam::edges_set;
-  
+
 private:
   std::unique_ptr<InterClamImpl> m_impl;
   CrabBuilderManager &m_builder_man;
@@ -235,7 +237,8 @@ public:
   /**
    * Return true if there might be a feasible edge between b1 and b2
    **/
-  bool hasFeasibleEdge(const llvm::BasicBlock *b1, const llvm::BasicBlock* b2) const;  
+  bool hasFeasibleEdge(const llvm::BasicBlock *b1,
+                       const llvm::BasicBlock *b2) const;
 };
 
 /**
@@ -246,7 +249,7 @@ class ClamPass : public llvm::ModulePass {
   using abs_dom_map_t = typename IntraClam::abs_dom_map_t;
   using checks_db_t = typename IntraClam::checks_db_t;
   using edges_set = typename IntraClam::edges_set;
-  
+
   abs_dom_map_t m_pre_map;
   abs_dom_map_t m_post_map;
   std::unique_ptr<CrabBuilderManager> m_cfg_builder_man;
@@ -300,8 +303,9 @@ public:
   /**
    * Return true if there might be a feasible edge between b1 and b2
    **/
-  bool hasFeasibleEdge(const llvm::BasicBlock *b1, const llvm::BasicBlock* b2) const;
-  
+  bool hasFeasibleEdge(const llvm::BasicBlock *b1,
+                       const llvm::BasicBlock *b2) const;
+
   /**
    * To query and view the analysis results
    **/

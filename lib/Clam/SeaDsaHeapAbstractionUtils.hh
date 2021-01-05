@@ -38,7 +38,7 @@ void argReachableNodes(const llvm::Function &fn, seadsa::Graph &G,
                        NodeSet &reach, NodeSet &outReach);
 
 void localNodes(const llvm::Function &fn, seadsa::Graph &g, NodeSet &nodes);
-  
+
 struct isInteger : std::unary_function<const llvm::Type *, bool> {
   unsigned m_bitwidth; // bits
   isInteger() : m_bitwidth(0) {}
@@ -56,7 +56,6 @@ struct isIntegerOrBool : std::unary_function<const llvm::Type *, bool> {
 struct isPointer : std::unary_function<const llvm::Type *, bool> {
   bool operator()(const llvm::Type *t) const;
 };
-  
 
 } // end namespace seadsa_heap_abs_impl
 } // end namespace clam

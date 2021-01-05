@@ -1,7 +1,7 @@
 #include "clam/config.h"
 
-#include "SeaDsaToRegion.hh"
 #include "SeaDsaHeapAbstractionUtils.hh"
+#include "SeaDsaToRegion.hh"
 
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Module.h"
@@ -133,8 +133,9 @@ static bool isDisjointCell(const Cell &c, const DataLayout &dl) {
   unsigned offset = c.getOffset();
 
   if (offset >= n->size()) {
-    CRAB_LOG("heap-abs-seadsa-to-region", errs() << "\tCannot be converted to region because "
-                                   "cell is out-of-bounds.\n";);
+    CRAB_LOG("heap-abs-seadsa-to-region",
+             errs() << "\tCannot be converted to region because "
+                       "cell is out-of-bounds.\n";);
     return false;
   }
 
@@ -167,13 +168,13 @@ using namespace seadsa;
 
 // SeaDsaToRegion succeeds if returned valued != UNTYPED_REGION
 RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
-			  bool disambiguate_unknown, bool disambiguate_ptr_cast,
-			  bool disambiguate_external) {
+                          bool disambiguate_unknown, bool disambiguate_ptr_cast,
+                          bool disambiguate_external) {
 
   auto defaultRegionInfo = [](bool isSequence, bool isHeap) {
-      return RegionInfo(region_type_t::UNTYPED_REGION, 0, isSequence, isHeap);
+    return RegionInfo(region_type_t::UNTYPED_REGION, 0, isSequence, isHeap);
   };
-			   
+
   if (c.isNull()) {
     return defaultRegionInfo(false, false);
   }
@@ -182,21 +183,21 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
   unsigned offset = c.getOffset();
 
   CRAB_LOG("heap-abs-seadsa-to-region",
-	   errs() << "*** Checking whether node at offset "
-	   << offset << " can be converted to region ... \n"
-	   << "\t" << *n << "\n";);
+           errs() << "*** Checking whether node at offset " << offset
+                  << " can be converted to region ... \n"
+                  << "\t" << *n << "\n";);
 
   if (!n->isModified() && !n->isRead()) {
     CRAB_LOG("heap-abs-seadsa-to-region",
-  	     errs()
-  	     << "\tWe cannot disambiguate it because "
-  	     << "it is never accessed.\n";);
+             errs() << "\tWe cannot disambiguate it because "
+                    << "it is never accessed.\n";);
     return defaultRegionInfo(n->isArray(), n->isHeap());
   }
 
   if (n->isOffsetCollapsed()) {
     CRAB_LOG("heap-abs-seadsa-to-region",
-	     errs() << "\tCannot be converted to region: node is already collapsed.\n";);
+             errs() << "\tCannot be converted to region: node is already "
+                       "collapsed.\n";);
     return defaultRegionInfo(n->isArray(), n->isHeap());
   }
 
@@ -219,34 +220,38 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
   }
 
   seadsa_heap_abs_impl::isInteger int_pred;
-  if (isTypedCell(n, offset, int_pred) || isTypedArrayCell(n, offset, int_pred)) {
+  if (isTypedCell(n, offset, int_pred) ||
+      isTypedArrayCell(n, offset, int_pred)) {
     if (isDisjointCell(c, dl)) {
       CRAB_LOG("heap-abs-seadsa-to-region",
-	       errs() << "\tDisambiguation succeed!\n"
-	       << "\tFound INT_REGION at offset " << offset
-	       << " with bitwidth=" << int_pred.m_bitwidth
-	       << "\n";);
-                                  
+               errs() << "\tDisambiguation succeed!\n"
+                      << "\tFound INT_REGION at offset " << offset
+                      << " with bitwidth=" << int_pred.m_bitwidth << "\n";);
+
       return RegionInfo(region_type_t::INT_REGION, int_pred.m_bitwidth,
-			n->isArray(), n->isHeap());
+                        n->isArray(), n->isHeap());
     } else {
-      CRAB_LOG("heap-abs-seadsa-to-region",
-	       errs() << "\tCannot be converted to region due to overlapping.\n";);
+      CRAB_LOG(
+          "heap-abs-seadsa-to-region",
+          errs() << "\tCannot be converted to region due to overlapping.\n";);
       return defaultRegionInfo(n->isArray(), n->isHeap());
     }
   }
 
   seadsa_heap_abs_impl::isBool bool_pred;
-  if (isTypedCell(n, offset, bool_pred) || isTypedArrayCell(n, offset, bool_pred)) {
+  if (isTypedCell(n, offset, bool_pred) ||
+      isTypedArrayCell(n, offset, bool_pred)) {
     if (isDisjointCell(c, dl)) {
       CRAB_LOG("heap-abs-seadsa-to-region",
-	       errs() << "\tDisambiguation succeed!\n"
-	       << "\tFound BOOL_REGION at offset " << offset
-	       << " with bitwidth=1\n";);
-      return RegionInfo(region_type_t::BOOL_REGION, 1, n->isArray(), n->isHeap());
+               errs() << "\tDisambiguation succeed!\n"
+                      << "\tFound BOOL_REGION at offset " << offset
+                      << " with bitwidth=1\n";);
+      return RegionInfo(region_type_t::BOOL_REGION, 1, n->isArray(),
+                        n->isHeap());
     } else {
-      CRAB_LOG("heap-abs-seadsa-to-region",
-	       errs() << "\tCannot be converted to region due to overlapping.\n";);      
+      CRAB_LOG(
+          "heap-abs-seadsa-to-region",
+          errs() << "\tCannot be converted to region due to overlapping.\n";);
       return defaultRegionInfo(n->isArray(), n->isHeap());
     }
   }
@@ -255,26 +260,28 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
   if (isTypedCell(n, offset, ptr_pred)) {
     if (isDisjointCell(c, dl)) {
       CRAB_LOG("heap-abs-seadsa-to-region",
-	       errs() << "\tDisambiguation succeed!\n"
-	       << "\tFound POINTER_REGION at offset " << offset << "\n";);
+               errs() << "\tDisambiguation succeed!\n"
+                      << "\tFound POINTER_REGION at offset " << offset
+                      << "\n";);
       // We use a default 32 because Crab treats all references as 32
       // bits.  Crab actually ignores the bitwidth of references but
       // we are trying to avoid type-checking errors.
-      return RegionInfo(region_type_t::PTR_REGION, 32 /*dl.getPointerSizeInBits()*/,
-			n->isArray(), n->isHeap());
+      return RegionInfo(region_type_t::PTR_REGION,
+                        32 /*dl.getPointerSizeInBits()*/, n->isArray(),
+                        n->isHeap());
     } else {
-      CRAB_LOG("heap-abs-seadsa-to-region",
-	       errs() << "\tCannot be converted to region due to overlapping.\n";);      
+      CRAB_LOG(
+          "heap-abs-seadsa-to-region",
+          errs() << "\tCannot be converted to region due to overlapping.\n";);
       return defaultRegionInfo(n->isArray(), n->isHeap());
     }
   }
-  
-  CRAB_LOG(
-      "heap-abs-seadsa-to-region",
-      errs() << "\tCannot be converted to region: do not contain integer or pointer.\n";);
+
+  CRAB_LOG("heap-abs-seadsa-to-region",
+           errs() << "\tCannot be converted to region: do not contain integer "
+                     "or pointer.\n";);
 
   return defaultRegionInfo(n->isArray(), n->isHeap());
 }
 
 } // end namespace clam
-

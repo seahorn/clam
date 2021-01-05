@@ -83,14 +83,14 @@ public:
 
   var_or_cst_t getTypedConst() const {
     assert(isConst());
-    
+
     if (isTrue()) {
       return var_or_cst_t::make_bool_true();
     } else {
       return var_or_cst_t::make_bool_false();
     }
   }
-  
+
   void write(crab::crab_os &out) const override {
     if (isVar()) {
       out << getVar();
@@ -126,7 +126,7 @@ public:
     assert(isNull());
     return var_or_cst_t::make_reference_null();
   }
-  
+
   void write(crab::crab_os &out) const override {
     if (isVar()) {
       out << getVar();
@@ -143,14 +143,15 @@ class crabIntLit : public crabLit {
   number_t m_num; // only considered if !m_var.hasValue()
   llvm::Optional<var_t> m_var;
   unsigned m_bitwidth;
-  
+
   // If z_number != number_t we assume that number_t has a
   // constructor for z_number.
   explicit crabIntLit(ikos::z_number n, unsigned bitwidth)
-    : crabLit(CRAB_LITERAL_INT), m_num(n), m_bitwidth(bitwidth) {}
+      : crabLit(CRAB_LITERAL_INT), m_num(n), m_bitwidth(bitwidth) {}
 
-  explicit crabIntLit(var_t v):
-    crabLit(CRAB_LITERAL_INT), m_var(v), m_bitwidth(v.get_type().get_integer_bitwidth()) {}
+  explicit crabIntLit(var_t v)
+      : crabLit(CRAB_LITERAL_INT), m_var(v),
+        m_bitwidth(v.get_type().get_integer_bitwidth()) {}
 
 public:
   bool isVar() const override { return m_var.hasValue(); }
@@ -161,16 +162,15 @@ public:
   }
 
   bool isInt() const { return !isVar(); }
-  
+
   var_or_cst_t getTypedConst() const {
     assert(isInt());
-    return var_or_cst_t(getInt(), crab::variable_type(crab::INT_TYPE, getBitwidth()));
+    return var_or_cst_t(getInt(),
+                        crab::variable_type(crab::INT_TYPE, getBitwidth()));
   }
 
-  unsigned getBitwidth() const {
-    return m_bitwidth;
-  }
-  
+  unsigned getBitwidth() const { return m_bitwidth; }
+
   number_t getInt() const {
     assert(isInt());
     return m_num;
@@ -217,8 +217,8 @@ public:
   /** convert a Value to a crabLit **/
   crab_lit_ref_t getLit(const llvm::Value &v);
 
-  /** make fresh typed variables. 
-   ** Each call returns a new fresh variable 
+  /** make fresh typed variables.
+   ** Each call returns a new fresh variable
    **/
   var_t mkIntVar(unsigned bitwidth);
   var_t mkBoolVar();
@@ -242,8 +242,8 @@ public:
   lin_exp_t getExp(const crab_lit_ref_t ref) const;
   /** error if the literal is not a constant **/
   var_or_cst_t getTypedConst(const crab_lit_ref_t ref) const;
-  /** error if the literal is not an integer constant **/  
-  number_t getIntCst(const crab_lit_ref_t ref) const;  
+  /** error if the literal is not an integer constant **/
+  number_t getIntCst(const crab_lit_ref_t ref) const;
 
 private:
   crabLitFactoryImpl *m_impl;

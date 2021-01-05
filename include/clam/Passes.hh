@@ -23,20 +23,18 @@ llvm::Pass *createLoopPeelerPass(unsigned Num);
 llvm::Pass *createAnnotatedCFGPrinterPass();
 // Property instrumentation passes
 llvm::Pass *createNullCheckPass();
-llvm::Pass *createUseAfterFreeCheckPass();  
+llvm::Pass *createUseAfterFreeCheckPass();
 } // namespace clam
 
 #ifdef HAVE_LLVM_SEAHORN
 #include "llvm_seahorn/Transforms/InstCombine/SeaInstCombine.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 
-llvm::FunctionPass *createSeaInstructionCombiningPass(bool ExpensiveCombines,
-						      unsigned MaxIterations,
-						      bool AvoidBv,
-						      bool AvoidUnsignedICmp,
-						      bool AvoidIntToPtr,
-						      bool AvoidAliasing,
-						      bool AvoidDisequalities);
+llvm::FunctionPass *
+createSeaInstructionCombiningPass(bool ExpensiveCombines,
+                                  unsigned MaxIterations, bool AvoidBv,
+                                  bool AvoidUnsignedICmp, bool AvoidIntToPtr,
+                                  bool AvoidAliasing, bool AvoidDisequalities);
 
 namespace clam {
 inline llvm::FunctionPass *createInstCombine(bool ExpensiveCombines = true) {
@@ -46,13 +44,9 @@ inline llvm::FunctionPass *createInstCombine(bool ExpensiveCombines = true) {
   const bool AvoidIntToPtr = true;
   const bool AvoidAliasing = true;
   const bool AvoidDisequalities = true;
-  return createSeaInstructionCombiningPass(ExpensiveCombines,
-					   MaxIterations,
-					   AvoidBv,
-					   AvoidUnsignedICmp,
-					   AvoidIntToPtr,
-					   AvoidAliasing,
-					   AvoidDisequalities);
+  return createSeaInstructionCombiningPass(
+      ExpensiveCombines, MaxIterations, AvoidBv, AvoidUnsignedICmp,
+      AvoidIntToPtr, AvoidAliasing, AvoidDisequalities);
 }
 } // namespace clam
 #else
