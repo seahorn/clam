@@ -148,7 +148,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(const llvm::Function &f) {
       "heap-abs-regions", llvm::errs()
                               << "### HEAP_ABS: " << f.getName() << " ###\n";
       llvm::errs()
-      << "Read-only regions reachable from arguments and globals {";
+      << "Read regions reachable from arguments and globals {";
       for (auto &r
            : reads) { llvm::errs() << r << ";"; } llvm::errs()
       << "}\n";
@@ -264,7 +264,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
 
   CRAB_LOG(
       "heap-abs-regions2", llvm::errs() << "### HEAP_ABS: " << I << " ###\n";
-      llvm::errs() << "Read-only regions at caller mapped to "
+      llvm::errs() << "Read regions at caller mapped to "
                    << "those reachable from callee's arguments and globals {";
       for (auto &r
            : reads) {
@@ -378,12 +378,27 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
       // which caller and callee disagree)
       for (unsigned i = 0, e = readsC.size(); i < e; i++) {
         readsB[i] = readsB[i] & readsC[i].second;
+	if (!readsC[i].second) {
+	  CLAM_WARNING("Caller and callee disagree on some read region type\n"
+		       << "Callsite=" << *CI << "\n"
+		       << "Caller=" << *CS.getCaller() << "\n");
+	}
       }
       for (unsigned i = 0, e = modsC.size(); i < e; i++) {
         modsB[i] = modsB[i] & modsC[i].second;
+	if (!modsC[i].second) {
+	  CLAM_WARNING("Caller and callee disagree on some modified region type\n"
+		       << "Callsite=" << *CI << "\n"
+		       << "Caller=" << *CS.getCaller() << "\n");
+	}	
       }
       for (unsigned i = 0, e = newsC.size(); i < e; i++) {
         newsB[i] = newsB[i] & newsC[i].second;
+	if (!newsC[i].second) {
+	  CLAM_WARNING("Caller and callee disagree on some new region type\n"
+		       << "Callsite=" << *CI << "\n"
+		       << "Caller=" << *CS.getCaller() << "\n");
+	}
       }
     }
 
@@ -439,7 +454,7 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
           "heap-abs-regions", llvm::errs()
                                   << "### HEAP_ABS: " << *CI << " ###\n";
           llvm::errs()
-          << "Read-only regions at caller mapped to "
+          << "Read regions at caller mapped to "
           << "those reachable from callee's arguments and globals {";
           for (auto &r
                : readsC_out) { llvm::errs() << r << ";"; } llvm::errs()
