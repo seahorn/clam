@@ -25,6 +25,7 @@ struct AnalysisParams {
   unsigned int max_calling_contexts;
   bool analyze_recursive_functions;
   bool exact_summary_reuse;
+  bool inter_entry_main;
   /* end inter-procedural analysis */
   unsigned relational_threshold;
   unsigned widening_delay;
@@ -44,6 +45,7 @@ struct AnalysisParams {
       : dom(CrabDomain::INTERVALS), run_backward(false), run_liveness(false),
         run_inter(false), max_calling_contexts(UINT_MAX),
         analyze_recursive_functions(false), exact_summary_reuse(true),
+	inter_entry_main(false), 
         relational_threshold(10000), widening_delay(1), narrowing_iters(10),
         widening_jumpset(0), stats(false), print_invars(false),
         print_preconds(false), print_unjustified_assumptions(false),

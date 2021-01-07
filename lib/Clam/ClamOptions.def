@@ -179,6 +179,11 @@ CrabInterExactSummaryReuse("crab-inter-exact-summary-reuse",
 	 cl::desc("Reuse summaries without losing precision (more expensive)"),
 	 cl::init(true));
 
+cl::opt<bool>
+CrabInterStartFromMain("crab-inter-entry-main", 
+	 cl::desc("Start the analysis only from main (not applicable to libraries)"),
+	 cl::init(false));
+
 cl::opt<heap_analysis_t>
 CrabHeapAnalysis("crab-heap-analysis",
    cl::desc("Heap analysis used for memory disambiguation"),

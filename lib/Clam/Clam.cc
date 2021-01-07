@@ -647,6 +647,7 @@ private:
     inter_params.exact_summary_reuse = params.exact_summary_reuse;
     inter_params.analyze_recursive_functions =
         params.analyze_recursive_functions;
+    inter_params.only_main_as_entry = params.inter_entry_main;
     inter_params.live_map = (params.run_liveness ? &m_live_map : nullptr);
     inter_params.widening_delay = params.widening_delay;
     inter_params.descending_iters = params.narrowing_iters;
@@ -872,6 +873,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.max_calling_contexts = CrabInterMaxSummaries;
   m_params.analyze_recursive_functions = CrabInterRecursiveFunctions;
   m_params.exact_summary_reuse = CrabInterExactSummaryReuse;
+  m_params.inter_entry_main = CrabInterStartFromMain;
   m_params.run_liveness = CrabLive;
   m_params.relational_threshold = CrabRelationalThreshold;
   m_params.widening_delay = CrabWideningDelay;

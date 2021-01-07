@@ -340,7 +340,10 @@ def parseArgs(argv):
                       dest='crab_inter_recursive')
     add_bool_argument(p, 'crab-inter-exact-summary-reuse', default=True, 
                       help='Reuse summaries without losing precision (more expensive). True by default',
-                      dest='crab_inter_exact_summary_reuse')    
+                      dest='crab_inter_exact_summary_reuse')
+    add_bool_argument(p, 'crab-inter-entry-main', default=False, 
+                      help='Start analysis only from main (not applicable to libraries). False by default',
+                      dest='crab_inter_entry_main')    
     p.add_argument('--crab-backward',
                     help='Run iterative forward/backward analysis for proving assertions (only intra version available and very experimental)',
                     dest='crab_backward', default=False, action='store_true')
@@ -799,6 +802,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--sea-dsa-devirt')
         
     if args.crab_singleton_aliases: clam_args.append('--crab-singleton-aliases')
+    
     if args.crab_inter:
         clam_args.append('--crab-inter')
         clam_args.append('--crab-inter-max-summaries={0}'.format(args.inter_max_summaries))
@@ -810,6 +814,11 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
             clam_args.append('--crab-inter-exact-summary-reuse=true')
         else:
             clam_args.append('--crab-inter-exact-summary-reuse=false')
+        if args.crab_inter_entry_main:
+            clam_args.append('--crab-inter-entry-main=true')
+        else:
+            clam_args.append('--crab-inter-entry-main=false')
+            
     if args.crab_backward: clam_args.append('--crab-backward')
     if args.crab_live: clam_args.append('--crab-live')
     clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
