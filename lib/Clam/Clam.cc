@@ -535,8 +535,8 @@ public:
         // CRAB_VERBOSE_IF(1, llvm::outs()
         //<< "Built Crab CFG for " << F.getName() << "\n");
       } else {
-        CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
-                                        << F.getName() << "\n");
+        //CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
+	// << F.getName() << "\n");
       }
     }
     // build call graph
