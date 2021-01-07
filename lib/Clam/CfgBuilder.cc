@@ -392,11 +392,8 @@ static var_t normalizeFuncParamOrRet(Value &v, basic_block_t &bb,
         return fresh_v.getValue();
       }
     }
-    // we should not reach this point since v is tracked.
-    CLAM_ERROR("cannot normalize function parameter or return value");
-    // clang complains otherwise
-    abort();
   }
+  CLAM_ERROR("cannot normalize function parameter or return value");
 }
 
 //! Translate PHI nodes
@@ -676,8 +673,8 @@ public:
       }
     }
 
-    if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM &&
-        !rgn.isUnknown() && rgn.getRegionInfo().containScalar()) {
+    if (m_params.trackOnlySingletonMemory() && !rgn.isUnknown() && 
+        rgn.getRegionInfo().containScalar()) {
       crab_lit_ref_t val_lit = m_lfac.getLit(Val);
       assert(val_lit);
       uint64_t elem_size = clam::storageSize(Val.getType(), m_dl);
@@ -691,7 +688,7 @@ public:
       }
       m_bb.array_store(m_lfac.mkArrayVar(rgn), lin_exp_t(offset), val,
                        elem_size, first /*strong update*/);
-    } else if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    } else if (m_params.trackMemory()) {
       CLAM_WARNING(
           "TODO implement global initializer if CrabBuilderPrecision::MEM");
       // m_bb.havoc(m_lfac.mkRegionVar(rgn),
@@ -865,11 +862,11 @@ CrabIntraBlockBuilder::getMaxBitWidthFromGepIndexes(GetElementPtrInst &I) {
     if (IntegerType *ITy = cast<IntegerType>(I.getOperand(i)->getType())) {
       bitwidth = std::max(bitwidth, ITy->getBitWidth());
     } else {
-      CLAM_ERROR("Expected gep instruction only with integer indexes: ", I);
+      CLAM_ERROR("Expected gep instruction only with integer indexes: " << I);
     }
   }
   if (bitwidth == 0) {
-    CLAM_ERROR("Unexpected gep instruction without indexes: ", I);
+    CLAM_ERROR("Unexpected gep instruction without indexes: " << I);
   }
   return bitwidth;
 }
@@ -937,22 +934,20 @@ bool CrabIntraBlockBuilder::AllUsesAreNonTrackMem(Value *V) const {
   V = V->stripPointerCasts();
   for (auto &U : V->uses()) {
     if (StoreInst *SI = dyn_cast<StoreInst>(U.getUser())) {
-      if (isa<Instruction>(V)) {
-        if (m_params.precision_level != CrabBuilderPrecision::MEM) {
-          Region ptrRgn = getRegion(m_mem, m_func_regions, m_params, *SI,
-                                    *SI->getPointerOperand());
-          Region valRgn = getRegion(m_mem, m_func_regions, m_params, *SI,
-                                    *SI->getValueOperand());
-          if (ptrRgn.isUnknown() &&
-              (!SI->getValueOperand()->getType()->isPointerTy() ||
-               valRgn.isUnknown()))
-            continue;
-        }
+      if (isa<Instruction>(V) && !m_params.trackMemory()) {
+	Region ptrRgn = getRegion(m_mem, m_func_regions, m_params, *SI,
+				  *SI->getPointerOperand());
+	Region valRgn = getRegion(m_mem, m_func_regions, m_params, *SI,
+				  *SI->getValueOperand());
+	if (ptrRgn.isUnknown() &&
+	    (!SI->getValueOperand()->getType()->isPointerTy() ||
+	     valRgn.isUnknown()))
+	  continue;
       }
       return false;
     } else if (LoadInst *LI = dyn_cast<LoadInst>(U.getUser())) {
       if (Instruction *I = dyn_cast<Instruction>(V)) {
-        if (m_params.precision_level != CrabBuilderPrecision::MEM) {
+        if (!m_params.trackMemory()) {
           Region ptrRgn = getRegion(m_mem, m_func_regions, m_params, *LI,
                                     *LI->getPointerOperand());
           Region lhsRgn = getRegion(m_mem, m_func_regions, m_params, *LI, *LI);
@@ -1859,7 +1854,7 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
 
 /* free-like functions */
 void CrabIntraBlockBuilder::doFreeFn(Instruction &I) {
-  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+  if (m_params.trackMemory()) {
     CallSite CS(&I);
     crab_lit_ref_t Ptr = m_lfac.getLit(*(CS.getArgument(0)));
     if (Ptr->isVar() && Ptr->isRef()) {
@@ -2092,8 +2087,7 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
 
   CRAB_LOG("cfg-gep", llvm::errs() << "Translating " << I << "\n");
   Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
-  if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM &&
-      rgn.isUnknown()) {
+  if (m_params.trackOnlySingletonMemory() && rgn.isUnknown()) {
     // we don't keep track of the memory region, we bail out ...
     CRAB_LOG("cfg-gep", llvm::errs() << "-- unknown region " << rgn << "\n");
     return;
@@ -2106,8 +2100,7 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
     return;
   }
 
-  if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
-      evalOffset(I, I.getContext()).hasValue()) {
+  if (m_params.trackOnlySingletonMemory() && evalOffset(I, I.getContext()).hasValue()) {
     // Skip the GEP instruction because the offset is a known
     // constant. The next Load or Store will call evalOffset again
     // to obtain the constant index.
@@ -2117,7 +2110,7 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
   }
 
   unsigned bitwidth = getMaxBitWidthFromGepIndexes(I);
-  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+  if (m_params.trackMemory()) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
     crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
@@ -2133,7 +2126,7 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
     assert(ptr->isVar());
     // Translate GEP as a sequence of arithmetic operations + gep_ref
     doGep(I, bitwidth, lhs->getVar(), ptr->getVar() /*base address*/);
-  } else if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM) {
+  } else if (m_params.trackOnlySingletonMemory()) {
     Value *Ptr = I.getPointerOperand();
     Ptr = Ptr->stripPointerCasts();
     const bool isSingletonMemory =
@@ -2184,7 +2177,7 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
 void CrabIntraBlockBuilder::StoreIntoSingletonMem(StoreInst &I, var_t v,
                                                   crab_lit_ref_t val,
                                                   Region rgn) {
-  assert(m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM);
+  assert(m_params.trackOnlySingletonMemory());
   assert(val->isInt() || val->isBool());
 
   lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), rgn,
@@ -2267,7 +2260,7 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
 
   Region rgn =
       getRegion(m_mem, m_func_regions, m_params, I, *I.getPointerOperand());
-  if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM &&
+  if (m_params.trackOnlySingletonMemory() &&
       rgn.isUnknown()) {
     // we don't keep track of the memory region, we bail out ...
     return;
@@ -2287,7 +2280,7 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
   }
 
   if (!val) {
-    if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM) {
+    if (m_params.trackOnlySingletonMemory()) {
       // XXX: this can happen if we store a ptrtoint instruction
       // For simplicity, we don't deal with this case here and we
       // assume that the client must make sure that all constant
@@ -2325,11 +2318,10 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
     return;
   }
 
-  if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+  if (m_params.trackOnlySingletonMemory()) {
     // -- value is an integer/bool -> add array statement
     StoreIntoSingletonMem(I, m_lfac.mkArrayVar(rgn), val, rgn);
-  } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
-
+  } else if (m_params.trackMemory()) {
     // if (rgn.getRegionInfo().isSequence()) {
     /// TODO: translate to store_to_arr_ref. This might increase precision.
     ///
@@ -2417,7 +2409,7 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
  */
 void CrabIntraBlockBuilder::LoadFromSingletonMem(LoadInst &I, var_t lhs_v,
                                                  var_t rhs_v, Region rgn) {
-  assert(m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM);
+  assert(m_params.trackOnlySingletonMemory());
   assert(lhs_v.get_type().is_integer() || lhs_v.get_type().is_bool());
 
   unsigned lhs_v_bitwidth =
@@ -2463,7 +2455,7 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
 
   Region rgn =
       getRegion(m_mem, m_func_regions, m_params, I, *I.getPointerOperand());
-  if (m_params.precision_level == CrabBuilderPrecision::SINGLETON_MEM &&
+  if (m_params.trackOnlySingletonMemory() &&
       rgn.isUnknown()) {
     // The Heap analysis is imprecise with the region so we bail out
     return;
@@ -2507,11 +2499,11 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
     return;
   }
 
-  if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+  if (m_params.trackOnlySingletonMemory()) {
     // -- lhs is an integer/bool -> add array statement
     LoadFromSingletonMem(I, lhs->getVar(), m_lfac.mkArrayVar(rgn), rgn);
     return;
-  } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+  } else if (m_params.trackMemory()) {
     // if (rgn.getRegionInfo().isSequence()) {
     /// TODO: translate to load_from_arr_ref. This might increase precision.
     ///
@@ -2577,8 +2569,8 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
       m_bb.assume_ref(ref_cst_t::mk_gt_null(lhs->getVar()));
     }
 
-  } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM &&
-             !rgn.isUnknown() && rgn.getRegionInfo().containScalar()) {
+  } else if (m_params.trackOnlySingletonMemory() && !rgn.isUnknown() && 
+             rgn.getRegionInfo().containScalar()) {
     // Memory allocated in the stack is uninitialized.
     //
     // We assume they are zero initialized so that Crab's array
@@ -2694,9 +2686,9 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
     for (auto rgn : inOutRegions) {
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases))
         m_bb.havoc(m_lfac.mkScalarVar(rgn), "havoc region");
-      else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+      else if (m_params.trackOnlySingletonMemory()) {
         m_bb.havoc(m_lfac.mkArrayVar(rgn), "havoc region");
-      } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+      } else if (m_params.trackMemory()) {
         CLAM_WARNING("TODO havoc " << rgn << " from callsite " << I);
       }
     }
@@ -2881,8 +2873,8 @@ basic_block_label_t
 CfgBuilderImpl::getCrabBasicBlock(const BasicBlock *bb) const {
   auto it = m_node_to_crab_map.find(bb);
   if (it == m_node_to_crab_map.end()) {
-    CLAM_ERROR("cannot map llvm basic block ", bb->getName(),
-               " to crab basic block label");
+    CLAM_ERROR("cannot map llvm basic block " << bb->getName() 
+               << " to crab basic block label");
   }
   return it->second;
 }
@@ -2924,7 +2916,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
       MI.InitGlobalMemory(gv, *(gv.getInitializer()), 0);
     }
     // Add assumptions about global addresses
-    if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    if (m_params.trackMemory()) {
       crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
       assert(gv_lit && gv_lit->isVar());
       assert(gv_lit->getVar().get_type().is_reference());
@@ -3493,7 +3485,7 @@ void CfgBuilderImpl::addFunctionDeclaration() {
   if (!m_func.getName().equals("main")) {
     //// -- Purify the function
 
-    if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    if (m_params.trackMemory()) {
       // -- add the global values accessed by the function and its callees
       auto it = m_globals.find(&m_func);
       if (it != m_globals.end()) {
@@ -3526,9 +3518,9 @@ void CfgBuilderImpl::addFunctionDeclaration() {
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
         // Promote the global to a scalar
         inputs.push_back(m_lfac.mkScalarVar(rgn));
-      } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+      } else if (m_params.trackOnlySingletonMemory()) {
         inputs.push_back(m_lfac.mkArrayVar(rgn));
-      } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+      } else if (m_params.trackMemory()) {
         // IMPORTANT: ensure call-by-value semantics for input regions
         // TODO: we should do it also for scalars.
         var_t rgn_in = m_lfac.mkRegionVar(rgn.getRegionInfo());
@@ -3577,14 +3569,14 @@ void CfgBuilderImpl::addFunctionDeclaration() {
         continue;
       }
 
-      if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+      if (m_params.trackOnlySingletonMemory()) {
         // input version
         var_t a_in = m_lfac.mkArrayVar(rgn.getRegionInfo());
         entry.array_assign(m_lfac.mkArrayVar(rgn), a_in);
         inputs.push_back(a_in);
         // output version
         outputs.push_back(m_lfac.mkArrayVar(rgn));
-      } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+      } else if (m_params.trackMemory()) {
         // input version
         var_t rgn_in = m_lfac.mkRegionVar(rgn.getRegionInfo());
         entry.region_copy(m_lfac.mkRegionVar(rgn), rgn_in);
@@ -3596,9 +3588,9 @@ void CfgBuilderImpl::addFunctionDeclaration() {
 
     // -- add more output parameters
     for (auto rgn : outRegions) {
-      if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+      if (m_params.trackOnlySingletonMemory()) {
         outputs.push_back(m_lfac.mkArrayVar(rgn));
-      } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+      } else if (m_params.trackMemory()) {
         outputs.push_back(m_lfac.mkRegionVar(rgn));
       }
     }
@@ -3838,7 +3830,7 @@ CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
 
   if (!initialization_done) {
     const Module &M = *f.getParent();
-    if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    if (m_params.trackMemory()) {
       extractGlobals(M);
     }
     for (auto &F : M) {
@@ -3857,7 +3849,7 @@ CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
     builder->buildCfg();
     return builder;
   } else {
-    CLAM_ERROR("Not found cfg builder for " + f.getName().str());
+    CLAM_ERROR("Not found cfg builder for " << f.getName());
   }
 }
 
@@ -3872,7 +3864,7 @@ cfg_t &CrabBuilderManagerImpl::getCfg(const Function &f) const {
 CfgBuilderPtr CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
   auto it = m_cfg_builder_map.find(&f);
   if (it == m_cfg_builder_map.end()) {
-    CLAM_ERROR("Cannot find crab cfg for ", f.getName());
+    CLAM_ERROR("Cannot find crab cfg for " <<  f.getName());
   }
   return it->second;
 }
@@ -3923,7 +3915,7 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
     inputs.push_back(normalizeFuncParamOrRet(*v, m_bb, m_lfac));
   }
 
-  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+  if (m_params.trackMemory()) {
     // -- add the global values accessed by the function and its callees
     auto it = m_func_globals.find(calleeF);
     if (it != m_func_globals.end()) {
@@ -3993,9 +3985,9 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
     if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
       // Promote the global to a scalar
       inputs.push_back(m_lfac.mkScalarVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+    } else if (m_params.trackOnlySingletonMemory()) {
       inputs.push_back(m_lfac.mkArrayVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+    } else if (m_params.trackMemory()) {
       inputs.push_back(m_lfac.mkRegionVar(rgn));
     }
   }
@@ -4006,17 +3998,15 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
         outRegions.end()) {
       continue;
     }
-    bool lowerToScalar =
-        getSingletonValue(rgn, m_params.lower_singleton_aliases);
     // -- input version
-    if (lowerToScalar) {
+    if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
       // Promote the global to a scalar
       inputs.push_back(m_lfac.mkScalarVar(rgn));
       outputs.push_back(m_lfac.mkScalarVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+    } else if (m_params.trackOnlySingletonMemory()) {
       inputs.push_back(m_lfac.mkArrayVar(rgn));
       outputs.push_back(m_lfac.mkArrayVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+    } else if (m_params.trackMemory()) {
       inputs.push_back(m_lfac.mkRegionVar(rgn));
       outputs.push_back(m_lfac.mkRegionVar(rgn));
     }
@@ -4025,10 +4015,10 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   // -- add more output parameters
   for (auto rgn : outRegions) {
     // New regions cannot be singletons so they are directly
-    // translated as arrays
-    if (m_lfac.getTrack() == CrabBuilderPrecision::SINGLETON_MEM) {
+    // translated as arrays or regions
+    if (m_params.trackOnlySingletonMemory()) {
       outputs.push_back(m_lfac.mkArrayVar(rgn));
-    } else if (m_lfac.getTrack() == CrabBuilderPrecision::MEM) {
+    } else if (m_params.trackMemory()) {
       outputs.push_back(m_lfac.mkRegionVar(rgn));
     }
   }
@@ -4042,10 +4032,15 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
     }
   }
 
-  // For pending type conversions
-  std::vector<std::pair<var_t, var_t>> pendingInRgnCopies, pendingOutRgnCopies;
+  auto hasCompatibleTypes = [](const typename var_t::type_t &t1,
+			       const typename var_t::type_t &t2) {
+       return ((t1 == t2) ||
+	       (t1.is_unknown_region() && (t2.is_region() && !t2.is_unknown_region())) ||
+	       (t2.is_unknown_region() && (t1.is_region() && !t1.is_unknown_region())));
+    };
+  
+  // -- Sanity checks: callsites and function declarations are consistent
   if (calleeF_decl) {
-    // Sanity checks
     if (calleeF_decl->get_inputs().size() != inputs.size()) {
       crab::outs() << *calleeF_decl << "\n";
       crab::outs() << "num of inputs at callsite=" << inputs.size() << "\n";
@@ -4062,74 +4057,131 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
       CLAM_ERROR("Mismatch of number of outputs between callsite and function "
                  "declaration");
     }
-
-    if (m_params.precision_level != CrabBuilderPrecision::MEM) {
-      // More sanity checks
-      for (unsigned i = 0, num_args = inputs.size(); i < num_args; ++i) {
-        if (calleeF_decl->get_input_type(i) != inputs[i].get_type())
-          CLAM_ERROR(
-              "Mismatch between type of callsite and function declaration");
-      }
-      for (unsigned i = 0, num_args = outputs.size(); i < num_args; ++i) {
-        if (calleeF_decl->get_output_type(i) != outputs[i].get_type())
-          CLAM_ERROR(
-              "Mismatch between type of callsite and function declaration");
-      }
-    } else {
-      /**
-       * At this point, it's possible that the callee has a parameter
-       * with an untyped region and the callsite passes a typed
-       * region, or viceversa. We use, region_copy to do type
-       * conversion. Any other type type mismatch is considered an
-       * error.
-       **/
-      auto unifyRgnType =
-          [this](var_t &cparam, const var_t &fparam,
-                 std::vector<std::pair<var_t, var_t>> &pendingRgnCopies) {
-            auto is_typed_region = [](const var_t &v) {
-              return v.get_type().is_region() &&
-                     !v.get_type().is_unknown_region();
-            };
-            if (cparam.get_type() == fparam.get_type()) {
-              return false;
-            } else if ((cparam.get_type().is_unknown_region() &&
-                        is_typed_region(fparam)) ||
-                       (fparam.get_type().is_unknown_region() &&
-                        is_typed_region(cparam))) {
-              var_t tmp_rgn(m_lfac.getVFac().get(), fparam.get_type());
-              pendingRgnCopies.push_back({cparam, tmp_rgn});
-              cparam = tmp_rgn;
-              return true;
-            } else {
-              CLAM_ERROR(
-                  "Mismatch between type of callsite and function declaration");
-            }
-          };
-
-      for (unsigned i = 0, num_args = inputs.size(); i < num_args; ++i) {
-        // o1 := foo(i1) ==> region_copy(i1', i1); o1 := foo(i1')
-        unifyRgnType(inputs[i], calleeF_decl->get_input_name(i),
-                     pendingInRgnCopies);
-      }
-
-      for (unsigned i = 0, num_args = outputs.size(); i < num_args; ++i) {
-        // o1 := foo(i1) ==> o1' := foo(i1); region_copy(o1, o1')
-        unifyRgnType(outputs[i], calleeF_decl->get_output_name(i),
-                     pendingOutRgnCopies);
+    
+    for (unsigned i = 0, num_args = inputs.size(); i < num_args; ++i) {
+      if (!hasCompatibleTypes(calleeF_decl->get_input_type(i), inputs[i].get_type())) {
+	llvm::errs() << "Callsite:" << I << "\n";
+	llvm::errs() << "Caller  :" << I.getParent()->getParent()->getName() << "\n";
+	auto const &finputs = calleeF_decl->get_inputs();
+	crab::outs() << "Function inputs={";
+	for (unsigned i=0, nargs=finputs.size(); i<nargs;) {
+	  crab::outs() << finputs[i] << ":" << finputs[i].get_type();
+	  ++i;
+	  if (i < nargs) {
+	    crab::outs() << ",";
+	  }
+	}
+	crab::outs() << "}\n";
+	crab::outs() << "Callsite inputs={";
+	for (unsigned i=0, nargs=inputs.size(); i<nargs;) {
+	  crab::outs() << inputs[i] << ":" << inputs[i].get_type();
+	  ++i;
+	  if (i < nargs) {
+	    crab::outs() << ",";
+	  }
+	}
+	crab::outs() << "}\n";
+	crab::outs() << "Function typeof(" << calleeF_decl->get_input_name(i)
+		     << ")=" << calleeF_decl->get_input_type(i) 
+		     << "\nCallsite typeof(" << inputs[i] << ")="
+		     << inputs[i].get_type() << "\n";
+	CLAM_ERROR("Mismatch between callsite and function declaration " 
+		   << "due to type of " <<  i <<  "-th input parameter.");
       }
     }
-  } else {
-    // here if intrinsics
+    for (unsigned i = 0, num_args = outputs.size(); i < num_args; ++i) {
+      if (!hasCompatibleTypes(calleeF_decl->get_output_type(i), outputs[i].get_type())) {
+	llvm::errs() << "Callsite:" << I << "\n";
+	llvm::errs() << "Caller  :" << I.getParent()->getParent()->getName() << "\n";	
+	auto const &foutputs = calleeF_decl->get_outputs();
+	crab::outs() << "Function outputs={";
+	for (unsigned i=0, nargs=foutputs.size(); i<nargs;) {
+	  crab::outs() << foutputs[i] << ":" << foutputs[i].get_type();
+	  ++i;
+	  if (i < nargs) {
+	    crab::outs() << ",";
+	  }
+	}
+	crab::outs() << "}\n";
+	crab::outs() << "Callsite outputs={";
+	for (unsigned i=0, nargs=outputs.size(); i<nargs;) {
+	  crab::outs() << outputs[i] << ":" << outputs[i].get_type();
+	  ++i;
+	  if (i < nargs) {
+	    crab::outs() << ",";
+	  }
+	}
+	crab::outs() << "}\n";
+	crab::outs() << "Function typeof(" << calleeF_decl->get_output_name(i)
+		     << ")=" << calleeF_decl->get_output_type(i) 
+		     << "\nCallsite typeof(" << outputs[i] << ")="
+		     << outputs[i].get_type() << "\n";
+	CLAM_ERROR("Mismatch between callsite and function declaration " 
+		   << "due to type of " <<  i <<  "-th output parameter.");
+      }
+    }
   }
-
+  
+  /**
+   * Crab has a strongly typed system so we need to be careful to
+   * avoid breaking it.
+   * 
+   * The pointer analysis tries to assign a type to a region. However,
+   * a region might not have a type due to two completely different
+   * reasons: (a) imprecision of the analysis, or (b) the region has
+   * not been yet accessed. In both cases, the region is marked with
+   * the "unknown" type. As a result, it's possible that at a callsite
+   * the type of an actual parameter is not exactly the same type of
+   * the corresponding function parameter. To accomodate this, instead
+   * of using syntactic equality between types we assume two types are
+   * the same if the function hasCompatibleTypes (defined above)
+   * returns true. Moreover, we use the Crab region_copy statement to
+   * perform explicitly the type conversion (before and after
+   * callsites) between regions (but only between unknown and known
+   * ones) so that Crab is happy about it.
+   **/
+  std::vector<std::pair<var_t, var_t>> pendingInRgnCasts, pendingOutRgnCasts;
+  if (m_params.trackMemory() && calleeF_decl) {
+    auto unifyRgnType =
+      [this, &I](var_t &cparam, const var_t &fparam,
+                 std::vector<std::pair<var_t, var_t>> &pendingRgnCasts) {
+	auto is_typed_region = [](const var_t &v) {
+        return v.get_type().is_region() && !v.get_type().is_unknown_region();};
+	
+	if (cparam.get_type() == fparam.get_type()) {
+	  return; // do nothing
+	} else if ((cparam.get_type().is_unknown_region() && is_typed_region(fparam)) ||
+		    fparam.get_type().is_unknown_region() && is_typed_region(cparam)) {
+	  var_t aux_rgn(m_lfac.getVFac().get(), fparam.get_type());
+	  var_t old_cparam(cparam);
+	  pendingRgnCasts.push_back({old_cparam, aux_rgn});
+	  cparam = std::get<1>(pendingRgnCasts.back()); // reference to aux_rgn
+	} else {
+	  CLAM_ERROR("Mismatch between type of callsite and function declaration");
+	}
+      };
+    
+    for (unsigned i = 0, num_args = inputs.size(); i < num_args; ++i) {
+      // o1 := foo(i1) ==> region_copy(i1', i1); o1 := foo(i1')
+      unifyRgnType(inputs[i], calleeF_decl->get_input_name(i),
+		   pendingInRgnCasts);
+    }
+    
+    for (unsigned i = 0, num_args = outputs.size(); i < num_args; ++i) {
+      // o1 := foo(i1) ==> o1' := foo(i1); region_copy(o1, o1')
+      unifyRgnType(outputs[i], calleeF_decl->get_output_name(i),
+		   pendingOutRgnCasts);
+    }
+  }
+  
   // -- Finally, add the callsite or crab intrinsic
   if (isCrabIntrinsic(*calleeF)) {
     std::string name = getCrabIntrinsicName(*calleeF);
-    if (m_params.precision_level == CrabBuilderPrecision::MEM &&
+    if (m_params.trackMemory() &&
         (name == "is_unfreed_or_null" || name == "unfreed_or_null")) {
       // Pass the region of the pointer
       if (inputs.size() != 1) {
-        CLAM_ERROR("Intrinsic ", name, " should have only one input parameter");
+        CLAM_ERROR("Intrinsic " << name << " should have only one input parameter");
       }
       Value *ptr = CS.getArgument(0);
       Region rgn_ptr = getRegion(m_mem, m_func_regions, m_params,
@@ -4140,15 +4192,21 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
       m_bb.intrinsic(name, outputs, inputs);
     }
   } else {
-    for (unsigned i = 0, sz = pendingInRgnCopies.size(); i < sz; ++i)
-      m_bb.region_copy(pendingInRgnCopies[i].second,
-                       pendingInRgnCopies[i].first);
+    if (m_params.trackMemory()) {
+      for (unsigned i = 0, sz = pendingInRgnCasts.size(); i < sz; ++i) {
+	m_bb.region_copy(pendingInRgnCasts[i].second,
+			 pendingInRgnCasts[i].first);
+      }
+    }
 
     m_bb.callsite(calleeF->getName().str(), outputs, inputs);
 
-    for (unsigned i = 0, sz = pendingOutRgnCopies.size(); i < sz; ++i)
-      m_bb.region_copy(pendingOutRgnCopies[i].first,
-                       pendingOutRgnCopies[i].second);
+    if (m_params.trackMemory()) {    
+      for (unsigned i = 0, sz = pendingOutRgnCasts.size(); i < sz; ++i) {
+	m_bb.region_copy(pendingOutRgnCasts[i].first,
+			 pendingOutRgnCasts[i].second);
+      }
+    }
   }
 
   if (m_params.addPointerAssumptions()) {
