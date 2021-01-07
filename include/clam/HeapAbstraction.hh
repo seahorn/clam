@@ -66,9 +66,21 @@ public:
   }
 
   bool hasSameType(const RegionInfo &o) const {
+    // note that ignores flags m_is_sequence and m_is_heap
     return (getType() == o.getType() && getBitwidth() == o.getBitwidth());
   }
 
+  bool operator==(const RegionInfo &o) const {
+    return hasSameType(o);
+  }
+
+  bool operator<(const RegionInfo &o) const {
+    // note that ignores flags m_is_sequence and m_is_heap    
+    return (getType() == o.getType() ?
+	    getBitwidth() < o.getBitwidth()
+	    : getType() < o.getType());
+  }
+  
   bool hasCompatibleType(const RegionInfo &o) const {
     if (isUntyped() || o.isUntyped()) {
       return true;
