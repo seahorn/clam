@@ -66,7 +66,20 @@ public:
 
 private:
   using lit_cache_t = std::unordered_map<const llvm::Value *, crab_lit_ref_t>;
-  using rgn_cache_t = std::map<Region, var_t>;
+  // We need this ordering for caching regions because the same
+  // region's id can appear with two different types so we need to
+  // treat them as different variables.
+  // 
+  // FIXME/REVISIT: not sure why this is possible but it happens.
+  struct RegionCompare {
+    // lexicographical ordering of region id and type
+    bool operator()(const Region &rgn1, const Region &rgn2) const{
+      return (rgn1.getId() == rgn2.getId() ?
+	      rgn1.getRegionInfo() < rgn2.getRegionInfo() :
+	      rgn1.getId() < rgn2.getId());
+    }
+  };
+  using rgn_cache_t = std::map<Region, var_t, RegionCompare>;
 
   llvm_variable_factory &m_vfac;
   const CrabBuilderParams &m_params;
@@ -180,7 +193,7 @@ var_t crabLitFactoryImpl::mkRegionVar(Region rgn) {
   if (it != m_rgn_cache.end()) {
     return it->second;
   }
-
+  
   crab::variable_type type = regionTypeToCrabType(rgn.getRegionInfo());
   var_t res(m_vfac.get(), type);
   m_rgn_cache.insert({rgn, res});
@@ -188,11 +201,12 @@ var_t crabLitFactoryImpl::mkRegionVar(Region rgn) {
 }
 
 var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
+
   auto it = m_rgn_cache.find(rgn);
   if (it != m_rgn_cache.end()) {
     return it->second;
   }
-
+  
   unsigned bitwidth = 0;
   if (const Value *v = rgn.getSingleton()) {
     Type *ty = cast<PointerType>(v->getType())->getElementType();
