@@ -17,8 +17,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 
-#include "./crab/path_analyzer.hpp"
-#include "./crab/printer.hpp"
+#include "clam/config.h"
 #include "clam/CfgBuilder.hh"
 #include "clam/Clam.hh"
 #include "clam/ClamAnalysisParams.hh"
@@ -29,6 +28,8 @@
 #include "clam/Support/Debug.hh"
 #include "clam/Support/NameValues.hh"
 #include "clam/crab/crab_domains.hh"
+#include "./crab/path_analyzer.hpp"
+#include "./crab/printer.hpp"
 
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/CompleteCallGraph.hh"
@@ -1084,6 +1085,7 @@ void ClamPass::printChecks(raw_ostream &o) const {
     << warning << std::string(2, ' ') << "Number of total warning checks\n";
 }
 
+#ifdef INCLUDE_ALL_DOMAINS
 REGISTER_DOMAIN(CrabDomain::INTERVALS, interval_domain_t)
 REGISTER_DOMAIN(CrabDomain::ZONES_SPLIT_DBM, split_dbm_domain_t)
 REGISTER_DOMAIN(CrabDomain::DIS_INTERVALS, dis_interval_domain_t)
@@ -1099,6 +1101,7 @@ REGISTER_DOMAIN(CrabDomain::TERMS_ZONES, num_domain_t)
 REGISTER_DOMAIN(CrabDomain::BOXES, boxes_domain_t)
 #endif
 REGISTER_DOMAIN(CrabDomain::WRAPPED_INTERVALS, wrapped_interval_domain_t)
+#endif
 
 char clam::ClamPass::ID = 0;
 } // namespace clam

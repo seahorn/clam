@@ -10,3 +10,7 @@
  ** in DBM-based domains. Only if USE_DBM_BIGNUM is disabled.  **/
 #cmakedefine USE_DBM_SAFEINT ${USE_DBM_SAFEINT}
 
+/** Include all default abstract domains.**/
+#cmakedefine INCLUDE_ALL_DOMAINS ${INCLUDE_ALL_DOMAINS}
+ 
+

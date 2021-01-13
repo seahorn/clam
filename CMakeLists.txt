@@ -21,29 +21,65 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR )
     "In-source builds are not allowed. Please clean your source tree and try again.")
 endif()
 
-enable_testing()
-include (CTest)
-
-# By default, we don't include clam transformations if we are an
-# embedded project, but user can change that.
-option(CLAM_INCLUDE_TRANSFORMS OFF)
-
-# Save old CMAKE_FIND_LIBRARY_SUFFIXES
-set(_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
-
 # determine if this is top-level or embedded project
 if (PROJECT_NAME STREQUAL CMAKE_PROJECT_NAME)
   set(TopLevel TRUE)
-  set(CLAM_INCLUDE_TRANSFORMS ON)  
 else()
   set(TopLevel FALSE)
 endif()
 
-if (CLAM_INCLUDE_TRANSFORMS)
-  message(STATUS "Including clam transformations.")
-else()
-  message(STATUS "Excluding clam transformations.")
+if (NOT CRAB_ROOT)
+  set(CRAB_ROOT "" CACHE PATH "Root of Crab source tree")
 endif()
+
+if (NOT SEADSA_ROOT)
+  set(SEADSA_ROOT "" CACHE PATH "Root of sea-dsa source tree")
+endif()  
+
+# By default, we include all the source code if we are not an
+# embedded project, but user can change that.
+option(CLAM_INCLUDE_TRANSFORMS "Include clam pre-processing transformations" ON)
+option(CLAM_INCLUDE_POST_TRANSFORMS "Include clam post-processing transformations" ON)
+option(CLAM_INCLUDE_PYTHON "Include clam python scripts" ON)
+option(CLAM_INCLUDE_TESTS "Include clam tests" ON)
+option(CLAM_INCLUDE_TOOLS "Include clam tools" ON)
+
+if (NOT TopLevel)
+  set(CLAM_INCLUDE_TRANSFORMS OFF)
+  set(CLAM_INCLUDE_POST_TRANSFORMS OFF)  
+  set(CLAM_INCLUDE_PYTHON OFF)
+  set(CLAM_INCLUDE_TESTS OFF)
+  set(CLAM_INCLUDE_TOOLS OFF)
+endif()  
+
+if (CLAM_INCLUDE_TRANSFORMS)
+  message(STATUS "Clam: including LLVM pre-processing transformations.")
+else()
+  message(STATUS "Clam: excluding LLVM pre-processing transformations.")
+endif()
+if (CLAM_INCLUDE_POST_TRANSFORMS)
+  message(STATUS "Clam: including LLVM post-processing transformations.")
+else()
+  message(STATUS "Clam: excluding LLVM post-processing transformations.")
+endif()
+if (CLAM_INCLUDE_PYTHON)
+  message(STATUS "Clam: including python scripts.")
+else()
+  message(STATUS "Clam: excluding python scripts.")
+endif()
+if (CLAM_INCLUDE_TESTS)
+  message(STATUS "Clam: including tests.")
+else()
+  message(STATUS "Clam: excluding tests.")
+endif()
+if (CLAM_INCLUDE_TOOLS)
+  message(STATUS "Clam: including tools.")
+else()
+  message(STATUS "Clam: excluding tools.")
+endif()
+
+# Save old CMAKE_FIND_LIBRARY_SUFFIXES
+set(_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
 # Default is release with debug info
 if(NOT CMAKE_BUILD_TYPE)
@@ -67,18 +103,24 @@ option (CLAM_USE_COTIRE "Use cotire to reduce compilation time" OFF)
 option (CLAM_BUILD_LIBS_SHARED "Build all Clam libraries dynamically" OFF)
 option (CLAM_USE_DBM_BIGNUM "Use big numbers for DBM weights" OFF)
 if (CLAM_USE_DBM_BIGNUM)
-  message(STATUS "DBM-based domains will use big numbers for representing weights")  
+  message(STATUS "Clam: DBM-based domains will use big numbers for representing weights")  
   set(USE_DBM_BIGNUM TRUE)
 else()
   set(USE_DBM_BIGNUM FALSE)
   option (CLAM_USE_DBM_SAFEINT "Use safe integers for DBM weights" OFF)
   if (CLAM_USE_DBM_SAFEINT)
-    message(STATUS "DBM-based domains will use safe integers for representing weights")  
+    message(STATUS "Clam: DBM-based domains will use safe integers for representing weights")  
     set(USE_DBM_SAFEINT TRUE)
   else()
     set(USE_DBM_SAFEINT FALSE)
   endif()
 endif()
+option (CLAM_INCLUDE_ALL_DOMAINS "Include all default abstract domains" ON)
+if (CLAM_INCLUDE_ALL_DOMAINS)
+  set(INCLUDE_ALL_DOMAINS TRUE)
+else()
+  set(INCLUDE_ALL_DOMAINS FALSE)
+endif()  
 #### end clam options ######
 
 # Add path for custom modules
@@ -90,12 +132,12 @@ if (NOT CLAM_BUILD_LIBS_SHARED)
 endif ()   
 
 if (CLAM_BUILD_LIBS_SHARED)
-  message (STATUS "Clam libraries are built dynamically but not llvm, sea-dsa, and llvm-seahorn")
+  message (STATUS "Clam: libraries are built dynamically but not llvm, sea-dsa, and llvm-seahorn")
   set(CLAM_LIBS_TYPE SHARED)
   ## To build crab dynamically
   set(CRAB_BUILD_LIBS_SHARED ON)
 else()
-  message (STATUS "Clam libraries are built statically")
+  message (STATUS "Clam: libraries are built statically")
   set(CLAM_LIBS_TYPE STATIC)
   set(CRAB_BUILD_LIBS_SHARED OFF)  
 endif ()
@@ -147,6 +189,13 @@ set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
 find_package (Git)
 
 if (GIT_FOUND)
+  set (SEADSA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/sea-dsa" CACHE STRING "seadsa source directory")
+  if (TopLevel)
+    set (CRAB_SOURCE_DIR "${CMAKE_SOURCE_DIR}/crab" CACHE STRING "crab source directory")
+  else ()
+    set (CRAB_SOURCE_DIR "${CMAKE_SOURCE_DIR}/clam/crab" CACHE STRING "crab source directory" FORCE)
+  endif ()
+  
   if (TopLevel)
     set (SEA_DSA_REPO "https://github.com/seahorn/sea-dsa"
       CACHE STRING "sea-dsa repo")
@@ -154,42 +203,25 @@ if (GIT_FOUND)
       CACHE STRING "seahorn-llvm repo")
 
     add_custom_target (sea-dsa-git
-      ${GIT_EXECUTABLE} clone -b dev10 ${SEA_DSA_REPO} ${CMAKE_SOURCE_DIR}/sea-dsa)
+      ${GIT_EXECUTABLE} clone -b dev10 ${SEA_DSA_REPO} ${SEADSA_SOURCE_DIR})
     add_custom_target (seahorn-llvm-git
       ${GIT_EXECUTABLE} clone -b dev10 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
     add_custom_target (extra DEPENDS sea-dsa-git seahorn-llvm-git)
   endif ()
 
-  set (CRAB_REPO "https://github.com/seahorn/crab.git" CACHE STRING "crab repo")
-  
-  if (TopLevel)
-    set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/crab" CACHE STRING "crab root directory")
-  else ()
-    set (CRAB_ROOT "${CMAKE_SOURCE_DIR}/clam/crab" CACHE STRING "crab root directory" FORCE)
-  endif ()
-  
+  set (CRAB_REPO "https://github.com/seahorn/crab.git" CACHE STRING "crab repo")    
   add_custom_target (crab-git
-     		     ${GIT_EXECUTABLE} clone ${CRAB_REPO} -b dev ${CRAB_ROOT})
+     		     ${GIT_EXECUTABLE} clone ${CRAB_REPO} -b dev ${CRAB_SOURCE_DIR})
   
   add_custom_target (crab ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
                      DEPENDS crab-git)    
 
 else ()
   if (TopLevel)
-    message (STATUS "Could not find git. Not adding 'extra' and 'crab' targets.")
+    message (STATUS "Clam: could not find git. Not adding 'extra' and 'crab' targets.")
   endif ()
 endif ()
 
-
-#### begin crab stuff ####
-if (IS_DIRECTORY ${CRAB_ROOT} AND EXISTS ${CRAB_ROOT}/CMakeLists.txt)
- add_subdirectory(${CRAB_ROOT} run)
- include_directories (BEFORE ${CRAB_INCLUDE_DIRS})
-else()
-  message (WARNING "No crab found. Run \n\tcmake --build . --target crab && cmake ${CMAKE_SOURCE_DIR}")
-  return ()
-endif()
-#### end crab stuff ####
 
 if (TopLevel)
   set (LLVM_TAG "llvmorg-10.0.0" CACHE STRING "LLVM tag")  
@@ -213,7 +245,7 @@ if (TopLevel)
     DEPENDS download-llvm-src
     DOWNLOAD_COMMAND ""    
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/ext/llvm
-    INSTALL_DIR ${CMAKE_BINARY_DIR}/run
+    INSTALL_DIR ${CMAKE_BINARY_DIR}/llvm-install
     CMAKE_ARGS
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
     -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
@@ -249,14 +281,14 @@ if (TopLevel)
     set (LLVM_ROOT ${INSTALL_DIR})
     set (LLVM_DIR ${LLVM_ROOT}/lib/cmake/llvm CACHE PATH
       "Forced location of LLVM cmake config" FORCE)
-    message (WARNING "No llvm found. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
+    message (WARNING "Clam: no llvm found. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
     return()
   else()
     set_target_properties(llvm PROPERTIES EXCLUDE_FROM_ALL ON)
   endif()
   
-  message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-  message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+  message(STATUS "Clam: found LLVM ${LLVM_PACKAGE_VERSION}")
+  message(STATUS "Clam: using LLVMConfig.cmake in: ${LLVM_DIR}")
   
   # We incorporate the CMake features provided by LLVM:
   list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
@@ -294,12 +326,40 @@ endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
-if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND
-    EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/lib/seadsa/DsaAnalysis.cc)
-  set (HAVE_SEA_DSA TRUE)
+if (IS_DIRECTORY "${CRAB_ROOT}" AND EXISTS ${CRAB_ROOT}/CMakeLists.txt)
+  ## Crab source code already exists out-of-the tree   
+  message(STATUS "Clam: using Crab found in ${CRAB_ROOT}")
+  set(CRAB_BINARY_DIR crab) ## needed if CRAB_ROOT out of tree.
+  add_subdirectory(${CRAB_ROOT} ${CRAB_BINARY_DIR})
+  include_directories (BEFORE ${CRAB_INCLUDE_DIRS})
+elseif(IS_DIRECTORY ${CRAB_SOURCE_DIR} AND EXISTS ${CRAB_SOURCE_DIR}/CMakeLists.txt)
+  ## Crab source code already exists in-tree  
+  set(CRAB_BINARY_DIR crab) 
+  add_subdirectory(${CRAB_SOURCE_DIR} ${CRAB_BINARY_DIR})
+  include_directories (BEFORE ${CRAB_INCLUDE_DIRS})
 else()
-  message (WARNING "SeaDsa is required but not found in ${CMAKE_SOURCE_DIR}/sea-dsa. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
-  return()
+  message (WARNING "Clam: no crab found. Run \n\tcmake --build . --target crab && cmake ${CMAKE_SOURCE_DIR}")
+  return ()
+endif()
+
+if (TopLevel)
+  if (IS_DIRECTORY "${SEADSA_ROOT}" AND EXISTS ${SEADSA_ROOT}/CMakeLists.txt)
+    ## sea-dsa source code already exists out-of-the tree     
+    message(STATUS "Clam: using sea-dsa found in ${SEADSA_ROOT}")
+    include_directories (BEFORE ${SEADSA_ROOT}/include)
+    set(SEADSA_BINARY_DIR sea-dsa) ## needed if SEADSA_ROOT out of tree
+    add_subdirectory (${SEADSA_ROOT} ${SEADSA_BINARY_DIR})
+    set(SEA_DSA_LIBS SeaDsaAnalysis)
+  elseif (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/sea-dsa AND EXISTS ${CMAKE_SOURCE_DIR}/sea-dsa/CMakeLists.txt)
+    ## sea-dsa source code already exists in-tree    
+    include_directories (BEFORE ${CMAKE_SOURCE_DIR}/sea-dsa/include)
+    set(SEADSA_BINARY_DIR sea-dsa) 
+    add_subdirectory (${CMAKE_SOURCE_DIR}/sea-dsa ${SEADSA_BINARY_DIR})
+    set(SEA_DSA_LIBS SeaDsaAnalysis)
+  else()
+    message (WARNING "Clam: SeaDsa is required but not found in ${SEADSA_SOURCE_DIR}. Run\n\tcmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
+    return()
+  endif()
 endif()
 
 if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND
@@ -308,39 +368,18 @@ if (IS_DIRECTORY ${CMAKE_SOURCE_DIR}/llvm-seahorn AND
 endif()
 
 if (TopLevel)
-  if (HAVE_SEA_DSA)
-    include_directories (BEFORE sea-dsa/include)
-    add_subdirectory (${CMAKE_SOURCE_DIR}/sea-dsa)
-    set (SEA_DSA_LIBS SeaDsaAnalysis)
-    set (HAVE_SEA_DSA TRUE)    
-  else()
-    set (SEA_DSA_LIBS "")
-  endif()
-  
   if (HAVE_LLVM_SEAHORN)
     include_directories (BEFORE llvm-seahorn/include)
     add_subdirectory(llvm-seahorn/lib)
     add_subdirectory(llvm-seahorn/tools)
-    set (HAVE_LLVM_SEAHORN TRUE)
     set (LLVM_SEAHORN_LIBS SeaInstCombine SeaLoops)
-  endif()
-
-  if ((NOT HAVE_SEA_DSA) OR (NOT HAVE_LLVM_SEAHORN))
-    set(EXTRA_MSG  "")
-    if (NOT HAVE_SEA_DSA)
-      message(WARNING "The sea-dsa package cannot be found.\nRun cmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")      
+  else()  
+    if (CLAM_INCLUDE_TOOLS)
+      message(WARNING "Clam: No LLVM-SEAHORN found in ${CMAKE_SOURCE_DIR}/llvm-seahorn\n"
+	"The lack of this package might affect both performance and precision of Clam.")
     endif()    
-    if (NOT HAVE_LLVM_SEAHORN)
-      set(EXTRA_MSG "${EXTRA_MSG}\n - No LLVM-SEAHORN in ${CMAKE_SOURCE_DIR}/llvm-seahorn.")
-    endif()
-    
-    #message(WARNING "The following packages cannot be found:${EXTRA_MSG}\nRun cmake --build . --target extra && cmake ${CMAKE_SOURCE_DIR}")
-    message(WARNING "These external packages have not been installed: ${EXTRA_MSG}\n"
-      "The lack of these packages might affect both performance and precision "
-      " of the tool.")
-  endif()  
-  
-endif ()
+  endif()
+endif()  
 
 include_directories(BEFORE ${Clam_SOURCE_DIR}/include)
 include_directories (BEFORE ${CMAKE_BINARY_DIR}/include)
@@ -348,10 +387,13 @@ add_subdirectory(lib)
 
 configure_file(include/clam/config.h.cmake
                ${CMAKE_BINARY_DIR}/include/clam/config.h) 
-
-if (TopLevel)
+if (CLAM_INCLUDE_TOOLS)
   add_subdirectory(tools)
+endif()
+if (CLAM_INCLUDE_PYTHON)
   add_subdirectory(py)
+endif()
+if (CLAM_INCLUDE_TESTS)
   add_subdirectory(tests)
 endif()
 
@@ -362,8 +404,11 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES ${_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
 if (NOT TopLevel)
    set(XCLAM_LIBS
      ClamAnalysis
-     ClamInstrumentation
      ClamSupport)
+
+   if (CLAM_INCLUDE_POST_TRANSFORMS)
+     set(XCLAM_LIBS ${XCLAM_LIBS} ClamInstrumentation)
+   endif()
    
    if (CLAM_INCLUDE_TRANSFORMS)
      set(XCLAM_LIBS ${XCLAM_LIBS} LlvmPasses)
@@ -388,7 +433,7 @@ if (TopLevel)
    # Configure CPack.
    include(TargetArch)
    target_architecture(CMAKE_TARGET_ARCH)
-   message ("-- arch: ${CMAKE_TARGET_ARCH}")
+   #message ("-- arch: ${CMAKE_TARGET_ARCH}")
    set(CPACK_PACKAGE_INSTALL_DIRECTORY "Clam")
    set(CPACK_PACKAGE_VENDOR "Clam")
    set(CPACK_PACKAGE_VERSION_MAJOR ${Clam_VERSION_MAJOR})

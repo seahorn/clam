@@ -311,8 +311,13 @@ int main(int argc, char **argv) {
     pass_manager.add(llvm::createCFGSimplificationPass());
     // rotate loops:
     // we don't like rotated loops unless it's strictly necessary
-    if (PeelLoops > 0)
+    if (PeelLoops > 0) {
+#ifdef HAVE_LLVM_SEAHORN      
       pass_manager.add(llvm_seahorn::createLoopRotatePass(/*1023*/));
+#else
+      pass_manager.add(llvm::createLoopRotatePass());
+#endif       
+    }
     // loop-closed SSA
     pass_manager.add(llvm::createLCSSAPass());
     if (PeelLoops > 0)
