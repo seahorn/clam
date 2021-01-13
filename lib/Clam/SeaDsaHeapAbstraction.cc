@@ -82,8 +82,9 @@ static std::vector<unsigned> extractFields(const Node *n,
     }
     if (fields.empty() && isRetReach) {
       fields.push_back(0);
-    }
+    }    
   }
+  std::sort(fields.begin(), fields.end());  
   return fields;
 }
 
@@ -502,6 +503,8 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
 
   m_dsa->runOnModule(const_cast<Module &>(M));
 
+  
+  
   initialize(M);
 }
 
