@@ -50,9 +50,20 @@ CrabEnableBignums("crab-enable-bignums",
      cl::init(false));
 
 cl::opt<bool>
-CrabAddNonNullity("crab-add-nonnull",
-     cl::desc("Add non-nullity assumptions (e.g., allocas cannot be null, etc)"), 
+CrabAddPtrAssumptions("crab-ptr-assumptions",
+     cl::desc("Add reasonable assumptions about the memory model"), 
      cl::init(true));
+
+
+cl::opt<bool>
+CrabCheckOnlyTyped("crab-check-only-typed-regions",
+     cl::desc("Add check only if abstract memory region is typed"), 
+     cl::init(false));
+
+cl::opt<bool>
+CrabCheckOnlyNonCyclic("crab-check-only-noncyclic-regions",
+     cl::desc("Add check only if abstract memory region is not cyclic"), 
+     cl::init(false));
 
 /*** Crab Analysis Options ***/
 
@@ -61,10 +72,10 @@ CrabPrintAns("crab-print-invariants",
               cl::desc("Print Crab invariants"),
               cl::init(false));
 
-cl::opt<bool>
-CrabPrintSumm("crab-print-summaries", 
-               cl::desc("Print Crab function summaries"),
-               cl::init(false));
+// cl::opt<bool>
+// CrabPrintSumm("crab-print-summaries", 
+//               cl::desc("Print Crab function summaries"),
+//                cl::init(false));
 
 cl::opt<bool>
 CrabStoreInvariants("crab-store-invariants", 

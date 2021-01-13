@@ -372,6 +372,12 @@ def parseArgs(argv):
                    help='Check properties (default no check)',
                    choices=['none', 'assert', 'null', 'uaf'],
                    dest='assert_check', default='none')
+    add_bool_argument(p, 'crab-check-only-typed', default=False, 
+                      help='Add checks only on typed regions (only for null and uaf). False by default',
+                      dest='crab_check_only_typed')
+    add_bool_argument(p, 'crab-check-only-noncyclic', default=False, 
+                      help='Add checks only on noncyclic regions (only for null and uaf). False by default',
+                      dest='crab_check_only_noncyclic')
     p.add_argument('--crab-check-verbose', metavar='INT',
                     help='Print verbose information about checks\n' + 
                          '>=1: only error checks\n' + 
@@ -825,13 +831,22 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_promote_assume: clam_args.append('--crab-promote-assume')
     if args.assert_check:
         if args.assert_check == 'null':
-            clam_args.append('--crab-check-null')
+            clam_args.append('--crab-null-check')
             clam_args.append('--crab-check=assert')
         elif  args.assert_check == 'uaf':
-            clam_args.append('--crab-check-uaf')
+            clam_args.append('--crab-uaf-check')
             clam_args.append('--crab-check=assert')
         else:
             clam_args.append('--crab-check={0}'.format(args.assert_check))
+        if args.assert_check == 'null' or args.assert_check == 'uaf':
+            if args.crab_check_only_typed:
+                clam_args.append('--crab-check-only-typed-regions=true')
+            else:
+                clam_args.append('--crab-check-only-typed-regions=false')
+            if args.crab_check_only_noncyclic:
+                clam_args.append('--crab-check-only-noncyclic-regions=true')
+            else:
+                clam_args.append('--crab-check-only-noncyclic-regions=false')
     if args.check_verbose:
         clam_args.append('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.print_summs: clam_args.append('--crab-print-summaries')

@@ -159,6 +159,36 @@ static bool isDisjointCell(const Cell &c, const DataLayout &dl) {
   // XXX: do we need to ignore recursive nodes?
   return true;
 }
+
+static bool IsCyclicRec(const Node *d, const Node *n,
+			clam::seadsa_heap_abs_impl::NodeSet &visited) {
+  if (!d) {
+    return false;
+  }
+  if (d == n) {
+    return true;
+  }
+  if (visited.insert(d).second) {
+    for (auto const &edg : d->links()) {
+      if (IsCyclicRec(edg.second->getNode(), n, visited)) {
+	return true;
+      }
+    }
+  }
+  return false;
+}
+  
+static bool IsCyclic(const Node *n) {
+  if (!n) return false;
+  clam::seadsa_heap_abs_impl::NodeSet visited;
+  for (auto const &edg : n->links()) {
+    if (IsCyclicRec(edg.second->getNode(), n, visited)) {
+      return true;
+    }
+  }
+  return false;
+}
+  
 } // end namespace
 
 namespace clam {
@@ -166,17 +196,18 @@ namespace clam {
 using namespace llvm;
 using namespace seadsa;
 
+  
 // SeaDsaToRegion succeeds if returned valued != UNTYPED_REGION
 RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
                           bool disambiguate_unknown, bool disambiguate_ptr_cast,
                           bool disambiguate_external) {
 
-  auto defaultRegionInfo = [](bool isSequence, bool isHeap) {
-    return RegionInfo(region_type_t::UNTYPED_REGION, 0, isSequence, isHeap);
+  auto defaultRegionInfo = [](bool isSequence, bool isHeap, bool isCyclic) {
+      return RegionInfo(region_type_t::UNTYPED_REGION, 0, isSequence, isHeap, isCyclic);
   };
 
   if (c.isNull()) {
-    return defaultRegionInfo(false, false);
+    return defaultRegionInfo(false, false, false);
   }
 
   const Node *n = c.getNode();
@@ -191,14 +222,14 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
     CRAB_LOG("heap-abs-seadsa-to-region",
              errs() << "\tWe cannot disambiguate it because "
                     << "it is never accessed.\n";);
-    return defaultRegionInfo(n->isArray(), n->isHeap());
+    return defaultRegionInfo(n->isArray(), n->isHeap(), IsCyclic(n));
   }
 
   if (n->isOffsetCollapsed()) {
     CRAB_LOG("heap-abs-seadsa-to-region",
              errs() << "\tCannot be converted to region: node is already "
                        "collapsed.\n";);
-    return defaultRegionInfo(n->isArray(), n->isHeap());
+    return defaultRegionInfo(n->isArray(), n->isHeap(), IsCyclic(n));
   }
 
   if (n->isIntToPtr() || n->isPtrToInt()) {
@@ -206,7 +237,7 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
       CRAB_LOG("heap-abs-seadsa-to-region",
                errs() << "\tCannot be converted to region: node is casted "
                       << "from/to an integer.\n";);
-      return defaultRegionInfo(n->isArray(), n->isHeap());
+      return defaultRegionInfo(n->isArray(), n->isHeap(), IsCyclic(n));
     }
   }
 
@@ -215,7 +246,7 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
       CRAB_LOG(
           "heap-abs-seadsa-to-region",
           errs() << "\tCannot be converted to region: node is external.\n";);
-      return defaultRegionInfo(n->isArray(), n->isHeap());
+      return defaultRegionInfo(n->isArray(), n->isHeap(), IsCyclic(n));
     }
   }
 
@@ -229,12 +260,12 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
                       << " with bitwidth=" << int_pred.m_bitwidth << "\n";);
 
       return RegionInfo(region_type_t::INT_REGION, int_pred.m_bitwidth,
-                        n->isArray(), n->isHeap());
+                        n->isArray(), n->isHeap(), IsCyclic(n));
     } else {
       CRAB_LOG(
           "heap-abs-seadsa-to-region",
           errs() << "\tCannot be converted to region due to overlapping.\n";);
-      return defaultRegionInfo(n->isArray(), n->isHeap());
+      return defaultRegionInfo(n->isArray(), n->isHeap(), IsCyclic(n));
     }
   }
 
@@ -247,12 +278,12 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
                       << "\tFound BOOL_REGION at offset " << offset
                       << " with bitwidth=1\n";);
       return RegionInfo(region_type_t::BOOL_REGION, 1, n->isArray(),
-                        n->isHeap());
+                        n->isHeap(), IsCyclic(n));
     } else {
       CRAB_LOG(
           "heap-abs-seadsa-to-region",
           errs() << "\tCannot be converted to region due to overlapping.\n";);
-      return defaultRegionInfo(n->isArray(), n->isHeap());
+      return defaultRegionInfo(n->isArray(), n->isHeap(), IsCyclic(n));
     }
   }
 
@@ -268,12 +299,12 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
       // we are trying to avoid type-checking errors.
       return RegionInfo(region_type_t::PTR_REGION,
                         32 /*dl.getPointerSizeInBits()*/, n->isArray(),
-                        n->isHeap());
+                        n->isHeap(), IsCyclic(n));
     } else {
       CRAB_LOG(
           "heap-abs-seadsa-to-region",
           errs() << "\tCannot be converted to region due to overlapping.\n";);
-      return defaultRegionInfo(n->isArray(), n->isHeap());
+      return defaultRegionInfo(n->isArray(), n->isHeap(), IsCyclic(n));
     }
   }
 
@@ -281,7 +312,7 @@ RegionInfo SeaDsaToRegion(const Cell &c, const DataLayout &dl,
            errs() << "\tCannot be converted to region: do not contain integer "
                      "or pointer.\n";);
 
-  return defaultRegionInfo(n->isArray(), n->isHeap());
+  return defaultRegionInfo(n->isArray(), n->isHeap(), IsCyclic(n));
 }
 
 } // end namespace clam

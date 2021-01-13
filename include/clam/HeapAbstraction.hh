@@ -47,15 +47,21 @@ class RegionInfo {
   // if INT_REGION or BOOL_REGION then bitwidth is the integer's
   //    bitwidth or 1.
   unsigned m_bitwidth; // number of bits
+
+  //--------------------------------------//
+  /// Auxiliary bits about the region
+  //--------------------------------------//  
   // whether the region is coming from a "sequence" sea-dsa node
   bool m_is_sequence;
   // whether the region is possibly allocated in the heap
   bool m_is_heap;
+  // whether the region is possibly cyclic
+  bool m_is_cyclic;
 
 public:
-  RegionInfo(region_type_t t, unsigned b, bool is_seq, bool is_heap)
+  RegionInfo(region_type_t t, unsigned b, bool is_seq, bool is_heap, bool is_cyclic)
       : m_region_type(t), m_bitwidth(b), m_is_sequence(is_seq),
-        m_is_heap(is_heap) {}
+        m_is_heap(is_heap), m_is_cyclic(is_cyclic) {}
 
   RegionInfo(const RegionInfo &other) = default;
 
@@ -67,7 +73,7 @@ public:
 
   bool hasSameType(const RegionInfo &o) const {
     // note that ignores flags m_is_sequence and m_is_heap
-    return (getType() == o.getType() && getBitwidth() == o.getBitwidth());
+    return (m_region_type == o.m_region_type && m_bitwidth == o.m_bitwidth);
   }
 
   bool operator==(const RegionInfo &o) const {
@@ -76,9 +82,9 @@ public:
 
   bool operator<(const RegionInfo &o) const {
     // note that ignores flags m_is_sequence and m_is_heap    
-    return (getType() == o.getType() ?
-	    getBitwidth() < o.getBitwidth()
-	    : getType() < o.getType());
+    return (m_region_type == o.m_region_type ?
+	    m_bitwidth < o.m_bitwidth
+	    : m_region_type < o.m_region_type);
   }
   
   bool hasCompatibleType(const RegionInfo &o) const {
@@ -98,24 +104,27 @@ public:
     return m_region_type == region_type_t::PTR_REGION;
   }
 
-  // Return region's type: boolean, integer or pointer.
-  region_type_t getType() const { return m_region_type; }
-
-  // Return 1 if boolean region, size of the pointer if pointer
-  // region, or size of the integer if integer region. The bitwidth is
-  // in bits. Otherwise, it returns 0 if bitwdith cannot be
+  // Return a pair with the type (boolean, integer or pointer) and
+  // bitwidth in **bits**. The bitwidth is 1 if boolean region, size
+  // of the pointer if pointer region, or size of the integer if
+  // integer region. Otherwise, it returns 0 if bitwdith cannot be
   // determined.
-  unsigned getBitwidth() const { return m_bitwidth; }
-
+  std::pair<region_type_t, unsigned> getType() const {
+    return std::make_pair(m_region_type, m_bitwidth);
+  }
+  
   // Whether the region corresponds to a "sequence" node
   bool isSequence() const { return m_is_sequence; }
-
+  
   // Whether the region is potentially allocated via a malloc-like
   // function.
   bool isHeap() const { return m_is_heap; }
 
+  // Whether the region is cyclic (linked lists, trees, etc)
+  bool isCyclic() const { return m_is_cyclic; }
+  
   void write(llvm::raw_ostream &o) const {
-    switch (getType()) {
+    switch (m_region_type) {
     case region_type_t::UNTYPED_REGION:
       o << "U";
       break;
@@ -124,7 +133,7 @@ public:
       break;
     case region_type_t::INT_REGION:
       o << "I"
-        << ":" << getBitwidth();
+        << ":" << m_bitwidth;
       break;
     case region_type_t::PTR_REGION:
       o << "P";
@@ -165,7 +174,7 @@ public:
 
   Region()
       : m_id(0),
-        m_info(RegionInfo(region_type_t::UNTYPED_REGION, 0, false, false)),
+        m_info(RegionInfo(region_type_t::UNTYPED_REGION, 0, false, false, false)),
         m_singleton(nullptr) {}
 
   Region(const Region &other) = default;
@@ -177,7 +186,7 @@ public:
   RegionId getId() const { return m_id; }
 
   bool isUnknown() const {
-    return (m_info.getType() == region_type_t::UNTYPED_REGION);
+    return (m_info.getType().first == region_type_t::UNTYPED_REGION);
   }
 
   const llvm::Value *getSingleton() const { return m_singleton; }

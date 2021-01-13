@@ -146,7 +146,7 @@ var_t crabLitFactoryImpl::mkArrayVar(Region rgn) {
 
   crab::variable_type type(crab::UNK_TYPE);
   auto info = rgn.getRegionInfo();
-  switch (info.getType()) {
+  switch (info.getType().first) {
   case region_type_t::INT_REGION:
     type = crab::variable_type(ARR_INT_TYPE);
     break;
@@ -165,9 +165,9 @@ var_t crabLitFactoryImpl::mkArrayVar(Region rgn) {
 crab::variable_type
 crabLitFactoryImpl::regionTypeToCrabType(RegionInfo rgnInfo) {
   crab::variable_type type(crab::UNK_TYPE);
-  switch (rgnInfo.getType()) {
+  switch (rgnInfo.getType().first) {
   case region_type_t::INT_REGION:
-    type = crab::variable_type(REG_INT_TYPE, rgnInfo.getBitwidth());
+    type = crab::variable_type(REG_INT_TYPE, rgnInfo.getType().second);
     break;
   case region_type_t::BOOL_REGION:
     type = crab::variable_type(REG_BOOL_TYPE, 1);
@@ -211,7 +211,7 @@ var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
   if (const Value *v = rgn.getSingleton()) {
     Type *ty = cast<PointerType>(v->getType())->getElementType();
     bitwidth = ty->getIntegerBitWidth();
-    if (rgn.getRegionInfo().getType() == region_type_t::INT_REGION &&
+    if (rgn.getRegionInfo().getType().first == region_type_t::INT_REGION &&
         bitwidth <= 1) {
       CLAM_ERROR("Integer region must have bitwidth > 1");
     }
@@ -223,7 +223,7 @@ var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
   }
 
   crab::variable_type type(crab::UNK_TYPE);
-  switch (rgn.getRegionInfo().getType()) {
+  switch (rgn.getRegionInfo().getType().first) {
   case region_type_t::INT_REGION:
     type = crab::variable_type(INT_TYPE, bitwidth);
     break;
@@ -257,7 +257,7 @@ var_t crabLitFactoryImpl::mkArrayVar(RegionInfo rgnInfo) {
   }
 
   crab::variable_type type(crab::UNK_TYPE);
-  switch (rgnInfo.getType()) {
+  switch (rgnInfo.getType().first) {
   case region_type_t::INT_REGION:
     type = crab::variable_type(ARR_INT_TYPE);
     break;

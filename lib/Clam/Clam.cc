@@ -813,11 +813,18 @@ void ClamPass::releaseMemory() {
 
 bool ClamPass::runOnModule(Module &M) {
   /// Translate the module to Crab CFGs
-  CrabBuilderParams builder_params(CrabTrackLev, CrabCFGSimplify, true,
-                                   CrabEnableUniqueScalars, CrabIncludeHavoc,
-                                   CrabEnableBignums, CrabAddNonNullity,
-                                   CrabPrintCFG, CrabDotCFG);
-
+  CrabBuilderParams builder_params;
+  builder_params.precision_level = CrabTrackLev;
+  builder_params.simplify = CrabCFGSimplify;
+  builder_params.lower_singleton_aliases = CrabEnableUniqueScalars;
+  builder_params.include_useless_havoc = CrabIncludeHavoc;
+  builder_params.enable_bignums = CrabEnableBignums;
+  builder_params.add_pointer_assumptions = CrabAddPtrAssumptions;
+  builder_params.check_only_typed_regions = CrabCheckOnlyTyped;
+  builder_params.check_only_noncyclic_regions = CrabCheckOnlyNonCyclic;
+  builder_params.print_cfg = CrabPrintCFG;
+  builder_params.dot_cfg = CrabDotCFG;
+  
   auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>();
 
   /// Create the CFG builder manager
@@ -883,7 +890,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.stats = CrabStats.getValue();
   m_params.print_invars = CrabPrintAns;
   m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
-  m_params.print_summaries = CrabPrintSumm;
+  //m_params.print_summaries = CrabPrintSumm;
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;
   m_params.check = CrabCheck;

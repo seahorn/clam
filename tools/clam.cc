@@ -97,13 +97,13 @@ static llvm::cl::opt<bool> DotLLVMCFG(
     llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-    NullCheck("crab-check-null",
-              llvm::cl::desc("Check for null dereference errors"),
+    NullCheck("crab-null-check",
+              llvm::cl::desc("Add checks for null dereference errors"),
               llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-    UafCheck("crab-check-uaf",
-             llvm::cl::desc("Check for use-after-free errors"),
+    UafCheck("crab-uaf-check",
+             llvm::cl::desc("Add checks for use-after-free errors"),
              llvm::cl::init(false));
 
 using namespace clam;

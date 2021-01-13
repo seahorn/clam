@@ -1267,12 +1267,20 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
   if (!isTracked(*cond, m_params))
     return;
 
-#if 1
-  if (isAssertFn(*callee)) {
-    std::string assertKind = getAssertKindFromMetadata(I);
-    // it can be one of these values: "nullity", "not_dangling"
-    if (assertKind.rfind("nullity", 0) == 0) { // starts with "nullity"
-      Value *Ptr = cond;
+  if (isAssertFn(*callee) &&
+      (m_params.check_only_typed_regions || m_params.check_only_noncyclic_regions)) {
+    
+    auto startsWith = [](const std::string &s, const std::string &prefix) {
+			return s.rfind(prefix, 0) == 0;
+		      };
+
+    auto extractPointerFromNullAssertion = [](Value *Cond) {
+      /* Search for this pattern:
+  	   %f = icmp gt %ptr NULL
+           %x = zext i1 %f to i32
+           clam_assert(%x)
+      */
+      Value *Ptr = Cond;
       if (CastInst *CI = dyn_cast<CastInst>(Ptr)) {
         Ptr = CI->getOperand(0);
       }
@@ -1283,16 +1291,61 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
           Ptr = CmpI->getOperand(1);
         }
       } else {
-        CLAM_ERROR("Cannot extract pointer operand");
+        CLAM_ERROR("Cannot extract pointer operand from " << *Ptr);
       }
-      if (getRegion(m_mem, m_func_regions, m_params, I, *Ptr)
-              .getRegionInfo()
-              .isUntyped()) {
-        return;
+      return Ptr;
+    };
+					   
+    auto extractPointerFromDanglingAssertion = [](Value *Cond) {
+      /* Search for this pattern:
+  	   %f = __CRAB_intrinsic_is_unfreed_or_null(%ptr)
+           %x = zext i1 %f to i32
+           clam_assert(%x)
+      */
+      Value *Ptr = Cond;
+      if (CastInst *CI = dyn_cast<CastInst>(Ptr)) {
+        Ptr = CI->getOperand(0);
+      }
+      if (CallInst *CI = dyn_cast<CallInst>(Ptr)) {
+	CallSite CS(CI);
+	Function *callee = CS.getCalledFunction();
+	if (callee &&
+	    callee->getName() == "__CRAB_intrinsic_is_unfreed_or_null") {
+	  return CS.getArgument(0);
+	}
+      }
+      return (Value*) nullptr;
+    };
+					   
+    std::string assertKind = getAssertKindFromMetadata(I);
+    Value *Ptr = nullptr;
+    if (startsWith(assertKind, "nullity")) {
+      Ptr = extractPointerFromNullAssertion(cond);
+    } else if (startsWith(assertKind, "not_dangling")) {
+      Ptr = extractPointerFromDanglingAssertion(cond);
+    } else {
+      CLAM_WARNING("Unsupported assertion " << I);
+    }
+
+    /// FIXME: It will leave dead code (the call to
+    /// __CRAB_intrinsic_is_unfreed_or_null or the comparison
+    /// instruction)
+    
+    if (Ptr) {
+      if (m_params.check_only_typed_regions &&
+	  getRegion(m_mem, m_func_regions, m_params, I, *Ptr)
+	  .getRegionInfo()
+	  .isUntyped()) {
+	return;
+      }
+      if (m_params.check_only_noncyclic_regions &&
+	  getRegion(m_mem, m_func_regions, m_params, I, *Ptr)
+	  .getRegionInfo()
+	  .isCyclic()) {
+	return;
       }
     }
   }
-#endif
 
   if (ConstantInt *CI = dyn_cast<ConstantInt>(cond)) {
     // -- cond is a constant
@@ -2205,14 +2258,14 @@ void CrabIntraBlockBuilder::StoreIntoSingletonMem(StoreInst &I, var_t v,
     /// Due to heap abstraction imprecisions, it can happen that the
     /// region's bitwidth is different from value's bitwidth.
     var_t ext_or_trunc_val = val->getVar();
-    if (rgn.getRegionInfo().getBitwidth() != val_bitwidth) {
-      ext_or_trunc_val = m_lfac.mkIntVar(rgn.getRegionInfo().getBitwidth());
+    if (rgn.getRegionInfo().getType().second != val_bitwidth) {
+      ext_or_trunc_val = m_lfac.mkIntVar(rgn.getRegionInfo().getType().second);
     }
 
     // XX: read comments in LoadFromSingletonMem
-    if (rgn.getRegionInfo().getBitwidth() < val_bitwidth) {
+    if (rgn.getRegionInfo().getType().second < val_bitwidth) {
       m_bb.truncate(val->getVar(), ext_or_trunc_val);
-    } else if (rgn.getRegionInfo().getBitwidth() > val_bitwidth) {
+    } else if (rgn.getRegionInfo().getType().second > val_bitwidth) {
       m_bb.sext(val->getVar(), ext_or_trunc_val);
     }
 
@@ -2362,16 +2415,16 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
         }
 
         var_t ext_or_trunc_val = val->getVar();
-        if (rgn.getRegionInfo().getBitwidth() != val_bitwidth) {
+        if (rgn.getRegionInfo().getType().second != val_bitwidth) {
           // We know if they differ they are integers or booleans because
           // we treat all references as 32 bits.
-          ext_or_trunc_val = m_lfac.mkIntVar(rgn.getRegionInfo().getBitwidth());
+          ext_or_trunc_val = m_lfac.mkIntVar(rgn.getRegionInfo().getType().second);
         }
 
         // XX: read comments in LoadFromSingletonMem
-        if (rgn.getRegionInfo().getBitwidth() < val_bitwidth) {
+        if (rgn.getRegionInfo().getType().second < val_bitwidth) {
           m_bb.truncate(val->getVar(), ext_or_trunc_val);
-        } else if (rgn.getRegionInfo().getBitwidth() > val_bitwidth) {
+        } else if (rgn.getRegionInfo().getType().second > val_bitwidth) {
           m_bb.sext(val->getVar(), ext_or_trunc_val);
         }
 
@@ -2390,7 +2443,7 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
           CLAM_WARNING("Unexpected type of store value operand");
           return;
         }
-        if (rgn.getRegionInfo().getBitwidth() != val_bitwidth) {
+        if (rgn.getRegionInfo().getType().second != val_bitwidth) {
           CLAM_WARNING(
               "TODO: bitwidth of store value operand different from region");
           return;
@@ -2419,8 +2472,8 @@ void CrabIntraBlockBuilder::LoadFromSingletonMem(LoadInst &I, var_t lhs_v,
   /// Due to heap abstraction imprecisions, it can happen that the
   // region's bitwidth is different from lhs_v's bitwidth.
   var_t ext_or_trunc_lhs_v = lhs_v;
-  if (rgn.getRegionInfo().getBitwidth() != lhs_v_bitwidth) {
-    lhs_v = m_lfac.mkIntVar(rgn.getRegionInfo().getBitwidth());
+  if (rgn.getRegionInfo().getType().second != lhs_v_bitwidth) {
+    lhs_v = m_lfac.mkIntVar(rgn.getRegionInfo().getType().second);
   }
 
   /// Crab array load
@@ -2430,14 +2483,14 @@ void CrabIntraBlockBuilder::LoadFromSingletonMem(LoadInst &I, var_t lhs_v,
       lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()).getFixedSize());
   insertRevMap(crab_stmt, I);
 
-  if (rgn.getRegionInfo().getBitwidth() < lhs_v_bitwidth) {
+  if (rgn.getRegionInfo().getType().second < lhs_v_bitwidth) {
     // XX: not sure if signed extension is correct.
     // Regions are signed-agnostic so dont know what is the
     // best choice here. Maybe if the regions' bitwidth is
     // different form lhs_v' bitwidth we should ignore the
     // load instruction.
     m_bb.sext(lhs_v, ext_or_trunc_lhs_v);
-  } else if (rgn.getRegionInfo().getBitwidth() > lhs_v_bitwidth) {
+  } else if (rgn.getRegionInfo().getType().second > lhs_v_bitwidth) {
     // XX: if truncate overflows not sure the meaning of that since
     // the operation is not in the original program.
     m_bb.truncate(lhs_v, ext_or_trunc_lhs_v);
@@ -2535,17 +2588,17 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
 
       var_t lhs_v = lhs->getVar();
       var_t ext_or_trunc_lhs_v = lhs_v;
-      if (rgn.getRegionInfo().getBitwidth() != lhs_bitwidth) {
+      if (rgn.getRegionInfo().getType().second != lhs_bitwidth) {
         // We know if they differ they are integers or booleans because
         // we treat all references as 32 bits.
-        lhs_v = m_lfac.mkIntVar(rgn.getRegionInfo().getBitwidth());
+        lhs_v = m_lfac.mkIntVar(rgn.getRegionInfo().getType().second);
       }
 
       m_bb.load_from_ref(lhs_v, ptr->getVar(), m_lfac.mkRegionVar(rgn));
 
-      if (rgn.getRegionInfo().getBitwidth() < lhs_bitwidth) {
+      if (rgn.getRegionInfo().getType().second < lhs_bitwidth) {
         m_bb.sext(lhs_v, ext_or_trunc_lhs_v);
-      } else if (rgn.getRegionInfo().getBitwidth() > lhs_bitwidth) {
+      } else if (rgn.getRegionInfo().getType().second > lhs_bitwidth) {
         m_bb.truncate(lhs_v, ext_or_trunc_lhs_v);
       }
     }
