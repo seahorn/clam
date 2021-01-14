@@ -27,6 +27,58 @@ namespace clam {
 // A wrapper for an arbitrary abstract domain, cheap to copy
 using clam_abstract_domain = crab::domains::abstract_domain_ref<var_t>;
 
+// Generic class for a Clam global analysis (intra or inter)  
+class ClamGlobalAnalysis {
+public:
+  using abs_dom_map_t =
+      llvm::DenseMap<const llvm::BasicBlock *, clam_abstract_domain>;
+  using lin_csts_map_t =
+      llvm::DenseMap<const llvm::BasicBlock *, lin_cst_sys_t>;  
+  using checks_db_t = crab::checker::checks_db;
+  using edges_set =
+      std::set<std::pair<const llvm::BasicBlock *, const llvm::BasicBlock *>>;
+
+  virtual ~ClamGlobalAnalysis() = default;
+
+  /**
+   * Clear all the internal state
+   **/
+  virtual void clear() = 0;
+
+  
+  /* Return the manager used to build all CFGs */
+  virtual CrabBuilderManager &getCfgBuilderMan() = 0;
+
+  /**
+   * Call crab analysis on the call graph under assumptions.
+   **/
+  virtual void analyze(AnalysisParams &params,
+		       const abs_dom_map_t &assumptions) = 0;
+
+  /**
+   * Return invariants that hold at the entry of b
+   **/
+  virtual llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
+						      bool keep_shadows) const = 0;
+
+  /**
+   * Return invariants that hold at the exit of b
+   **/
+  virtual llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
+						       bool keep_shadows) const = 0;
+  
+  /**
+   * Return a database with all checks.
+   **/
+  virtual const checks_db_t &getChecksDB() const = 0;
+
+  /**
+   * Return true if there might be a feasible edge between b1 and b2
+   **/
+  virtual bool hasFeasibleEdge(const llvm::BasicBlock *b1,
+			       const llvm::BasicBlock *b2) const = 0;
+};
+  
 /**
  * Intra-procedural analysis of a function
  *
@@ -51,13 +103,10 @@ using clam_abstract_domain = crab::domains::abstract_domain_ref<var_t>;
  **/
 class IntraClam {
 public:
-  using abs_dom_map_t =
-      llvm::DenseMap<const llvm::BasicBlock *, clam_abstract_domain>;
-  using lin_csts_map_t =
-      llvm::DenseMap<const llvm::BasicBlock *, lin_cst_sys_t>;
-  using checks_db_t = crab::checker::checks_db;
-  using edges_set =
-      std::set<std::pair<const llvm::BasicBlock *, const llvm::BasicBlock *>>;
+  using abs_dom_map_t = typename ClamGlobalAnalysis::abs_dom_map_t;
+  using lin_csts_map_t = typename ClamGlobalAnalysis::lin_csts_map_t;
+  using checks_db_t = typename ClamGlobalAnalysis::checks_db_t;
+  using edges_set = typename ClamGlobalAnalysis::edges_set;
 
 private:
   std::unique_ptr<IntraClamImpl> m_impl;
@@ -153,7 +202,7 @@ public:
 };
 
 /**
- * Inter-procedural analysis of a module
+ * Global analysis of a module
  *
  * Basic usage:
  *    // Create a crab cfg builder manager
@@ -162,26 +211,86 @@ public:
  *    std::unique_ptr<HeapAbstraction> mem(new DummyHeapAbstraction());
  *    CrabBuilderManager man(params, tli, std::move(mem));
  *
- *    // Create an inter-procedural analysis
- *    InterClam ic(m, man);
+ *    // Create a global analysis
+ *    IntraGlobalClam ga(m, man); // or InterGlobalClam ga(m, man);
  *
  *    AnalysisParams params;
- *    ic.analyze(params);
+ *    abs_dom_map_t assumptions;
+ *    ga.analyze(params, assumptions);
  *    for (auto &f: m) {
  *       for (auto &b: f) {
- *         llvm::Optional<clam_abstract_domain> dom = ic.getPre(&b);
+ *         llvm::Optional<clam_abstract_domain> dom = ga.getPre(&b);
  *         if (dom.hasValue()) {
  *            crab::outs << dom.getValue() << "\n";
  *         }
  *      }
  *    }
  **/
-class InterClam {
+
+class IntraGlobalClam: public ClamGlobalAnalysis {
 public:
-  using abs_dom_map_t = typename IntraClam::abs_dom_map_t;
-  using lin_csts_map_t = typename IntraClam::lin_csts_map_t;
-  using checks_db_t = typename IntraClam::checks_db_t;
-  using edges_set = typename IntraClam::edges_set;
+  using typename ClamGlobalAnalysis::abs_dom_map_t;
+  using typename ClamGlobalAnalysis::lin_csts_map_t;
+  using typename ClamGlobalAnalysis::checks_db_t;
+  using typename ClamGlobalAnalysis::edges_set;
+
+private:
+  const llvm::Module& m_module;
+  CrabBuilderManager &m_builder_man;
+  abs_dom_map_t m_pre_map;
+  abs_dom_map_t m_post_map;
+  edges_set m_infeasible_edges;
+  checks_db_t m_checks_db;
+
+public:
+  
+  IntraGlobalClam(const llvm::Module &module, CrabBuilderManager &man);
+
+  ~IntraGlobalClam() = default;
+
+  /* return the manager used to build all CFGs */
+  CrabBuilderManager &getCfgBuilderMan() override;
+
+  /**
+   * Clear all the internal state
+   **/
+  void clear() override;
+
+  /**
+   * Call crab analysis on the whole module under assumptions.
+   **/
+  void analyze(AnalysisParams &params, const abs_dom_map_t &assumptions) override;
+
+  /**
+   * Return invariants that hold at the entry of b
+   **/
+  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
+                                              bool keep_shadows = false) const override;
+
+  /**
+   * Return invariants that hold at the exit of b
+   **/
+  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
+                                               bool keep_shadows = false) const override;
+
+  /**
+   * Return a database with all checks.
+   **/
+  const checks_db_t &getChecksDB() const override;
+
+  /**
+   * Return true if there might be a feasible edge between b1 and b2
+   **/
+  bool hasFeasibleEdge(const llvm::BasicBlock *b1,
+                       const llvm::BasicBlock *b2) const override;
+};
+
+class InterGlobalClam: public ClamGlobalAnalysis {
+public:
+  using typename ClamGlobalAnalysis::abs_dom_map_t;
+  using typename ClamGlobalAnalysis::lin_csts_map_t;
+  using typename ClamGlobalAnalysis::checks_db_t;
+  using typename ClamGlobalAnalysis::edges_set;
 
 private:
   std::unique_ptr<InterClamImpl> m_impl;
@@ -195,22 +304,22 @@ public:
   /**
    * Constructor that builds a crab call graph.
    **/
-  InterClam(const llvm::Module &module, CrabBuilderManager &man);
+  InterGlobalClam(const llvm::Module &module, CrabBuilderManager &man);
 
-  ~InterClam();
+  ~InterGlobalClam();
 
   /* return the manager used to build all CFGs */
-  CrabBuilderManager &getCfgBuilderMan();
+  CrabBuilderManager &getCfgBuilderMan() override;
 
   /**
    * Clear all the internal state
    **/
-  void clear();
+  void clear() override;
 
   /**
    * Call crab analysis on the call graph under assumptions.
    **/
-  void analyze(AnalysisParams &params, const abs_dom_map_t &assumptions);
+  void analyze(AnalysisParams &params, const abs_dom_map_t &assumptions) override;
 
   /**
    * Call crab analysis on the call graph under assumptions.
@@ -221,24 +330,24 @@ public:
    * Return invariants that hold at the entry of b
    **/
   llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
-                                              bool keep_shadows = false) const;
+                                              bool keep_shadows = false) const override;
 
   /**
    * Return invariants that hold at the exit of b
    **/
   llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
-                                               bool keep_shadows = false) const;
+                                               bool keep_shadows = false) const override;
 
   /**
    * Return a database with all checks.
    **/
-  const checks_db_t &getChecksDB() const;
+  const checks_db_t &getChecksDB() const override;
 
   /**
    * Return true if there might be a feasible edge between b1 and b2
    **/
   bool hasFeasibleEdge(const llvm::BasicBlock *b1,
-                       const llvm::BasicBlock *b2) const;
+                       const llvm::BasicBlock *b2) const override;
 };
 
 /**
@@ -246,16 +355,13 @@ public:
  **/
 class ClamPass : public llvm::ModulePass {
 
-  using abs_dom_map_t = typename IntraClam::abs_dom_map_t;
-  using checks_db_t = typename IntraClam::checks_db_t;
-  using edges_set = typename IntraClam::edges_set;
+  using abs_dom_map_t = typename ClamGlobalAnalysis::abs_dom_map_t;
+  using checks_db_t = typename ClamGlobalAnalysis::checks_db_t;
+  using edges_set = typename ClamGlobalAnalysis::edges_set;
 
-  abs_dom_map_t m_pre_map;
-  abs_dom_map_t m_post_map;
   std::unique_ptr<CrabBuilderManager> m_cfg_builder_man;
-  edges_set m_infeasible_edges;
-  checks_db_t m_checks_db;
   AnalysisParams m_params;
+  std::unique_ptr<ClamGlobalAnalysis> m_ga;
 
 public:
   static char ID;
@@ -263,19 +369,20 @@ public:
   ClamPass();
 
   /* begin ModulePass API */
-  virtual void releaseMemory();
+  virtual void releaseMemory() override;
 
-  virtual bool runOnModule(llvm::Module &M);
+  virtual bool runOnModule(llvm::Module &M) override;
 
-  virtual bool runOnFunction(llvm::Function &F);
+  virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 
-  virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const;
-
-  virtual llvm::StringRef getPassName() const {
+  virtual llvm::StringRef getPassName() const override {
     return "Clam: Crab for Llvm Abstraction Manager";
   }
   /* end ModulePass API */
 
+  ClamGlobalAnalysis& getClamGlobalAnalysis();
+  const ClamGlobalAnalysis& getClamGlobalAnalysis() const;
+  
   /* return the manager used to build all CFGs */
   CrabBuilderManager &getCfgBuilderMan();
 

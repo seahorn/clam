@@ -731,42 +731,54 @@ private:
   }
 };
 
+
 /**
- *   Begin InterClam methods
+ *   Begin IntraGlobalClam methods
  **/
-InterClam::InterClam(const Module &module, CrabBuilderManager &man)
-    : m_impl(nullptr), m_builder_man(man) {
-  m_impl = std::make_unique<InterClamImpl>(module, m_builder_man);
-}
+IntraGlobalClam::IntraGlobalClam(const Module &module, CrabBuilderManager &man)
+  : m_module(module), m_builder_man(man) {}
 
-InterClam::~InterClam() {}
-
-void InterClam::clear() {
+void IntraGlobalClam::clear() {
   m_pre_map.clear();
   m_post_map.clear();
   m_checks_db.clear();
 }
 
-CrabBuilderManager &InterClam::getCfgBuilderMan() { return m_builder_man; }
+CrabBuilderManager &IntraGlobalClam::getCfgBuilderMan() { return m_builder_man; }
 
-void InterClam::analyze(AnalysisParams &params,
-                        const abs_dom_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
-                             m_checks_db};
-  lin_csts_map_t lin_csts_assumptions;
-  m_impl->analyze(params, assumptions, lin_csts_assumptions, results);
-}
+void IntraGlobalClam::analyze(AnalysisParams &params,
+			      const abs_dom_map_t &abs_dom_assumptions) {
+  if (params.run_inter) {
+    CLAM_WARNING("Analysis is intra-procedural but user wants inter-procedural. "
+		 << "Running intra-procedural analysis.");
+  }
+  
+  unsigned num_analyzed_funcs = 0;
+  CRAB_VERBOSE_IF(1,
+		  for (auto &F: m_module) {
+		    if (isTrackable(F)) num_analyzed_funcs++;
+		  });
+  unsigned fun_counter = 1;
+  for (auto &F : m_module) {
+    if (isTrackable(F)) {
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+		      << "###Function " << fun_counter << "/"
+		      << num_analyzed_funcs << "###\n";);
+      ++fun_counter;
 
-void InterClam::analyze(AnalysisParams &params,
-                        const lin_csts_map_t &assumptions) {
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
-                             m_checks_db};
-  abs_dom_map_t abs_dom_assumptions;
-  m_impl->analyze(params, abs_dom_assumptions, assumptions, results);
+
+      IntraClamImpl intra_crab(F, m_builder_man);
+      AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+				 m_checks_db};
+      lin_csts_map_t lin_csts_assumptions/*unused*/;
+      intra_crab.analyze(params, &F.getEntryBlock(), abs_dom_assumptions,
+			 lin_csts_assumptions, results);
+    }
+  }
 }
 
 llvm::Optional<clam_abstract_domain>
-InterClam::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {
+IntraGlobalClam::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {
   std::vector<varname_t> shadows;
   if (!keep_shadows)
     shadows = std::vector<varname_t>(
@@ -776,7 +788,7 @@ InterClam::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {
 }
 
 llvm::Optional<clam_abstract_domain>
-InterClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
+IntraGlobalClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
   std::vector<varname_t> shadows;
   if (!keep_shadows)
     shadows = std::vector<varname_t>(
@@ -785,30 +797,95 @@ InterClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
   return lookup(m_post_map, *block, shadows);
 }
 
-const checks_db_t &InterClam::getChecksDB() const { return m_checks_db; }
+const checks_db_t &IntraGlobalClam::getChecksDB() const { return m_checks_db; }
+  
+bool IntraGlobalClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
+				      const llvm::BasicBlock *b2) const {
+  return !(m_infeasible_edges.count({b1, b2}) > 0);
+}
 
-bool InterClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
+/**
+ * End IntraGlobalClam methods
+ **/
+
+  
+/**
+ *   Begin InterGlobalClam methods
+ **/
+InterGlobalClam::InterGlobalClam(const Module &module, CrabBuilderManager &man)
+    : m_impl(nullptr), m_builder_man(man) {
+  m_impl = std::make_unique<InterClamImpl>(module, m_builder_man);
+}
+
+InterGlobalClam::~InterGlobalClam() {}
+
+void InterGlobalClam::clear() {
+  m_pre_map.clear();
+  m_post_map.clear();
+  m_checks_db.clear();
+}
+
+CrabBuilderManager &InterGlobalClam::getCfgBuilderMan() { return m_builder_man; }
+
+void InterGlobalClam::analyze(AnalysisParams &params,
+                        const abs_dom_map_t &assumptions) {
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                             m_checks_db};
+  lin_csts_map_t lin_csts_assumptions;
+  m_impl->analyze(params, assumptions, lin_csts_assumptions, results);
+}
+
+void InterGlobalClam::analyze(AnalysisParams &params,
+                        const lin_csts_map_t &assumptions) {
+  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
+                             m_checks_db};
+  abs_dom_map_t abs_dom_assumptions;
+  m_impl->analyze(params, abs_dom_assumptions, assumptions, results);
+}
+
+llvm::Optional<clam_abstract_domain>
+InterGlobalClam::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {
+  std::vector<varname_t> shadows;
+  if (!keep_shadows)
+    shadows = std::vector<varname_t>(
+        m_builder_man.getVarFactory().get_shadow_vars().begin(),
+        m_builder_man.getVarFactory().get_shadow_vars().end());
+  return lookup(m_pre_map, *block, shadows);
+}
+
+llvm::Optional<clam_abstract_domain>
+InterGlobalClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
+  std::vector<varname_t> shadows;
+  if (!keep_shadows)
+    shadows = std::vector<varname_t>(
+        m_builder_man.getVarFactory().get_shadow_vars().begin(),
+        m_builder_man.getVarFactory().get_shadow_vars().end());
+  return lookup(m_post_map, *block, shadows);
+}
+
+const checks_db_t &InterGlobalClam::getChecksDB() const { return m_checks_db; }
+
+bool InterGlobalClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
                                 const llvm::BasicBlock *b2) const {
   return !(m_infeasible_edges.count({b1, b2}) > 0);
 }
 
 /**
- * End InterClam methods
+ * End InterGlobalClam methods
  **/
 
 /**
  * Begin ClamPass methods
  **/
-ClamPass::ClamPass() : llvm::ModulePass(ID), m_cfg_builder_man(nullptr) {
+  ClamPass::ClamPass():
+    llvm::ModulePass(ID), m_cfg_builder_man(nullptr), m_ga(nullptr) {
   // initialize sea-dsa dependencies
   llvm::initializeAllocWrapInfoPass(*llvm::PassRegistry::getPassRegistry());
   llvm::initializeCompleteCallGraphPass(*llvm::PassRegistry::getPassRegistry());
 }
 
 void ClamPass::releaseMemory() {
-  m_pre_map.clear();
-  m_post_map.clear();
-  m_checks_db.clear();
+  m_ga->clear();
 }
 
 bool ClamPass::runOnModule(Module &M) {
@@ -897,27 +974,14 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.check_verbose = CrabCheckVerbose;
 
   if (m_params.run_inter) {
-    InterClamImpl inter_crab(M, *m_cfg_builder_man);
-    AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
-                               m_checks_db};
-    /* -- empty assumptions */
-    abs_dom_map_t abs_dom_assumptions;
-    lin_csts_map_t lin_csts_assumptions;
-    inter_crab.analyze(m_params, abs_dom_assumptions, lin_csts_assumptions,
-                       results);
+    m_ga.reset(new InterGlobalClam(M, *m_cfg_builder_man));
   } else {
-    unsigned fun_counter = 1;
-    for (auto &F : M) {
-      if (!m_params.run_inter && isTrackable(F)) {
-        CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                               << "###Function " << fun_counter << "/"
-                               << num_analyzed_funcs << "###\n";);
-        ++fun_counter;
-        runOnFunction(F);
-      }
-    }
+    m_ga.reset(new IntraGlobalClam(M, *m_cfg_builder_man));
   }
+  abs_dom_map_t abs_dom_assumptions /*no assumptions*/;    
+  m_ga->analyze(m_params, abs_dom_assumptions);
 
+  
   if (builder_params.dot_cfg) {
     for (auto &F : M) {
       if (m_cfg_builder_man->hasCfg(F)) {
@@ -945,7 +1009,7 @@ bool ClamPass::runOnModule(Module &M) {
         };
 
         cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn,
-                                                m_checks_db);
+                                                m_ga->getChecksDB());
 #else
         cfg_to_dot(cfg);
 #endif
@@ -980,18 +1044,6 @@ bool ClamPass::runOnModule(Module &M) {
   return false;
 }
 
-bool ClamPass::runOnFunction(Function &F) {
-  IntraClamImpl intra_crab(F, *m_cfg_builder_man);
-  AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
-                             m_checks_db};
-  /* -- empty assumptions */
-  abs_dom_map_t abs_dom_assumptions;
-  lin_csts_map_t lin_csts_assumptions;
-  intra_crab.analyze(m_params, &F.getEntryBlock(), abs_dom_assumptions,
-                     lin_csts_assumptions, results);
-  return false;
-}
-
 void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   AU.addRequired<TargetLibraryInfoWrapperPass>();
@@ -1018,6 +1070,16 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
  * For clam clients
  **/
 
+ClamGlobalAnalysis& ClamPass::getClamGlobalAnalysis() {
+  assert(m_ga);
+  return *m_ga;
+}
+
+const ClamGlobalAnalysis& ClamPass::getClamGlobalAnalysis() const {
+  assert(m_ga);
+  return *m_ga;
+}
+
 bool ClamPass::hasCfg(llvm::Function &F) {
   return m_cfg_builder_man->hasCfg(F);
 }
@@ -1032,28 +1094,18 @@ CrabBuilderManager &ClamPass::getCfgBuilderMan() { return *m_cfg_builder_man; }
 // return invariants that hold at the entry of block
 llvm::Optional<clam_abstract_domain>
 ClamPass::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {
-  std::vector<varname_t> shadows;
-  auto &vfac = m_cfg_builder_man->getVarFactory();
-  if (!keep_shadows)
-    shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
-                                     vfac.get_shadow_vars().end());
-  return lookup(m_pre_map, *block, shadows);
+  return m_ga->getPre(block, keep_shadows);
 }
 
 // return invariants that hold at the exit of block
 llvm::Optional<clam_abstract_domain>
 ClamPass::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
-  std::vector<varname_t> shadows;
-  auto &vfac = m_cfg_builder_man->getVarFactory();
-  if (!keep_shadows)
-    shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
-                                     vfac.get_shadow_vars().end());
-  return lookup(m_post_map, *block, shadows);
+  return m_ga->getPost(block, keep_shadows);  
 }
 
 bool ClamPass::hasFeasibleEdge(const llvm::BasicBlock *b1,
                                const llvm::BasicBlock *b2) const {
-  return !(m_infeasible_edges.count({b1, b2}) > 0);
+  return m_ga->hasFeasibleEdge(b1, b2);
 }
 
 /**
@@ -1065,15 +1117,15 @@ unsigned ClamPass::getTotalChecks() const {
 }
 
 unsigned ClamPass::getTotalSafeChecks() const {
-  return m_checks_db.get_total_safe();
+  return m_ga->getChecksDB().get_total_safe();
 }
 
 unsigned ClamPass::getTotalErrorChecks() const {
-  return m_checks_db.get_total_error();
+  return m_ga->getChecksDB().get_total_error();
 }
 
 unsigned ClamPass::getTotalWarningChecks() const {
-  return m_checks_db.get_total_warning();
+  return m_ga->getChecksDB().get_total_warning();
 }
 
 void ClamPass::printChecks(raw_ostream &o) const {
