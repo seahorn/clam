@@ -19,6 +19,7 @@ target_link_libraries (ClamAnalysis
   PRIVATE
   ${CRAB_LIBS}
   ## Needed if dynamic linking
+  ClamSupport
   ${LLVM_LIBS}
   ${SEA_DSA_LIBS})
 
