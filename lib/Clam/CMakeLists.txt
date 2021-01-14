@@ -10,6 +10,8 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CrabDomainParser.cc
   crab/path_analyzer.cc
   crab/printer.cc
+  Support/BoostException.cc
+  Support/CFGPrinter.cc
   )
 
 llvm_map_components_to_libnames(LLVM_LIBS
@@ -19,7 +21,6 @@ target_link_libraries (ClamAnalysis
   PRIVATE
   ${CRAB_LIBS}
   ## Needed if dynamic linking
-  ClamSupport
   ${LLVM_LIBS}
   ${SEA_DSA_LIBS})
 

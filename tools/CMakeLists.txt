@@ -6,25 +6,26 @@ set(LLVM_LINK_COMPONENTS
   bitwriter 
   ipo 
   scalaropts 
-  instrumentation 
+  instrumentation
+  transformutils
   core 
   codegen 
   objcarcopts)
 
-add_llvm_executable(clam-pp DISABLE_LLVM_LINK_LLVM_DYLIB clam-pp.cc)
+add_llvm_executable(clam-pp DISABLE_LLVM_LINK_LLVM_DYLIB
+  clam-pp.cc)
 target_link_libraries (clam-pp PRIVATE
-  ClamSupport
   LlvmPasses
   ${LLVM_SEAHORN_LIBS}
  )
 llvm_config (clam-pp ${LLVM_LINK_COMPONENTS})
 install(TARGETS clam-pp RUNTIME DESTINATION bin)
 
-add_llvm_executable(clam DISABLE_LLVM_LINK_LLVM_DYLIB clam.cc)
+add_llvm_executable(clam DISABLE_LLVM_LINK_LLVM_DYLIB
+  clam.cc)
 target_link_libraries (clam PRIVATE
   ClamAnalysis
   ClamInstrumentation
-  ClamSupport  
   LlvmPasses
   ${LLVM_SEAHORN_LIBS}
   ${SEA_DSA_LIBS}

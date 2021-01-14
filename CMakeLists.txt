@@ -132,14 +132,18 @@ if (NOT CLAM_BUILD_LIBS_SHARED)
 endif ()   
 
 if (CLAM_BUILD_LIBS_SHARED)
-  message (STATUS "Clam: libraries are built dynamically but not llvm, sea-dsa, and llvm-seahorn")
+  message (STATUS "Clam: libraries are built dynamically except its external components "
+                   "sea-dsa and llvm-seahorn")
   set(CLAM_LIBS_TYPE SHARED)
-  ## To build crab dynamically
   set(CRAB_BUILD_LIBS_SHARED ON)
+  # sea-dsa provides this flag but it doesn't use it when building the
+  # library
+  set(BUILD_SEA_DSA_LIBS_SHARED ON)
 else()
   message (STATUS "Clam: libraries are built statically")
   set(CLAM_LIBS_TYPE STATIC)
-  set(CRAB_BUILD_LIBS_SHARED OFF)  
+  set(CRAB_BUILD_LIBS_SHARED OFF)
+  set(BUILD_SEA_DSA_LIBS_SHARED OFF)
 endif ()
 
 # so that executables outside the build tree can find later shared
@@ -403,8 +407,7 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES ${_CLAM_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
 # Propagate to the parent
 if (NOT TopLevel)
    set(XCLAM_LIBS
-     ClamAnalysis
-     ClamSupport)
+     ClamAnalysis)
 
    if (CLAM_INCLUDE_POST_TRANSFORMS)
      set(XCLAM_LIBS ${XCLAM_LIBS} ClamInstrumentation)
