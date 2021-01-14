@@ -85,7 +85,7 @@ public:
 
   ~SeaDsaHeapAbstraction();
 
-  HeapAbstraction::ClassId getClassId() const {
+  HeapAbstraction::ClassId getClassId() const override {
     return HeapAbstraction::ClassId::SEA_DSA;
   }
 
