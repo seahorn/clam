@@ -25,7 +25,6 @@
 
 #include "clam/Clam.hh"
 #include "clam/Passes.hh"
-#include "clam/Transforms/InsertInvariants.hh"
 
 #include "seadsa/InitializePasses.hh"
 #include "seadsa/support/RemovePtrToInt.hh"
@@ -289,9 +288,11 @@ int main(int argc, char **argv) {
   }
 
   if (!DisableCrab) {
+    // post-processing of the bitcode using Crab invariants
+    // 
     // -- perform dead code elimination and insert invariants as
     // -- assume instructions
-    pass_manager.add(new clam::InsertInvariants());
+    pass_manager.add(clam::createInsertInvariantsPass());
     // -- simplify invariants added in the bytecode.
     pass_manager.add(clam::createInstCombine());
     if (PromoteAssume) {
