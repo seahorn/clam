@@ -58,7 +58,7 @@ Clam.
    `llvm-seahorn` provides specialized versions of `InstCombine` and
    `IndVarSimplify` LLVM passes as well as a LLVM pass to convert undefined values into nondeterministic calls.
 
-The component `sea-dsa` is mandatory and `llvm-seahorn` is highly
+The component `sea-dsa` is mandatory and `llvm-seahorn` is optional but highly
 recommended. To include these external components, type instead:
 
      mkdir build && cd build
@@ -104,7 +104,7 @@ To run some regression tests:
 
 You can get the latest binary from docker hub using the command:
 
-     docker pull seahorn/clam-llvm10:latest
+     docker pull seahorn/clam-llvm10:nightly
 	 
 # Clam architecture #
 
@@ -297,8 +297,7 @@ manner. Whenever possible, we recommend to run Clam with option
 is not recursive. If inlining is not desired or too expensive, enable
 the option `--crab-inter` to run the inter-procedural version. Clam
 implements a standard top-down inter-procedural analysis with
-memoization. The analysis is sound with recursive functions but
-imprecise.
+memoization. The analysis supports recursive functions.
 
 Clam provides the **very experimental** option `--crab-backward`
 to enable an iterative forward-backward analysis that might produce
@@ -334,7 +333,8 @@ at each basic block entry while option
 `--crab-add-invariants=after-load` injects the invariants that hold
 right after each LLVM load instruction. The option `all` injects
 invariants in all above locations. To see the final LLVM bitcode just
-add the option `-o out.bc`.
+add the option `-o out.bc`. The option `--crab-promote-assume` replaces 
+`verifier.assume` instructions with `llvm.assume` intrinsics.
 
 ## Yaml inteface ##
 
@@ -437,5 +437,8 @@ Crab. Here some of them:
   in terms of expressiveness to keep them tractable.
 
 - The backward analysis is too experimental and it requires more work.
+
+- Reasoning about memory relies heavily on `sea-dsa` which is context- and 
+  field-sensitive pointer analysis but flow-insensitive.
   
   
