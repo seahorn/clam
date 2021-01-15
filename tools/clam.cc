@@ -294,8 +294,15 @@ int main(int argc, char **argv) {
     // -- perform dead code elimination and insert invariants as
     // -- assume instructions
     pass_manager.add(clam::createInsertInvariantsPass());
-    // -- simplify invariants added in the bytecode.
+
+    //// Cleanup
+    // -- simplify invariants added in the bitecode.
     pass_manager.add(clam::createInstCombine());
+    // -- remove dead edges and blocks
+    pass_manager.add(llvm::createCFGSimplificationPass());
+    // -- remove global strings and values
+    pass_manager.add(llvm::createGlobalDCEPass());
+    
     if (PromoteAssume) {
       // -- promote verifier.assume to llvm.assume intrinsics
       pass_manager.add(clam::createPromoteAssumePass());
