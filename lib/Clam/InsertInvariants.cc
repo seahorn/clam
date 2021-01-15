@@ -23,6 +23,9 @@
 #include "clam/Transforms/InsertInvariants.hh"
 #include "crab/analysis/abs_transformer.hpp"
 
+#include "crab/config.h"
+#include "crab/support/debug.hpp"
+
 #include <type_traits>
 
 using namespace llvm;
@@ -431,7 +434,9 @@ bool InsertInvariants::runOnModule(Module &M) {
   if (m_loc == InvariantsLocation::NONE) {
     return false;
   }
-  
+
+  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+		  << "Starting clam dead-code elimination and adding invariants.\n";);  
   LLVMContext &ctx = M.getContext();
   AttrBuilder B;
   AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
@@ -447,6 +452,9 @@ bool InsertInvariants::runOnModule(Module &M) {
   for (auto &f : M) {
     change |= runOnFunction(f);
   }
+
+  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+		  << "Finished clam dead-code elimination and adding invariants.\n";);    
   return change;
 }
 
@@ -454,7 +462,14 @@ bool InsertInvariants::runOnFunction(Function &F) {
   if (F.empty() || F.isVarArg()) {
     return false;
   }
+
+  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+		  << "Started dce and other optimizations using invariants for "
+		  << F.getName().str() << ".\n";);
+  
   if (!m_clam.getCfgBuilderMan().hasCfg(F)) {
+    // This shouldn't happen
+    llvm::errs() << "Crab CFG not found for " << F.getName() << "\n";
     return false;
   }
 
@@ -466,42 +481,49 @@ bool InsertInvariants::runOnFunction(Function &F) {
   bool change = false;  
   for (auto &B : F) {
     // -- if the block has an unreachable instruction we skip it.
-    bool alread_dead_block = false;
+    bool already_dead_block = false;
     for (auto &I : B) {
       if (isa<UnreachableInst>(I)) {
-        alread_dead_block = true;
+        already_dead_block = true;
         break;
       }
     }
-    if (alread_dead_block)
+    if (already_dead_block) {
       continue;
+    }
 
+    // -- Remove edge edges
+    for (BasicBlock *Succ : successors(&B)) {
+      if (!m_clam.hasFeasibleEdge(&B, Succ)) {
+	CRAB_LOG("clam-insert-invariants",
+		 llvm::errs() << "Detected dead "
+		 << " edge between block "
+		 << B.getName () << " and " << Succ->getName()
+		 << " in function " << F.getName() << "\n";);
+	InfeasibleEdges.push_back({&B, Succ});
+      }
+    }
+    
     auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);
     llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, false /*keep shadows*/);
     if (pre.hasValue()) {
-      ///////
-      /// First, we do dead code elimination.
-      ///////
+      // -- Remove dead blocks identified by Crab
 
       if (pre.getValue().is_bottom()) {
+	    CRAB_LOG("clam-insert-invariants",
+		     llvm::errs() << "Detected dead block "
+		     << B.getName () << " in function "
+		     << F.getName() << "\n";);
         UnreachableBlocks.push_back(&B);
         continue;
-      } else {
-        for (BasicBlock *Succ : successors(&B)) {
-          if (!m_clam.hasFeasibleEdge(&B, Succ)) {
-            InfeasibleEdges.push_back({&B, Succ});
-          }
-        }
       }
-
+      
       if (m_loc == InvariantsLocation::DEAD_CODE) {
         continue;
       }
 
-      ///////
-      /// Second, we insert the non-bottom invariants.
-      //////
-
+      // -- Insert non-bottom invariants
+      
       // --- Instrument basic block with invariants
       if (m_loc == InvariantsLocation::BLOCK ||
 	  m_loc == InvariantsLocation::ALL) {
@@ -532,6 +554,13 @@ bool InsertInvariants::runOnFunction(Function &F) {
     }
   }
 
+  if (!change) {
+    change = !InfeasibleEdges.empty();
+  }
+  if (!change) {
+    change = !UnreachableBlocks.empty();
+  }
+  
   // The actual removal of edges and blocks
   while (!InfeasibleEdges.empty()) {
     std::pair<BasicBlock *, BasicBlock *> E = InfeasibleEdges.back();
@@ -539,12 +568,17 @@ bool InsertInvariants::runOnFunction(Function &F) {
     removeInfeasibleEdge(E.first, E.second);
   }
 
+  
   while (!UnreachableBlocks.empty()) {
     BasicBlock *B = UnreachableBlocks.back();
     UnreachableBlocks.pop_back();
     removeUnreachableBlock(B, ctx);
   }
 
+  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+		  << "Finished dce and other optimizations using invariants for "
+		  << F.getName().str() << ".\n";);
+  
   return change;
 }
   
