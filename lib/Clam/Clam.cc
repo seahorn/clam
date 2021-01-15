@@ -106,8 +106,8 @@ public:
   abs_dom_map_t &premap;
   // invariants that hold at the exit of a block
   abs_dom_map_t &postmap;
-  // infeasible edges (for debugging or pretty-printing)
-  edges_set infeasible_edges;
+  // infeasible edges 
+  edges_set &infeasible_edges;
   // database with all the checks
   checks_db_t &checksdb;
 
@@ -322,7 +322,7 @@ private:
 
     // -- store invariants
     if (params.store_invariants || params.print_invars) {
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing invariants.\n");
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing analysis results.\n");
       for (basic_block_label_t bl :
            llvm::make_range(m_cfg_builder->getCfg().label_begin(),
                             m_cfg_builder->getCfg().label_end())) {
@@ -348,7 +348,7 @@ private:
               "A Crab block should correspond to either an LLVM edge or block");
         }
       }
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "All invariants stored.\n");
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished storing analysis results.\n");
     }
 
     // -- print all cfg annotations (if any)
@@ -430,6 +430,7 @@ void IntraClam::clear() {
   m_pre_map.clear();
   m_post_map.clear();
   m_checks_db.clear();
+  m_infeasible_edges.clear();
 }
 
 CrabBuilderManager &IntraClam::getCfgBuilderMan() { return m_builder_man; }
@@ -659,74 +660,71 @@ private:
       results.checksdb += analyzer.get_all_checks();
     }
 
-    CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                           << "Finished inter-procedural analysis.\n");
-
-    // -- store invariants
-    if (params.store_invariants || params.print_invars) {
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing invariants.\n");
+    if (!params.store_invariants && !params.print_invars) {
+      // nothing else to do
+      return;
     }
-
+	
     for (auto &n : llvm::make_range(vertices(*m_cg))) {
       cfg_ref_t cfg = n.get_cfg();
       if (const Function *F = m_M.getFunction(n.name())) {
-        if (params.store_invariants || params.print_invars) {
-          for (basic_block_label_t bl :
+	// -- storing analysis results for F
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+			<< "Storing analysis results for "
+			<< F->getName().str() << ".\n");
+	for (basic_block_label_t bl :
                llvm::make_range(cfg.label_begin(), cfg.label_end())) {
-            if (bl.is_edge()) {
-              // Note that we use get_post instead of getPre:
-              //   the crab block (bl) has an assume statement corresponding
-              //   to the branch condition in the predecessor of the
-              //   LLVM edge. We want the invariant *after* the
-              //   evaluation of the assume.
-              if (analyzer.get_post(cfg, bl).is_bottom()) {
-                results.infeasible_edges.insert(
-                    {bl.get_edge().first, bl.get_edge().second});
-              }
-            } else if (const BasicBlock *B = bl.get_basic_block()) {
-              // --- invariants that hold at the entry of the blocks
-              auto pre = analyzer.get_pre(cfg, getCrabBasicBlock(B));
-              update(results.premap, *B, pre);
-              // --- invariants that hold at the exit of the blocks
-              auto post = analyzer.get_post(cfg, getCrabBasicBlock(B));
-              update(results.postmap, *B, post);
-            } else {
-              // this should be unreachable
-              assert(false && "A Crab block should correspond to either an "
-                              "LLVM edge or block");
-            }
-          }
+	  if (bl.is_edge()) {
+	    // Note that we use get_post instead of getPre:
+	    //   the crab block (bl) has an assume statement corresponding
+	    //   to the branch condition in the predecessor of the
+	    //   LLVM edge. We want the invariant *after* the
+	    //   evaluation of the assume.
+	    if (analyzer.get_post(cfg, bl).is_bottom()) {
+	      results.infeasible_edges.insert(
+					      {bl.get_edge().first, bl.get_edge().second});
+	    }
+	  } else if (const BasicBlock *B = bl.get_basic_block()) {
+	    // --- invariants that hold at the entry of the blocks
+	    auto pre = analyzer.get_pre(cfg, getCrabBasicBlock(B));
+	    update(results.premap, *B, pre);
+	    // --- invariants that hold at the exit of the blocks
+	    auto post = analyzer.get_post(cfg, getCrabBasicBlock(B));
+	    update(results.postmap, *B, post);
+	  } else {
+	    // this should be unreachable
+	    assert(false && "A Crab block should correspond to either an "
+		   "LLVM edge or block");
+	  }
+	}
+	CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+			<< "Finished storing analysis results for "
+			<< F->getName().str() << ".\n");
 
-          // --- print invariants and summaries
-          if (params.print_invars && isTrackable(*F)) {
-            if (cfg.has_func_decl()) {
-              auto fdecl = cfg.get_func_decl();
-              crab::outs() << "\n" << fdecl << "\n";
-            } else {
-              llvm::outs() << "\n"
-                           << "function " << F->getName() << "\n";
-            }
-
-            std::vector<varname_t> shadow_varnames;
-            if (!params.keep_shadow_vars) {
-              shadow_varnames = std::vector<varname_t>(
+	// --- print invariants for F
+	if (params.print_invars && isTrackable(*F)) {
+	  if (cfg.has_func_decl()) {
+	    auto fdecl = cfg.get_func_decl();
+	    crab::outs() << "\n" << fdecl << "\n";
+	  } else {
+	    llvm::outs() << "\n"
+			 << "function " << F->getName() << "\n";
+	  }
+	  
+	  std::vector<varname_t> shadow_varnames;
+	  if (!params.keep_shadow_vars) {
+	    shadow_varnames = std::vector<varname_t>(
                   m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
                   m_crab_builder_man.getVarFactory().get_shadow_vars().end());
-            }
-            std::vector<std::unique_ptr<block_annotation_t>> annotations;
-            annotations.emplace_back(std::make_unique<inv_annotation_t>(
+	  }
+	  std::vector<std::unique_ptr<block_annotation_t>> annotations;
+	  annotations.emplace_back(std::make_unique<inv_annotation_t>(
                 results.premap, results.postmap, shadow_varnames, &lookup));
-            crab_pretty_printer::print_annotations(cfg, results.checksdb,
-                                                   annotations);
-          }
-        }
+	  crab_pretty_printer::print_annotations(cfg, results.checksdb,
+						 annotations);
+	}
       }
     }
-
-    if (params.store_invariants || params.print_invars) {
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "All invariants stored.\n");
-    }
-
     return;
   }
 };
@@ -742,6 +740,7 @@ void IntraGlobalClam::clear() {
   m_pre_map.clear();
   m_post_map.clear();
   m_checks_db.clear();
+  m_infeasible_edges.clear();  
 }
 
 CrabBuilderManager &IntraGlobalClam::getCfgBuilderMan() { return m_builder_man; }
@@ -826,12 +825,13 @@ void InterGlobalClam::clear() {
   m_pre_map.clear();
   m_post_map.clear();
   m_checks_db.clear();
+  m_infeasible_edges.clear();  
 }
 
 CrabBuilderManager &InterGlobalClam::getCfgBuilderMan() { return m_builder_man; }
 
 void InterGlobalClam::analyze(AnalysisParams &params,
-                        const abs_dom_map_t &assumptions) {
+			      const abs_dom_map_t &assumptions) {
   AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
                              m_checks_db};
   lin_csts_map_t lin_csts_assumptions;
@@ -842,7 +842,7 @@ void InterGlobalClam::analyze(AnalysisParams &params,
 }
 
 void InterGlobalClam::analyze(AnalysisParams &params,
-                        const lin_csts_map_t &assumptions) {
+			      const lin_csts_map_t &assumptions) {
   AnalysisResults results = {m_pre_map, m_post_map, m_infeasible_edges,
                              m_checks_db};
   abs_dom_map_t abs_dom_assumptions;
@@ -875,7 +875,7 @@ InterGlobalClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const
 const checks_db_t &InterGlobalClam::getChecksDB() const { return m_checks_db; }
 
 bool InterGlobalClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
-                                const llvm::BasicBlock *b2) const {
+				      const llvm::BasicBlock *b2) const {
   return !(m_infeasible_edges.count({b1, b2}) > 0);
 }
 
@@ -1024,10 +1024,6 @@ bool ClamPass::runOnModule(Module &M) {
       }
     }
   }
-
-  // if (m_params.stats) {
-  //   crab::CrabStats::PrintBrunch(crab::outs());
-  // }
 
   if (m_params.check != CheckerKind::NOCHECKS) {
     llvm::outs() << "\n************** ANALYSIS RESULTS ****************\n";
