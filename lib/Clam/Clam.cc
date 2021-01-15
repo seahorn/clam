@@ -57,43 +57,7 @@
 using namespace llvm;
 using namespace clam;
 
-namespace clam {
-extern CrabBuilderPrecision CrabTrackLev;
-extern bool CrabCFGSimplify;
-extern bool CrabPrintCFG;
-extern bool CrabDotCFG;
-extern bool CrabEnableUniqueScalars;
-extern bool CrabIncludeHavoc;
-extern bool CrabEnableBignums;
-extern bool CrabAddPtrAssumptions;
-extern bool CrabCheckOnlyTyped;
-extern bool CrabCheckOnlyNonCyclic;
-extern bool CrabPrintAns;
-extern bool CrabStoreInvariants;
-extern bool CrabBuildOnlyCFG;
-extern bool CrabPrintUnjustifiedAssumptions;
-extern unsigned int CrabWideningDelay;
-extern unsigned int CrabNarrowingIters;
-extern unsigned int CrabWideningJumpSet;
-extern CrabDomain::Type ClamDomain;
-extern bool CrabBackward;
-extern unsigned CrabRelationalThreshold;
-extern bool CrabLive;
-extern bool CrabInter;
-extern unsigned CrabInterMaxSummaries;
-extern bool CrabInterRecursiveFunctions;
-extern bool CrabInterExactSummaryReuse;
-extern bool CrabInterStartFromMain;
-extern heap_analysis_t CrabHeapAnalysis;
-extern bool CrabDsaDisambiguateUnknown;
-extern bool CrabDsaDisambiguatePtrCast;
-extern bool CrabDsaDisambiguateExternal;
-extern CheckerKind CrabCheck;
-extern unsigned int CrabCheckVerbose;
-extern bool CrabKeepShadows;
-} // end namespace clam
-
-//#include "ClamOptions.def"
+#include "ClamOptions.def"
 
 namespace clam {
 

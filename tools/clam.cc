@@ -29,8 +29,6 @@
 #include "seadsa/InitializePasses.hh"
 #include "seadsa/support/RemovePtrToInt.hh"
 
-#include "ClamOptions.def"
-
 static llvm::cl::opt<std::string>
     InputFilename(llvm::cl::Positional,
                   llvm::cl::desc("<input LLVM bitcode file>"),
