@@ -29,6 +29,8 @@
 #include "seadsa/InitializePasses.hh"
 #include "seadsa/support/RemovePtrToInt.hh"
 
+#include "ClamOptions.def"
+
 static llvm::cl::opt<std::string>
     InputFilename(llvm::cl::Positional,
                   llvm::cl::desc("<input LLVM bitcode file>"),
@@ -104,6 +106,7 @@ static llvm::cl::opt<bool>
     UafCheck("crab-uaf-check",
              llvm::cl::desc("Add checks for use-after-free errors"),
              llvm::cl::init(false));
+
 
 using namespace clam;
 

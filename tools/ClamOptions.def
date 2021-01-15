@@ -1,0 +1,380 @@
+//////////////////////////////////////////////////////////
+// ===   Part of clam.cc. Do not include this file. === //
+////////////////////////////////////////////////////////// 
+
+#include "clam/CfgBuilderParams.hh"
+#include "clam/CrabDomainParser.hh"
+#include "clam/HeapAbstraction.hh"
+#include "seadsa/support/Debug.h"
+
+namespace clam {
+CrabBuilderPrecision CrabTrackLev;
+bool CrabCFGSimplify;
+bool CrabPrintCFG;
+bool CrabDotCFG;
+bool CrabEnableUniqueScalars;
+bool CrabIncludeHavoc;
+bool CrabEnableBignums;
+bool CrabAddPtrAssumptions;
+bool CrabCheckOnlyTyped;
+bool CrabCheckOnlyNonCyclic;
+bool CrabPrintAns;
+bool CrabStoreInvariants;
+bool CrabBuildOnlyCFG;
+bool CrabPrintUnjustifiedAssumptions;
+unsigned int CrabWideningDelay;
+unsigned int CrabNarrowingIters;
+unsigned int CrabWideningJumpSet;
+CrabDomain::Type ClamDomain;
+bool CrabBackward;
+unsigned CrabRelationalThreshold;
+bool CrabLive;
+bool CrabInter;
+unsigned CrabInterMaxSummaries;
+bool CrabInterRecursiveFunctions;
+bool CrabInterExactSummaryReuse;
+bool CrabInterStartFromMain;
+heap_analysis_t CrabHeapAnalysis;
+bool CrabDsaDisambiguateUnknown;
+bool CrabDsaDisambiguatePtrCast;
+bool CrabDsaDisambiguateExternal;
+CheckerKind CrabCheck;
+unsigned int CrabCheckVerbose;
+bool CrabKeepShadows;
+} // end namespace clam
+
+/*** Translation LLVM to Crab Parameters ***/
+
+llvm::cl::opt<clam::CrabBuilderPrecision, true>
+XCrabTrackLev("crab-track",
+   llvm::cl::desc("Track abstraction level of the Crab Cfg"),
+   llvm::cl::values
+    (clEnumValN(clam::CrabBuilderPrecision::NUM, "num", "Integer and Boolean registers only"),
+     clEnumValN(clam::CrabBuilderPrecision::SINGLETON_MEM, "sing-mem", "num + singleton memory objects"),
+     clEnumValN(clam::CrabBuilderPrecision::MEM, "mem", "num + all memory objects")),
+   llvm::cl::location(clam::CrabTrackLev),
+   llvm::cl::init(clam::CrabBuilderPrecision::NUM));
+
+llvm::cl::opt<bool, true>
+XCrabCFGSimplify("crab-cfg-simplify",
+	 llvm::cl::desc("Simplify Crab CFG"),
+	 llvm::cl::location(clam::CrabCFGSimplify),		 
+	 llvm::cl::init(false),
+	 llvm::cl::Hidden);
+
+llvm::cl::opt<bool, true>
+XCrabPrintCFG("crab-print-cfg",
+	 llvm::cl::desc("Print Crab CFG"),
+	 llvm::cl::location(clam::CrabPrintCFG),	 
+	 llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabDotCFG("crab-dot-cfg",
+	 llvm::cl::desc("Print Crab CFG of function to dot file"),
+	 llvm::cl::location(clam::CrabDotCFG),	 	 
+	 llvm::cl::init(false));
+
+/**
+ * Translate singleton alias sets as scalar values.
+ * This is specially useful for global variables.
+ */
+llvm::cl::opt<bool, true>
+XCrabEnableUniqueScalars("crab-singleton-aliases",
+	 llvm::cl::desc("Treat singleton alias sets as scalar values"),
+	 llvm::cl::location(clam::CrabEnableUniqueScalars),
+	 llvm::cl::init(false));
+
+/**
+ * Since LLVM IR is in SSA form many of the havoc statements are
+ * redundant since variables can be defined only once.
+ */
+llvm::cl::opt<bool, true>
+XCrabIncludeHavoc("crab-include-useless-havoc",
+		 llvm::cl::desc("Include all havoc statements."),
+		 llvm::cl::location(clam::CrabIncludeHavoc),		  
+		 llvm::cl::init(true),
+		 llvm::cl::Hidden);
+
+llvm::cl::opt<bool, true>
+XCrabEnableBignums("crab-enable-bignums",
+     llvm::cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."),
+     llvm::cl::location(clam::CrabEnableBignums),
+     llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabAddPtrAssumptions("crab-ptr-assumptions",
+     llvm::cl::desc("Add reasonable assumptions about the memory model"),
+     llvm::cl::location(clam::CrabAddPtrAssumptions),
+     llvm::cl::init(true));
+
+
+llvm::cl::opt<bool, true>
+XCrabCheckOnlyTyped("crab-check-only-typed-regions",
+     llvm::cl::desc("Add check only if abstract memory region is typed"),
+     llvm::cl::location(clam::CrabCheckOnlyTyped),
+     llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabCheckOnlyNonCyclic("crab-check-only-noncyclic-regions",
+     llvm::cl::desc("Add check only if abstract memory region is not cyclic"),
+     llvm::cl::location(clam::CrabCheckOnlyNonCyclic),
+     llvm::cl::init(false));
+
+/*** Crab Analysis Options ***/
+
+llvm::cl::opt<bool, true>
+XCrabPrintAns("crab-print-invariants", 
+              llvm::cl::desc("Print Crab invariants"),
+	      llvm::cl::location(clam::CrabPrintAns),
+              llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabStoreInvariants("crab-store-invariants", 
+               llvm::cl::desc("Store invariants"),
+	       llvm::cl::location(clam::CrabStoreInvariants),
+               llvm::cl::init(true));
+
+llvm::cl::opt<bool, true>
+XCrabBuildOnlyCFG("crab-only-cfg", 
+           llvm::cl::desc("Build Crab CFG without running the analysis"),
+	   llvm::cl::location(clam::CrabBuildOnlyCFG),
+           llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabPrintUnjustifiedAssumptions("crab-print-unjustified-assumptions", 
+llvm::cl::desc("Print unjustified assumptions done by Crab (experimental: only integer overflow)"),
+llvm::cl::location(clam::CrabPrintUnjustifiedAssumptions),
+llvm::cl::init(false));
+
+llvm::cl::opt<unsigned int, true>
+XCrabWideningDelay("crab-widening-delay", 
+   llvm::cl::desc("Max number of fixpoint iterations until widening is applied"),
+   llvm::cl::location(clam::CrabWideningDelay),
+   llvm::cl::init(1));
+
+llvm::cl::opt<unsigned int, true>
+XCrabNarrowingIters("crab-narrowing-iterations", 
+                   llvm::cl::desc("Max number of narrowing iterations"),
+		   llvm::cl::location(clam::CrabNarrowingIters),
+                   llvm::cl::init(10));
+
+llvm::cl::opt<unsigned int, true>
+XCrabWideningJumpSet("crab-widening-jump-set", 
+                    llvm::cl::desc("Size of the jump set used for widening"),
+		    llvm::cl::location(clam::CrabWideningJumpSet),
+                    llvm::cl::init(0));
+
+llvm::cl::opt<clam::CrabDomain::Type, true, clam::CrabDomainParser>
+XClamDomain("crab-dom",
+      llvm::cl::desc("Crab numerical abstract domain used to infer invariants"),
+      llvm::cl::values 
+      (clEnumValN(clam::CrabDomain::INTERVALS, "int",
+		   "Classical interval domain (default)"),
+       clEnumValN(clam::CrabDomain::TERMS_INTERVALS, "term-int",
+		   "Intervals with uninterpreted functions."),       
+       clEnumValN(clam::CrabDomain::INTERVALS_CONGRUENCES, "ric",
+		   "Reduced product of intervals with congruences"),
+       clEnumValN(clam::CrabDomain::DIS_INTERVALS, "dis-int",
+		   "Disjunctive intervals based on Clousot's DisInt domain"),
+       clEnumValN(clam::CrabDomain::TERMS_DIS_INTERVALS, "term-dis-int",
+		   "Disjunctive Intervals with uninterpreted functions."),
+       clEnumValN(clam::CrabDomain::BOXES, "boxes",
+		   "Disjunctive intervals based on ldds"),
+       clEnumValN(clam::CrabDomain::ZONES_SPLIT_DBM, "zones",
+		   "Zones domain with Sparse DBMs in Split Normal Form"),
+       clEnumValN(clam::CrabDomain::OCT, "oct", "Octagons domain"),
+       clEnumValN(clam::CrabDomain::PK, "pk", "Polyhedra domain"),
+       clEnumValN(clam::CrabDomain::TERMS_ZONES, "rtz",
+		   "Reduced product of term-dis-int and zones."),
+       clEnumValN(clam::CrabDomain::WRAPPED_INTERVALS, "w-int",
+		  "Wrapped interval domain")),
+       llvm::cl::location(clam::ClamDomain),	    
+       llvm::cl::init(clam::CrabDomain::INTERVALS));
+
+llvm::cl::opt<bool, true>
+XCrabBackward("crab-backward", 
+	     llvm::cl::desc("Perform an iterative forward/backward analysis.\n"
+		      "It is only useful to prove assertions.\n"
+		      "Only the intra-procedural version has been implemented."),
+	   llvm::cl::location(clam::CrabBackward),
+           llvm::cl::init(false));
+
+// If domain is num
+llvm::cl::opt<unsigned, true>
+XCrabRelationalThreshold("crab-relational-threshold", 
+   llvm::cl::desc("Max number of live vars per block before switching "
+	    "to a non-relational domain"),
+   llvm::cl::location(clam::CrabRelationalThreshold),			 
+   llvm::cl::init(10000),
+   llvm::cl::Hidden);
+
+llvm::cl::opt<bool, true>
+XCrabLive("crab-live", 
+	 llvm::cl::desc("Run Crab with live ranges. "
+		  "It can lose precision if relational domains"),
+         llvm::cl::location(clam::CrabLive),
+	 llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabInter("crab-inter",
+           llvm::cl::desc("Crab Inter-procedural analysis"),
+	   llvm::cl::location(clam::CrabInter),
+           llvm::cl::init(false));
+
+llvm::cl::opt<unsigned, true>
+XCrabInterMaxSummaries("crab-inter-max-summaries", 
+	 llvm::cl::desc("Maximum number of summaries per function tracked by "
+		  "the interprocedural analysis"),
+	 llvm::cl::location(clam::CrabInterMaxSummaries),
+	 llvm::cl::init(UINT_MAX));
+
+llvm::cl::opt<bool, true>
+XCrabInterRecursiveFunctions("crab-inter-recursive", 
+	 llvm::cl::desc("Precise analysis of recursive analysis"),
+	 llvm::cl::location(clam::CrabInterRecursiveFunctions),
+	 llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabInterExactSummaryReuse("crab-inter-exact-summary-reuse", 
+	 llvm::cl::desc("Reuse summaries without losing precision (more expensive)"),
+	 llvm::cl::location(clam::CrabInterExactSummaryReuse),
+	 llvm::cl::init(true));
+
+llvm::cl::opt<bool, true>
+XCrabInterStartFromMain("crab-inter-entry-main", 
+	 llvm::cl::desc("Start the analysis only from main (not applicable to libraries)"),
+	 llvm::cl::location(clam::CrabInterStartFromMain),
+	 llvm::cl::init(false));
+
+llvm::cl::opt<clam::heap_analysis_t, true>
+XCrabHeapAnalysis("crab-heap-analysis",
+   llvm::cl::desc("Heap analysis used for memory disambiguation"),
+   llvm::cl::values
+    (clEnumValN(clam::heap_analysis_t::NONE, "none",
+                "Disable heap analysis"),
+     clEnumValN(clam::heap_analysis_t::CI_SEA_DSA, "ci-sea-dsa",
+                "context-insensitive sea-dsa"),
+     clEnumValN(clam::heap_analysis_t::CS_SEA_DSA, "cs-sea-dsa",
+                "context-sensitive sea-dsa")),
+   llvm::cl::location(clam::CrabHeapAnalysis),
+   llvm::cl::init(clam::heap_analysis_t::CI_SEA_DSA));
+   
+    
+llvm::cl::opt<bool, true>
+XCrabDsaDisambiguateUnknown("crab-dsa-disambiguate-unknown",
+    llvm::cl::desc("Disambiguate unknown pointers (unsound)"),
+    llvm::cl::location(clam::CrabDsaDisambiguateUnknown),			    
+    llvm::cl::init(false),
+    llvm::cl::Hidden);
+
+llvm::cl::opt<bool, true>
+XCrabDsaDisambiguatePtrCast("crab-dsa-disambiguate-ptr-cast",
+    llvm::cl::desc("Disambiguate pointers that have been casted from/to integers (unsound)"),
+    llvm::cl::location(clam::CrabDsaDisambiguatePtrCast),			    
+    llvm::cl::init(false),
+    llvm::cl::Hidden);
+
+llvm::cl::opt<bool, true>
+XCrabDsaDisambiguateExternal("crab-dsa-disambiguate-external",
+    llvm::cl::desc("Disambiguate pointers that have been passed to external functions (unsound)"), 
+    llvm::cl::location(clam::CrabDsaDisambiguateExternal),
+    llvm::cl::init(false),			     
+    llvm::cl::Hidden);
+
+// Prove assertions
+llvm::cl::opt<clam::CheckerKind, true>
+XCrabCheck("crab-check", 
+	   llvm::cl::desc("Check user assertions"),
+	   llvm::cl::values(
+	       clEnumValN(clam::CheckerKind::NOCHECKS  , "none"  , "None"),
+	       clEnumValN(clam::CheckerKind::ASSERTION , "assert", "User assertions")),
+	   llvm::cl::location(clam::CrabCheck),
+	   llvm::cl::init(clam::CheckerKind::NOCHECKS));
+
+llvm::cl::opt<unsigned int, true>
+XCrabCheckVerbose("crab-check-verbose", 
+                 llvm::cl::desc("Print verbose information about checks"),
+		 llvm::cl::location(clam::CrabCheckVerbose),
+                 llvm::cl::init(0));
+
+// Important to clam clients (e.g., SeaHorn):
+// Shadow variables are variables that cannot be mapped back to a
+// const Value*. These are created for instance for memory heaps.
+llvm::cl::opt<bool, true>
+XCrabKeepShadows("crab-keep-shadows",
+    llvm::cl::desc("Preserve shadow variables in invariants, summaries, and preconditions"),
+    llvm::cl::location(clam::CrabKeepShadows),		 
+    llvm::cl::init(false),
+    llvm::cl::Hidden);
+
+/* Debugging/Logging/Sanity Checks options */
+
+struct LogOpt {
+  void operator=(const std::string &tag) const {
+     crab::CrabEnableLog(tag);
+     seadsa::SeaDsaEnableLog(tag);
+  } 
+};
+
+LogOpt loc;
+
+static llvm::cl::opt<LogOpt, true, llvm::cl::parser<std::string>> 
+LogClOption("crab-log",
+             llvm::cl::desc("Enable specified log level"),
+             llvm::cl::location(loc),
+             llvm::cl::value_desc("string"),
+             llvm::cl::ValueRequired, llvm::cl::ZeroOrMore);
+
+struct VerboseOpt {
+  void operator=(unsigned level) const 
+  { crab::CrabEnableVerbosity(level); } 
+};
+
+VerboseOpt verbose;
+
+static llvm::cl::opt<VerboseOpt, true, llvm::cl::parser<unsigned>> 
+CrabVerbose("crab-verbose",
+	    llvm::cl::desc("Enable verbose messages"),
+	    llvm::cl::location(verbose),
+	    llvm::cl::value_desc("uint"));
+
+
+struct WarningOpt {
+  void operator=(bool val) const 
+  { crab::CrabEnableWarningMsg(val); } 
+};
+
+WarningOpt warning;
+
+static llvm::cl::opt<WarningOpt, true, llvm::cl::parser<bool>> 
+CrabEnableWarning("crab-enable-warnings",
+	    llvm::cl::desc("Enable warning messages"),
+	    llvm::cl::location(warning),
+	    llvm::cl::value_desc("bool"));
+
+struct SanityChecksOpt {
+  void operator=(bool val) const 
+  { crab::CrabEnableSanityChecks(val); } 
+};
+
+SanityChecksOpt sanity;
+
+static llvm::cl::opt<SanityChecksOpt, true, llvm::cl::parser<bool>> 
+CrabSanityChecks("crab-sanity-checks",
+	    llvm::cl::desc("Enable sanity checks"),
+	    llvm::cl::location(sanity),
+	    llvm::cl::value_desc("bool"));
+
+struct StatsOpt {
+  // operator bool() const
+  // { return crab::CrabStatsFlag; }
+  void operator=(bool val) const 
+  { crab::CrabEnableStats(val); } 
+};
+StatsOpt CrabStats;
+
+static llvm::cl::opt<StatsOpt, true, llvm::cl::parser<bool>>
+XCrabStats("crab-stats", 
+           llvm::cl::desc("Show Crab statistics and analysis results"),
+	   llvm::cl::location(CrabStats),
+	   llvm::cl::value_desc("bool"));

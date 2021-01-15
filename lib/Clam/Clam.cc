@@ -57,7 +57,43 @@
 using namespace llvm;
 using namespace clam;
 
-#include "ClamOptions.def"
+namespace clam {
+extern CrabBuilderPrecision CrabTrackLev;
+extern bool CrabCFGSimplify;
+extern bool CrabPrintCFG;
+extern bool CrabDotCFG;
+extern bool CrabEnableUniqueScalars;
+extern bool CrabIncludeHavoc;
+extern bool CrabEnableBignums;
+extern bool CrabAddPtrAssumptions;
+extern bool CrabCheckOnlyTyped;
+extern bool CrabCheckOnlyNonCyclic;
+extern bool CrabPrintAns;
+extern bool CrabStoreInvariants;
+extern bool CrabBuildOnlyCFG;
+extern bool CrabPrintUnjustifiedAssumptions;
+extern unsigned int CrabWideningDelay;
+extern unsigned int CrabNarrowingIters;
+extern unsigned int CrabWideningJumpSet;
+extern CrabDomain::Type ClamDomain;
+extern bool CrabBackward;
+extern unsigned CrabRelationalThreshold;
+extern bool CrabLive;
+extern bool CrabInter;
+extern unsigned CrabInterMaxSummaries;
+extern bool CrabInterRecursiveFunctions;
+extern bool CrabInterExactSummaryReuse;
+extern bool CrabInterStartFromMain;
+extern heap_analysis_t CrabHeapAnalysis;
+extern bool CrabDsaDisambiguateUnknown;
+extern bool CrabDsaDisambiguatePtrCast;
+extern bool CrabDsaDisambiguateExternal;
+extern CheckerKind CrabCheck;
+extern unsigned int CrabCheckVerbose;
+extern bool CrabKeepShadows;
+} // end namespace clam
+
+//#include "ClamOptions.def"
 
 namespace clam {
 
@@ -775,6 +811,9 @@ void IntraGlobalClam::analyze(AnalysisParams &params,
 			 lin_csts_assumptions, results);
     }
   }
+  if (params.stats) {
+    crab::CrabStats::PrintBrunch(crab::outs());
+  }
 }
 
 llvm::Optional<clam_abstract_domain>
@@ -833,6 +872,9 @@ void InterGlobalClam::analyze(AnalysisParams &params,
                              m_checks_db};
   lin_csts_map_t lin_csts_assumptions;
   m_impl->analyze(params, assumptions, lin_csts_assumptions, results);
+  if (params.stats) {
+    crab::CrabStats::PrintBrunch(crab::outs());
+  }  
 }
 
 void InterGlobalClam::analyze(AnalysisParams &params,
@@ -841,6 +883,9 @@ void InterGlobalClam::analyze(AnalysisParams &params,
                              m_checks_db};
   abs_dom_map_t abs_dom_assumptions;
   m_impl->analyze(params, abs_dom_assumptions, assumptions, results);
+  if (params.stats) {
+    crab::CrabStats::PrintBrunch(crab::outs());
+  }  
 }
 
 llvm::Optional<clam_abstract_domain>
@@ -964,10 +1009,9 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.widening_delay = CrabWideningDelay;
   m_params.narrowing_iters = CrabNarrowingIters;
   m_params.widening_jumpset = CrabWideningJumpSet;
-  m_params.stats = CrabStats.getValue();
+  m_params.stats = crab::CrabStatsFlag /*CrabStats*/;
   m_params.print_invars = CrabPrintAns;
   m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
-  //m_params.print_summaries = CrabPrintSumm;
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;
   m_params.check = CrabCheck;
@@ -1017,9 +1061,9 @@ bool ClamPass::runOnModule(Module &M) {
     }
   }
 
-  if (m_params.stats) {
-    crab::CrabStats::PrintBrunch(crab::outs());
-  }
+  // if (m_params.stats) {
+  //   crab::CrabStats::PrintBrunch(crab::outs());
+  // }
 
   if (m_params.check != CheckerKind::NOCHECKS) {
     llvm::outs() << "\n************** ANALYSIS RESULTS ****************\n";
