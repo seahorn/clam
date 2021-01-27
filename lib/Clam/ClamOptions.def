@@ -170,6 +170,8 @@ XClamDomain("crab-dom",
       llvm::cl::values 
       (clEnumValN(clam::CrabDomain::INTERVALS, "int",
 		   "Classical interval domain (default)"),
+       clEnumValN(clam::CrabDomain::SIGN_CONSTANTS, "sign-constants",
+		   "Reduced product of sign and constants"),		   
        clEnumValN(clam::CrabDomain::TERMS_INTERVALS, "term-int",
 		   "Intervals with uninterpreted functions."),       
        clEnumValN(clam::CrabDomain::INTERVALS_CONGRUENCES, "ric",

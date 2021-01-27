@@ -19,6 +19,7 @@
  * - pk_domain_t
  * - ric_domain_t
  * - split_dbm_domain_t
+ * - sign_constant_domain_t
  * - term_int_domain_t
  * - term_dis_int_domain_t
  * - wrapped_interval_domain_t
@@ -31,6 +32,7 @@
 #include <clam/crab/domains/pk.hh>
 #include <clam/crab/domains/ric.hh>
 #include <clam/crab/domains/split_dbm.hh>
+#include <clam/crab/domains/sign_constant.hh>
 #include <clam/crab/domains/terms_dis_intervals.hh>
 #include <clam/crab/domains/terms_intervals.hh>
 #include <clam/crab/domains/terms_zones.hh>

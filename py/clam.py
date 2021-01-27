@@ -285,6 +285,7 @@ def parseArgs(argv):
     p.add_argument('--crab-dom',
                     help="Choose abstract domain:\n"
                           "- int: intervals\n"
+                          "- sign-const: reduced product of sign and constant domains\n"
                           "- ric: reduced product of intervals and congruences\n"
                           "- term-int: int with uninterpreted functions\n"
                           "- dis-int: disjunctive intervals based on Clousot's DisInt domain\n"
@@ -295,7 +296,7 @@ def parseArgs(argv):
                           "- pk: polyhedra domain\n"
                           "- rtz: reduced product of term-dis-int with zones\n"
                           "- w-int: wrapped intervals\n",
-                    choices=['int', 'ric', 'term-int',
+                    choices=['int', 'sign-const', 'ric', 'term-int',
                              'dis-int', 'term-dis-int', 'boxes',  
                              'zones', 'oct', 'pk', 'rtz',
                              'w-int'],
