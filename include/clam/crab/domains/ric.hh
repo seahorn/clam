@@ -1,6 +1,8 @@
 #pragma once
 
 #include <clam/crab/domains/intervals.hh>
+#include <crab/domains/combined_congruences.hpp>
+
 namespace clam {
 using namespace crab::domains;
 using namespace ikos;
