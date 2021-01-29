@@ -228,7 +228,7 @@ if (GIT_FOUND)
 
   set (CRAB_REPO "https://github.com/seahorn/crab.git" CACHE STRING "crab repo")    
   add_custom_target (crab-git
-     		     ${GIT_EXECUTABLE} clone ${CRAB_REPO} -b dev ${CRAB_SOURCE_DIR})
+     		     ${GIT_EXECUTABLE} clone ${CRAB_REPO} ${CRAB_SOURCE_DIR})
   
   add_custom_target (crab ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_LIST_FILE}
                      DEPENDS crab-git)    
