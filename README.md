@@ -1,6 +1,7 @@
 # Clam: Crab for Llvm Abstraction Manager #
 
-<a href="https://travis-ci.com/seahorn/crab-llvm"><img src="https://travis-ci.com/seahorn/crab-llvm.svg?branch=dev10" title="Ubuntu 18.04 LTS 64bit, g++-5"/></a>
+<a href="https://github.com/seahorn/crab-llvm/actions"><img src="https://github.com/seahorn/crab-llvm/workflows/CI/badge.svg" title="Ubuntu 18.04 LTS 64bit, g++-6"/></a>
+
 
 <img src="https://upload.wikimedia.org/wikipedia/en/4/4c/LLVM_Logo.svg" alt="llvm logo" width=280 height=200 /><img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
 
@@ -108,7 +109,7 @@ You can get the latest binary from docker hub using the command:
 	 
 # Clam architecture #
 
-![Clam Architecture](https://github.com/seahorn/crab-llvm/blob/dev10/clam_arch.jpg?raw=true "Clam Architecture")
+![Clam Architecture](https://github.com/seahorn/crab-llvm/blob/master/clam_arch.jpg?raw=true "Clam Architecture")
 
 # Example 1 #
 
@@ -415,30 +416,27 @@ The special thing about the above LLVM bitcode is the existence of
 that the result of the load instruction at block `loop.exit` is
 between 0 and 5.
 
-# Known limitations of the translation from bitcode to Crab CFG #
+# Limitations #
 
-- Ignore floating point operations.
+- No support for floating point operations.
 
-# Analysis limitations #
-
-Well, there are many. Most of these limitations are coming from
-Crab. Here some of them:
-
-- Most Crab numerical domains reason about linear arithmetic. The
-  `term-int` domain is an exception. This domain can treat non-linear
-  arithmetic expressions as uninterpreted functions.
+- Very little support for non-linear reasoning. Most Crab numerical
+  domains reason about linear arithmetic. The `term-int` domain is an
+  exception. This domain can treat non-linear arithmetic expressions
+  as uninterpreted functions.
 
 - Most Crab numerical domains reason about mathematical integers. The
-  `w-int` domain is an exception. The `zones` domain can use machine
-  arithmetic but it is not enabled by default.
+  `w-int` domain is an exception because it can reason about machine
+  arithmetic. The `zones` domain can use machine arithmetic but it is
+  not enabled by default.
 
-- There are several Crab numerical domains that compute disjunctive
-  invariants (e.g., `boxes` or `dis-int`) but they are still limited
-  in terms of expressiveness to keep them tractable.
+- There are several Crab numerical domains that compute some form of
+  disjunctive invariants (e.g., `boxes` or `dis-int`) but they are
+  still limited in terms of expressiveness to keep them tractable.
 
 - The backward analysis is too experimental and it requires more work.
 
-- Reasoning about memory relies heavily on `sea-dsa` which is context- and 
-  field-sensitive pointer analysis but flow-insensitive.
+- Reasoning about memory relies heavily on `sea-dsa` which is context-
+  and field-sensitive pointer analysis but flow-insensitive.
   
   
