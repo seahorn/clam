@@ -6,9 +6,9 @@ name: CI
 on:
   # Triggers the workflow on push or pull request events but only for the master branch
   push:
-    branches: dev10
+    branches: master
   pull_request:
-    branches: dev10
+    branches: master
   schedule:
     - cron: 0 0 * * *  # run every day at UTC 00:00
 
@@ -22,20 +22,20 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - name: Check Out Repo 
+      - name: Check out repo
         uses: actions/checkout@v2
         with:
-          ref: dev10 # only checkout dev
+          ref: master # only checkout master
       - name: Build clam and run tests
-        run: docker build --build-arg BRANCH=dev10 -t seahorn/clam-llvm10:nightly -f docker/clam.Dockerfile .
+        run: docker build --build-arg BRANCH=master -t seahorn/clam-llvm10:nightly -f docker/clam.Dockerfile .
       # Logging in using this mechanism prints the following warning
       # WARNING! Your password will be stored unencrypted in /home/runner/.docker/config.json.
       # There does not seem to be an easy way around it though using docker actions may mitigate
       # it.
-      - name: Login to DockerHub Registry
+      - name: Login to DockerHub Registry 
         if: ${{ github.event_name == 'schedule' }}  # only push if nightly run
         run: echo ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }} | docker login -u ${{ secrets.DOCKER_HUB_USERNAME }} --password-stdin
-      - name: tag and push crab (nightly)
+      - name: Tag and push clam (nightly)
         if: ${{ github.event_name == 'schedule' }}  # only push if nightly run
         run: |
           docker push seahorn/clam-llvm10:nightly 
