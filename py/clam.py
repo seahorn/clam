@@ -363,9 +363,9 @@ def parseArgs(argv):
                              'after-load',
                              'all'],
                     dest='insert_inv_loc', default='none')
-    p.add_argument('--crab-do-not-store-invariants',
-                    help='Do not store invariants',
-                    dest='store_invariants', default=True, action='store_false')        
+    add_bool_argument(p, 'crab-preserve-invariants',
+                      help='Preserve invariants for queries after analysis has finished',
+                      dest='store_invariants', default=True)        
     p.add_argument('--crab-promote-assume',
                     help='Promote verifier.assume calls to llvm.assume intrinsics',
                     dest='crab_promote_assume', default=False, action='store_true')
@@ -395,9 +395,9 @@ def parseArgs(argv):
     add_bool_argument(p, 'crab-dot-cfg', default=False,
                       help='Print Crab CFG of function to dot file',
                       dest='crab_dot_cfg')
-    p.add_argument('--crab-do-not-print-invariants',
-                    help='Do not print invariants',
-                    dest='crab_print_invariants', default=True, action='store_false')    
+    add_bool_argument(p, 'crab-print-invariants',
+                    help='Print invariants',
+                    dest='crab_print_invariants', default=True)    
     p.add_argument('--crab-print-unjustified-assumptions',
                     help='Print unjustified assumptions done by the analyzer (experimental, only for integer overflows)',
                     dest='print_assumptions', default=False, action='store_true')
@@ -859,7 +859,9 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_sanity_checks: clam_args.append('--crab-sanity-checks')
     if args.crab_cfg_simplify: clam_args.append('--crab-cfg-simplify')
     if args.crab_print_invariants:
-        clam_args.append('--crab-print-invariants')
+        clam_args.append('--crab-print-invariants=true')
+    else:
+        clam_args.append('--crab-print-invariants=false')
     if args.store_invariants:
         clam_args.append('--crab-store-invariants=true')
     else:

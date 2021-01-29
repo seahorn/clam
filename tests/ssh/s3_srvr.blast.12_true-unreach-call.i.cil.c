@@ -1,4 +1,4 @@
-// RUN: %clam --turn-undef-nondet --inline  --lower-select --devirt-functions=types --lower-unsigned-icmp --crab-do-not-print-invariants --crab-dom=boxes --crab-check=assert --externalize-addr-taken-functions %opts --crab-sanity-checks "%s" 2>&1 | OutputCheck -l debug %s
+// RUN: %clam --turn-undef-nondet --inline  --lower-select --devirt-functions=types --lower-unsigned-icmp --crab-print-invariants=false --crab-dom=boxes --crab-check=assert --externalize-addr-taken-functions %opts --crab-sanity-checks "%s" 2>&1 | OutputCheck -l debug %s
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
