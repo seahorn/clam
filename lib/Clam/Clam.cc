@@ -1016,10 +1016,10 @@ bool ClamPass::runOnModule(Module &M) {
           return boost::optional<clam_abstract_domain>();
         };
 
-        cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn,
-                                                m_ga->getChecksDB());
+	crab::cfg::cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn,
+							   m_ga->getChecksDB());
 #else
-        cfg_to_dot(cfg);
+	crab::cfg::cfg_to_dot(cfg);
 #endif
       }
     }
