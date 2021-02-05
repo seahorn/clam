@@ -1,7 +1,6 @@
 #include "path_analyzer.hpp"
-#include "clam/crab/crab_lang.hh"
-
-#include <crab/domains/killgen_domain.hpp>
+#include <clam/crab/crab_lang.hh>
+#include <crab/domains/discrete_domains.hpp>
 
 #include <unordered_set>
 
@@ -249,7 +248,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     }
   }
 
-  typedef domains::flat_killgen_domain<typename CFG::variable_t> var_dom_t;
+  using var_dom_t = ikos::discrete_domain<typename CFG::variable_t>;
   var_dom_t d;
   if (last_stmt->is_assume()) {
     auto assume = static_cast<const assume_t *>(last_stmt);
