@@ -3010,34 +3010,36 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
     }
   }
 
-  if (m_params.addPointerAssumptions()) {
-    // Add assumption argv != NULL.
-    // But we are missing the assumption:
-    //    forall 0<=i< argc:: argv[i] != NULL and argv[argc] = NULL
-    if (m_func.arg_size() == 2) {
-      if (Value *Argv = m_func.getArg(1)) {
-        if (Argv->getType()->isPointerTy()) {
-          crab_lit_ref_t argv_lit = m_lfac.getLit(*Argv);
-          assert(argv_lit->isVar());
-          entry.assume_ref(ref_cst_t::mk_gt_null(argv_lit->getVar()));
-        }
+  if (m_params.trackMemory()) {  
+    if (m_params.addPointerAssumptions()) {
+      // Add assumption argv != NULL.
+      // But we are missing the assumption:
+      //    forall 0<=i< argc:: argv[i] != NULL and argv[argc] = NULL
+      if (m_func.arg_size() == 2) {
+	if (Value *Argv = m_func.getArg(1)) {
+	  if (Argv->getType()->isPointerTy()) {
+	    crab_lit_ref_t argv_lit = m_lfac.getLit(*Argv);
+	    assert(argv_lit->isVar());
+	    entry.assume_ref(ref_cst_t::mk_gt_null(argv_lit->getVar()));
+	  }
+	}
       }
     }
-  }
-
-  for (auto &F : M) {
-    if (F.hasAddressTaken()) {
-      crab_lit_ref_t funptr = m_lfac.getLit(F);
-      assert(funptr && funptr->isVar() && funptr->isRef());
-      Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
-      entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
-		     m_as_man.mk_allocation_site());
-      // entry.havoc(funptr->getVar(),
-      //             "Function pointer for " + F.getName().str());
-      if (m_params.addPointerAssumptions()) {
-        // Add assumptions about function addresses: all function
-        // addresses are not null
+    
+    for (auto &F : M) {
+      if (F.hasAddressTaken()) {
+	crab_lit_ref_t funptr = m_lfac.getLit(F);
+	assert(funptr && funptr->isVar() && funptr->isRef());
+	Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
+	entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
+		       m_as_man.mk_allocation_site());
+	// entry.havoc(funptr->getVar(),
+	//             "Function pointer for " + F.getName().str());
+	if (m_params.addPointerAssumptions()) {
+	  // Add assumptions about function addresses: all function
+	  // addresses are not null
         entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
+	}
       }
     }
   }
