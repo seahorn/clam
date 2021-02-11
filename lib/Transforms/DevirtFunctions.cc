@@ -90,6 +90,7 @@ static Value *castTo(Value *V, Type *Ty, std::string Name,
 static void promoteIndirectCall(CallSite &CS,
                                 const std::vector<Function *> &Callees,
                                 bool keepOriginalCallSite) {
+#if 0
   for (unsigned i = 0, numCallees = Callees.size(); i < numCallees; ++i) {
     if (i == numCallees - 1 && !keepOriginalCallSite) {
       llvm::promoteCall(CS, Callees[i]);
@@ -97,6 +98,23 @@ static void promoteIndirectCall(CallSite &CS,
       llvm::promoteCallWithIfThenElse(CS, Callees[i]);
     }
   }
+#else  
+  for (unsigned i = 0, numCallees = Callees.size(); i < numCallees; ++i) {
+    llvm::promoteCallWithIfThenElse(CS, Callees[i]);
+  }
+  Instruction *OriginalCall = CS.getInstruction();  
+  if (!keepOriginalCallSite) {
+    // We insert an unreachable instruction before the original
+    // call. The module owns the unreachable instruction.
+    // 
+    // We could directly call promoteCall so we woudn't create the
+    // last else. However, we want to have explicit comparison
+    // instructions with each of the possible callees so that
+    // other transformations later can optimize code.
+    new UnreachableInst(OriginalCall->getParent()->getParent()->getContext(),
+			OriginalCall);
+  }
+#endif   
 }
 
 namespace devirt_impl {
