@@ -32,8 +32,7 @@ using namespace ikos;
 // Array functor domain where the parameter domain is DOM
 #define ARRAY_FUN(DOM) array_adapt_domain<DOM>
 // Region functor domain -- the root of the hierarchy of domains.
-#define RGN_FUN(DOM) \
-  region_domain<region_domain_impl::Params<z_number, varname_t, DOM>>
+#define RGN_FUN(DOM) region_domain<RegionParams<DOM>>
 /* ====================================================================== */    
 /* END MACROS to create the hierarchy of domains. Only for internal use   */
 /* ====================================================================== */    
@@ -58,9 +57,24 @@ using array_adapt_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;
 
 /* ====================================================================== */        
 /* BEGIN region domain                                                    */
-/* ====================================================================== */  
+/* ====================================================================== */
 using domvar_allocator = crab::var_factory_impl::str_var_alloc_col;
 using dom_varname_t = domvar_allocator::varname_t;
+template<class BaseAbsDom>
+class RegionParams {
+public:
+  using number_t = z_number;
+  using varname_t = clam::varname_t;
+  using varname_allocator_t = crab::var_factory_impl::str_var_alloc_col;  
+  using base_abstract_domain_t = BaseAbsDom;
+  using base_varname_t = typename BaseAbsDom::varname_t;
+  /* Enable reasoning about allocation sites*/
+  enum { allocation_sites = 1};
+  /* Enable reasoning about deallocations */
+  enum { deallocation = 1};
+  /* This should be always disabled */
+  enum { refine_uninitialized_regions = 0};
+};
 /* ====================================================================== */    
 /* END region domain                                                      */
 /* ====================================================================== */    
