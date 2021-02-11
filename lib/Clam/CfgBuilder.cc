@@ -702,6 +702,7 @@ public:
 //! Translate the rest of instructions
 class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   crabLitFactory &m_lfac;
+  allocation_site_man &m_as_man;
   HeapAbstraction &m_mem;
   const DataLayout *m_dl;
   const TargetLibraryInfo *m_tli;
@@ -783,8 +784,8 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   void doCallSite(CallInst &CI);
 
 public:
-  CrabIntraBlockBuilder(
-      crabLitFactory &lfac, HeapAbstraction &mem, const DataLayout *dl,
+  CrabIntraBlockBuilder(crabLitFactory &lfac, allocation_site_man &as_man,
+      HeapAbstraction &mem, const DataLayout *dl,
       const TargetLibraryInfo *tli, basic_block_t &bb,
       const CrabBuilderParams &params,
       const DenseMap<const Function *, std::vector<const Value *>>
@@ -818,7 +819,8 @@ public:
 }; // end class
 
 CrabIntraBlockBuilder::CrabIntraBlockBuilder(
-    crabLitFactory &lfac, HeapAbstraction &mem, const DataLayout *dl,
+    crabLitFactory &lfac, allocation_site_man &as_man,
+    HeapAbstraction &mem, const DataLayout *dl,
     const TargetLibraryInfo *tli, basic_block_t &bb,
     const CrabBuilderParams &params,
     const DenseMap<const Function *, std::vector<const Value *>> &func_globals,
@@ -828,7 +830,7 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
     RegionSet &regions_with_store,
     DenseMap<const GetElementPtrInst *, var_t> &gep_map,
     DenseMap<CallInst *, CmpInst *> &verif_calls)
-    : m_lfac(lfac), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb), m_object_id(0),
+    : m_lfac(lfac), m_as_man(as_man), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb), m_object_id(0),
       m_params(params), m_func_globals(func_globals), m_ret_insts(ret_insts),
       m_man(man), m_has_seahorn_fail(has_seahorn_fail),
       m_func_regions(func_regions), m_gep_map(gep_map), m_rev_map(rev_map),
@@ -1897,7 +1899,8 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
     assert(lit->isVar());
     if (isReference(I, m_params)) {
       Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
-      m_bb.make_ref(lit->getVar(), m_lfac.mkRegionVar(rgn));
+      m_bb.make_ref(lit->getVar(), m_lfac.mkRegionVar(rgn),
+		    m_as_man.mk_allocation_site());
     } else if (isTracked(I, m_params)) {
       // -- havoc return value
       havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
@@ -2615,7 +2618,8 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
   if (isReference(I, m_params)) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
-    m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn));
+    m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn),
+		  m_as_man.mk_allocation_site());
 
     if (m_params.addPointerAssumptions()) {
       // pointers allocated in the stack cannot be null
@@ -2843,6 +2847,7 @@ private:
   llvm::Function &m_func;
   // literal factory
   crabLitFactory m_lfac;
+  allocation_site_man &m_as_man;
   // heap analysis for memory translation
   HeapAbstraction &m_mem;
   // the crab CFG
@@ -2985,7 +2990,8 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
           // TODO: make this user optional
           entry.havoc(gv_lit->getVar(), "C string global variable");
         } else {
-          entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn));
+          entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn),
+			 m_as_man.mk_allocation_site());
         }
       }
       if (m_params.addPointerAssumptions()) {
@@ -3023,8 +3029,11 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
     if (F.hasAddressTaken()) {
       crab_lit_ref_t funptr = m_lfac.getLit(F);
       assert(funptr && funptr->isVar() && funptr->isRef());
-      entry.havoc(funptr->getVar(),
-                  "Function pointer for " + F.getName().str());
+      Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
+      entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
+		     m_as_man.mk_allocation_site());
+      // entry.havoc(funptr->getVar(),
+      //             "Function pointer for " + F.getName().str());
       if (m_params.addPointerAssumptions()) {
         // Add assumptions about function addresses: all function
         // addresses are not null
@@ -3317,7 +3326,7 @@ void CfgBuilderImpl::buildCfg() {
     }
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
-    CrabIntraBlockBuilder v(m_lfac, m_mem, m_dl, tli, *bb, m_params, m_globals,
+    CrabIntraBlockBuilder v(m_lfac, m_as_man, m_mem, m_dl, tli, *bb, m_params, m_globals,
                             m_ret_insts, m_man, has_seahorn_fail,
                             m_func_regions, m_rev_map, regions_with_store,
                             gep_map, verif_calls);
@@ -3810,6 +3819,8 @@ public:
 
   variable_factory_t &getVarFactory();
 
+  allocation_site_man &getAllocSiteMan();
+  
   const CrabBuilderParams &getCfgBuilderParams() const;
 
   const llvm::TargetLibraryInfo &getTLI(const llvm::Function &) const;
@@ -3825,8 +3836,9 @@ private:
   // Used for the translation from bitcode to Crab CFG
   llvm::TargetLibraryInfoWrapperPass &m_tli;
   // All CFGs created by this manager are created using the same
-  // variable factory.
+  // variable factory and the same allocation site manager.
   variable_factory_t m_vfac;
+  allocation_site_man m_as_man;
   // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
   // Global variables accessed by the function and its callees
@@ -3923,6 +3935,8 @@ CfgBuilderPtr CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
 }
 
 variable_factory_t &CrabBuilderManagerImpl::getVarFactory() { return m_vfac; }
+
+allocation_site_man &CrabBuilderManagerImpl::getAllocSiteMan() { return m_as_man; }
 
 const CrabBuilderParams &CrabBuilderManagerImpl::getCfgBuilderParams() const {
   return m_params;
@@ -4278,6 +4292,7 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func,
       // Builder never modifies the bitcode.
       m_func(const_cast<Function &>(func)),
       m_lfac(man.getVarFactory(), man.getCfgBuilderParams()),
+      m_as_man(man.getAllocSiteMan()),
       m_mem(man.getHeapAbstraction()), m_cfg(nullptr), m_id(0),
       m_dl(&(func.getParent()->getDataLayout())), m_tli(&(man.getTLIWrapper())),
       m_params(man.getCfgBuilderParams()), m_globals(man.m_globals),
