@@ -25,7 +25,7 @@ llvm::Pass *createAnnotatedCFGPrinterPass();
 llvm::Pass *createNullCheckPass();
 llvm::Pass *createUseAfterFreeCheckPass();
 // Postprocessing passes
-llvm::Pass *createInsertInvariantsPass();  
+llvm::Pass *createOptimizerPass();  
 } // namespace clam
 
 #ifdef HAVE_LLVM_SEAHORN

@@ -326,16 +326,20 @@ and you should see something like this:
     0  Number of total error checks
     0  Number of total warning checks
 
-Finally, to make easier the communication with other LLVM-based tools,
-Clam can output the invariants by inserting them into the LLVM
-bitcode via `verifier.assume` instructions. The option
-`--crab-add-invariants=block-entry` injects the invariants that hold
-at each basic block entry while option
-`--crab-add-invariants=after-load` injects the invariants that hold
-right after each LLVM load instruction. The option `all` injects
-invariants in all above locations. To see the final LLVM bitcode just
-add the option `-o out.bc`. The option `--crab-promote-assume` replaces 
-`verifier.assume` instructions with `llvm.assume` intrinsics.
+Finally, Clam can optimize the LLVM bitcode using the invariants
+produced by itself. The option `--crab-opt=dce` removes dead code. The
+option `--crab-opt=replace-with-constants` replace values with
+constants.  Clam can also insert the invariants into the LLVM bitcode
+via `verifier.assume` instructions (the option `--crab-promote-assume`
+replaces `verifier.assume` instructions with `llvm.assume`
+intrinsics).  The options `--crab-opt=add-invariants
+--crab-opt-invariants-loc=block-entry` adds the invariants that hold
+at each basic block entry, the options `--crab-opt=add=invariants
+--crab-opt-invariants-loc=loop-header` adds the invariants that hold
+at each loop header, while options `--crab-opt=add-invariants
+--crab-opt-invariants-loc=after-load` adds the invariants that hold
+right after each LLVM load instruction. To see the final LLVM bitcode
+just add the option `-o out.bc`.
 
 ## Yaml inteface ##
 
@@ -371,7 +375,7 @@ Consider the next program:
 
 and type
 
-    clam.py test.c --crab-track=sing-mem --crab-add-invariants=all -o test.crab.bc
+    clam.py test.c --crab-track=sing-mem --crab-opt=add-invariants --crab-opt-invariants-loc=all -o test.crab.bc
     llvm-dis test.crab.bc
 
 The content of `test.crab.bc` should be similar to:

@@ -421,7 +421,7 @@ if (NOT TopLevel)
      ClamAnalysis)
 
    if (CLAM_INCLUDE_POST_TRANSFORMS)
-     set(XCLAM_LIBS ${XCLAM_LIBS} ClamInstrumentation)
+     set(XCLAM_LIBS ${XCLAM_LIBS} ClamOptimizer)
    endif()
    
    if (CLAM_INCLUDE_TRANSFORMS)

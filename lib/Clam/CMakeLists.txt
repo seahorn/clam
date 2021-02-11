@@ -33,22 +33,22 @@ install(TARGETS ClamAnalysis
   LIBRARY DESTINATION lib)
 
 if (CLAM_INCLUDE_POST_TRANSFORMS)
-  add_llvm_library (ClamInstrumentation ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
-    InsertInvariants.cc
+  add_llvm_library (ClamOptimizer ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
+    Optimizer/Optimizer.cc
     )
-
-  target_link_libraries(ClamInstrumentation
+  
+  target_link_libraries(ClamOptimizer
     PRIVATE 
     ${CRAB_LIBS}
     ## Needed if dynamic linking
     ClamAnalysis
     ${LLVM_LIBS})
-
+  
   if (USE_COTIRE)
-    cotire(ClamInstrumentation)  
+    cotire(ClamOptimizer)  
   endif ()
   
-  install(TARGETS ClamInstrumentation 
+  install(TARGETS ClamOptimizer 
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib)
 endif()  

@@ -354,15 +354,22 @@ def parseArgs(argv):
     p.add_argument('--crab-live',
                     help='Delete dead symbols: may lose precision with relational domains.',
                     dest='crab_live', default=False, action='store_true')        
-    p.add_argument('--crab-add-invariants',
-                    help='Instrument code with invariants at different locations',
+    p.add_argument('--crab-opt',
+                    help='Optimize LLVM bitcode using invariants',
                     choices=['none',
-                             'dead-code',
+                             'dce',
+                             'add-invariants',
+                             'replace-with-constants',                             
+                             'all'],
+                    dest='crab_optimizer', default='none')
+    p.add_argument('--crab-opt-invariants-loc',
+                    help='Specify the location where invariants are added (only if crab-opt=add-invariants)',
+                    choices=['none',
                              'block-entry',
                              'loop-header',                             
                              'after-load',
                              'all'],
-                    dest='insert_inv_loc', default='none')
+                    dest='crab_optimizer_inv_loc', default='loop-header')
     add_bool_argument(p, 'crab-preserve-invariants',
                       help='Preserve invariants for queries after analysis has finished',
                       dest='store_invariants', default=True)        
@@ -828,7 +835,16 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
             
     if args.crab_backward: clam_args.append('--crab-backward')
     if args.crab_live: clam_args.append('--crab-live')
-    clam_args.append('--crab-add-invariants={0}'.format(args.insert_inv_loc))
+
+    if args.crab_optimizer != 'none':
+        clam_args.append('--crab-opt')
+        if args.crab_optimizer == 'dce' or args.crab_optimizer == 'all':
+            clam_args.append('--crab-opt-dce')
+        if args.crab_optimizer == 'dce' or args.crab_optimizer == 'all':
+            clam_args.append('--crab-opt-replace-with-constants')
+        if args.crab_optimizer == 'add-invariants' or args.crab_optimizer == 'all': 
+            clam_args.append('--crab-opt-add-invariants={0}'.format(args.crab_optimizer_inv_loc))
+           
     if args.crab_promote_assume: clam_args.append('--crab-promote-assume')
     if args.assert_check:
         if args.assert_check == 'null':

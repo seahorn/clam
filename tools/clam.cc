@@ -85,6 +85,11 @@ static llvm::cl::opt<bool>
                 llvm::cl::desc("Lower all select instructions"),
                 llvm::cl::init(false));
 
+static llvm::cl::opt<bool>
+    CrabOpt("crab-opt",
+	    llvm::cl::desc("Optimize LLVM bitcode by using invariants"),
+	    llvm::cl::init(false));
+
 static llvm::cl::opt<bool> PromoteAssume(
     "crab-promote-assume",
     llvm::cl::desc("Promote verifier.assume to llvm.assume intrinsics"),
@@ -288,12 +293,9 @@ int main(int argc, char **argv) {
     pass_manager.add(createPrintModulePass(asmOutput->os()));
   }
 
-  if (!DisableCrab) {
+  if (!DisableCrab && CrabOpt) {
     // post-processing of the bitcode using Crab invariants
-    // 
-    // -- perform dead code elimination and insert invariants as
-    // -- assume instructions
-    pass_manager.add(clam::createInsertInvariantsPass());
+    pass_manager.add(clam::createOptimizerPass());
 
     //// Cleanup
     // -- simplify invariants added in the bitecode.

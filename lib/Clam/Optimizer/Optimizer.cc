@@ -20,7 +20,7 @@
 #include "clam/config.h"
 #include "clam/CfgBuilder.hh"
 #include "clam/Clam.hh"
-#include "clam/Transforms/InsertInvariants.hh"
+#include "clam/Transforms/Optimizer.hh"
 #include "crab/analysis/abs_transformer.hpp"
 
 #include "crab/config.h"
@@ -30,30 +30,38 @@
 
 using namespace llvm;
 
+/* Begin LLVM pass options */
 static cl::opt<clam::InvariantsLocation>
-InvLoc("crab-add-invariants",
+InvLoc("crab-opt-add-invariants",
     cl::desc("Instrument code with (linear) invariants at specific location"),
     cl::values(clEnumValN(clam::InvariantsLocation::NONE,
-			  "none", "This pass is a non-op"),
-	       clEnumValN(clam::InvariantsLocation::DEAD_CODE,
-			  "dead-code",
-			  "Perform dead code elimination (DCE) by removing "
-			  "unreachable blocks and edges"),
+			  "none", "Do not add invariants"),
 	       clEnumValN(clam::InvariantsLocation::BLOCK,
 			  "block-entry",
-			  "DCE + add invariants at the entry of each basic block"),
+			  "Add invariants at the entry of each basic block"),
 	       clEnumValN(clam::InvariantsLocation::LOOP_HEADER,
 			  "loop-header",
-			  "DCE + add invariants only at loop headers"),
+			  "Add invariants only at loop headers"),
 	       clEnumValN(clam::InvariantsLocation::LOAD_INST,
 			  "after-load",
-			  "DCE + add invariants after each load instruction"),
+			  "Add invariants after each load instruction"),
 	       clEnumValN(clam::InvariantsLocation::ALL,
 			  "all",
-			  "DCE + add invariants at all locations (very verbose)")),
+			  "Add invariants at all locations (very verbose)")),
     cl::init(clam::InvariantsLocation::NONE));
 
-#define DEBUG_TYPE "crab-insert-invars"
+llvm::cl::opt<bool>
+RemoveDeadCode("crab-opt-dce",
+	 llvm::cl::desc("DCE using Crab invariants"),
+	 llvm::cl::init(true));
+
+llvm::cl::opt<bool>
+ReplaceWithConstants("crab-opt-replace-with-constants",
+	 llvm::cl::desc("Replace values with constants inferred by Crab"),
+	 llvm::cl::init(false));
+/* End LLVM pass options */
+
+#define DEBUG_TYPE "crab-opt"
 
 STATISTIC(NumDeadBlocks, "Number of dead blocks");
 STATISTIC(NumDeadEdges, "Number of dead edges");
@@ -65,14 +73,19 @@ namespace clam {
 using namespace crab::cfg;
 
 static bool readMemory(const llvm::BasicBlock &B) {
-  for (auto &I : B) {
-    if (isa<LoadInst>(&I)) {
-      return true;
-    }
-  }
-  return false;
+  return std::any_of(B.begin(), B.end(),
+		     [](const Instruction &I) {
+		       return isa<LoadInst>(I);
+		     });
 }
 
+static bool hasUnreachable(const llvm::BasicBlock &B) {
+  return std::any_of(B.begin(), B.end(),
+		     [](const Instruction &I) {
+		       return isa<UnreachableInst>(I);
+		     });
+}
+  
 static bool requireDominatorTree(InvariantsLocation val) {
   return (val == InvariantsLocation::BLOCK ||
 	  val == InvariantsLocation::LOOP_HEADER ||
@@ -350,7 +363,33 @@ static bool instrumentLoadInst(clam_abstract_domain inv, basic_block_t &bb,
   return change;
 }
 
-static void removeUnreachableBlock(BasicBlock *BB, LLVMContext &ctx) {
+static Constant *getConstantInt(CfgBuilderPtr clamCfgBuilder, clam_abstract_domain inv, Value &v) {
+  if (v.getType()->isIntegerTy()) {
+    llvm::Optional<var_t> lhs = clamCfgBuilder->getCrabVariable(&v);
+    if (lhs.hasValue()) {
+      auto interval = inv[lhs.getValue()];
+      if (boost::optional<number_t> constant_opt = interval.singleton()) {
+	if ((*constant_opt).fits_int64()) {
+	  return ConstantInt::get(v.getType(), (int64_t)(*constant_opt), 10);	      
+	}
+      }
+    }
+  }
+  return nullptr;
+}
+  
+static void constantReplacement(ClamGlobalAnalysis &clam, clam_abstract_domain inv, BasicBlock &B) {
+  CfgBuilderPtr clamCfgBuilder = clam.getCfgBuilderMan().getCfgBuilder(*B.getParent());
+  for (auto &I: B) {
+    if (LoadInst *LI = dyn_cast<LoadInst>(&I)) {
+      if (Constant *C = getConstantInt(clamCfgBuilder, inv, *LI)) {
+	LI->replaceAllUsesWith(C);
+      }
+    } 
+  }
+}
+  
+static void removeDeadBlock(BasicBlock *BB, LLVMContext &ctx) {
   ++NumDeadBlocks;
   // Loop through all of our successors and make sure they know that one
   // of their predecessors is going away.
@@ -373,8 +412,8 @@ static void removeUnreachableBlock(BasicBlock *BB, LLVMContext &ctx) {
   // Add unreachable terminator
   BB->getInstList().push_back(new UnreachableInst(ctx));
 }
-
-static void removeInfeasibleEdge(BasicBlock *BB, BasicBlock *Succ) {
+  
+static void removeDeadEdge(BasicBlock *BB, BasicBlock *Succ) {
   ++NumDeadEdges;
 
   Instruction *TI = BB->getTerminator();
@@ -417,26 +456,66 @@ static void removeInfeasibleEdge(BasicBlock *BB, BasicBlock *Succ) {
   }
 }
 
-InsertInvariants::InsertInvariants(ClamGlobalAnalysis  &clam,
-				   llvm::CallGraph *callgraph,
-				   std::function<llvm::DominatorTree*(llvm::Function*)> DT,
-				   std::function<llvm::LoopInfo*(llvm::Function*)> LI,
-				   InvariantsLocation loc)
+// Identify whether B is dead and which B's successor edges are dead.
+static void markDeadBlocksAndEdges(ClamGlobalAnalysis  &clam,
+				   BasicBlock &B,
+				   std::vector<BasicBlock*> &deadBlocks,
+				   std::vector<std::pair<BasicBlock*,BasicBlock*>> &deadEdges) {
+  Function &F = *(B.getParent());
+  // Mark dead successor edges
+  for (BasicBlock *Succ : successors(&B)) {
+    if (!clam.hasFeasibleEdge(&B, Succ)) {
+      CRAB_LOG("clam-opt",
+	       llvm::errs() << "Detected dead "
+	       << " edge between block "
+	       << B.getName () << " and " << Succ->getName()
+	       << " in function " << F.getName() << "\n";);
+      deadEdges.push_back({&B, Succ});
+    }
+  }
+
+  // Mark whether the block is dead
+  llvm::Optional<clam_abstract_domain> pre = 
+    clam.getPre(&B, false /*do not keep ghost variables*/);    
+  if (pre.hasValue()) {
+    if (pre.getValue().is_bottom()) {
+      CRAB_LOG("clam-opt",
+	       llvm::errs() << "Detected dead block "
+	       << B.getName () << " in function "
+	       << F.getName() << "\n";);
+      deadBlocks.push_back(&B);
+    }
+  }
+}
+
+  
+Optimizer::Optimizer(ClamGlobalAnalysis  &clam,
+		     llvm::CallGraph *callgraph,
+		     std::function<llvm::DominatorTree*(llvm::Function*)> DT,
+		     std::function<llvm::LoopInfo*(llvm::Function*)> LI,
+		     InvariantsLocation addInvariants,
+		     bool removeDeadCode,
+		     bool replaceWithConstants)
   : m_clam(clam)
   , m_cg(callgraph)
   , m_dt(DT)
   , m_li(LI)
-  , m_loc(loc)
+  , m_invLoc(addInvariants)
+  , m_removeDeadCode(removeDeadCode)
+  , m_replaceWithConstants(replaceWithConstants)
   , m_assumeFn(nullptr) {}
 
   
-bool InsertInvariants::runOnModule(Module &M) {
-  if (m_loc == InvariantsLocation::NONE) {
+bool Optimizer::runOnModule(Module &M) {
+  if (m_invLoc == InvariantsLocation::NONE &&
+      !m_removeDeadCode &&
+      !m_replaceWithConstants) {
     return false;
   }
 
   CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-		  << "Starting clam dead-code elimination and adding invariants.\n";);  
+		  << "Starting clam optimizer based on invariants.\n";);
+  
   LLVMContext &ctx = M.getContext();
   AttrBuilder B;
   AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
@@ -454,18 +533,17 @@ bool InsertInvariants::runOnModule(Module &M) {
   }
 
   CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-		  << "Finished clam dead-code elimination and adding invariants.\n";);    
+		  << "Finished clam optimizer based on invariants.\n";);    
   return change;
 }
 
-bool InsertInvariants::runOnFunction(Function &F) {
+bool Optimizer::runOnFunction(Function &F) {
   if (F.empty() || F.isVarArg()) {
     return false;
   }
 
   CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-		  << "Started dce and other optimizations using invariants for "
-		  << F.getName().str() << ".\n";);
+		  << "Started clam optimizer for " << F.getName().str() << ".\n";);
   
   if (!m_clam.getCfgBuilderMan().hasCfg(F)) {
     // This shouldn't happen
@@ -476,103 +554,76 @@ bool InsertInvariants::runOnFunction(Function &F) {
   cfg_ref_t cfg = m_clam.getCfgBuilderMan().getCfg(F);
   DominatorTree *dt = m_dt(&F); // it can be nullptr
   LLVMContext &ctx = F.getContext();
-  std::vector<BasicBlock *> UnreachableBlocks;
-  std::vector<std::pair<BasicBlock *, BasicBlock *>> InfeasibleEdges;
+  std::vector<BasicBlock *> DeadBlocks;
+  std::vector<std::pair<BasicBlock *, BasicBlock *>> DeadEdges;
   bool change = false;  
   for (auto &B : F) {
-    // -- if the block has an unreachable instruction we skip it.
-    bool already_dead_block = false;
-    for (auto &I : B) {
-      if (isa<UnreachableInst>(I)) {
-        already_dead_block = true;
-        break;
-      }
-    }
-    if (already_dead_block) {
+    if (hasUnreachable(B)) {
       continue;
     }
 
-    // -- Remove edge edges
-    for (BasicBlock *Succ : successors(&B)) {
-      if (!m_clam.hasFeasibleEdge(&B, Succ)) {
-	CRAB_LOG("clam-insert-invariants",
-		 llvm::errs() << "Detected dead "
-		 << " edge between block "
-		 << B.getName () << " and " << Succ->getName()
-		 << " in function " << F.getName() << "\n";);
-	InfeasibleEdges.push_back({&B, Succ});
+    if (m_removeDeadCode) {
+      markDeadBlocksAndEdges(m_clam, B, DeadBlocks, DeadEdges);
+    }
+
+    if (m_invLoc == InvariantsLocation::BLOCK ||
+	m_invLoc == InvariantsLocation::LOOP_HEADER || 
+	m_invLoc == InvariantsLocation::ALL) {
+
+      const bool keep_ghost = false;
+      llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
+      if (pre.hasValue()) {
+	if (m_invLoc == InvariantsLocation::BLOCK ||
+	    m_invLoc == InvariantsLocation::ALL) {
+	  auto csts = pre.getValue().to_linear_constraint_system();
+	  change |= instrumentBlock(csts, &B, F.getContext(), m_cg, dt, m_assumeFn);
+	} else {
+	  assert(m_invLoc == InvariantsLocation::LOOP_HEADER);
+	  LoopInfo *LI = m_li(&F); // it can be nullptr
+	  if (LI && LI->isLoopHeader(&B)) {
+	    auto csts = pre.getValue().to_linear_constraint_system();
+	    change |= instrumentBlock(csts, &B, F.getContext(), m_cg, dt, m_assumeFn);
+	  }
+	}
       }
     }
     
-    auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);
-    llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, false /*keep shadows*/);
-    if (pre.hasValue()) {
-      // -- Remove dead blocks identified by Crab
-
-      if (pre.getValue().is_bottom()) {
-	    CRAB_LOG("clam-insert-invariants",
-		     llvm::errs() << "Detected dead block "
-		     << B.getName () << " in function "
-		     << F.getName() << "\n";);
-        UnreachableBlocks.push_back(&B);
-        continue;
-      }
-      
-      if (m_loc == InvariantsLocation::DEAD_CODE) {
-        continue;
-      }
-
-      // -- Insert non-bottom invariants
-      
-      // --- Instrument basic block with invariants
-      if (m_loc == InvariantsLocation::BLOCK ||
-	  m_loc == InvariantsLocation::ALL) {
-        auto csts = pre.getValue().to_linear_constraint_system();
-        change |= instrumentBlock(csts, &B, F.getContext(), m_cg, dt, m_assumeFn);
-      } else if (m_loc == InvariantsLocation::LOOP_HEADER) {
-        LoopInfo *LI = m_li(&F); // it can be nullptr
-        if (LI && LI->isLoopHeader(&B)) {
-          auto csts = pre.getValue().to_linear_constraint_system();
-          change |= instrumentBlock(csts, &B, F.getContext(), m_cg, dt, m_assumeFn);
-        }
-      }
-    }
-
-    if (m_loc == InvariantsLocation::LOAD_INST ||
-	m_loc == InvariantsLocation::ALL) {
-      // --- Instrument Load instructions
-      if (readMemory(B)) {
-        llvm::Optional<clam_abstract_domain> pre =
-	  m_clam.getPre(&B, true /*keep shadows*/);
-        if (!pre.hasValue())
-          continue;
-
-        basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
-        change |= instrumentLoadInst(pre.getValue(), cfg.get_node(bb_label),
+    if ((m_invLoc == InvariantsLocation::LOAD_INST ||
+	 m_invLoc == InvariantsLocation::ALL) && readMemory(B)) {
+      const bool keep_ghost = true;
+      llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
+      if (pre.hasValue()) {
+	auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);
+	basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
+	change |= instrumentLoadInst(pre.getValue(), cfg.get_node(bb_label),
 				     F.getContext(), m_cg, m_assumeFn);
       }
     }
+
+    if (m_replaceWithConstants) {
+      const bool keep_ghost = false;
+      llvm::Optional<clam_abstract_domain> post = m_clam.getPost(&B, keep_ghost);
+      if (post.hasValue()) {
+	constantReplacement(m_clam, post.getValue(), B);
+      }
+    }
+    
   }
 
-  if (!change) {
-    change = !InfeasibleEdges.empty();
-  }
-  if (!change) {
-    change = !UnreachableBlocks.empty();
-  }
+  change = (!DeadEdges.empty() || !DeadBlocks.empty());
   
   // The actual removal of edges and blocks
-  while (!InfeasibleEdges.empty()) {
-    std::pair<BasicBlock *, BasicBlock *> E = InfeasibleEdges.back();
-    InfeasibleEdges.pop_back();
-    removeInfeasibleEdge(E.first, E.second);
+  while (!DeadEdges.empty()) {
+    std::pair<BasicBlock *, BasicBlock *> E = DeadEdges.back();
+    DeadEdges.pop_back();
+    removeDeadEdge(E.first, E.second);
   }
 
   
-  while (!UnreachableBlocks.empty()) {
-    BasicBlock *B = UnreachableBlocks.back();
-    UnreachableBlocks.pop_back();
-    removeUnreachableBlock(B, ctx);
+  while (!DeadBlocks.empty()) {
+    BasicBlock *B = DeadBlocks.back();
+    DeadBlocks.pop_back();
+    removeDeadBlock(B, ctx);
   }
 
   CRAB_VERBOSE_IF(1, crab::get_msg_stream()
@@ -584,14 +635,16 @@ bool InsertInvariants::runOnFunction(Function &F) {
   
 /* Pass code starts here */
   
-InsertInvariantsPass::InsertInvariantsPass():
+OptimizerPass::OptimizerPass():
   ModulePass(ID), m_impl(nullptr) {}
   
-bool InsertInvariantsPass::runOnModule(Module &M) {
-  if (InvLoc == InvariantsLocation::NONE) {
+bool OptimizerPass::runOnModule(Module &M) {
+  if (InvLoc == InvariantsLocation::NONE &&
+      !RemoveDeadCode &&
+      !ReplaceWithConstants) {
     return false;
   }
-
+  
   // Get module's callgraph
   CallGraph *cg = nullptr;
   if (CallGraphWrapperPass *cgwp = getAnalysisIfAvailable<CallGraphWrapperPass>()) {
@@ -612,19 +665,20 @@ bool InsertInvariantsPass::runOnModule(Module &M) {
       li_map[&F] = &(getAnalysis<LoopInfoWrapperPass>(F).getLoopInfo());
   }
 
-  m_impl.reset(new InsertInvariants(clam.getClamGlobalAnalysis(), cg,
-				    [&dt_map](Function *F) {
-				      auto it = dt_map.find(F);
-				      return (it != dt_map.end() ? it->second : nullptr);
-				    },
-				    [&li_map](Function *F) {
-				      auto it = li_map.find(F);
-				      return (it != li_map.end() ? it->second : nullptr);
-				    }, InvLoc));
+  m_impl.reset(new Optimizer(clam.getClamGlobalAnalysis(), cg,
+			     [&dt_map](Function *F) {
+			       auto it = dt_map.find(F);
+			       return (it != dt_map.end() ? it->second : nullptr);
+			     },
+			     [&li_map](Function *F) {
+			       auto it = li_map.find(F);
+			       return (it != li_map.end() ? it->second : nullptr);
+			     },
+			     InvLoc, RemoveDeadCode, ReplaceWithConstants));
   return m_impl->runOnModule(M);
 }
 
-void InsertInvariantsPass::getAnalysisUsage(AnalysisUsage &AU) const {
+void OptimizerPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<clam::ClamPass>();
   AU.addRequired<UnifyFunctionExitNodes>();
   AU.addRequired<CallGraphWrapperPass>();
@@ -637,14 +691,14 @@ void InsertInvariantsPass::getAnalysisUsage(AnalysisUsage &AU) const {
   }
 }
 
-char clam::InsertInvariantsPass::ID = 0;
-llvm::Pass *createInsertInvariantsPass() {
-  return new InsertInvariantsPass();
+char clam::OptimizerPass::ID = 0;
+llvm::Pass *createOptimizerPass() {
+  return new OptimizerPass();
 }
  
 } // namespace clam
 
-static RegisterPass<clam::InsertInvariantsPass>
-X("insert-crab-invs",
-  "Instrument bitcode with invariants inferred by crab",
+static RegisterPass<clam::OptimizerPass>
+X("crab-opt",
+  "Optimize LLVM bitcode using invariants inferred by crab",
   false, false);
