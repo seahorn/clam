@@ -2812,6 +2812,8 @@ public:
   getCrabBasicBlock(const llvm::BasicBlock *src,
                     const llvm::BasicBlock *dst) const;
 
+  llvm::Optional<var_t> getCrabVariable(const llvm::Value *v);
+  
   // Most crab statements have back pointers to LLVM operands so it
   // is always possible to find the corresponding LLVM
   // instruction. Array/Region crab operations are an exception.
@@ -2948,6 +2950,11 @@ CfgBuilderImpl::getCrabBasicBlock(const BasicBlock *src,
   }
 }
 
+llvm::Optional<var_t> CfgBuilderImpl::getCrabVariable(const llvm::Value *v) {
+  crab_lit_ref_t lit = m_lfac.getLit(*v);
+  return (lit->isVar() ? llvm::Optional<var_t>(lit->getVar()) : llvm::Optional<var_t>());
+}
+  
 void CfgBuilderImpl::initializeGlobalsAtMain(void) {
   if (!m_func.getName().equals("main")) {
     return;
@@ -3757,6 +3764,10 @@ CfgBuilder::getCrabBasicBlock(const llvm::BasicBlock *src,
   return m_impl->getCrabBasicBlock(src, dst);
 }
 
+llvm::Optional<var_t> CfgBuilder::getCrabVariable(const llvm::Value *v) {
+  return m_impl->getCrabVariable(v);
+}
+  
 const llvm::Instruction *
 CfgBuilder::getInstruction(const statement_t &s) const {
   return m_impl->getInstruction(s);

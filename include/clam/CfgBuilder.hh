@@ -91,6 +91,8 @@ public:
   getCrabBasicBlock(const llvm::BasicBlock *src,
                     const llvm::BasicBlock *dst) const;
 
+  llvm::Optional<var_t> getCrabVariable(const llvm::Value *v);
+  
   // DEPRECATED
   //
   // Most crab statements have back pointers to LLVM operands so it
@@ -138,8 +140,7 @@ public:
   const llvm::TargetLibraryInfo &getTLI(const llvm::Function &) const;
   llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
 
-  HeapAbstraction &getHeapAbstraction();
-
+  HeapAbstraction &getHeapAbstraction();  
 private:
   std::unique_ptr<CrabBuilderManagerImpl> m_impl;
 };
