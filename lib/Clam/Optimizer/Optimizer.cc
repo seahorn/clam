@@ -68,31 +68,31 @@ STATISTIC(NumDeadEdges, "Number of dead edges");
 STATISTIC(NumInstrBlocks, "Number of blocks instrumented with invariants");
 STATISTIC(NumInstrLoads, "Number of load inst instrumented with invariants");
 
-namespace clam {
-  
+namespace {
+
+using namespace clam;  
 using namespace crab::cfg;
 
-static bool readMemory(const llvm::BasicBlock &B) {
+bool readMemory(const llvm::BasicBlock &B) {
   return std::any_of(B.begin(), B.end(),
 		     [](const Instruction &I) {
 		       return isa<LoadInst>(I);
 		     });
 }
-
-static bool hasUnreachable(const llvm::BasicBlock &B) {
+bool hasUnreachable(const llvm::BasicBlock &B) {
   return std::any_of(B.begin(), B.end(),
 		     [](const Instruction &I) {
 		       return isa<UnreachableInst>(I);
 		     });
 }
   
-static bool requireDominatorTree(InvariantsLocation val) {
+bool requireDominatorTree(InvariantsLocation val) {
   return (val == InvariantsLocation::BLOCK ||
 	  val == InvariantsLocation::LOOP_HEADER ||
 	  val == InvariantsLocation::ALL);
 }
 
-static bool requireLoopInfo(InvariantsLocation val) {
+bool requireLoopInfo(InvariantsLocation val) {
   return val == InvariantsLocation::LOOP_HEADER;
 }
   
@@ -254,7 +254,189 @@ public:
   
 };
 
-//! Instrument basic block entries.
+// Generate bitcode for the value of v if it is a constant 
+Constant *getConstantInt(CfgBuilderPtr clamCfgBuilder, clam_abstract_domain inv, const Value &v) {
+  if (v.getType()->isIntegerTy()) {
+    llvm::Optional<var_t> lhs = clamCfgBuilder->getCrabVariable(&v);
+    if (lhs.hasValue()) {
+      auto interval = inv[lhs.getValue()];
+      if (boost::optional<number_t> constant_opt = interval.singleton()) {
+	if ((*constant_opt).fits_int64()) {
+	  return ConstantInt::get(v.getType(), (int64_t)(*constant_opt), 10);	      
+	}
+      } else {
+      CRAB_LOG("clam-opt",
+	       crab::outs() << "Found crab variable " << lhs.getValue();
+	       llvm::errs() << " for " << v << " ";
+	       crab::outs() << "but " << interval << " is not a constant\n";);
+      }
+    } else {
+      CRAB_LOG("clam-opt",
+	       llvm::errs() << "Not found crab variable for " << v << "\n";);
+    }
+  }
+  return nullptr;
+}
+  
+/*
+ * Reconstruct the invariants that hold after each statement. 
+ *
+ * For memory reasons, Crab only gives us invariants that hold either
+ * at the entry or at the exit of a basic block but not at each
+ * program point. Thus, we need to take the invariants that hold at
+ * the entry and propagate (rebuild) them locally across the
+ * statements of the basic block. This will redo some work but it's
+ * more efficient than storing all invariants at each program point.
+ * 
+ * Op must implement two operations:
+ * 
+ *  bool Skip(const statement_t &)
+ *  void Process(const statement_t &s, const clam_abstract_domain &inv_after_s)
+ */ 
+template<class Op>  
+bool GenericInstrumentStatement(clam_abstract_domain inv, basic_block_t &bb, Op op) {
+  // Forward propagation through the basic block but ignoring
+  // callsites. This might be imprecise if the analysis was
+  // inter-procedural because we cannot reconstruct all the context
+  // that the inter-procedural analysis had during the analysis.
+  using abs_tr_t = crab::analyzer::intra_abs_transformer<basic_block_t,
+                                                         clam_abstract_domain>;
+  abs_tr_t vis(inv);
+  bool change = false;
+  for (auto &s : bb) {
+    s.accept(&vis); // propagate the invariant one statement forward
+    const clam_abstract_domain &next_inv = vis.get_abs_value();
+    if (next_inv.is_top())
+      continue;
+    if (op.Skip(s))
+      continue;
+    op.Process(s, next_inv);
+    change = true;
+  }
+  return change;
+}
+
+
+
+// Convert a Crab statement to a LoadInst.
+Instruction* getLoadInst(const statement_t &s) {
+  using array_load_t =
+    array_load_stmt<basic_block_label_t, number_t, varname_t>;
+  using load_from_ref_t =
+    load_from_ref_stmt<basic_block_label_t, number_t, varname_t>;
+  using load_from_arr_ref_t =
+    load_from_arr_ref_stmt<basic_block_label_t, number_t, varname_t>;
+
+  if (s.is_arr_read()) {
+    const array_load_t *load_stmt = static_cast<const array_load_t *>(&s);
+    if (auto v = load_stmt->lhs().name().get()) {
+      if (auto LI = dyn_cast<const LoadInst>(*v)) {
+	return const_cast<LoadInst*>(LI);
+      }
+    }
+  } else if (s.is_ref_load()) {
+    const load_from_ref_t *load_stmt =
+      static_cast<const load_from_ref_t *>(&s);
+    if (auto v = load_stmt->lhs().name().get()) {
+      if (auto LI = dyn_cast<const LoadInst>(*v)) {
+	return const_cast<LoadInst*>(LI);
+      } 
+    }
+  } else if (s.is_ref_arr_load()) {
+    const load_from_arr_ref_t *load_stmt =
+      static_cast<const load_from_arr_ref_t *>(&s);
+    if (auto v = load_stmt->lhs().name().get()) {
+      if (auto LI = dyn_cast<const LoadInst>(*v)) {
+	return const_cast<LoadInst*>(LI);
+      }
+    }
+  }
+  return nullptr;
+}
+  
+class InstrumentLoadStmt {
+  IRBuilder<> &m_IB;
+  Instruction  *m_LI;
+  Function  *m_assumeFn;
+  CallGraph *m_cg;
+public:
+  InstrumentLoadStmt(IRBuilder<> &IB, Function *assumeFn, CallGraph *cg)
+    : m_IB(IB), m_LI(nullptr), m_assumeFn(assumeFn), m_cg(cg) {}
+  
+  bool Skip(const statement_t &s) {
+    m_LI = getLoadInst(s);
+    return !m_LI;
+  }
+  
+  void Process(const statement_t &s, const clam_abstract_domain &inv) {
+    if (!m_LI) return; 
+    
+    // Filter out all irrelevant constraints
+    lin_cst_sys_t rel_csts;
+    std::set<var_t> rel_vars;
+    rel_vars.insert(s.get_live().defs_begin(), s.get_live().defs_end());
+    for (auto cst : inv.to_linear_constraint_system()) {
+      std::vector<var_t> v_intersect;
+      std::set_intersection(cst.variables().begin(), cst.variables().end(),
+                            rel_vars.begin(), rel_vars.end(),
+                            std::back_inserter(v_intersect));
+      if (!v_intersect.empty()) {
+        rel_csts += cst;
+      }
+    }
+
+    // Insert an assume instruction after the load instruction (m_LI)
+    m_IB.SetInsertPoint(m_LI);
+    llvm::BasicBlock *InsertBlk = m_IB.GetInsertBlock();
+    llvm::BasicBlock::iterator InsertPt = m_IB.GetInsertPoint();
+    InsertPt++; // this is ok because LoadInstr cannot be terminators.
+    m_IB.SetInsertPoint(InsertBlk, InsertPt);
+    NumInstrLoads++;
+    CodeExpander g;    
+    g.genCode(rel_csts, m_IB, m_IB.getContext(), m_assumeFn, m_cg, nullptr,
+	      m_LI->getParent()->getParent(), "crab_");
+
+    // reset internal state
+    m_LI = nullptr;
+  }
+};
+  
+class ConstantReplaceStmt {
+  CfgBuilderPtr m_clamCfgBuilder;
+public:
+  ConstantReplaceStmt(CfgBuilderPtr clamCfgBuilder)
+    : m_clamCfgBuilder(clamCfgBuilder) {}
+  
+  bool Skip(const statement_t &s) {
+    if (s.is_callsite() || s.is_return() || s.is_intrinsic() ||
+	s.is_assume() || s.is_assert() ||
+	s.is_havoc() ||
+	s.is_int_cast()) {
+      return true;
+    }
+    if (s.get_live().num_defs() != 1) {
+      return true;
+    }
+    return false;
+  }
+  
+  void Process(const statement_t &s, const clam_abstract_domain &inv) {
+    assert(s.get_live().num_defs() == 1);
+    if (auto v = (*(s.get_live().defs_begin())).name().get()) {
+      if (const Instruction *I = dyn_cast<const Instruction>(*v)) {
+	if (Constant *C = getConstantInt(m_clamCfgBuilder, inv, *I)) {
+	  const_cast<Instruction*>(I)->replaceAllUsesWith(C);
+	}
+      }
+    }
+  }
+};
+  
+} // end namespace 
+
+namespace clam {
+  
+// Instrument basic block entries with a sequence of assume instructions
 static bool instrumentBlock(lin_cst_sys_t csts, llvm::BasicBlock *bb,
 			    LLVMContext &ctx, CallGraph *cg, DominatorTree *DT,
 			    Function *assumeFn) {
@@ -273,122 +455,58 @@ static bool instrumentBlock(lin_cst_sys_t csts, llvm::BasicBlock *bb,
   return res;
 }
 
-// Instrument all load instructions in a basic block.
-//
-// The instrumentation is a bit involved because Crab gives us
-// invariants that hold either at the entry or at the exit of a
-// basic block but not at each program point. Thus, we need to take
-// the invariants that hold at the entry and propagate (rebuild)
-// them locally across the statements of the basic block. This will
-// redo some work but it's more efficient than storing all
-// invariants at each program point.
+// Instrument LoadInst with a sequence of assume instructions  
 static bool instrumentLoadInst(clam_abstract_domain inv, basic_block_t &bb,
 			       LLVMContext &ctx, CallGraph *cg,
 			       Function *assumeFn) {
-  // -- Forward propagation of inv through the basic block but
-  //    ignoring callsites. This might be imprecise if the analysis
-  //    was inter-procedural because we cannot reconstruct all the
-  //    context that the inter-procedural analysis had during the
-  //    analysis.
-  using abs_tr_t = crab::analyzer::intra_abs_transformer<basic_block_t,
-                                                         clam_abstract_domain>;
-
-  // -- Crab memory load statements
-  using array_load_t =
-      array_load_stmt<basic_block_label_t, number_t, varname_t>;
-  using load_from_ref_t =
-      load_from_ref_stmt<basic_block_label_t, number_t, varname_t>;
-  using load_from_arr_ref_t =
-      load_from_arr_ref_stmt<basic_block_label_t, number_t, varname_t>;
-
   IRBuilder<> Builder(ctx);
-  bool change = false;
-  abs_tr_t vis(inv);
-
-  for (auto &s : bb) {
-    s.accept(&vis); // propagate the invariant one statement forward
-    const LoadInst *I = nullptr;
-    std::set<var_t> load_vs;
-    if (s.is_arr_read()) {
-      const array_load_t *load_stmt = static_cast<const array_load_t *>(&s);
-      if (auto v = load_stmt->lhs().name().get()) {
-        I = dyn_cast<const LoadInst>(*v);
-        load_vs.insert(load_stmt->lhs());
-      }
-    } else if (s.is_ref_load()) {
-      const load_from_ref_t *load_stmt =
-          static_cast<const load_from_ref_t *>(&s);
-      if (auto v = load_stmt->lhs().name().get()) {
-        I = dyn_cast<const LoadInst>(*v);
-        load_vs.insert(load_stmt->lhs());
-      }
-    } else if (s.is_ref_arr_load()) {
-      const load_from_arr_ref_t *load_stmt =
-          static_cast<const load_from_arr_ref_t *>(&s);
-      if (auto v = load_stmt->lhs().name().get()) {
-        I = dyn_cast<const LoadInst>(*v);
-        load_vs.insert(load_stmt->lhs());
-      }
-    }
-
-    if (!I)
-      continue;
-
-    const clam_abstract_domain &next_inv = vis.get_abs_value();
-    if (next_inv.is_top())
-      continue;
-    // -- Filter out all constraints that do not use x.
-    lin_cst_sys_t rel_csts;
-    for (auto cst : next_inv.to_linear_constraint_system()) {
-      std::vector<var_t> v_intersect;
-      std::set_intersection(cst.variables().begin(), cst.variables().end(),
-                            load_vs.begin(), load_vs.end(),
-                            std::back_inserter(v_intersect));
-      if (!v_intersect.empty()) {
-        rel_csts += cst;
-      }
-    }
-
-    // -- Insert assume's the next after I
-    Builder.SetInsertPoint(const_cast<LoadInst *>(I));
-    llvm::BasicBlock *InsertBlk = Builder.GetInsertBlock();
-    llvm::BasicBlock::iterator InsertPt = Builder.GetInsertPoint();
-    InsertPt++; // this is ok because LoadInstr cannot be terminators.
-    Builder.SetInsertPoint(InsertBlk, InsertPt);
-    CodeExpander g;
-    NumInstrLoads++;
-    change |= g.genCode(rel_csts, Builder, ctx, assumeFn, cg, nullptr,
-                         I->getParent()->getParent(), "crab_");
-  }
-  return change;
+  InstrumentLoadStmt ILS(Builder, assumeFn, cg);
+  return GenericInstrumentStatement(inv, bb, ILS);
 }
 
-static Constant *getConstantInt(CfgBuilderPtr clamCfgBuilder, clam_abstract_domain inv, Value &v) {
-  if (v.getType()->isIntegerTy()) {
-    llvm::Optional<var_t> lhs = clamCfgBuilder->getCrabVariable(&v);
-    if (lhs.hasValue()) {
-      auto interval = inv[lhs.getValue()];
-      if (boost::optional<number_t> constant_opt = interval.singleton()) {
-	if ((*constant_opt).fits_int64()) {
-	  return ConstantInt::get(v.getType(), (int64_t)(*constant_opt), 10);	      
-	}
-      }
+// Do constant replacement  
+static bool constantReplacement(CfgBuilderPtr clamCfgBuilder,
+				clam_abstract_domain inv,
+				basic_block_t &bb) {
+  ConstantReplaceStmt CRS(clamCfgBuilder);
+  return GenericInstrumentStatement(inv, bb, CRS);
+}
+
+// Identify whether B is dead and which B's successor edges are dead.
+static bool markDeadBlocksAndEdges(ClamGlobalAnalysis  &clam,
+				   BasicBlock &B,
+				   std::vector<BasicBlock*> &deadBlocks,
+				   std::vector<std::pair<BasicBlock*,BasicBlock*>> &deadEdges) {
+  Function &F = *(B.getParent());
+  // Mark dead successor edges
+  for (BasicBlock *Succ : successors(&B)) {
+    if (!clam.hasFeasibleEdge(&B, Succ)) {
+      CRAB_LOG("clam-opt",
+	       llvm::errs() << "clam-opt detected dead"
+	       << " edge between block "
+	       << B.getName () << " and " << Succ->getName()
+	       << " in function " << F.getName() << "\n";);
+      deadEdges.push_back({&B, Succ});
     }
   }
-  return nullptr;
-}
-  
-static void constantReplacement(ClamGlobalAnalysis &clam, clam_abstract_domain inv, BasicBlock &B) {
-  CfgBuilderPtr clamCfgBuilder = clam.getCfgBuilderMan().getCfgBuilder(*B.getParent());
-  for (auto &I: B) {
-    if (LoadInst *LI = dyn_cast<LoadInst>(&I)) {
-      if (Constant *C = getConstantInt(clamCfgBuilder, inv, *LI)) {
-	LI->replaceAllUsesWith(C);
-      }
-    } 
+
+  // Mark whether the block is dead
+  llvm::Optional<clam_abstract_domain> pre = 
+    clam.getPre(&B, false /*do not keep ghost variables*/);    
+  if (pre.hasValue()) {
+    if (pre.getValue().is_bottom()) {
+      CRAB_LOG("clam-opt",
+	       llvm::errs() << "clam-opt detected dead block "
+	       << B.getName () << " in function "
+	       << F.getName() << "\n";);
+      deadBlocks.push_back(&B);
+      return true;
+    }
   }
+  return false;
 }
-  
+
+// Remove a block  
 static void removeDeadBlock(BasicBlock *BB, LLVMContext &ctx) {
   ++NumDeadBlocks;
   // Loop through all of our successors and make sure they know that one
@@ -412,7 +530,8 @@ static void removeDeadBlock(BasicBlock *BB, LLVMContext &ctx) {
   // Add unreachable terminator
   BB->getInstList().push_back(new UnreachableInst(ctx));
 }
-  
+
+// Remove an edge  
 static void removeDeadEdge(BasicBlock *BB, BasicBlock *Succ) {
   ++NumDeadEdges;
 
@@ -455,40 +574,7 @@ static void removeDeadEdge(BasicBlock *BB, BasicBlock *Succ) {
     }
   }
 }
-
-// Identify whether B is dead and which B's successor edges are dead.
-static void markDeadBlocksAndEdges(ClamGlobalAnalysis  &clam,
-				   BasicBlock &B,
-				   std::vector<BasicBlock*> &deadBlocks,
-				   std::vector<std::pair<BasicBlock*,BasicBlock*>> &deadEdges) {
-  Function &F = *(B.getParent());
-  // Mark dead successor edges
-  for (BasicBlock *Succ : successors(&B)) {
-    if (!clam.hasFeasibleEdge(&B, Succ)) {
-      CRAB_LOG("clam-opt",
-	       llvm::errs() << "Detected dead "
-	       << " edge between block "
-	       << B.getName () << " and " << Succ->getName()
-	       << " in function " << F.getName() << "\n";);
-      deadEdges.push_back({&B, Succ});
-    }
-  }
-
-  // Mark whether the block is dead
-  llvm::Optional<clam_abstract_domain> pre = 
-    clam.getPre(&B, false /*do not keep ghost variables*/);    
-  if (pre.hasValue()) {
-    if (pre.getValue().is_bottom()) {
-      CRAB_LOG("clam-opt",
-	       llvm::errs() << "Detected dead block "
-	       << B.getName () << " in function "
-	       << F.getName() << "\n";);
-      deadBlocks.push_back(&B);
-    }
-  }
-}
-
-  
+   
 Optimizer::Optimizer(ClamGlobalAnalysis  &clam,
 		     llvm::CallGraph *callgraph,
 		     std::function<llvm::DominatorTree*(llvm::Function*)> DT,
@@ -562,14 +648,18 @@ bool Optimizer::runOnFunction(Function &F) {
       continue;
     }
 
-    if (m_removeDeadCode) {
-      markDeadBlocksAndEdges(m_clam, B, DeadBlocks, DeadEdges);
+    CRAB_LOG("clam-opt2",
+	     llvm::errs() << "clam-opt processing " << B.getName() << "\n";);
+    
+    if (m_removeDeadCode &&
+	markDeadBlocksAndEdges(m_clam, B, DeadBlocks, DeadEdges)) {
+      // do not keep processing the block because it is dead
+      continue;
     }
-
+    
     if (m_invLoc == InvariantsLocation::BLOCK ||
 	m_invLoc == InvariantsLocation::LOOP_HEADER || 
 	m_invLoc == InvariantsLocation::ALL) {
-
       const bool keep_ghost = false;
       llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
       if (pre.hasValue()) {
@@ -602,12 +692,13 @@ bool Optimizer::runOnFunction(Function &F) {
 
     if (m_replaceWithConstants) {
       const bool keep_ghost = false;
-      llvm::Optional<clam_abstract_domain> post = m_clam.getPost(&B, keep_ghost);
-      if (post.hasValue()) {
-	constantReplacement(m_clam, post.getValue(), B);
+      llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
+      if (pre.hasValue()) {
+	auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);	
+	basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
+	change |= constantReplacement(cfg_builder_ptr, pre.getValue(), cfg.get_node(bb_label));
       }
     }
-    
   }
 
   change = (!DeadEdges.empty() || !DeadBlocks.empty());
@@ -627,9 +718,7 @@ bool Optimizer::runOnFunction(Function &F) {
   }
 
   CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-		  << "Finished dce and other optimizations using invariants for "
-		  << F.getName().str() << ".\n";);
-  
+		  << "Finished clam optimizer for " << F.getName().str() << ".\n";);
   return change;
 }
   
