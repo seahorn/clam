@@ -369,7 +369,7 @@ def parseArgs(argv):
                              'loop-header',                             
                              'after-load',
                              'all'],
-                    dest='crab_optimizer_inv_loc', default='loop-header')
+                    dest='crab_optimizer_inv_loc', default='none')
     add_bool_argument(p, 'crab-preserve-invariants',
                       help='Preserve invariants for queries after analysis has finished',
                       dest='store_invariants', default=True)        
@@ -840,7 +840,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-opt')
         if args.crab_optimizer == 'dce' or args.crab_optimizer == 'all':
             clam_args.append('--crab-opt-dce')
-        if args.crab_optimizer == 'dce' or args.crab_optimizer == 'all':
+        if args.crab_optimizer == 'replace-with-constants' or args.crab_optimizer == 'all':
             clam_args.append('--crab-opt-replace-with-constants')
         if args.crab_optimizer == 'add-invariants' or args.crab_optimizer == 'all': 
             clam_args.append('--crab-opt-add-invariants={0}'.format(args.crab_optimizer_inv_loc))
