@@ -52,6 +52,29 @@ static Value *castTo(Value *V, Type *Ty, std::string Name,
   return CastInst::CreateZExtOrBitCast(V, Ty, Name, InsertPt);
 }
 
+static void removeBlock(BasicBlock *BB, LLVMContext &ctx) {
+  auto *BBTerm = BB->getTerminator();
+  // Loop through all of our successors and make sure they know that one
+  // of their predecessors is going away.
+  for (unsigned i = 0, e = BBTerm->getNumSuccessors(); i != e; ++i) {
+    BBTerm->getSuccessor(i)->removePredecessor(BB);
+  }
+  // Zap all the instructions in the block.
+  while (!BB->empty()) {
+    Instruction &I = BB->back();
+    // If this instruction is used, replace uses with an arbitrary value.
+    // Because control flow can't get here, we don't care what we replace the
+    // value with.  Note that since this block is unreachable, and all values
+    // contained within it must dominate their uses, that all uses will
+    // eventually be removed (they are themselves dead).
+    if (!I.use_empty()) {
+      I.replaceAllUsesWith(UndefValue::get(I.getType()));
+    }
+    BB->getInstList().pop_back();
+  }
+  // Add unreachable terminator
+  BB->getInstList().push_back(new UnreachableInst(ctx));
+}   
 ///
 /// Create a sequence of if-then-else statements at the location of
 /// the callsite.  The "if" condition compares the callsite's called
@@ -102,18 +125,16 @@ static void promoteIndirectCall(CallSite &CS,
   for (unsigned i = 0, numCallees = Callees.size(); i < numCallees; ++i) {
     llvm::promoteCallWithIfThenElse(CS, Callees[i]);
   }
-  Instruction *OriginalCall = CS.getInstruction();  
-  if (!keepOriginalCallSite) {
-    // We insert an unreachable instruction before the original
-    // call. The module owns the unreachable instruction.
-    // 
-    // We could directly call promoteCall so we woudn't create the
-    // last else. However, we want to have explicit comparison
-    // instructions with each of the possible callees so that
-    // other transformations later can optimize code.
-    new UnreachableInst(OriginalCall->getParent()->getParent()->getContext(),
-			OriginalCall);
-  }
+  // We create an "else" block with the original call and then remove
+  // the block. This seems unnecessary but this avoids having as the
+  // "else" block the last candidate callee.
+  //                                                      
+  // We want each possible call be guarded by an explicit comparison
+  // instruction. This can allow other transformations to optimize
+  // code if something is known about the comparison operands.
+  Instruction *OriginalCall = CS.getInstruction();
+  removeBlock(OriginalCall->getParent(),
+              OriginalCall->getParent()->getParent()->getContext());
 #endif   
 }
 
