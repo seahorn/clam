@@ -191,7 +191,8 @@ bool isErrorFn(const Function &F) {
 bool isAssumeFn(const Function &F) {
   return (F.getName().equals("verifier.assume") ||
           F.getName().equals("__VERIFIER_assume") ||
-          F.getName().equals("__CRAB_assume"));
+          F.getName().equals("__CRAB_assume") ||
+	  F.getName().equals("llvm.assume"));
 }
 
 bool isNotAssumeFn(const Function &F) {
