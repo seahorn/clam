@@ -30,10 +30,10 @@ DerefPointer getBasePtr(Value *V, SmallPtrSet<Instruction *, 8> &SeenInsts) {
     }
     if (AllocaInst *AI = dyn_cast<AllocaInst>(V))
       return DerefPointer(V, 1);
-    if (LoadInst *LI = dyn_cast<LoadInst>(V))
-      return getBasePtr(LI->getPointerOperand(), SeenInsts);
-    if (StoreInst *SI = dyn_cast<StoreInst>(V))
-      return getBasePtr(SI->getPointerOperand(), SeenInsts);
+    // if (LoadInst *LI = dyn_cast<LoadInst>(V))
+    //   return getBasePtr(LI->getPointerOperand(), SeenInsts);
+    // if (StoreInst *SI = dyn_cast<StoreInst>(V))
+    //   return getBasePtr(SI->getPointerOperand(), SeenInsts);
     if (SelectInst *SI = dyn_cast<SelectInst>(V)) {
       // searching for this pattern:
       // %_4 = gep(%b1, ...)
