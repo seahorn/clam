@@ -309,7 +309,16 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
   callsite_map_t CSAccessed, CSMods, CSNews;
   // For the sanity check implemented below
   DenseMap<const Function *, std::vector<DsaCallSite>> FunctionCallsMap;
+
+  std::vector<const Function*> functions;
   for (auto const &F : M) {
+    functions.push_back(&F);
+  }
+  std::sort(functions.begin(), functions.end());
+  
+  //for (auto const &F : M) {
+  for (const Function *FF: functions) {
+    auto &F = *FF;
     computeReadModNewNodes(F);
     auto InstIt = inst_begin(F), InstItEnd = inst_end(F);
     for (; InstIt != InstItEnd; ++InstIt) {
@@ -627,30 +636,61 @@ stable_difference(SeaDsaHeapAbstraction::RegionVec &v1,
 SeaDsaHeapAbstraction::RegionVec
 SeaDsaHeapAbstraction::getInitRegions(const llvm::Function &f) {
   RegionVec res;
+  
   if (!m_dsa || !(m_dsa->hasGraph(f))) {
     return res;
   }
 
-  // -- Regions that are not reachable from input parameters or
-  //    globals and escape f
-  res = getNewRegions(f);
+  std::set<Region> res_set; 
+  
+  // -- 1. Regions that are not reachable from input parameters or
+  //       globals and escape f should be initialized in f.
+  auto fnewRgns = getNewRegions(f);
+  res_set.insert(fnewRgns.begin(), fnewRgns.end());
 
-  // Local nodes
-  Graph &G = m_dsa->getGraph(f);
-  seadsa_heap_abs_impl::NodeSet locals;
-  seadsa_heap_abs_impl::localNodes(f, G, locals);
-  // Local regions but created by callees
-  std::set<Region> calleeRgns;
+
+  // Regions used as call parameters 
+  std::set<Region> callSiteRgns;
   for (inst_iterator It = inst_begin(*(const_cast<Function *>(&f))),
                      E = inst_end(*(const_cast<Function *>(&f)));
        It != E; ++It) {
     if (CallInst *CI = dyn_cast<CallInst>(&*It)) {
-      auto outRgns = getNewRegions(*CI);
-      calleeRgns.insert(outRgns.begin(), outRgns.end());
+      auto inputRgns = getOnlyReadRegions(*CI);
+      auto inputAndOutputRgns = getModifiedRegions(*CI);            
+      auto outputRgns = getNewRegions(*CI);
+      callSiteRgns.insert(inputRgns.begin(), inputRgns.end());
+      callSiteRgns.insert(inputAndOutputRgns.begin(), inputAndOutputRgns.end());
+      callSiteRgns.insert(outputRgns.begin(), outputRgns.end());
     }
   }
-  // -- Regions from local nodes after filtering out those created by
-  //    callees.
+
+  // All regions read or modified in f
+  RegionVec allAccessedRgns = m_func_accessed[&f];
+  std::sort(allAccessedRgns.begin(), allAccessedRgns.end());
+
+
+  // -- 2. Regions that are used as a parameter in a calsite but they
+  // -- are not read or modified in f should be initialized in f.
+  std::set_difference(callSiteRgns.begin(), callSiteRgns.end(),
+		      allAccessedRgns.begin(), allAccessedRgns.end(),
+		      std::inserter(res_set, res_set.end()));
+  
+
+  // Local nodes (created by f but does not escape f)
+  Graph &G = m_dsa->getGraph(f);
+  seadsa_heap_abs_impl::NodeSet locals;
+  seadsa_heap_abs_impl::localNodes(f, G, locals);
+  // region created by callees that escaped the callees
+  std::set<Region> newCalleeRgns;
+  for (inst_iterator It = inst_begin(*(const_cast<Function *>(&f))),
+                     E = inst_end(*(const_cast<Function *>(&f))); It != E; ++It) {
+    if (CallInst *CI = dyn_cast<CallInst>(&*It)) {
+      auto outRgns = getNewRegions(*CI);
+      newCalleeRgns.insert(outRgns.begin(), outRgns.end());
+    }
+  }
+  // -- 3. Regions from local nodes after filtering out those created
+  //       by callees.
   for (const Node *n : locals) {
     std::vector<unsigned> fields = extractFields(n);
     for (auto field : fields) {
@@ -659,24 +699,20 @@ SeaDsaHeapAbstraction::getInitRegions(const llvm::Function &f) {
           SeaDsaToRegion(c, m_dl, m_disambiguate_unknown,
                          m_disambiguate_ptr_cast, m_disambiguate_external);
       Region rgn = mkRegion(c, r_info);
-      if (calleeRgns.count(rgn) <= 0) {
-        res.push_back(rgn);
+      if (newCalleeRgns.count(rgn) <= 0) {
+        res_set.insert(rgn);
       }
     }
   }
-  std::sort(res.begin(), res.end());
-
-  // -- (if main) Regions reachable from input parameters and globals
+  
+  // -- 4. Finally, all regions read or modified by main
   if (f.getName().equals("main")) {
-    const RegionVec &reachFromParamsAndGlobals = m_func_accessed[&f];
-    for (auto &rgn : reachFromParamsAndGlobals) {
-      auto lower = std::lower_bound(res.begin(), res.end(), rgn);
-      if (lower == res.end() || rgn < *lower) { // not found
-        res.push_back(rgn);
-      }
+    for (auto &rgn : m_func_accessed[&f]) {
+      res_set.insert(rgn);
     }
   }
 
+  res.insert(res.end(), res_set.begin(), res_set.end());
   return res;
 }
 
