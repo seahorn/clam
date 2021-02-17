@@ -45,8 +45,6 @@ public:
 
 private:
   friend class CrabBuilderManagerImpl;
-  friend class IntraClamImpl;
-  friend class InterClamImpl;
 
   // the actual cfg builder
   std::unique_ptr<CfgBuilderImpl> m_impl;
@@ -58,11 +56,6 @@ private:
   void addFunctionDeclaration(void);
 
   void buildCfg(void);
-
-  // return live symbols for the whole cfg. Return nullptr if
-  // compute_live_symbols has not been called.
-  // Only IntraClam_Impl and InterClam_Impl should call this method.
-  const liveness_t *getLiveSymbols() const;
 
 public:
   CfgBuilder(const CfgBuilder &o) = delete;
@@ -81,6 +74,9 @@ public:
   // return live symbols at the end of block bb. Return None if
   // compute_live_symbols has not been called.
   llvm::Optional<varset> getLiveSymbols(const llvm::BasicBlock *bb) const;
+  // Low-level API: return live symbols for the whole cfg. Return
+  // nullptr if compute_live_symbols has not been called.
+  const liveness_t *getLiveSymbols() const;
 
   // map a llvm basic block to a crab basic block label
   basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
