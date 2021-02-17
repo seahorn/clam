@@ -1,0 +1,40 @@
+#pragma once
+
+#include <clam/Clam.hh>
+#include <clam/ClamQueryAPI.hh>
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/DenseSet.h>
+#include <llvm/ADT/Optional.h>
+
+namespace llvm {
+class Instruction;
+class BasicBlock;
+class Value;
+} // end namespace llvm
+
+namespace clam {
+class CrabBuilderManager;
+
+class ClamQueryCache {
+  using Range = typename ClamQueryAPI::Range;
+  CrabBuilderManager &m_crab_builder_man;
+  llvm::DenseMap<
+      std::pair<const llvm::MemoryLocation *, const llvm::MemoryLocation *>,
+      llvm::AliasResult>
+      m_alias_cache;
+  llvm::DenseMap<const llvm::Instruction *, Range> m_range_inst_cache;
+  llvm::DenseMap<std::pair<const llvm::BasicBlock *, const llvm::Value *>,
+                 Range>
+      m_range_value_cache;
+
+public:
+  ClamQueryCache(CrabBuilderManager &man);
+  llvm::AliasResult alias(const llvm::MemoryLocation &loc1,
+                          const llvm::MemoryLocation &loc2,
+                          llvm::AAQueryInfo &AAQI);
+  Range range(const llvm::Instruction &I,
+              llvm::Optional<clam_abstract_domain> invAtEntry);
+  Range range(const llvm::BasicBlock &B, const llvm::Value &V,
+              llvm::Optional<clam_abstract_domain> invAtEntry);
+};
+} // end namespace clam

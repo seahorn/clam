@@ -28,8 +28,9 @@
 #include "clam/Support/Debug.hh"
 #include "clam/Support/NameValues.hh"
 #include "clam/crab/crab_domains.hh"
-#include "./crab/path_analyzer.hpp"
-#include "./crab/printer.hpp"
+#include "ClamQueryCache.hh"
+#include "crab/path_analyzer.hpp"
+#include "crab/printer.hpp"
 
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/CompleteCallGraph.hh"
@@ -37,6 +38,7 @@
 #include "seadsa/InitializePasses.hh"
 #include "seadsa/support/Debug.h"
 
+#include "crab/config.h"
 #include "crab/analysis/bwd_analyzer.hpp"
 #include "crab/analysis/dataflow/assumptions.hpp"
 #include "crab/analysis/fwd_analyzer.hpp"
@@ -46,7 +48,6 @@
 #include "crab/cg/cg_bgl.hpp"
 #include "crab/checkers/assertion.hpp"
 #include "crab/checkers/checker.hpp"
-#include "crab/config.h"
 #include "crab/support/debug.hpp"
 #include "crab/support/stats.hpp"
 
@@ -163,7 +164,8 @@ static bool update(abs_dom_map_t &table, const llvm::BasicBlock &block,
 }
 
 /**
- * Internal implementation of the intra-procedural analysis
+ * IntraClamImpl: internal implementation of the intra-procedural
+ *                analysis.
  **/
 class IntraClam;  
 class IntraClamImpl {
@@ -540,18 +542,15 @@ bool IntraClam::hasFeasibleEdge(const llvm::BasicBlock *b1,
 const checks_db_t &IntraClam::getChecksDB() const {
   return m_impl->m_checks_db;
 }
+  
 /**
- *   End IntraClam methods
- **/
-
-
-/**
- * Internal implementation of the global intra-procedural analysis
+ * IntraGlobalClamImpl: internal implementation of the global
+ * intra-procedural analysis
  **/
 class IntraGlobalClamImpl {
 public:  
   IntraGlobalClamImpl(const llvm::Module &module, CrabBuilderManager &man)
-    : m_module(module), m_builder_man(man) {}
+    : m_module(module), m_builder_man(man), m_query_cache(m_builder_man) {}
 
   ~IntraGlobalClamImpl() = default;
 
@@ -629,19 +628,16 @@ public:
   }
 
   AliasResult alias(const MemoryLocation &l1, const MemoryLocation &l2,
-		    AAQueryInfo &) {
-    return AliasResult::MayAlias;
+		    AAQueryInfo &AAQI) {
+    return m_query_cache.alias(l1, l2, AAQI);
   }
   
   ClamQueryAPI::Range range(const Instruction &I) {
-    return std::make_pair(std::numeric_limits<int64_t>::min(),
-			  std::numeric_limits<int64_t>::max());
-    
+    return m_query_cache.range(I, getPre(I.getParent(), false));
   }
   
   ClamQueryAPI::Range range(const BasicBlock &B, const Value &V) {
-    return std::make_pair(std::numeric_limits<int64_t>::min(),
-			  std::numeric_limits<int64_t>::max());
+    return m_query_cache.range(B, V, getPre(&B, false));
   }
   
 private:
@@ -652,18 +648,21 @@ private:
   abs_dom_map_t m_post_map;
   edges_set m_infeasible_edges;
   checks_db_t m_checks_db;
+  // To answer analysis queries
+  ClamQueryCache m_query_cache;
 };
   
 /**
- *  Internal implementation of the global inter-procedural analysis.
+ *  InterGlobalClamImpl: internal implementation of the global
+ *  inter-procedural analysis.
  **/
 class InterGlobalClam;
 class InterGlobalClamImpl {
   friend class InterGlobalClam;
 public:
   InterGlobalClamImpl(const Module &M, CrabBuilderManager &man)
-      : m_cg(nullptr), m_crab_builder_man(man), m_M(M) {
-
+    : m_cg(nullptr), m_crab_builder_man(man), m_M(M),
+      m_query_cache(m_crab_builder_man) {
     std::vector<cfg_ref_t> cfg_ref_vector;
     for (auto const &F : m_M) {
       if (isTrackable(F)) {
@@ -678,6 +677,97 @@ public:
     m_cg = std::make_unique<cg_t>(cfg_ref_vector.begin(), cfg_ref_vector.end());
   }
 
+  void analyze(AnalysisParams &params,
+	       const abs_dom_map_t &assumptions) {
+    AnalysisResults results =
+      {m_pre_map, m_post_map,
+       m_infeasible_edges,
+       m_checks_db};
+    lin_csts_map_t lin_csts_assumptions;
+    analyze(params, assumptions, lin_csts_assumptions, results);
+    if (params.stats) {
+      crab::CrabStats::PrintBrunch(crab::outs());
+    }  
+  }
+
+  void analyze(AnalysisParams &params,
+	       const lin_csts_map_t &assumptions) {
+    AnalysisResults results =
+      {m_pre_map, m_post_map,
+       m_infeasible_edges,
+       m_checks_db};
+    abs_dom_map_t abs_dom_assumptions;
+    analyze(params, abs_dom_assumptions, assumptions, results);
+    if (params.stats) {
+    crab::CrabStats::PrintBrunch(crab::outs());
+    }  
+  }
+
+  Optional<clam_abstract_domain>
+  getPre(const BasicBlock *block, bool keep_shadows) const {
+    std::vector<varname_t> shadows;
+    if (!keep_shadows)
+      shadows = std::vector<varname_t>(
+	m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
+        m_crab_builder_man.getVarFactory().get_shadow_vars().end());
+    return lookup(m_pre_map, *block, shadows);
+  }
+
+  Optional<clam_abstract_domain>
+  getPost(const BasicBlock *block, bool keep_shadows) const {
+    std::vector<varname_t> shadows;
+    if (!keep_shadows)
+      shadows = std::vector<varname_t>(
+        m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
+        m_crab_builder_man.getVarFactory().get_shadow_vars().end());
+    return lookup(m_post_map, *block, shadows);
+  }
+  
+  AliasResult alias(const MemoryLocation &l1, const MemoryLocation &l2,
+		    AAQueryInfo &AAQI) {
+    return m_query_cache.alias(l1, l2, AAQI);    
+  }
+  
+  ClamQueryAPI::Range range(const Instruction &I) {
+    return m_query_cache.range(I, getPre(I.getParent(), false));    
+  }
+  
+  ClamQueryAPI::Range range(const BasicBlock &B, const Value &V) {
+    return m_query_cache.range(B, V, getPre(&B, false));    
+  }
+  
+  void clear() {
+    m_pre_map.clear();
+    m_post_map.clear();
+    m_checks_db.clear();
+    m_infeasible_edges.clear();  
+  }
+  
+private:
+  // crab call graph
+  std::unique_ptr<cg_t> m_cg;
+  // crab cfg builder manager
+  CrabBuilderManager &m_crab_builder_man;
+  // the LLVM module
+  const Module &m_M;
+  // live symbols
+  liveness_map_t m_live_map;
+  // To store analysis results
+  abs_dom_map_t m_pre_map;
+  abs_dom_map_t m_post_map;
+  edges_set m_infeasible_edges;
+  checks_db_t m_checks_db;
+  // To answer analysis queries
+  ClamQueryCache m_query_cache;
+
+  
+  basic_block_label_t getCrabBasicBlock(const BasicBlock *bb) const {
+    const Function *f = bb->getParent();
+    auto builder = m_crab_builder_man.getCfgBuilder(*f);
+    return builder->getCrabBasicBlock(bb);
+  }
+
+  /** Run inter-procedural analysis on the whole call graph **/  
   void analyze(AnalysisParams &params,
                // assumptions can be provided in abs_dom format or
                // as linear constraints.
@@ -745,51 +835,7 @@ public:
       }
     }
   }
-
-  AliasResult alias(const MemoryLocation &l1, const MemoryLocation &l2,
-		    AAQueryInfo &) {
-    return AliasResult::MayAlias;
-  }
   
-  ClamQueryAPI::Range range(const Instruction &I) {
-    return std::make_pair(std::numeric_limits<int64_t>::min(),
-			  std::numeric_limits<int64_t>::max());
-  }
-  
-  ClamQueryAPI::Range range(const BasicBlock &B, const Value &V) {
-    return std::make_pair(std::numeric_limits<int64_t>::min(),
-			  std::numeric_limits<int64_t>::max());
-  }
-  
-  void clear() {
-    m_pre_map.clear();
-    m_post_map.clear();
-    m_checks_db.clear();
-    m_infeasible_edges.clear();  
-  }
-  
-private:
-  // crab call graph
-  std::unique_ptr<cg_t> m_cg;
-  // crab cfg builder manager
-  CrabBuilderManager &m_crab_builder_man;
-  // the LLVM module
-  const Module &m_M;
-  // live symbols
-  liveness_map_t m_live_map;
-  // To store analysis results
-  abs_dom_map_t m_pre_map;
-  abs_dom_map_t m_post_map;
-  edges_set m_infeasible_edges;
-  checks_db_t m_checks_db;
-  
-  basic_block_label_t getCrabBasicBlock(const BasicBlock *bb) const {
-    const Function *f = bb->getParent();
-    auto builder = m_crab_builder_man.getCfgBuilder(*f);
-    return builder->getCrabBasicBlock(bb);
-  }
-
-  /** Run inter-procedural analysis on the whole call graph **/
   void analyze(const AnalysisParams &params, clam_abstract_domain init,
                AnalysisResults &results) {
 
@@ -890,9 +936,9 @@ private:
 };
 
   
-/**
- *   Begin IntraGlobalClam methods
- **/
+/*****************************************************************/
+/*              Begin IntraGlobalClam methods                    */
+/*****************************************************************/ 
 IntraGlobalClam::IntraGlobalClam(const Module &module, CrabBuilderManager &man)
   : m_impl(nullptr) {
   m_impl = std::make_unique<IntraGlobalClamImpl>(module, man);
@@ -943,20 +989,13 @@ ClamQueryAPI::Range IntraGlobalClam::range(const BasicBlock &B, const Value &V) 
   return m_impl->range(B, V);
 }
   
-/**
- * End IntraGlobalClam methods
- **/
-
-  
-/**
- *   Begin InterGlobalClam methods
- **/
+/*****************************************************************/
+/*              Begin InterGlobalClam methods                    */
+/*****************************************************************/ 
 InterGlobalClam::InterGlobalClam(const Module &module, CrabBuilderManager &man)
   : m_impl(nullptr) {
   m_impl = std::make_unique<InterGlobalClamImpl>(module, man);
 }
-
-InterGlobalClam::~InterGlobalClam() {}
 
 void InterGlobalClam::clear() {
   m_impl->clear();
@@ -968,48 +1007,22 @@ CrabBuilderManager &InterGlobalClam::getCfgBuilderMan() {
 
 void InterGlobalClam::analyze(AnalysisParams &params,
 			      const abs_dom_map_t &assumptions) {
-  AnalysisResults results =
-    {m_impl->m_pre_map, m_impl->m_post_map,
-     m_impl->m_infeasible_edges,
-     m_impl->m_checks_db};
-  lin_csts_map_t lin_csts_assumptions;
-  m_impl->analyze(params, assumptions, lin_csts_assumptions, results);
-  if (params.stats) {
-    crab::CrabStats::PrintBrunch(crab::outs());
-  }  
+  m_impl->analyze(params, assumptions);
 }
 
 void InterGlobalClam::analyze(AnalysisParams &params,
 			      const lin_csts_map_t &assumptions) {
-  AnalysisResults results =
-    {m_impl->m_pre_map, m_impl->m_post_map,
-     m_impl->m_infeasible_edges,
-     m_impl->m_checks_db};
-  abs_dom_map_t abs_dom_assumptions;
-  m_impl->analyze(params, abs_dom_assumptions, assumptions, results);
-  if (params.stats) {
-    crab::CrabStats::PrintBrunch(crab::outs());
-  }  
+  m_impl->analyze(params, assumptions);
 }
 
 Optional<clam_abstract_domain>
-InterGlobalClam::getPre(const BasicBlock *block, bool keep_shadows) const {
-  std::vector<varname_t> shadows;
-  if (!keep_shadows)
-    shadows = std::vector<varname_t>(
-	m_impl->m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
-        m_impl->m_crab_builder_man.getVarFactory().get_shadow_vars().end());
-  return lookup(m_impl->m_pre_map, *block, shadows);
+InterGlobalClam::getPre(const BasicBlock *bb, bool keep_shadows) const {
+  return m_impl->getPre(bb, keep_shadows);
 }
 
 Optional<clam_abstract_domain>
-InterGlobalClam::getPost(const BasicBlock *block, bool keep_shadows) const {
-  std::vector<varname_t> shadows;
-  if (!keep_shadows)
-    shadows = std::vector<varname_t>(
-        m_impl->m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
-        m_impl->m_crab_builder_man.getVarFactory().get_shadow_vars().end());
-  return lookup(m_impl->m_post_map, *block, shadows);
+InterGlobalClam::getPost(const BasicBlock *bb, bool keep_shadows) const {
+  return m_impl->getPost(bb, keep_shadows);
 }
 
 const checks_db_t &InterGlobalClam::getChecksDB() const {
@@ -1034,15 +1047,11 @@ ClamQueryAPI::Range InterGlobalClam::range(const BasicBlock &B, const Value &V) 
   return m_impl->range(B, V);
 }
   
-/**
- * End InterGlobalClam methods
- **/
-
-/**
- * Begin ClamPass methods
- **/
-  ClamPass::ClamPass():
-    ModulePass(ID), m_cfg_builder_man(nullptr), m_ga(nullptr) {
+/*****************************************************************/
+/*                       ClamPass methods                        */
+/*****************************************************************/  
+ClamPass::ClamPass():
+  ModulePass(ID), m_cfg_builder_man(nullptr), m_ga(nullptr) {
   // initialize sea-dsa dependencies
   llvm::initializeAllocWrapInfoPass(*llvm::PassRegistry::getPassRegistry());
   llvm::initializeCompleteCallGraphPass(*llvm::PassRegistry::getPassRegistry());

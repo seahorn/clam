@@ -3,6 +3,7 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CfgBuilderLit.cc
   CfgBuilderUtils.cc
   Clam.cc
+  ClamQueryCache.cc
   NameValues.cc  
   SeaDsaHeapAbstraction.cc
   SeaDsaHeapAbstractionUtils.cc
