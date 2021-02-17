@@ -944,6 +944,8 @@ IntraGlobalClam::IntraGlobalClam(const Module &module, CrabBuilderManager &man)
   m_impl = std::make_unique<IntraGlobalClamImpl>(module, man);
 }
 
+IntraGlobalClam::~IntraGlobalClam(){}
+  
 void IntraGlobalClam::clear() {
   m_impl->clear();
 }
@@ -997,6 +999,8 @@ InterGlobalClam::InterGlobalClam(const Module &module, CrabBuilderManager &man)
   m_impl = std::make_unique<InterGlobalClamImpl>(module, man);
 }
 
+InterGlobalClam::~InterGlobalClam(){}  
+  
 void InterGlobalClam::clear() {
   m_impl->clear();
 }

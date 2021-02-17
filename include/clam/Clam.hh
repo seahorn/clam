@@ -118,7 +118,7 @@ public:
   
   IntraGlobalClam(const llvm::Module &module, CrabBuilderManager &man);
 
-  ~IntraGlobalClam() = default;
+  ~IntraGlobalClam();
 
   /* return the manager used to build all CFGs */
   CrabBuilderManager &getCfgBuilderMan() override;
@@ -182,7 +182,7 @@ public:
    **/
   InterGlobalClam(const llvm::Module &module, CrabBuilderManager &man);
 
-  ~InterGlobalClam() = default;
+  ~InterGlobalClam();
 
   /* return the manager used to build all CFGs */
   CrabBuilderManager &getCfgBuilderMan() override;
