@@ -1916,7 +1916,7 @@ void CrabIntraBlockBuilder::doFreeFn(Instruction &I) {
     if (Ptr->isVar() && Ptr->isRef()) {
       Region RgnPtr =
           getRegion(m_mem, m_func_regions, m_params, I, *(CS.getArgument(0)));
-      m_bb.intrinsic("free", {}, {m_lfac.mkRegionVar(RgnPtr), Ptr->getVar()});
+      m_bb.remove_ref(m_lfac.mkRegionVar(RgnPtr), Ptr->getVar());
     }
   }
 }
@@ -4266,10 +4266,12 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
       Value *ptr = CS.getArgument(0);
       Region rgn_ptr = getRegion(m_mem, m_func_regions, m_params,
                                  *(CS.getInstruction()), *ptr);
-      std::vector<var_t> new_inputs{m_lfac.mkRegionVar(rgn_ptr), inputs[0]};
+      std::vector<var_or_cst_t> new_inputs{m_lfac.mkRegionVar(rgn_ptr), inputs[0]};
       m_bb.intrinsic(name, outputs, new_inputs);
     } else {
-      m_bb.intrinsic(name, outputs, inputs);
+      std::vector<var_or_cst_t> new_inputs;
+      std::copy(inputs.begin(), inputs.end(), std::back_inserter(new_inputs)); 
+      m_bb.intrinsic(name, outputs, new_inputs);
     }
   } else {
     if (m_params.trackMemory()) {
