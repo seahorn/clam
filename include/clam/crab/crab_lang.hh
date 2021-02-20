@@ -143,7 +143,6 @@ using lin_cst_sys_t = ikos::linear_constraint_system<number_t, varname_t>;
 using disj_lin_cst_sys_t =
     ikos::disjunctive_linear_constraint_system<number_t, varname_t>;
 using cg_t = crab::cg::call_graph<cfg_ref_t>;
-using cg_ref_t = crab::cg::call_graph_ref<cg_t>;
 
 using lin_exp_unordered_set =
     ikos::linear_expression_unordered_set<number_t, varname_t>;

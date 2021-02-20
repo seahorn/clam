@@ -81,9 +81,9 @@ using assertion_property_checker_t =
     crab::checker::assert_property_checker<intra_analyzer_t>;
 // -- inter-procedural analysis
 using inter_params_t =
-    crab::analyzer::top_down_inter_analyzer_parameters<cg_ref_t>;
+    crab::analyzer::top_down_inter_analyzer_parameters<cg_t>;
 using inter_analyzer_t =
-    crab::analyzer::top_down_inter_analyzer<cg_ref_t, clam_abstract_domain>;
+    crab::analyzer::top_down_inter_analyzer<cg_t, clam_abstract_domain>;
 // -- path analyzer
 using path_analyzer_t =
     crab::analyzer::path_analyzer<cfg_ref_t, clam_abstract_domain>;
