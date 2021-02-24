@@ -702,7 +702,7 @@ public:
 //! Translate the rest of instructions
 class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   crabLitFactory &m_lfac;
-  allocation_site_man &m_as_man;
+  tag_manager &m_as_man;
   HeapAbstraction &m_mem;
   const DataLayout *m_dl;
   const TargetLibraryInfo *m_tli;
@@ -784,7 +784,7 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   void doCallSite(CallInst &CI);
 
 public:
-  CrabIntraBlockBuilder(crabLitFactory &lfac, allocation_site_man &as_man,
+  CrabIntraBlockBuilder(crabLitFactory &lfac, tag_manager &as_man,
       HeapAbstraction &mem, const DataLayout *dl,
       const TargetLibraryInfo *tli, basic_block_t &bb,
       const CrabBuilderParams &params,
@@ -819,7 +819,7 @@ public:
 }; // end class
 
 CrabIntraBlockBuilder::CrabIntraBlockBuilder(
-    crabLitFactory &lfac, allocation_site_man &as_man,
+    crabLitFactory &lfac, tag_manager &as_man,
     HeapAbstraction &mem, const DataLayout *dl,
     const TargetLibraryInfo *tli, basic_block_t &bb,
     const CrabBuilderParams &params,
@@ -1900,7 +1900,7 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
     if (isReference(I, m_params)) {
       Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
       m_bb.make_ref(lit->getVar(), m_lfac.mkRegionVar(rgn),
-		    m_as_man.mk_allocation_site());
+		    m_as_man.mk_tag());
     } else if (isTracked(I, m_params)) {
       // -- havoc return value
       havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
@@ -2619,7 +2619,7 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
     m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn),
-		  m_as_man.mk_allocation_site());
+		  m_as_man.mk_tag());
 
     if (m_params.addPointerAssumptions()) {
       // pointers allocated in the stack cannot be null
@@ -2849,7 +2849,7 @@ private:
   llvm::Function &m_func;
   // literal factory
   crabLitFactory m_lfac;
-  allocation_site_man &m_as_man;
+  tag_manager &m_as_man;
   // heap analysis for memory translation
   HeapAbstraction &m_mem;
   // the crab CFG
@@ -2998,7 +2998,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
           entry.havoc(gv_lit->getVar(), "C string global variable");
         } else {
           entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn),
-			 m_as_man.mk_allocation_site());
+			 m_as_man.mk_tag());
         }
       }
       if (m_params.addPointerAssumptions()) {
@@ -3039,7 +3039,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	assert(funptr && funptr->isVar() && funptr->isRef());
 	Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
 	entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
-		       m_as_man.mk_allocation_site());
+		       m_as_man.mk_tag());
 	// entry.havoc(funptr->getVar(),
 	//             "Function pointer for " + F.getName().str());
 	if (m_params.addPointerAssumptions()) {
@@ -3832,7 +3832,7 @@ public:
 
   variable_factory_t &getVarFactory();
 
-  allocation_site_man &getAllocSiteMan();
+  tag_manager &getAllocSiteMan();
   
   const CrabBuilderParams &getCfgBuilderParams() const;
 
@@ -3851,7 +3851,7 @@ private:
   // All CFGs created by this manager are created using the same
   // variable factory and the same allocation site manager.
   variable_factory_t m_vfac;
-  allocation_site_man m_as_man;
+  tag_manager m_as_man;
   // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
   // Global variables accessed by the function and its callees
@@ -3949,7 +3949,7 @@ CfgBuilderPtr CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
 
 variable_factory_t &CrabBuilderManagerImpl::getVarFactory() { return m_vfac; }
 
-allocation_site_man &CrabBuilderManagerImpl::getAllocSiteMan() { return m_as_man; }
+tag_manager &CrabBuilderManagerImpl::getAllocSiteMan() { return m_as_man; }
 
 const CrabBuilderParams &CrabBuilderManagerImpl::getCfgBuilderParams() const {
   return m_params;

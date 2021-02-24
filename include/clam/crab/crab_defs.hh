@@ -74,6 +74,8 @@ public:
   enum { deallocation = 1};
   /* This should be always disabled */
   enum { refine_uninitialized_regions = 0};
+  /* Tag analysis */
+  enum { tag_analysis = 0};  
 };
 /* ====================================================================== */    
 /* END region domain                                                      */
