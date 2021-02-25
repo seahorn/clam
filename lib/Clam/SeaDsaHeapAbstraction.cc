@@ -72,7 +72,7 @@ SeaDsaHeapAbstraction::RegionId SeaDsaHeapAbstraction::getId(const Cell &c) {
 }
 
 static std::vector<unsigned> extractFields(const Node *n,
-                                           bool isRetReach = false) {
+                                           bool forceZeroOffset = true) {
   std::vector<unsigned> fields;
   if (n->isOffsetCollapsed()) {
     fields.push_back(0);
@@ -80,7 +80,7 @@ static std::vector<unsigned> extractFields(const Node *n,
     for (auto &kv : n->types()) {
       fields.push_back(kv.first);
     }
-    if (fields.empty() && isRetReach) {
+    if (fields.empty() && forceZeroOffset) {
       fields.push_back(0);
     }    
   }
@@ -111,12 +111,14 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(const llvm::Function &f) {
   for (const Node *n : reach) {
     bool isRetReach = retReach.count(n) > 0;
 
+#if 1    
     if (!isRetReach && !n->isRead() && !n->isModified()) {
       continue;
     }
+#endif    
 
     // Extract all fields from the node
-    std::vector<unsigned> fields = extractFields(n, isRetReach);
+    std::vector<unsigned> fields = extractFields(n);
 
     // Create a region for each node's field
     for (auto field : fields) {
@@ -215,12 +217,14 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   for (const Node *n : reach) {
     bool isRetReach = retReach.count(n) > 0;
 
+#if 1
     if (!isRetReach && !n->isRead() && !n->isModified()) {
       continue;
     }
+#endif     
 
     // Extract all fields from the node
-    std::vector<unsigned> fields = extractFields(n, isRetReach);
+    std::vector<unsigned> fields = extractFields(n);
 
     for (auto field : fields) {
       Cell calleeC(const_cast<Node *>(n), field);
