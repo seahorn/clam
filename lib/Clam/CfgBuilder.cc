@@ -764,7 +764,8 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
    *  anyway.
    */
   bool AllUsesAreNonTrackMem(Value *V) const;
-
+  bool isSpecialCrabIntrinsic(const Function&) const;
+  
   /* Most of the translation work happens in these methods */
   void doBinOp(unsigned op, var_t lhs, lin_exp_t op1, lin_exp_t op2);
   void doArithmetic(crab_lit_ref_t lit, BinaryOperator &i);
@@ -782,6 +783,7 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   void LoadFromSingletonMem(LoadInst &I, var_t lhs, var_t rhs,
                             Region rhs_region);
   void doCallSite(CallInst &CI);
+  void doCrabSpecialIntrinsic(CallInst &CI);
 
 public:
   CrabIntraBlockBuilder(crabLitFactory &lfac, tag_manager &as_man,
@@ -2674,7 +2676,8 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   }
 
   if (callee->getName().startswith("shadow.mem") ||
-      callee->getName().equals("seahorn.fn.enter")) {
+      callee->getName().equals("seahorn.fn.enter") ||
+      callee->getName().startswith("sea_dsa_")) {
     return;
   }
 
@@ -2766,8 +2769,15 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
     return;
   }
 
-  /* Translate the call to an internal function */
-  doCallSite(I);
+  /* Translate the call to a Crab intrinsic or internal function */
+  if (isSpecialCrabIntrinsic(*callee)) {
+    // crab intrinsics that require a non-standard translation
+    doCrabSpecialIntrinsic(I);
+  } else {
+    // calls to internal functions or crab intrinsics that not require
+    // special translation.
+    doCallSite(I);
+  }
 }
 
 void CrabIntraBlockBuilder::visitUnreachableInst(UnreachableInst &I) {
@@ -4255,24 +4265,12 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   }
   
   // -- Finally, add the callsite or crab intrinsic
-  if (isCrabIntrinsic(*calleeF)) {
-    std::string name = getCrabIntrinsicName(*calleeF);
-    if (m_params.trackMemory() &&
-        (name == "is_unfreed_or_null" || name == "unfreed_or_null")) {
-      // Pass the region of the pointer
-      if (inputs.size() != 1) {
-        CLAM_ERROR("Intrinsic " << name << " should have only one input parameter");
-      }
-      Value *ptr = CS.getArgument(0);
-      Region rgn_ptr = getRegion(m_mem, m_func_regions, m_params,
-                                 *(CS.getInstruction()), *ptr);
-      std::vector<var_or_cst_t> new_inputs{m_lfac.mkRegionVar(rgn_ptr), inputs[0]};
-      m_bb.intrinsic(name, outputs, new_inputs);
-    } else {
-      std::vector<var_or_cst_t> new_inputs;
-      std::copy(inputs.begin(), inputs.end(), std::back_inserter(new_inputs)); 
-      m_bb.intrinsic(name, outputs, new_inputs);
-    }
+  if (isCrabIntrinsic(*calleeF)) {    
+    assert(!isSpecialCrabIntrinsic(*calleeF));
+    std::string name = getCrabIntrinsicName(*calleeF);    
+    std::vector<var_or_cst_t> new_inputs;
+    std::copy(inputs.begin(), inputs.end(), std::back_inserter(new_inputs)); 
+    m_bb.intrinsic(name, outputs, new_inputs);
   } else {
     if (m_params.trackMemory()) {
       for (unsigned i = 0, sz = pendingInRgnCasts.size(); i < sz; ++i) {
@@ -4300,6 +4298,144 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   }
 }
 
+bool CrabIntraBlockBuilder::isSpecialCrabIntrinsic(const Function &calleeF) const {
+  if (!isCrabIntrinsic(calleeF)) {
+    return false;
+  }
+  if (!m_params.trackMemory()) {
+    // all the special intrinsics require tracking of memory
+    return false;
+  }
+  std::string name = getCrabIntrinsicName(calleeF);
+  return (name == "is_unfreed_or_null" ||
+	  name == "unfreed_or_null" ||
+	  name == "add_tag" ||
+	  name == "check_does_not_have_tag");
+}
+  
+void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
+  /*
+    %b = is_unfreed_or_null(%ptr) --> b := CRAB_intrinsic(is_unfreed_or_null, rgn, ref)
+    unfreed_or_null(%ptr)         --> CRAB_intrinsic(unfreed_or_null, rgn, ref)              
+    add_tag(%ptr, tag)            --> CRAB_intrinsic(add_tag, rgn, ref, tag)
+    check_does_not_have_tag(%ptr, tag)  --> b := CRAB_intrinsic(does_not_have_tag, rgn, ref, tag)
+                                            bool_assert(b);
+   */
+
+  CallSite CS(&I);
+  const Function *calleeF =
+      dyn_cast<Function>(CS.getCalledValue()->stripPointerCastsAndAliases());
+  assert(calleeF);
+  assert(isSpecialCrabIntrinsic(*calleeF));
+
+  std::string name = getCrabIntrinsicName(*calleeF);
+  if (name == "is_unfreed_or_null") {
+    if (CS.arg_size() != 1) {
+      CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+    }
+    if (!I.getType()->isIntegerTy()) {
+      CLAM_ERROR("unexpected non-integer output parameter in special intrinsic " << I);
+    }
+    if (!CS.getArgument(0)->getType()->isPointerTy()) {
+      CLAM_ERROR("unexpected non-pointer input parameter in special intrinsic " << I);
+    }
+    crab_lit_ref_t refParamLit = m_lfac.getLit(*(CS.getArgument(0)));
+    crab_lit_ref_t outParamLit = m_lfac.getLit(I);
+
+    if (!refParamLit || !refParamLit->isVar()) {
+      CLAM_ERROR("translation of input argument in special intrinsic " << I);
+    }
+    if (!outParamLit || !outParamLit->isVar()) {
+      CLAM_ERROR("translation of output argument in special intrinsic " << I);
+    }
+    
+    var_t rgnParam = m_lfac.mkRegionVar(
+		     getRegion(m_mem, m_func_regions, m_params, I, *CS.getArgument(0)));
+    std::vector<var_or_cst_t> inputs{rgnParam, refParamLit->getVar()};
+    std::vector<var_t> outputs {outParamLit->getVar()};
+    m_bb.intrinsic(name, outputs, inputs);
+  } else if (name == "unfreed_or_null") {
+    if (CS.arg_size() != 1) {
+      CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+    }
+    if (!CS.getArgument(0)->getType()->isPointerTy()) {
+      CLAM_ERROR("unexpected non-pointer parameter in special intrinsic " << I);
+    }
+
+    crab_lit_ref_t refParamLit = m_lfac.getLit(*(CS.getArgument(0)));
+
+    if (!refParamLit || !refParamLit->isVar()) {
+      CLAM_ERROR("translation of input argument in special intrinsic " << I);
+    }
+    
+    var_t rgnParam = m_lfac.mkRegionVar(
+		     getRegion(m_mem, m_func_regions, m_params, I, *CS.getArgument(0)));
+    std::vector<var_or_cst_t> inputs{rgnParam, refParamLit->getVar()};
+    std::vector<var_t> outputs;
+    m_bb.intrinsic(name, outputs, inputs);
+  } else if (name == "add_tag") {
+    if (CS.arg_size() != 2) {
+      CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+    }
+    if (!CS.getArgument(0)->getType()->isPointerTy() ||
+	!CS.getArgument(1)->getType()->isIntegerTy()) {
+      CLAM_ERROR("unexpected parameters in special intrinsic " << I);
+    }
+    
+    crab_lit_ref_t refParamLit = m_lfac.getLit(*(CS.getArgument(0)));
+    crab_lit_ref_t tagParamLit = m_lfac.getLit(*(CS.getArgument(1)));
+
+    if (!refParamLit || !refParamLit->isVar()) {
+      CLAM_ERROR("unexpected 1st input argument in special intrinsic " << I);
+    }
+    if (!tagParamLit || tagParamLit->isVar() || !tagParamLit->isInt()) {
+      CLAM_ERROR("unexpected 2nd input argument in special intrinsic " << I);
+    }
+    
+    var_t rgnParam = m_lfac.mkRegionVar(
+		     getRegion(m_mem, m_func_regions, m_params, I, *CS.getArgument(0)));
+    std::vector<var_or_cst_t> inputs{rgnParam, refParamLit->getVar(),
+				     var_or_cst_t(m_lfac.getIntCst(tagParamLit),
+						  crab::variable_type(INT_TYPE, 32))};
+    std::vector<var_t> outputs;
+    m_bb.intrinsic(name, outputs, inputs);
+    
+  } else if (name == "check_does_not_have_tag") {
+    if (CS.arg_size() != 2) {
+      CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+    }
+    if (!CS.getArgument(0)->getType()->isPointerTy() ||
+	!CS.getArgument(1)->getType()->isIntegerTy()) {
+      CLAM_ERROR("unexpected parameters in special intrinsic " << I);
+    }
+    crab_lit_ref_t ptrParamLit = m_lfac.getLit(*(CS.getArgument(0)));
+    crab_lit_ref_t tagParamLit = m_lfac.getLit(*(CS.getArgument(1)));
+
+    if (!ptrParamLit || !ptrParamLit->isVar()) {
+      CLAM_ERROR("unexpected 1st input argument in special intrinsic " << I);
+    }
+    if (!tagParamLit || tagParamLit->isVar() || !tagParamLit->isInt()) {
+      CLAM_ERROR("unexpected 2nd input argument in special intrinsic " << I);
+    }
+    
+    var_t rgnParam = m_lfac.mkRegionVar(
+		     getRegion(m_mem, m_func_regions, m_params, I, *CS.getArgument(0)));
+    var_t outParam = m_lfac.mkBoolVar();
+    std::vector<var_or_cst_t> inputs{rgnParam, ptrParamLit->getVar(),
+				     var_or_cst_t(m_lfac.getIntCst(tagParamLit),
+						  crab::variable_type(INT_TYPE, 32))};				     
+    std::vector<var_t> outputs{outParam};
+    m_bb.intrinsic("does_not_have_tag", outputs, inputs);
+    m_bb.bool_assert(outParam, getDebugLoc(&I));
+  } else {
+    CLAM_ERROR("unsupported intrinsic " << I);
+  }
+}
+
+
+
+
+  
 CfgBuilderImpl::CfgBuilderImpl(const Function &func,
                                CrabBuilderManagerImpl &man)
     : m_is_cfg_built(false),
