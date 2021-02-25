@@ -38,6 +38,13 @@ add_lit_testsuite(test-uaf "Run tests for use-after-free checker"
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/uaf
   DEPENDS clam)
 
+add_lit_testsuite(test-tag "Run tests for the tag analysis"
+  -v
+  ${CMAKE_CURRENT_SOURCE_DIR}/tag-analysis  ## where .cfg file is located
+  PARAMS
+  test_dir=${CMAKE_CURRENT_BINARY_DIR}/tag-analysis
+  DEPENDS clam)
+
 add_lit_testsuite(test-opt "Run Optimizer tests"
   -v
   ${CMAKE_CURRENT_SOURCE_DIR}/opt  ## where .cfg file is located

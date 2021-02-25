@@ -75,7 +75,7 @@ public:
   /* This should be always disabled */
   enum { refine_uninitialized_regions = 0};
   /* Tag analysis */
-  enum { tag_analysis = 0};  
+  enum { tag_analysis = 1};  
 };
 /* ====================================================================== */    
 /* END region domain                                                      */
