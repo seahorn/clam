@@ -1,7 +1,7 @@
 #include "CfgBuilderUtils.hh"
 
 #include "llvm/ADT/APInt.h"
-#include "llvm/IR/CallSite.h"
+#include "llvm/IR/Instructions.h" 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
@@ -91,9 +91,9 @@ bool isTracked(const Value &v, const CrabBuilderParams &params) {
 }
 
 bool ShouldCallSiteReturn(CallInst &I, const CrabBuilderParams &params) {
-  CallSite CS(&I);
+  CallBase &CB = I;
   if (Function *Callee =
-          dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts())) {
+          dyn_cast<Function>(CB.getCalledValue()->stripPointerCasts())) {
     Type *RT = Callee->getReturnType();
     return (!(RT->isVoidTy()) && isTrackedType(*RT, params));
   }
@@ -221,8 +221,8 @@ bool isZeroInitializer(const Function &F) {
 }
 
 bool isZeroInitializer(const CallInst &CI) {
-  ImmutableCallSite CS(&CI);
-  const Value *calleeV = CS.getCalledValue();
+  const CallBase &CB = CI;
+  const Value *calleeV = CB.getCalledValue();
   if (const Function *callee =
           dyn_cast<Function>(calleeV->stripPointerCasts())) {
     return isZeroInitializer(*callee);
@@ -235,8 +235,8 @@ bool isIntInitializer(const Function &F) {
 }
 
 bool isIntInitializer(const CallInst &CI) {
-  ImmutableCallSite CS(&CI);
-  const Value *calleeV = CS.getCalledValue();
+  const CallBase &CB = CI;
+  const Value *calleeV = CB.getCalledValue();
   if (const Function *callee =
           dyn_cast<Function>(calleeV->stripPointerCasts())) {
     return isIntInitializer(*callee);
@@ -282,8 +282,8 @@ bool AllUsesAreIndirectCalls(Value &V) {
   // XXX: do not strip pointers here
   for (auto &U : V.uses()) {
     if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
-      CallSite CS(CI);
-      const Value *callee = CS.getCalledValue();
+      CallBase &CB = *CI;
+      const Value *callee = CB.getCalledValue();
       if (callee == &V)
         continue;
     }
@@ -306,8 +306,8 @@ bool AllUsesAreVerifierCalls(Value &V, bool goThroughIntegerCasts,
     }
 
     if (CallInst *CI = dyn_cast<CallInst>(User)) {
-      CallSite CS(CI);
-      const Value *calleeV = CS.getCalledValue();
+      CallBase &CB = *CI;
+      const Value *calleeV = CB.getCalledValue();
       const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
       if (callee && (isAssertFn(*callee) || isAssumeFn(*callee) ||
                      isNotAssumeFn(*callee))) {

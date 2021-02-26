@@ -178,8 +178,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   if (I.isInlineAsm())
     return;
 
-  ImmutableCallSite ICS(&I);
-  DsaCallSite CS(ICS);
+  DsaCallSite CS(I);
 
   if (!CS.getCallee()) {
     CRAB_LOG("heap-abs-regions", llvm::errs()
@@ -330,8 +329,7 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
         computeReadModNewNodesFromCallSite(*CI, CSAccessed, CSMods, CSNews);
 
         // For the sanity check implemented below
-        ImmutableCallSite ICS(CI);
-        DsaCallSite CS(ICS);
+        DsaCallSite CS(*CI);
         if (const Function *calleeF = CS.getCallee()) {
           if (!calleeF->empty()) {
             FunctionCallsMap[calleeF].push_back(CS);
