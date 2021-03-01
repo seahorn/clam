@@ -21,15 +21,15 @@ using namespace llvm;
 
 static CmpInst *mkNonNegative(Value *V, Instruction *insertPt) {
   Value *zero = ConstantInt::getSigned(V->getType(), 0);
-  Twine name = (V->hasName() ? V->getName() + "_SGE_0" : "check_SGE_0");
-  return CmpInst::Create(Instruction::ICmp, CmpInst::ICMP_SGE, V, zero, name,
+  return CmpInst::Create(Instruction::ICmp, CmpInst::ICMP_SGE, V, zero,
+			 V->hasName() ? V->getName() + "_SGE_0" : "check_SGE_0",
                          insertPt);
 }
 
 static CmpInst *mkNonNegative(Value *V, BasicBlock *insertPt) {
   Value *zero = ConstantInt::getSigned(V->getType(), 0);
-  Twine name = (V->hasName() ? V->getName() + "_SGE_0" : "check_SGE_0");
-  return CmpInst::Create(Instruction::ICmp, CmpInst::ICMP_SGE, V, zero, name,
+  return CmpInst::Create(Instruction::ICmp, CmpInst::ICMP_SGE, V, zero,
+			 V->hasName() ? V->getName() + "_SGE_0" : "check_SGE_0",	 
                          insertPt);
 }
 
