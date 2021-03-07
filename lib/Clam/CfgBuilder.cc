@@ -3463,12 +3463,77 @@ void CfgBuilderImpl::addFunctionDeclaration() {
   }
 
   CRAB_LOG("cfg", llvm::errs() << "addFunctionDeclaration with "
-                               << m_func.getName() << "\n";);
-
+                               << m_func.getName() << "\n";);  
+  
   llvm::Optional<var_t> retVal;
   std::vector<var_t> inputs, outputs;
   basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
 
+
+  // 
+  // Perform the following translation required by the Crab
+  // inter-procedural analysis:
+  //         
+  // foo(...,I,...) {   ==>   foo(...,I',...) { 
+  //   BODY(I,...)               I := I'
+  // }                           BODY(I,...)
+  //                          }
+  // 
+  auto translateInputValueAsScalar = [this, &entry,&inputs](const Value &inputVal) {
+     crab_lit_ref_t inputLit = m_lfac.getLit(inputVal);
+     assert(inputLit && inputLit->isVar());
+     var_t inputVar = inputLit->getVar();
+     if (inputVar.get_type().is_bool()) {
+       var_t inputPrime = m_lfac.mkBoolVar();
+       entry.bool_assign(inputVar, inputPrime);
+       inputs.push_back(inputPrime);
+     } else if (inputVar.get_type().is_integer()) {
+       unsigned bitwidth = inputVar.get_type().get_integer_bitwidth();
+       var_t inputPrime = m_lfac.mkIntVar(bitwidth);
+       entry.assign(inputVar, inputPrime);
+       inputs.push_back(inputPrime);
+     } else if (inputVar.get_type().is_reference()) {
+       Region inputRgn = getRegion(m_mem, m_func_regions, m_params, m_func, inputVal);
+       if (!getSingletonValue(inputRgn, m_params.lower_singleton_aliases)) {
+	 var_t inputPrime = m_lfac.mkRefVar();
+	 entry.gep_ref(inputVar, m_lfac.mkRegionVar(inputRgn),
+		       inputPrime, m_lfac.mkRegionVar(inputRgn));
+	 inputs.push_back(inputPrime);
+       }
+     } else if (inputVar.get_type().is_array()) {
+       CLAM_ERROR("translateScalarInputVar should not be called on array variable");
+     } else if (inputVar.get_type().is_region()) {
+       CLAM_ERROR("translateScalarInputVar should not be called on region variable");
+     } else {
+       CLAM_ERROR("translateScalarInputVar called on unexpected variable");
+     }
+  };
+  auto translateInputRegionAsScalar = [this,&entry,&inputs](const Region &inputRgn) {
+     var_t inputVar = m_lfac.mkScalarVar(inputRgn);
+     if (inputVar.get_type().is_bool()) {
+       var_t inputPrime = m_lfac.mkBoolVar();
+       entry.bool_assign(inputVar, inputPrime);
+       inputs.push_back(inputPrime);
+     } else if (inputVar.get_type().is_integer()) {
+       unsigned bitwidth = inputVar.get_type().get_integer_bitwidth();
+       var_t inputPrime = m_lfac.mkIntVar(bitwidth);
+       entry.assign(inputVar, inputPrime);
+       inputs.push_back(inputPrime);
+     } else {
+       CLAM_ERROR("translateInputRegionAsScalar supported only for boolean or integer scalars");
+     } 
+  };
+  auto translateInputRegionAsArray = [this,&entry,&inputs](const Region &inputRgn) {
+     var_t inputPrime = m_lfac.mkArrayVar(inputRgn.getRegionInfo());
+     entry.array_assign(m_lfac.mkArrayVar(inputRgn), inputPrime);
+     inputs.push_back(inputPrime);
+  };
+  auto translateInputRegionAsRegion = [this,&entry,&inputs](const Region &inputRgn) {
+     var_t inputPrime = m_lfac.mkRegionVar(inputRgn.getRegionInfo());
+     entry.region_copy(m_lfac.mkRegionVar(inputRgn), inputPrime);
+     inputs.push_back(inputPrime);
+  };
+  
   // -- Add the return value if exists
   Value *RV = nullptr;
   for (auto &B : m_func) {
@@ -3531,34 +3596,7 @@ void CfgBuilderImpl::addFunctionDeclaration() {
      *  same.
      **/
     entry.set_insert_point_front();
-
-    crab_lit_ref_t i = m_lfac.getLit(arg);
-    assert(i && i->isVar());
-    if (retVal.hasValue() && i->getVar() == retVal.getValue()) {
-      // rename i to avoid having same name as output (crab requirement)
-      if (i->isBool()) {
-        var_t fresh_i = m_lfac.mkBoolVar();
-        entry.bool_assign(i->getVar(), fresh_i);
-        inputs.push_back(fresh_i);
-      } else if (i->isInt()) {
-        unsigned bitwidth = arg.getType()->getIntegerBitWidth();
-        var_t fresh_i = m_lfac.mkIntVar(bitwidth);
-        entry.assign(i->getVar(), fresh_i);
-        inputs.push_back(fresh_i);
-      } else if (isReference(arg, m_params)) {
-        assert(i->isRef());
-        Region arg_rgn =
-            getRegion(m_mem, m_func_regions, m_params, m_func, arg);
-        var_t fresh_i = m_lfac.mkRefVar();
-        entry.gep_ref(i->getVar(), m_lfac.mkRegionVar(arg_rgn), fresh_i,
-                      m_lfac.mkRegionVar(arg_rgn));
-        inputs.push_back(fresh_i);
-      } else {
-        CLAM_ERROR("unexpected function parameter type");
-      }
-    } else {
-      inputs.push_back(i->getVar());
-    }
+    translateInputValueAsScalar(arg);
   }
 
   if (!m_func.getName().equals("main")) {
@@ -3569,13 +3607,14 @@ void CfgBuilderImpl::addFunctionDeclaration() {
       auto it = m_globals.find(&m_func);
       if (it != m_globals.end()) {
         for (auto gv : it->second) {
-          // TODO: we can filter out those which are unique scalars.
-          crab_lit_ref_t ref = m_lfac.getLit(*gv);
-          if (!ref->isVar() || !ref->isRef()) {
-            // this shouldn't happen
-            continue;
-          }
-          inputs.push_back(ref->getVar());
+
+	  if (m_params.lower_singleton_aliases) {
+	    Region gvRgn = getRegion(m_mem, m_func_regions, m_params, m_func, *gv);
+	    if (getSingletonValue(gvRgn, m_params.lower_singleton_aliases)) {
+	      continue;
+	    }
+	  }
+	  translateInputValueAsScalar(*gv);
         }
       }
     }
@@ -3596,15 +3635,11 @@ void CfgBuilderImpl::addFunctionDeclaration() {
     for (auto rgn : inRegions) {
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
         // Promote the global to a scalar
-        inputs.push_back(m_lfac.mkScalarVar(rgn));
+	translateInputRegionAsScalar(rgn);
       } else if (m_params.trackOnlySingletonMemory()) {
-        inputs.push_back(m_lfac.mkArrayVar(rgn));
+	translateInputRegionAsArray(rgn);
       } else if (m_params.trackMemory()) {
-        // IMPORTANT: ensure call-by-value semantics for input regions
-        // TODO: we should do it also for scalars.
-        var_t rgn_in = m_lfac.mkRegionVar(rgn.getRegionInfo());
-        entry.region_copy(m_lfac.mkRegionVar(rgn), rgn_in);
-        inputs.push_back(rgn_in);
+	translateInputRegionAsRegion(rgn);
       }
     }
 
@@ -4008,7 +4043,14 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
     auto it = m_func_globals.find(calleeF);
     if (it != m_func_globals.end()) {
       for (auto gv : it->second) {
-        // TODO: we can filter out those which are unique scalars.
+
+	if (m_params.lower_singleton_aliases) {
+	  Region gvRgn = getRegion(m_mem, m_func_regions, m_params, I, *gv);
+	  if (getSingletonValue(gvRgn, m_params.lower_singleton_aliases)) {
+	    continue;
+	  }
+	}
+	
         crab_lit_ref_t ref = m_lfac.getLit(*gv);
         if (!ref->isVar() || !ref->isRef()) {
           // this shouldn't happen
