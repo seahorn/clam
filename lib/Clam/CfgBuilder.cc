@@ -2907,6 +2907,8 @@ private:
 
   void addBlock(const llvm::BasicBlock &bb);
 
+  std::unique_ptr<basic_block_t> makeTempBlock();
+  
   void addEdge(const llvm::BasicBlock &src, const llvm::BasicBlock &target);
 
   basic_block_t *execEdge(const llvm::BasicBlock &src,
@@ -3098,6 +3100,11 @@ void CfgBuilderImpl::addBlock(const BasicBlock &bb) {
   }
 }
 
+std::unique_ptr<basic_block_t> CfgBuilderImpl::makeTempBlock() {
+  basic_block_label_t bb_label;
+  return m_cfg->create_unlinked_block(bb_label);
+}
+  
 void CfgBuilderImpl::addEdge(const BasicBlock &src, const BasicBlock &dst) {
   basic_block_t *crab_src = lookup(src);
   basic_block_t *crab_dst = lookup(dst);
@@ -3364,18 +3371,24 @@ void CfgBuilderImpl::buildCfg() {
       // -- move branch condition in bb to a new block inserted
       //    between bb and dst
       basic_block_t *mid_bb = execEdge(B, *dst);
-
-      if ((&B == dst) && mid_bb) {
-        // If a self-loop then insert the assignments from PHI nodes
-        // *before* the assume statements from execEdge.
-        mid_bb->set_insert_point_front();
-      }
-
+      std::unique_ptr<basic_block_t> tmp_mid_bb = (mid_bb ?
+						   std::move(makeTempBlock()):
+						   nullptr);
       // -- phi nodes in dst are translated into assignments in
       //    the predecessor
       CrabInterBlockBuilder v(m_lfac, m_mem, m_func_regions, *m_dl,
-                              (mid_bb ? *mid_bb : *bb), B, m_params);
+                              (tmp_mid_bb ? *tmp_mid_bb : *bb), B, m_params);
       v.visit(const_cast<BasicBlock &>(*dst));
+
+      if (tmp_mid_bb) {
+	if (&B == dst) {
+	  // If a self-loop then insert the assignments from PHI nodes
+	  // *before* the assume statements from execEdge.
+	  mid_bb->copy_front(*tmp_mid_bb);
+	} else {
+	  mid_bb->copy_back(*tmp_mid_bb);	  
+	} 
+      }
     }
   }
 
@@ -3469,8 +3482,6 @@ void CfgBuilderImpl::addFunctionDeclaration() {
   
   llvm::Optional<var_t> retVal;
   std::vector<var_t> inputs, outputs;
-  basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
-
 
   // 
   // Perform the following translation required by the Crab
@@ -3481,24 +3492,24 @@ void CfgBuilderImpl::addFunctionDeclaration() {
   // }                           BODY(I,...)
   //                          }
   // 
-  auto translateInputValueAsScalar = [this, &entry,&inputs](const Value &inputVal) {
+  auto translateInputValueAsScalar = [this, &inputs](const Value &inputVal, basic_block_t &bb) {
      crab_lit_ref_t inputLit = m_lfac.getLit(inputVal);
      assert(inputLit && inputLit->isVar());
      var_t inputVar = inputLit->getVar();
      if (inputVar.get_type().is_bool()) {
        var_t inputPrime = m_lfac.mkBoolVar();
-       entry.bool_assign(inputVar, inputPrime);
+       bb.bool_assign(inputVar, inputPrime);
        inputs.push_back(inputPrime);
      } else if (inputVar.get_type().is_integer()) {
        unsigned bitwidth = inputVar.get_type().get_integer_bitwidth();
        var_t inputPrime = m_lfac.mkIntVar(bitwidth);
-       entry.assign(inputVar, inputPrime);
+       bb.assign(inputVar, inputPrime);
        inputs.push_back(inputPrime);
      } else if (inputVar.get_type().is_reference()) {
        Region inputRgn = getRegion(m_mem, m_func_regions, m_params, m_func, inputVal);
        if (!getSingletonValue(inputRgn, m_params.lower_singleton_aliases)) {
 	 var_t inputPrime = m_lfac.mkRefVar();
-	 entry.gep_ref(inputVar, m_lfac.mkRegionVar(inputRgn),
+	 bb.gep_ref(inputVar, m_lfac.mkRegionVar(inputRgn),
 		       inputPrime, m_lfac.mkRegionVar(inputRgn));
 	 inputs.push_back(inputPrime);
        }
@@ -3510,29 +3521,29 @@ void CfgBuilderImpl::addFunctionDeclaration() {
        CLAM_ERROR("translateScalarInputVar called on unexpected variable");
      }
   };
-  auto translateInputRegionAsScalar = [this,&entry,&inputs](const Region &inputRgn) {
+  auto translateInputRegionAsScalar = [this,&inputs](const Region &inputRgn, basic_block_t &bb) {
      var_t inputVar = m_lfac.mkScalarVar(inputRgn);
      if (inputVar.get_type().is_bool()) {
        var_t inputPrime = m_lfac.mkBoolVar();
-       entry.bool_assign(inputVar, inputPrime);
+       bb.bool_assign(inputVar, inputPrime);
        inputs.push_back(inputPrime);
      } else if (inputVar.get_type().is_integer()) {
        unsigned bitwidth = inputVar.get_type().get_integer_bitwidth();
        var_t inputPrime = m_lfac.mkIntVar(bitwidth);
-       entry.assign(inputVar, inputPrime);
+       bb.assign(inputVar, inputPrime);
        inputs.push_back(inputPrime);
      } else {
        CLAM_ERROR("translateInputRegionAsScalar supported only for boolean or integer scalars");
      } 
   };
-  auto translateInputRegionAsArray = [this,&entry,&inputs](const Region &inputRgn) {
+  auto translateInputRegionAsArray = [this,&inputs](const Region &inputRgn, basic_block_t &bb) {
      var_t inputPrime = m_lfac.mkArrayVar(inputRgn.getRegionInfo());
-     entry.array_assign(m_lfac.mkArrayVar(inputRgn), inputPrime);
+     bb.array_assign(m_lfac.mkArrayVar(inputRgn), inputPrime);
      inputs.push_back(inputPrime);
   };
-  auto translateInputRegionAsRegion = [this,&entry,&inputs](const Region &inputRgn) {
+  auto translateInputRegionAsRegion = [this,&inputs](const Region &inputRgn, basic_block_t &bb) {
      var_t inputPrime = m_lfac.mkRegionVar(inputRgn.getRegionInfo());
-     entry.region_copy(m_lfac.mkRegionVar(inputRgn), inputPrime);
+     bb.region_copy(m_lfac.mkRegionVar(inputRgn), inputPrime);
      inputs.push_back(inputPrime);
   };
   
@@ -3588,17 +3599,18 @@ void CfgBuilderImpl::addFunctionDeclaration() {
     outputs.push_back(retVal.getValue());
   }
 
+  // We need to be careful in which order we insert statements in the
+  // entry block.
+  std::unique_ptr<basic_block_t> tmp_bb1 = makeTempBlock();
+  std::unique_ptr<basic_block_t> tmp_bb2 = makeTempBlock();
+  std::unique_ptr<basic_block_t> tmp_bb3 = makeTempBlock();    
+  
   // -- add input parameters i1,...,in
   for (Value &arg : llvm::make_range(m_func.arg_begin(), m_func.arg_end())) {
     if (!isTracked(arg, m_params))
       continue;
 
-    /** Make sure the assignments are inserted before a return
-     *  instruction in case the entry and the exit blocks are the
-     *  same.
-     **/
-    entry.set_insert_point_front();
-    translateInputValueAsScalar(arg);
+    translateInputValueAsScalar(arg, *tmp_bb2);
   }
 
   if (!m_func.getName().equals("main")) {
@@ -3616,11 +3628,12 @@ void CfgBuilderImpl::addFunctionDeclaration() {
 	      continue;
 	    }
 	  }
-	  translateInputValueAsScalar(*gv);
+	  translateInputValueAsScalar(*gv, *tmp_bb2);
         }
       }
     }
 
+  
     RegionVec inRegions = getInputRegions(m_mem, m_params, m_func);
     RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, m_func);
     RegionVec outRegions = getOutputRegions(m_mem, m_params, m_func);
@@ -3637,11 +3650,11 @@ void CfgBuilderImpl::addFunctionDeclaration() {
     for (auto rgn : inRegions) {
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
         // Promote the global to a scalar
-	translateInputRegionAsScalar(rgn);
+	translateInputRegionAsScalar(rgn, *tmp_bb1);
       } else if (m_params.trackOnlySingletonMemory()) {
-	translateInputRegionAsArray(rgn);
+	translateInputRegionAsArray(rgn, *tmp_bb1);
       } else if (m_params.trackMemory()) {
-	translateInputRegionAsRegion(rgn);
+	translateInputRegionAsRegion(rgn, *tmp_bb1);
       }
     }
 
@@ -3652,13 +3665,9 @@ void CfgBuilderImpl::addFunctionDeclaration() {
         continue;
       }
 
-      // -- for each parameter `arg` we create a fresh version `arg_in`
-      //    where `arg_in` acts as the input version of the parameter
-      //    and `arg` is the output version.
-
-      /** Added in the entry block of the function **/
-      entry.set_insert_point_front();
-
+      // for each parameter `arg` we create a fresh version `arg_in`
+      // where `arg_in` acts as the input version of the parameter and
+      // `arg` is the output version.
       bool change = false;
       if (const Value *v =
               getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
@@ -3671,11 +3680,11 @@ void CfgBuilderImpl::addFunctionDeclaration() {
           if (isInteger(ty)) {
             var_t a_in = m_lfac.mkIntVar(ty->getIntegerBitWidth());
             inputs.push_back(a_in);
-            entry.assign(s, a_in);
+            tmp_bb1->assign(s, a_in);
           } else if (isBool(ty)) {
             var_t a_in = m_lfac.mkBoolVar();
             inputs.push_back(a_in);
-            entry.bool_assign(s, a_in, false);
+            tmp_bb1->bool_assign(s, a_in, false);
           }
           // output version
           outputs.push_back(m_lfac.mkScalarVar(rgn));
@@ -3688,14 +3697,14 @@ void CfgBuilderImpl::addFunctionDeclaration() {
       if (m_params.trackOnlySingletonMemory()) {
         // input version
         var_t a_in = m_lfac.mkArrayVar(rgn.getRegionInfo());
-        entry.array_assign(m_lfac.mkArrayVar(rgn), a_in);
+        tmp_bb1->array_assign(m_lfac.mkArrayVar(rgn), a_in);
         inputs.push_back(a_in);
         // output version
         outputs.push_back(m_lfac.mkArrayVar(rgn));
       } else if (m_params.trackMemory()) {
         // input version
         var_t rgn_in = m_lfac.mkRegionVar(rgn.getRegionInfo());
-        entry.region_copy(m_lfac.mkRegionVar(rgn), rgn_in);
+        tmp_bb1->region_copy(m_lfac.mkRegionVar(rgn), rgn_in);
         inputs.push_back(rgn_in);
         // output version
         outputs.push_back(m_lfac.mkRegionVar(rgn));
@@ -3718,13 +3727,16 @@ void CfgBuilderImpl::addFunctionDeclaration() {
           m_func.getParamDereferenceableBytes(i) > 0) {
         crab_lit_ref_t arg_lit = m_lfac.getLit(*(m_func.getArg(i)));
         assert(arg_lit && arg_lit->isVar() && arg_lit->isRef());
-        // add at the entry of the block
-        entry.set_insert_point_front();
-        entry.assume_ref(ref_cst_t::mk_gt_null(arg_lit->getVar()));
+        tmp_bb3->assume_ref(ref_cst_t::mk_gt_null(arg_lit->getVar()));
       }
     }
   }
 
+  tmp_bb1->copy_back(*tmp_bb2);
+  tmp_bb1->copy_back(*tmp_bb3);
+  basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
+  entry.copy_front(*tmp_bb1);
+  
   // -- Finally, we add the function declaration
 
   // Sanity check
