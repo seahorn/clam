@@ -408,7 +408,7 @@ public:
     : m_clamCfgBuilder(clamCfgBuilder) {}
   
   bool Skip(const statement_t &s) {
-    if (s.is_callsite() || s.is_return() || s.is_intrinsic() ||
+    if (s.is_callsite() || s.is_intrinsic() ||
 	s.is_assume() || s.is_assert() ||
 	s.is_havoc() ||
 	s.is_int_cast()) {
