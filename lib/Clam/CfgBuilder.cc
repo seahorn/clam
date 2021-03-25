@@ -23,9 +23,9 @@
  * If tracked precision = MEM then all LLVM pointer operations are
  * translated to Crab region abstract domain operations over
  * references. This translation is almost one-to-one but it also
- * requires the use of the Heap Analysis. Each memory region's
- * __field__ is mapped to a Crab region and LLVM load/store are
- * translated to region load/store statements.
+ * requires the use of the Heap Analysis. Each memory Heap analysis
+ * region's __field__ is mapped to a Crab region and LLVM load/store
+ * are translated to region load/store statements.
  *
  * The translation of function calls is also straightforward except
  * that all functions are _purified_ if tracked precision != NUM. That
@@ -705,7 +705,10 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   HeapAbstraction &m_mem;
   const DataLayout *m_dl;
   const TargetLibraryInfo *m_tli;
+  // Current block
   basic_block_t &m_bb;
+  // Entry block of the function
+  basic_block_t &m_entry_bb;  
   unsigned int m_object_id;
   const CrabBuilderParams &m_params;
   // global variables accessed by a function and its callees
@@ -724,6 +727,8 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   bool &m_has_seahorn_fail;
   // Regions seen so far
   RegionSet &m_func_regions;
+  // Regions initialized by the current function
+  RegionSet &m_init_regions;
   // map gep to a crab variable
   DenseMap<const GetElementPtrInst *, var_t> &m_gep_map;
   // reverse **partial** map from Crab statements to LLVM instructions
@@ -787,12 +792,12 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
 public:
   CrabIntraBlockBuilder(crabLitFactory &lfac, tag_manager &as_man,
       HeapAbstraction &mem, const DataLayout *dl,
-      const TargetLibraryInfo *tli, basic_block_t &bb,
+      const TargetLibraryInfo *tli, basic_block_t &bb, basic_block_t &entry_bb,
       const CrabBuilderParams &params,
       const DenseMap<const Function *, std::vector<const Value *>>
           &func_globals,
       basic_block_t *ret_insts, CrabBuilderManagerImpl &man,
-      bool &has_seahorn_fail, RegionSet &func_regions,
+      bool &has_seahorn_fail, RegionSet &func_regions, RegionSet &init_regions,
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       RegionSet &regions_with_store,
       DenseMap<const GetElementPtrInst *, var_t> &gep_map,
@@ -822,19 +827,20 @@ public:
 CrabIntraBlockBuilder::CrabIntraBlockBuilder(
     crabLitFactory &lfac, tag_manager &as_man,
     HeapAbstraction &mem, const DataLayout *dl,
-    const TargetLibraryInfo *tli, basic_block_t &bb,
+    const TargetLibraryInfo *tli, basic_block_t &bb, basic_block_t &entry_bb,
     const CrabBuilderParams &params,
     const DenseMap<const Function *, std::vector<const Value *>> &func_globals,
     basic_block_t *ret_insts, CrabBuilderManagerImpl &man,
-    bool &has_seahorn_fail, RegionSet &func_regions,
+    bool &has_seahorn_fail, RegionSet &func_regions, RegionSet &init_regions,
     llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
     RegionSet &regions_with_store,
     DenseMap<const GetElementPtrInst *, var_t> &gep_map,
     DenseMap<CallInst *, CmpInst *> &verif_calls)
-    : m_lfac(lfac), m_as_man(as_man), m_mem(mem), m_dl(dl), m_tli(tli), m_bb(bb), m_object_id(0),
+    : m_lfac(lfac), m_as_man(as_man), m_mem(mem), m_dl(dl), m_tli(tli),
+      m_bb(bb), m_entry_bb(entry_bb), m_object_id(0),
       m_params(params), m_func_globals(func_globals), m_ret_insts(ret_insts),
       m_man(man), m_has_seahorn_fail(has_seahorn_fail),
-      m_func_regions(func_regions), m_gep_map(gep_map), m_rev_map(rev_map),
+      m_func_regions(func_regions), m_init_regions(init_regions), m_gep_map(gep_map), m_rev_map(rev_map),
       m_regions_with_store(regions_with_store), m_verif_calls(verif_calls) {}
 
 unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
@@ -2714,8 +2720,8 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
                      !m_params.interprocedural;
   if (is_external && !isCrabIntrinsic(*callee)) {
     /**
-     * If external or we don't perform inter-procedural reasoning
-     * then we make sure all modified regions and return value of
+     * If external or we don't perform inter-procedural reasoning then
+     * we make sure that all modified regions and returned value of
      * the callsite are havoc'ed.
      **/
     // -- havoc return value
@@ -2726,18 +2732,26 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
       havoc(lhs->getVar(), "External call: " + valueToStr(I), m_bb,
             m_params.include_useless_havoc);
 
-      if (m_params.addPointerAssumptions()) {
-        // We cannot assume that the returned pointer is non-null but
-        // it's reasonable to assume that it's not dangling.
-        if (lhs->isRef()) {
-          Region rgn_lhs = getRegion(m_mem, m_func_regions, m_params, I, I);
+      if (isReference(I, m_params)) {
+	Region rgn_lhs = getRegion(m_mem, m_func_regions, m_params, I, I);
+	// Important assumption: if we track regions and the external function
+	// returns a pointer then we assume that the returned pointer is
+	// associated to a new, initialized region.
+				      
+	if (m_init_regions.insert(rgn_lhs).second) {
+	  m_entry_bb.set_insert_point_front();
+	  m_entry_bb.region_init(m_lfac.mkRegionVar(rgn_lhs));
+	}
+	if (m_params.addPointerAssumptions()) {
           m_bb.intrinsic("unfreed_or_null", {},
                          {m_lfac.mkRegionVar(rgn_lhs), lhs->getVar()});
-        }
+	  
+	}
       }
     }
 
-    // -- havoc all modified regions by the callee
+    // -- havoc all regions that can be modified by the callee.
+    // 
     // Note that even if the code is not available for the callee, the
     // pointer analysis might be able to model its pointer semantics.
     RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, I);
@@ -2747,23 +2761,21 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
       else if (m_params.trackOnlySingletonMemory()) {
         m_bb.havoc(m_lfac.mkArrayVar(rgn), "havoc region");
       } else if (m_params.trackMemory()) {
-        CLAM_WARNING("TODO havoc " << rgn << " from callsite " << I);
+	CLAM_WARNING("TODO havoc " << rgn << " from callsite " << I);
       }
     }
 
+    
     CLAM_WARNING(
         "Call to external function "
         << callee->getName() << ". "
         << "Havocing the return value and possibly its modified memory regions "
         << "if the pointer analysis models the external function");
 
-    // XXX: if we return here we skip the callsite. This is fine
-    //      unless there exists an analysis which cares about
-    //      external calls.
-    //
-    //      Note: if we want to add the callsite make sure we add
-    //      the prototype for the external function below.
-    //
+    // If we return here we skip the callsite. This is fine unless
+    // there exists an analysis which cares about external calls.
+    // Note: if we want to add the callsite make sure we add the
+    // prototype for the external function below.
     return;
   }
 
@@ -2870,6 +2882,8 @@ private:
   edge_to_crab_block_map_t m_edge_to_crab_map;
   // **Unused**: memory regions accessed by m_func
   RegionSet m_func_regions;
+  // Regions that are initialized by this function
+  RegionSet m_init_regions;
   // A fake basic block containing the return instruction and
   // additional statements to normalize the returned value.
   basic_block_t *m_ret_insts;
@@ -2896,7 +2910,7 @@ private:
 
   void initializeGlobalsAtMain(void);
 
-  void initializeRegions(void);
+  void initializeRegions(const RegionSet&);
 
   void setExitBlock(void);
 
@@ -3055,14 +3069,14 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	if (m_params.addPointerAssumptions()) {
 	  // Add assumptions about function addresses: all function
 	  // addresses are not null
-        entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
+	  entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
 	}
       }
     }
   }
 }
 
-void CfgBuilderImpl::initializeRegions(void) {
+void CfgBuilderImpl::initializeRegions(const RegionSet &rgns) {
   if (m_lfac.getTrack() != CrabBuilderPrecision::MEM) {
     return;
   }
@@ -3070,7 +3084,7 @@ void CfgBuilderImpl::initializeRegions(void) {
   CRAB_LOG("cfg-mem", llvm::errs() << "Regions initialized by "
                                    << m_func.getName() << "{";);
 
-  for (auto rgn : m_mem.getInitRegions(m_func)) {
+  for (auto rgn : rgns) {
     CRAB_LOG("cfg-mem", llvm::errs() << rgn << ";";);
     if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
       continue;
@@ -3340,8 +3354,11 @@ void CfgBuilderImpl::buildCfg() {
   }
 
   initializeGlobalsAtMain();
-  initializeRegions();
-
+  auto rgn_vec = m_mem.getInitRegions(m_func);
+  m_init_regions.insert(rgn_vec.begin(), rgn_vec.end());
+  initializeRegions(m_init_regions);
+  basic_block_t *entry_bb = lookup(m_func.getEntryBlock());
+  
   for (auto &B : m_func) {
     basic_block_t *bb = lookup(B);
 
@@ -3350,9 +3367,10 @@ void CfgBuilderImpl::buildCfg() {
     }
 
     // -- build a CFG block ignoring branches, phi-nodes, and return
-    CrabIntraBlockBuilder v(m_lfac, m_as_man, m_mem, m_dl, tli, *bb, m_params, m_globals,
+    CrabIntraBlockBuilder v(m_lfac, m_as_man, m_mem, m_dl, tli,
+			    *bb, *entry_bb, m_params, m_globals,
                             m_ret_insts, m_man, has_seahorn_fail,
-                            m_func_regions, m_rev_map, regions_with_store,
+                            m_func_regions, m_init_regions, m_rev_map, regions_with_store,
                             gep_map, verif_calls);
 
     v.visit(B);
@@ -3569,7 +3587,6 @@ void CfgBuilderImpl::addFunctionDeclaration() {
     // the rest of exit's statements will be added in the wrong order.
     m_ret_insts = exit.clone();
     retVal = normalizeFuncParamOrRet(*RV, *m_ret_insts, m_lfac, needRenaming);
-    m_ret_insts->ret(retVal.getValue());
   } else {
     // Function that does not return but in its signature it has a
     // return type. E.g., "int foo() {unreachable;}"
