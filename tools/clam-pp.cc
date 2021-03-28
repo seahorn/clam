@@ -236,7 +236,7 @@ int main(int argc, char **argv) {
   pass_manager.add(llvm::createInternalizePass(PreserveMain));
 
   if (Devirtualize) {
-    // -- resolve indirect calls
+    pass_manager.add(llvm::createWholeProgramDevirtPass(nullptr, nullptr));    
     pass_manager.add(clam::createDevirtualizeFunctionsPass());
   }
 
