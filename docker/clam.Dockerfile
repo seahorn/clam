@@ -13,7 +13,7 @@ RUN apt-get install -yqq libc6-dev-i386
 # seadsa needs clang-format
 RUN apt-get install -yqq clang-format
 
-ARG BRANCH=dev10
+ARG BRANCH=master
 RUN cd / && rm -rf /clam && \
     git clone https://github.com/seahorn/crab-llvm -b $BRANCH clam --depth=10 ; \
     mkdir -p /clam/build
