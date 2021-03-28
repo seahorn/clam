@@ -1,20 +1,23 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
-## Requirements: pip install pyyaml
+## Requirements: pip3 install pyyaml
 
+import argparse
+import os.path
+import os
 import sys
+import yaml
 
 class Yama():
     def __init__(self):
         self._ignore_error = False
 
     def mk_arg_parser(self):
-        import argparse
         from argparse import RawTextHelpFormatter
-        
+
         argp = argparse.ArgumentParser(description='Yaml interface for Clam',
                                        formatter_class=RawTextHelpFormatter)
-        
+
         argp.add_argument("-y", dest='yconfig', action='append',
                           help="Configuration file", nargs=1)
         argp.add_argument('--dry-run', action='store_true', default=False,
@@ -27,12 +30,10 @@ class Yama():
     def get_clam(self):
         """ Search for clam.py in the same directory where clam-yaml.py is
         """
-        import os.path
         root = os.path.dirname(os.path.realpath(__file__))
         return os.path.join(root,'clam.py')
-    
+
     def parse_yaml_options(self, fname):
-        import yaml
         try:
             with open(fname) as f:
                 data = yaml.load(f, Loader=yaml.SafeLoader)
@@ -83,11 +84,10 @@ class Yama():
         if value is not None and short_arg:
             return '{k} {v}'.format(k=key, v=value)
         # long argument
-        elif value is not None and not short_arg:
+        if value is not None and not short_arg:
             return '{k}={v}'.format(k=key, v=value)
         # flag only argument
-        else:
-            return key
+        return key
 
     def mk_cli_from_dict(self, arg_dict):
         res = []
@@ -101,9 +101,6 @@ class Yama():
         return command, res
 
     def run(self, args=None, _extra=[]):
-        import sys
-        import os
-
         self._ignore_error = args.yforce
         # set default value
         if args.yconfig is None:
@@ -112,7 +109,7 @@ class Yama():
         extra = args.extra
         args_dict = None
         for f in args.yconfig:
-            assert(len(f) == 1)
+            assert len(f) == 1
             yaml_args = self.parse_yaml_options(f[0])
             if yaml_args is None:
                 continue
@@ -156,4 +153,3 @@ def main(argv):
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
-    

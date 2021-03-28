@@ -1,58 +1,58 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # simple statistics module
 
 import resource
 
 def _systemtime ():
-  ru_self = resource.getrusage (resource.RUSAGE_SELF)
-  ru_ch = resource.getrusage (resource.RUSAGE_CHILDREN)
-  return ru_self.ru_utime + ru_ch.ru_utime
+    ru_self = resource.getrusage (resource.RUSAGE_SELF)
+    ru_ch = resource.getrusage (resource.RUSAGE_CHILDREN)
+    return ru_self.ru_utime + ru_ch.ru_utime
 
 class Stopwatch:
-  """ A stop watch """
-  def __init__ (self):
-    self._started = 0
-    self._finished = -1
-    self._elapsed = 0
-    self.start ()
-        
-        
-  @property
-  def elapsed (self): 
-    """ Returns time (in seconds) since the stopwatch has been started. """
-    if self._finished < self._started:
-        return self._elapsed + (_systemtime () - self._started)
-    return self._elapsed + (self._finished - self._started)
-    
-  def start (self):
-    """ Starts or resumes the stopwatch """
-    # collect elapsed time so far
-    if self._finished >= self._started:
-        self._elapsed += (self._finished - self._started)
+    """ A stop watch """
+    def __init__ (self):
+        self._started = 0
+        self._finished = -1
+        self._elapsed = 0
+        self.start ()
 
-    self._started = _systemtime ()
-    self._finished = -1
 
-  def stop (self):
-    """ Stops the stopwatch """
-    if self._finished < self._started:
-      self._finished = _systemtime ()
+    @property
+    def elapsed (self):
+        """ Returns time (in seconds) since the stopwatch has been started. """
+        if self._finished < self._started:
+            return self._elapsed + (_systemtime () - self._started)
+        return self._elapsed + (self._finished - self._started)
 
-  def reset (self):
-    """ Resets the stopwatch by erasing all elapsed time """
-    self._elapsed = 0
-    self._finished = -1
-    self.start ()
+    def start (self):
+        """ Starts or resumes the stopwatch """
+        # collect elapsed time so far
+        if self._finished >= self._started:
+            self._elapsed += (self._finished - self._started)
 
-  def __str__ (self):
-      """ Reports time in seconds up to two decimal places """
-      return "{0:.2f}".format (self.elapsed)
+        self._started = _systemtime ()
+        self._finished = -1
+
+    def stop (self):
+        """ Stops the stopwatch """
+        if self._finished < self._started:
+            self._finished = _systemtime ()
+
+    def reset (self):
+        """ Resets the stopwatch by erasing all elapsed time """
+        self._elapsed = 0
+        self._finished = -1
+        self.start ()
+
+    def __str__ (self):
+        """ Reports time in seconds up to two decimal places """
+        return "{0:.2f}".format (self.elapsed)
 
 
 
 def lap (name):
-    class ContextManager (object):
+    class ContextManager():
         def __init__ (self, name):
             self._name = name
             self._sw = Stopwatch ()
@@ -60,10 +60,10 @@ def lap (name):
             self._sw.reset ()
             return None
         def __exit__ (self, exc_type, exc_value, traceback):
-            print 'DONE', name, 'in', str(self._sw)
+            print('DONE {0} in {1}'.format(name,self._sw))
             return False
     return ContextManager (name)
-  
+
 
 
 _statistics = dict()
@@ -71,50 +71,54 @@ _statistics = dict()
 def get (key):
     """ Gets a value from statistics table """
     return _statistics.get (key)
-def put (key, v): 
+def put (key, v):
     """ Puts a value in statistics table """
     _statistics[key] = v
 
-def start (key): 
+def start (key):
     """ Starts (or resumes) a named stopwatch """
     sw = get (key)
     if sw is None:
         sw = Stopwatch ()
         put (key, sw)
         return sw
-    else:
-        sw.start ()
+    sw.start ()
+    return sw
+
 def stop (key):
     """ Stops a named stopwatch """
     sw = get (key)
-    if sw is not None: sw.stop ()
+    if sw is not None:
+        sw.stop ()
 
 def count (key):
     """ Increments a named counter """
-    c = get (key)
-    if c is None: put (key, 1)
-    else: put (key, c + 1)
+    counter = get (key)
+    if counter is None:
+        put (key, 1)
+    else:
+        put (key, counter + 1)
 
 def brunch_print ():
     """ Prints the result in brunch format """
 
     if not _statistics:
-      return
+        return
 
-    print '----------------------------------------------------------------------'
+    print('----------------------------------------------------------------------')
     for k in sorted (_statistics.keys ()):
-        print 'BRUNCH_STAT {name} {value}'.format (name=k, value=_statistics [k])
-    print '----------------------------------------------------------------------'
-        
+        print('BRUNCH_STAT {name} {value}'.format (name=k, value=_statistics [k]))
+    print('----------------------------------------------------------------------')
+
 
 
 def timer (key):
-    """ ContextManager to help measuring time. 
-    
+    """ ContextManager to help measuring time.
+
         with timer('myname') as t:
             do_code_that_is_timed
     """
-    class TimerContextManager (object):
+    class TimerContextManager():
         def __init__ (self, key):
             self._key = key
         def __enter__ (self):
@@ -127,14 +131,14 @@ def timer (key):
 
 
 def block(mark):
-    class BlockMarkerContextManager (object):
+    class BlockMarkerContextManager():
         def __init__ (self, mark):
             self._mark = mark
         def __enter__ (self):
-            print 'BEGIN:', mark
+            print('BEGIN:{0}'.format(mark))
             return None
         def __exit__ (self, exc_type, exc_value, traceback):
-            print 'END:', mark
+            print('END:{0}'.format(mark))
             return False
     return BlockMarkerContextManager (mark)
 
@@ -145,21 +149,21 @@ def count_stats (f):
     counted_func.__name__ = f.__name__
     counted_func.__doc__ = f.__doc__
     return counted_func
-    
+
 def time_stats (f):
     """ Function decorator to time a function
-     
+
         @time_stats
         def foo (): pass
     """
     def timed_func (*args, **kwds):
-        count (f.__module__ + "." + f.__name__ + ".cnt")        
+        count (f.__module__ + "." + f.__name__ + ".cnt")
         with timer (f.__module__ + '.' + f.__name__):
             return f(*args, **kwds)
     timed_func.__name__ = f.__name__
     timed_func.__doc__ = f.__doc__
     return timed_func
-    
+
 @time_stats
 def _test_function ():
     c = 0
@@ -167,7 +171,6 @@ def _test_function ():
 
 
 if __name__ == '__main__':
-    import time
     c= 0
     count ('tick')
     with timer ('timer') as t:
@@ -183,6 +186,6 @@ if __name__ == '__main__':
 
 
     brunch_print ()
-    
+
     _test_function ()
     brunch_print ()
