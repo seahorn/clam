@@ -39,11 +39,18 @@ In linux, you can install requirements typing the commands:
      sudo apt-get install libgmp-dev
      sudo apt-get install libmpfr-dev	
 
-To run tests you need to install `lit` and `OutputCheck`. In Linux:
 
-     apt-get install python-pip
-     pip install lit
-     pip install OutputCheck
+Clam provides a Python script called `clam.py` to interact with
+users. The simpler command is `clam.py test.c`. Type `clam.py --help`
+for all options. This script requires Python >= 3.6.
+
+## Tests ##
+
+Testing infrastructure depends on several Python packages. 
+To run tests you need to install `lit` and `OutputCheck`:
+
+     pip3 install lit
+     pip3 install OutputCheck
 
 # Compiling from sources and installation # 
 
