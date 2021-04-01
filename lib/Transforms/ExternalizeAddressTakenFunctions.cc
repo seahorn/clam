@@ -17,6 +17,31 @@ using namespace llvm;
 namespace clam {
 
 class ExternalizeAddressTakenFunctions : public ModulePass {
+
+  static bool hasAddressTaken(Function &F) {
+    for (const Use &U : F.uses()) {
+      const User *FU = U.getUser();
+      if (isa<BlockAddress>(FU))
+	continue;
+      const auto *Call = dyn_cast<CallBase>(FU);
+      if (!Call) {
+	if (const auto *CE = dyn_cast<ConstantExpr>(FU)) {
+	  // -- ignore addresses that are taken but do not escape anywhere
+	  // -- interesting
+	  if (std::all_of(
+			  CE->uses().begin(), CE->uses().end(),
+			  [](const Use &CEU) { return isa<CallBase>(CEU.getUser()); }))
+	    continue;
+	}
+	return true;
+      }
+      if (!Call->isCallee(&U)) {
+	return true;
+      }
+    }
+    return false;
+  }
+  
 public:
   static char ID;
 
@@ -30,7 +55,7 @@ public:
       if (F.isDeclaration() || F.empty())
         continue;
 
-      if (F.hasAddressTaken()) {
+      if (hasAddressTaken(F)) {
         // create function type
         const FunctionType *FTy = F.getFunctionType();
         std::vector<llvm::Type *> ParamsTy(FTy->param_begin(),
@@ -40,8 +65,10 @@ public:
             RetTy, ArrayRef<llvm::Type *>(ParamsTy), FTy->isVarArg());
         // create new function
         Function *NF = Function::Create(NFTy, GlobalValue::ExternalLinkage,
-                                        F.getName() + ".stub");
+                                        F.getName() + ".addr");
         NF->copyAttributesFrom(&F);
+	// -- stub is a declaration and has no personality
+	NF->setPersonalityFn(nullptr);
         F.getParent()->getFunctionList().insert(F.getIterator(), NF);
 
         // replace each use &foo with &foo_stub() where foo_stub is a
@@ -62,7 +89,23 @@ public:
             }
           } else {
             if (GlobalAlias *a = dyn_cast<GlobalAlias>(FU)) {
-              a->setAliasee(NF);
+	      // A global cannot alias to an external function. The
+	      // solution that we adopt here is to replace all uses of
+	      // the alias with the new external function and remove
+	      // the alias.
+	      bool AliasUsedInCall = false;
+	      for (auto *u : a->users()) {
+		if (auto *CI = dyn_cast<CallInst>(u)) {
+		  // if alias is used in a call, replace all uses with F
+		  a->replaceAllUsesWith(&F);
+		  AliasUsedInCall = true;
+		  break;
+		}
+	      }
+	      if (!AliasUsedInCall) {
+		a->replaceAllUsesWith(NF);
+	      }
+	      a->eraseFromParent();
               Changed = true;
             } else if (Constant *c = dyn_cast<Constant>(FU)) {
               if (isa<GlobalVariable>(c) &&
