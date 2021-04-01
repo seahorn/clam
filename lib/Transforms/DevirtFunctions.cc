@@ -23,7 +23,7 @@ using namespace llvm;
 namespace clam {
 
 static bool isIndirectCall(CallBase &CB) {
-  Value *v = CB.getCalledValue();
+  Value *v = CB.getCalledOperand();
   if (!v)
     return false;
 
@@ -113,18 +113,17 @@ static void removeBlock(BasicBlock *BB, LLVMContext &ctx) {
 static void promoteIndirectCall(CallBase &CB,
                                 const std::vector<Function *> &Callees,
                                 bool keepOriginal) {
-  CallSite CS(&CB);
 #if 0
   for (unsigned i = 0, numCallees = Callees.size(); i < numCallees; ++i) {
     if (i == numCallees - 1 && !keepOriginal) {
-      llvm::promoteCall(CS, Callees[i]);
+      llvm::promoteCall(CB, Callees[i]);
     } else {
-      llvm::promoteCallWithIfThenElse(CS, Callees[i]);
+      llvm::promoteCallWithIfThenElse(CB, Callees[i]);
     }
   }
 #else  
   for (unsigned i = 0, numCallees = Callees.size(); i < numCallees; ++i) {
-    llvm::promoteCallWithIfThenElse(CS, Callees[i]);
+    llvm::promoteCallWithIfThenElse(CB, Callees[i]);
   }
   // We create an "else" block with the original call and then remove
   // the block. This seems unnecessary but this avoids having as the
@@ -133,9 +132,8 @@ static void promoteIndirectCall(CallBase &CB,
   // We want each possible call be guarded by an explicit comparison
   // instruction. This can allow other transformations to optimize
   // code if something is known about the comparison operands.
-  Instruction *OriginalCall = CS.getInstruction();
-  removeBlock(OriginalCall->getParent(),
-              OriginalCall->getParent()->getParent()->getContext());
+  removeBlock(CB.getParent(),
+              CB.getParent()->getParent()->getContext());
 #endif   
 }
 
@@ -152,7 +150,7 @@ AliasSetId typeAliasId(CallBase &CB, bool LookThroughCast) {
                                    void (i8*, i32*, i32*, i64, i32)**)
         call void %390(i8* %385, i32* %1, i32* %2, i64 %139, i32 %26)
     */
-    if (LoadInst *LI = dyn_cast<LoadInst>(CB.getCalledValue())) {
+    if (LoadInst *LI = dyn_cast<LoadInst>(CB.getCalledOperand())) {
       if (Constant *C = dyn_cast<Constant>(LI->getPointerOperand())) {
         if (ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
           if (CE->getOpcode() == Instruction::BitCast) {
@@ -175,7 +173,7 @@ AliasSetId typeAliasId(CallBase &CB, bool LookThroughCast) {
     return pTy;
   }
 
-  pTy = dyn_cast<PointerType>(CB.getCalledValue()->getType());
+  pTy = dyn_cast<PointerType>(CB.getCalledOperand()->getType());
   assert(pTy && "Unexpected call not through a pointer");
   assert(isa<FunctionType>(pTy->getElementType()) &&
          "The type of called value is not a pointer to a function");
@@ -494,7 +492,7 @@ Function *DevirtualizeFunctions::mkBounceFn(CallBase &CB,
   // that it will have an additional pointer argument at the
   // beginning of its argument list that will be the function to
   // call.
-  Value *ptr = CB.getCalledValue();
+  Value *ptr = CB.getCalledOperand();
   SmallVector<Type *, 8> TP;
   TP.push_back(ptr->getType());
   for (auto i = CB.arg_begin(), e = CB.arg_end(); i != e; ++i)
@@ -659,7 +657,7 @@ void DevirtualizeFunctions::mkDirectCall(CallBase &CB, CallSiteResolver *CSR) {
     Params.reserve(
         std::distance(CI->arg_operands().begin(), CI->arg_operands().end()));
     // insert first the callee
-    Params.push_back(CI->getCalledValue());
+    Params.push_back(CI->getCalledOperand());
     Params.insert(Params.end(), CI->arg_operands().begin(),
                   CI->arg_operands().end());
 

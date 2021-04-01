@@ -93,7 +93,7 @@ bool isTracked(const Value &v, const CrabBuilderParams &params) {
 bool ShouldCallSiteReturn(CallInst &I, const CrabBuilderParams &params) {
   CallBase &CB = I;
   if (Function *Callee =
-          dyn_cast<Function>(CB.getCalledValue()->stripPointerCasts())) {
+          dyn_cast<Function>(CB.getCalledOperand()->stripPointerCasts())) {
     Type *RT = Callee->getReturnType();
     return (!(RT->isVoidTy()) && isTrackedType(*RT, params));
   }
@@ -117,7 +117,7 @@ crab::cfg::debug_info getDebugLoc(const Instruction *inst) {
   const DebugLoc &dloc = inst->getDebugLoc();
   unsigned Line = dloc.getLine();
   unsigned Col = dloc.getCol();
-  std::string File = (*dloc).getFilename();
+  std::string File = (*dloc).getFilename().str();
   if (File == "")
     File = "unknown file";
 
@@ -222,7 +222,7 @@ bool isZeroInitializer(const Function &F) {
 
 bool isZeroInitializer(const CallInst &CI) {
   const CallBase &CB = CI;
-  const Value *calleeV = CB.getCalledValue();
+  const Value *calleeV = CB.getCalledOperand();
   if (const Function *callee =
           dyn_cast<Function>(calleeV->stripPointerCasts())) {
     return isZeroInitializer(*callee);
@@ -236,7 +236,7 @@ bool isIntInitializer(const Function &F) {
 
 bool isIntInitializer(const CallInst &CI) {
   const CallBase &CB = CI;
-  const Value *calleeV = CB.getCalledValue();
+  const Value *calleeV = CB.getCalledOperand();
   if (const Function *callee =
           dyn_cast<Function>(calleeV->stripPointerCasts())) {
     return isIntInitializer(*callee);
@@ -246,7 +246,7 @@ bool isIntInitializer(const CallInst &CI) {
 
 std::string getAssertKindFromMetadata(const llvm::CallInst &I) {
   if (MDNode *MDN = I.getMetadata("clam-assertion")) {
-    return cast<MDString>(MDN->getOperand(0))->getString();
+    return cast<MDString>(MDN->getOperand(0))->getString().str();
   }
   return "";
 }
@@ -283,7 +283,7 @@ bool AllUsesAreIndirectCalls(Value &V) {
   for (auto &U : V.uses()) {
     if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
       CallBase &CB = *CI;
-      const Value *callee = CB.getCalledValue();
+      const Value *callee = CB.getCalledOperand();
       if (callee == &V)
         continue;
     }
@@ -307,7 +307,7 @@ bool AllUsesAreVerifierCalls(Value &V, bool goThroughIntegerCasts,
 
     if (CallInst *CI = dyn_cast<CallInst>(User)) {
       CallBase &CB = *CI;
-      const Value *calleeV = CB.getCalledValue();
+      const Value *calleeV = CB.getCalledOperand();
       const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
       if (callee && (isAssertFn(*callee) || isAssumeFn(*callee) ||
                      isNotAssumeFn(*callee))) {

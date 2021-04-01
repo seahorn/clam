@@ -33,13 +33,12 @@ llvm::Pass *createOptimizerPass();
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 
 llvm::FunctionPass *
-createSeaInstructionCombiningPass(bool ExpensiveCombines,
-                                  unsigned MaxIterations, bool AvoidBv,
+createSeaInstructionCombiningPass(unsigned MaxIterations, bool AvoidBv,
                                   bool AvoidUnsignedICmp, bool AvoidIntToPtr,
                                   bool AvoidAliasing, bool AvoidDisequalities);
 
 namespace clam {
-inline llvm::FunctionPass *createInstCombine(bool ExpensiveCombines = true) {
+inline llvm::FunctionPass *createInstCombine() {
   const unsigned MaxIterations = 1000; /*same value used by LLVM*/
   const bool AvoidBv = true;
   const bool AvoidUnsignedICmp = true;
@@ -47,14 +46,14 @@ inline llvm::FunctionPass *createInstCombine(bool ExpensiveCombines = true) {
   const bool AvoidAliasing = true;
   const bool AvoidDisequalities = true;
   return createSeaInstructionCombiningPass(
-      ExpensiveCombines, MaxIterations, AvoidBv, AvoidUnsignedICmp,
+      MaxIterations, AvoidBv, AvoidUnsignedICmp,
       AvoidIntToPtr, AvoidAliasing, AvoidDisequalities);
 }
 } // namespace clam
 #else
 namespace clam {
-inline llvm::FunctionPass *createInstCombine(bool ExpensiveCombines = true) {
-  return llvm::createInstructionCombiningPass(ExpensiveCombines);
+inline llvm::FunctionPass *createInstCombine() {
+  return llvm::createInstructionCombiningPass();
 }
 } // namespace clam
 #endif

@@ -101,7 +101,7 @@ class CodeExpander {
 private:  
   enum bin_op_t { ADD, SUB, MUL };
 
-  Value *mkBinOp(bin_op_t Op, IRBuilder<> B, Value *LHS, Value *RHS,
+  Value *mkBinOp(bin_op_t Op, IRBuilder<> &B, Value *LHS, Value *RHS,
 		 const Twine &Name) {
     assert(LHS->getType()->isIntegerTy() && RHS->getType()->isIntegerTy());
     switch (Op) {
@@ -141,7 +141,7 @@ private:
   
   // post: return a value of bool type(Int1Ty) that contains the
   // computation of cst
-  Value *genCode(lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx,
+  Value *genCode(lin_cst_t cst, IRBuilder<> &B, LLVMContext &ctx,
 		 DominatorTree *DT, const Twine &Name) {
     if (cst.is_tautology()) {
       return nullptr; // mkBool(ctx, true);
@@ -235,7 +235,7 @@ public:
    *   llvm.assume(b2)
    *   ...
    **/
-  bool genCode(lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
+  bool genCode(lin_cst_sys_t csts, IRBuilder<> &B, LLVMContext &ctx,
 	       Function *assumeFn, CallGraph *cg, DominatorTree *DT,
 	       const Function *insertFun, const Twine &Name = "") {
     bool change = false;

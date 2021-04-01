@@ -588,7 +588,7 @@ public:
                    dyn_cast<ConstantDataSequential>(&C)) {
       // ignore C strings
       if (!(CDS->isString() || CDS->isCString())) {
-        Type *IndexedType = CDS->getType()->getElementType();
+        Type *IndexedType = CDS->getElementType();
         unsigned ElemOffset = clam::storageSize(IndexedType, m_dl);
         for (unsigned i = 0, e = CDS->getNumElements(); i < e; ++i) {
           InitGlobalMemory(Base, *(CDS->getElementAsConstant(i)),
@@ -1246,7 +1246,7 @@ void CrabIntraBlockBuilder::doIntLogicOp(crab_lit_ref_t lit,
 /* special functions for verification */
 void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
   CallBase &CB = I;
-  const Value *calleeV = CB.getCalledValue();
+  const Value *calleeV = CB.getCalledOperand();
   const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
   if (!callee)
     return;
@@ -2654,7 +2654,7 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
 
 void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   CallBase &CB(I);
-  const Value *calleeV = CB.getCalledValue();
+  const Value *calleeV = CB.getCalledOperand();
   const Function *callee =
       dyn_cast<Function>(calleeV->stripPointerCastsAndAliases());
 
@@ -4054,7 +4054,7 @@ HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() { return *m_mem; }
 void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
   CallBase &CB(I);
   const Function *calleeF =
-      dyn_cast<Function>(CB.getCalledValue()->stripPointerCastsAndAliases());
+      dyn_cast<Function>(CB.getCalledOperand()->stripPointerCastsAndAliases());
   assert(calleeF);
 
   std::vector<var_t> inputs, outputs;
@@ -4393,7 +4393,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
 
   CallBase &CB(I);
   const Function *calleeF =
-      dyn_cast<Function>(CB.getCalledValue()->stripPointerCastsAndAliases());
+      dyn_cast<Function>(CB.getCalledOperand()->stripPointerCastsAndAliases());
   assert(calleeF);
   assert(isSpecialCrabIntrinsic(*calleeF));
 

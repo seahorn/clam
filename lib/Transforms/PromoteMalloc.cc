@@ -33,8 +33,8 @@ public:
 	
 	CallBase &CB = *CI;
 	const Function *fn = CB.getCalledFunction();
-	if (!fn && CB.getCalledValue())
-	  fn = dyn_cast<const Function>(CB.getCalledValue()->stripPointerCasts());
+	if (!fn && CB.getCalledOperand())
+	  fn = dyn_cast<const Function>(CB.getCalledOperand()->stripPointerCasts());
 	
 	if (fn && fn->getName().equals("malloc")) {
 	  if (PointerType *pty = dyn_cast<PointerType>(I.getType())) {

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.3)
 
 project(Clam)
-set (Clam_VERSION_MAJOR 10)
+set (Clam_VERSION_MAJOR 11)
 set (Clam_VERSION_MINOR 0)
 set (Clam_VERSION_PATCH 0)
 set (Clam_VERSION_TWEAK "rc0")
@@ -11,7 +11,7 @@ cmake_policy(SET CMP0074 NEW)
 cmake_policy(SET CMP0077 NEW)
 endif()
 
-## LLVM 10 requires c++14
+## LLVM 11 requires c++14
 set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
@@ -216,13 +216,13 @@ if (GIT_FOUND)
       CACHE STRING "seahorn-llvm repo")
 
     add_custom_target (sea-dsa-git
-      ${GIT_EXECUTABLE} clone -b dev10 ${SEA_DSA_REPO} ${SEADSA_SOURCE_DIR})
+      ${GIT_EXECUTABLE} clone -b dev11 ${SEA_DSA_REPO} ${SEADSA_SOURCE_DIR})
     add_custom_target (seahorn-llvm-git
-      ${GIT_EXECUTABLE} clone -b dev10 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
+      ${GIT_EXECUTABLE} clone -b dev11 ${SEAHORN_LLVM_REPO} ${CMAKE_SOURCE_DIR}/llvm-seahorn)
     if (CLAM_INCLUDE_SEAOPT)
-      add_custom_target (extra DEPENDS sea-dsa-git seahorn-llvm-git)
+     add_custom_target (extra DEPENDS sea-dsa-git seahorn-llvm-git)
     else()
-      add_custom_target (extra DEPENDS sea-dsa-git)
+    add_custom_target (extra DEPENDS sea-dsa-git)
     endif()
   endif ()
 
@@ -286,11 +286,11 @@ if (TopLevel)
   ## install a debug build from sources even if a release build is
   ## already found in the system.
   if (NOT LLVM_DIR MATCHES "${LLVM_ROOT}/lib/cmake/llvm")
-    ## Search for llvm10 in the whole system
-    find_package(LLVM 10 CONFIG)
+    ## Search for llvm11 in the whole system
+    find_package(LLVM 11 CONFIG)
   else()
-    ## Search for llvm10 only in "${LLVM_ROOT}/lib/cmake/llvm"
-    find_package(LLVM 10 CONFIG PATHS "${LLVM_ROOT}/lib/cmake/llvm" NO_DEFAULT_PATH)
+    ## Search for llvm11 only in "${LLVM_ROOT}/lib/cmake/llvm"
+    find_package(LLVM 11 CONFIG PATHS "${LLVM_ROOT}/lib/cmake/llvm" NO_DEFAULT_PATH)
   endif()
   
   if (NOT LLVM_FOUND)

@@ -179,11 +179,11 @@ public:
       if (!man.hasCfg(m_fun)) {
         CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                                << "Started Crab CFG construction for "
-                               << fun.getName() << "\n");
+			       << fun.getName().str() << "\n");
         m_cfg_builder = man.mkCfgBuilder(m_fun);
         CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                                << "Finished Crab CFG construction for "
-                               << fun.getName() << "\n");
+			       << fun.getName().str() << "\n");
       } else {
         m_cfg_builder = man.getCfgBuilder(m_fun);
       }

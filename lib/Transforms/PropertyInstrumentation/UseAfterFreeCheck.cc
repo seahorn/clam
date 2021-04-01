@@ -30,7 +30,7 @@ namespace clam {
 
 using namespace llvm;
 
-static Value *getCastedInt8PtrValue(IRBuilder<> B, Value *Ptr) {
+static Value *getCastedInt8PtrValue(IRBuilder<> &B, Value *Ptr) {
   auto *PT = cast<PointerType>(Ptr->getType());
   if (PT->getElementType()->isIntegerTy(8))
     return Ptr;
@@ -49,7 +49,7 @@ private:
   Function *NotDanglingFn;
   CallGraph *CG;
 
-  void insertNonDanglingCheck(Value *Ptr, IRBuilder<> B, Instruction *I);
+  void insertNonDanglingCheck(Value *Ptr, IRBuilder<> &B, Instruction *I);
 
 public:
   UseAfterFreeCheck()
@@ -63,7 +63,7 @@ public:
   virtual StringRef getPassName() const override { return "UseAfterFreeCheck"; }
 };
 
-void UseAfterFreeCheck::insertNonDanglingCheck(Value *Ptr, IRBuilder<> B,
+void UseAfterFreeCheck::insertNonDanglingCheck(Value *Ptr, IRBuilder<> &B,
                                                Instruction *I) {
   static unsigned id = 0;
   ChecksAdded++;
