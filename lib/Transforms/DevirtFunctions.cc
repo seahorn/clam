@@ -309,88 +309,37 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
                         << *(CS.getInstruction()) << "\n";);
                 continue;
               }
+	      
               // sort dsa_targets
               // XXX: ordered by pointer addresses. Ideally we should use
               // something more deterministic.
               std::sort(dsa_targets.begin(), dsa_targets.end());
 
-              DEVIRT_LOG(errs() << "\nDsa-based targets: \n";
-                         for (auto F
-                              : dsa_targets) {
-                           errs() << "\t" << F->getName()
-                                  << "::" << *(F->getType()) << "\n";
-                         });
-
-              if (const AliasSet *types_targets =
-                      CallSiteResolverByTypes::getTargets(CS)) {
-
-                DEVIRT_LOG(errs() << "Type-based targets: \n";
-                           for (auto F
-                                : *types_targets) {
-                             errs() << "\t" << F->getName()
-                                    << "::" << *(F->getType()) << "\n";
-                           });
-
-                // --- We filter out those dsa targets whose signature do not
-                // match.
-                AliasSet refined_dsa_targets;
-                // assert(is_sorted(types_targets))
-                // assert(is_sorted(dsa_targets))
-                std::set_intersection(dsa_targets.begin(), dsa_targets.end(),
-                                      types_targets->begin(),
-                                      types_targets->end(),
-                                      std::back_inserter(refined_dsa_targets));
-                if (refined_dsa_targets.empty()) {
-                  m_stats.m_num_type_unresolved++;
-                  DEVIRT_WARNING(errs()
-                                     << "WARNING Devirt (dsa): cannot resolve "
-                                     << *(CS.getInstruction())
-                                     << " after refining dsa targets with "
-                                        "callsite type\n";);
-                } else {
-                  if (refined_dsa_targets.size() <= m_max_num_targets) {
-                    num_resolved_calls++;
-                    m_targets_map.insert(
-                        {CS.getInstruction(), refined_dsa_targets});
-                    DEVIRT_LOG(errs() << "Devirt (dsa) resolved "
-                                      << *(CS.getInstruction())
-                                      << " with targets=";
-                               for (auto F
-                                    : refined_dsa_targets) {
-                                 errs() << "\t" << F->getName()
-                                        << "::" << *(F->getType()) << "\n";
-                               });
-                  } else {
-                    m_stats.m_num_dsa_unresolved++;
-                    DEVIRT_WARNING(
+	      if (dsa_targets.size() <= m_max_num_targets) {
+		num_resolved_calls++;
+		m_targets_map.insert({CS.getInstruction(), dsa_targets});
+		DEVIRT_LOG(errs() << "Devirt (dsa): resolved the " << *(CS.getInstruction())
+			         << " with targets: ";
+			   for (auto F : dsa_targets) {
+			     errs() << "\t" << F->getName()
+				    << "::" << *(F->getType()) << "\n";
+			   });
+		
+	      } else {
+		m_stats.m_num_dsa_unresolved++;
+		DEVIRT_WARNING(
                         errs()
                             << "WARNING Devirt (dsa): unresolve "
                             << *(CS.getInstruction())
                             << " because the number of targets is greater than "
                             << m_max_num_targets << "\n";);
-                  }
-                }
-              } else {
-                m_stats.m_num_type_unresolved++;
-                DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): cannot resolve "
-                                      << *(CS.getInstruction())
-                                      << " because there is no function with "
-                                         "same callsite type\n";);
-              }
-            } else {
+	      }
+	    } else {
               m_stats.m_num_dsa_unresolved++;
               DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): cannot resolve "
                                     << *(CS.getInstruction())
                                     << " because the corresponding dsa node is "
                                        "not complete\n";);
-
-              DEVIRT_LOG(AliasSet targets;
-                         targets.append(m_dsa.begin(CS), m_dsa.end(CS));
-                         errs() << "Dsa-based targets: \n"; for (auto F
-                                                                 : targets) {
-                           errs() << "\t" << F->getName()
-                                  << "::" << *(F->getType()) << "\n";
-                         };)
             }
           }
         }
