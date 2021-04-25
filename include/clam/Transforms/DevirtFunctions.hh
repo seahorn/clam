@@ -34,8 +34,6 @@ AliasSetId typeAliasId(llvm::CallSite &CS);
 
 enum CallSiteResolverKind {
   RESOLVER_TYPES,
-  RESOLVER_DSA /* deprecated, for debugging purposes*/
-  ,
   RESOLVER_SEA_DSA
 };
 
@@ -45,14 +43,11 @@ struct DevirtStats {
   // number of calls resolved
   unsigned m_num_resolved_calls;
   // number of calls unresolved by Dsa
-  unsigned m_num_dsa_unresolved;
-  // number of calls which were resolved by Dsa but no consistent type
-  // signature was found
-  unsigned m_num_type_unresolved;
+  unsigned m_num_unresolved;
 
   DevirtStats()
-      : m_num_indirect_calls(0), m_num_resolved_calls(0),
-        m_num_dsa_unresolved(0), m_num_type_unresolved(0) {}
+    : m_num_indirect_calls(0), m_num_resolved_calls(0),
+      m_num_unresolved(0) {}
 
   void dump() const;
 };

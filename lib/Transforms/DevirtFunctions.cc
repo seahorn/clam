@@ -269,8 +269,8 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
     : CallSiteResolverByTypes(M, stats), m_M(M), m_dsa(dsa),
       m_allow_incomplete(incomplete), m_max_num_targets(max_num_targets) {
 
-  CallSiteResolver::m_kind = RESOLVER_DSA;
-
+  CallSiteResolver::m_kind = RESOLVER_SEA_DSA;
+  
   /*
     Assume that Dsa provides these methods:
      - bool isComplete(CallSite&)
@@ -302,7 +302,7 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
               AliasSet dsa_targets;
               dsa_targets.append(m_dsa.begin(CS), m_dsa.end(CS));
               if (dsa_targets.empty()) {
-                m_stats.m_num_dsa_unresolved++;
+                m_stats.m_num_unresolved++;
                 DEVIRT_WARNING(
                     errs()
                         << "WARNING Devirt (dsa): does not have any target for "
@@ -326,7 +326,7 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
 			   });
 		
 	      } else {
-		m_stats.m_num_dsa_unresolved++;
+		m_stats.m_num_unresolved++;
 		DEVIRT_WARNING(
                         errs()
                             << "WARNING Devirt (dsa): unresolve "
@@ -335,7 +335,7 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
                             << m_max_num_targets << "\n";);
 	      }
 	    } else {
-              m_stats.m_num_dsa_unresolved++;
+              m_stats.m_num_unresolved++;
               DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): cannot resolve "
                                     << *(CS.getInstruction())
                                     << " because the corresponding dsa node is "
@@ -677,11 +677,9 @@ bool DevirtualizeFunctions::resolveCallSites(Module &M, CallSiteResolver *CSR) {
 
 void DevirtStats::dump() const {
   errs() << "=== Devirtualization stats===\n";
-  errs() << "BRUNCH_STAT INDIRECT CALLS " << m_num_indirect_calls << "\n";
-  errs() << "BRUNCH_STAT RESOLVED CALLS " << m_num_resolved_calls << "\n";
-  errs() << "BRUNCH_STAT UNRESOLVED BY DSA " << m_num_dsa_unresolved << "\n";
-  errs() << "BRUNCH_STAT UNRESOLVED BY TYPE SIGNATURE " << m_num_type_unresolved
-         << "\n\n";
+  errs() << "BRUNCH_STAT INDIRECT CALLS "   << m_num_indirect_calls << "\n";
+  errs() << "BRUNCH_STAT RESOLVED CALLS "   << m_num_resolved_calls << "\n";
+  errs() << "BRUNCH_STAT UNRESOLVED CALLS " << m_num_unresolved << "\n";
 }
 } // namespace clam
 
