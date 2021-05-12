@@ -131,7 +131,8 @@ bool NullCheck::runOnFunction(Function &F) {
       Instruction *I = &i;
       if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
         if (OptimizeChecks) {
-          auto BasePair = property_instrumentation::getBasePtr(I);
+	  Value *Ptr = (isa<LoadInst>(I) ? I->getOperand(0) : I->getOperand(1));
+          auto BasePair = property_instrumentation::getBasePtr(Ptr);
           if (Value *BasePtr = BasePair.getPointer()) {
             if (BasePair.getInt() == 1) {
               NC_LOG(errs() << "Skipped " << *BasePtr

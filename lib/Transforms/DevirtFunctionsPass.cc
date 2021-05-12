@@ -14,33 +14,35 @@
 
 llvm::cl::opt<clam::CallSiteResolverKind> DevirtResolver(
     "devirt-resolver",
-    llvm::cl::desc("Method used to select potential callees"),
-    llvm::cl::values(clEnumValN(clam::RESOLVER_TYPES, "types",
-                                "Callees with same type"),
-                     clEnumValN(clam::RESOLVER_SEA_DSA, "sea-dsa",
-                                "Sea-Dsa selects the potential callees")),
+    llvm::cl::desc("Method used to devirtualize (resolve) indirect calls"),
+    llvm::cl::values(
+       clEnumValN(clam::RESOLVER_TYPES, "types",
+		  "Choose all possible functions with same type signature"),
+       clEnumValN(clam::RESOLVER_SEA_DSA, "sea-dsa",
+		  "Sea-Dsa selects the potential callees "
+		  "after discarding those with inconsistent types")),
     llvm::cl::init(clam::RESOLVER_TYPES));
 
-static llvm::cl::opt<bool>
-    AllowIndirectCalls("devirt-allow-indirect-calls",
-                       llvm::cl::desc("Allow creation of indirect calls "
-                                      "during devirtualization "
-                                      "(required for soundness)"),
-                       llvm::cl::init(false));
+static llvm::cl::opt<bool>AllowIndirectCalls(
+    "devirt-allow-indirect-calls",
+    llvm::cl::desc("Allow creation of indirect calls "
+		   "during devirtualization "
+		   "(required \"true\" for soundness)"),
+    llvm::cl::Hidden, llvm::cl::init(false));
 
-// Options for Dsa's analyses
 static llvm::cl::opt<bool> ResolveIncompleteCalls(
     "devirt-resolve-incomplete-calls",
     llvm::cl::desc("Resolve indirect calls that might still require "
                    "reasoning about other modules"
-                   "(required for soundness)"),
-    llvm::cl::init(true));
+                   "(required \"false\" for soundness)"),
+    llvm::cl::Hidden, llvm::cl::init(true));
 
 static llvm::cl::opt<unsigned> MaxNumTargets(
     "devirt-max-num-targets",
     llvm::cl::desc(
-        "Do not resolve if number of targets is greater than this number."),
-    llvm::cl::init(9999));
+    "Do not resolve if number of targets is greater than threshold"),
+    llvm::cl::Hidden, llvm::cl::init(9999));
+    
 
 using namespace llvm;
 
@@ -67,10 +69,6 @@ public:
     }
     case RESOLVER_TYPES:
     default:
-      if (DevirtResolver == RESOLVER_DSA) {
-        errs() << "WARNING: Dsa not available, using only types to resolve "
-                  "indirect calls\n";
-      }
       CSR.reset(new CallSiteResolverByTypes(M, DF.getStats()));
       break;
     }

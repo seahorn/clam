@@ -268,8 +268,8 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
     : CallSiteResolverByTypes(M, stats), m_M(M), m_dsa(dsa),
       m_allow_incomplete(incomplete), m_max_num_targets(max_num_targets) {
 
-  CallSiteResolver::m_kind = RESOLVER_DSA;
-
+  CallSiteResolver::m_kind = RESOLVER_SEA_DSA;
+  
   /*
     Assume that Dsa provides these methods:
      - bool isComplete(CallBase&)
@@ -301,94 +301,44 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
               AliasSet dsa_targets;
               dsa_targets.append(m_dsa.begin(CB), m_dsa.end(CB));
               if (dsa_targets.empty()) {
-                m_stats.m_num_dsa_unresolved++;
+                m_stats.m_num_unresolved++;
                 DEVIRT_WARNING(
                     errs()
                         << "WARNING Devirt (dsa): does not have any target for "
                         << *CI << "\n";);
                 continue;
               }
+	      
               // sort dsa_targets
               // XXX: ordered by pointer addresses. Ideally we should use
               // something more deterministic.
               std::sort(dsa_targets.begin(), dsa_targets.end());
 
-              DEVIRT_LOG(errs() << "\nDsa-based targets: \n";
-                         for (auto F
-                              : dsa_targets) {
-                           errs() << "\t" << F->getName()
-                                  << "::" << *(F->getType()) << "\n";
-                         });
-
-              if (const AliasSet *types_targets =
-                      CallSiteResolverByTypes::getTargets(CB)) {
-
-                DEVIRT_LOG(errs() << "Type-based targets: \n";
-                           for (auto F
-                                : *types_targets) {
-                             errs() << "\t" << F->getName()
-                                    << "::" << *(F->getType()) << "\n";
-                           });
-
-                // --- We filter out those dsa targets whose signature do not
-                // match.
-                AliasSet refined_dsa_targets;
-                // assert(is_sorted(types_targets))
-                // assert(is_sorted(dsa_targets))
-                std::set_intersection(dsa_targets.begin(), dsa_targets.end(),
-                                      types_targets->begin(),
-                                      types_targets->end(),
-                                      std::back_inserter(refined_dsa_targets));
-                if (refined_dsa_targets.empty()) {
-                  m_stats.m_num_type_unresolved++;
-                  DEVIRT_WARNING(errs()
-                                     << "WARNING Devirt (dsa): cannot resolve "
-                                     << *CI
-                                     << " after refining dsa targets with "
-                                        "callsite type\n";);
-                } else {
-                  if (refined_dsa_targets.size() <= m_max_num_targets) {
-                    num_resolved_calls++;
-                    m_targets_map.insert({CI, refined_dsa_targets});
-                    DEVIRT_LOG(errs() << "Devirt (dsa) resolved "
-                                      << *CI
-                                      << " with targets=";
-                               for (auto F
-                                    : refined_dsa_targets) {
-                                 errs() << "\t" << F->getName()
-                                        << "::" << *(F->getType()) << "\n";
-                               });
-                  } else {
-                    m_stats.m_num_dsa_unresolved++;
-                    DEVIRT_WARNING(
+	      if (dsa_targets.size() <= m_max_num_targets) {
+		num_resolved_calls++;
+		m_targets_map.insert({CI, dsa_targets});
+		DEVIRT_LOG(errs() << "Devirt (dsa): resolved the " << *CI
+			         << " with targets: ";
+			   for (auto F : dsa_targets) {
+			     errs() << "\t" << F->getName()
+				    << "::" << *(F->getType()) << "\n";
+			   });
+		
+	      } else {
+		m_stats.m_num_unresolved++;
+		DEVIRT_WARNING(
                         errs()
                             << "WARNING Devirt (dsa): unresolve "
                             << *CI
                             << " because the number of targets is greater than "
                             << m_max_num_targets << "\n";);
-                  }
-                }
-              } else {
-                m_stats.m_num_type_unresolved++;
-                DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): cannot resolve "
-                                      << *CI
-                                      << " because there is no function with "
-                                         "same callsite type\n";);
-              }
-            } else {
-              m_stats.m_num_dsa_unresolved++;
+	      }
+	    } else {
+              m_stats.m_num_unresolved++;
               DEVIRT_WARNING(errs() << "WARNING Devirt (dsa): cannot resolve "
                                     << *CI
                                     << " because the corresponding dsa node is "
                                        "not complete\n";);
-
-              DEVIRT_LOG(AliasSet targets;
-                         targets.append(m_dsa.begin(CB), m_dsa.end(CB));
-                         errs() << "Dsa-based targets: \n"; for (auto F
-                                                                 : targets) {
-                           errs() << "\t" << F->getName()
-                                  << "::" << *(F->getType()) << "\n";
-                         };)
             }
           }
         }
@@ -724,11 +674,9 @@ bool DevirtualizeFunctions::resolveCallSites(Module &M, CallSiteResolver *CSR) {
 
 void DevirtStats::dump() const {
   errs() << "=== Devirtualization stats===\n";
-  errs() << "BRUNCH_STAT INDIRECT CALLS " << m_num_indirect_calls << "\n";
-  errs() << "BRUNCH_STAT RESOLVED CALLS " << m_num_resolved_calls << "\n";
-  errs() << "BRUNCH_STAT UNRESOLVED BY DSA " << m_num_dsa_unresolved << "\n";
-  errs() << "BRUNCH_STAT UNRESOLVED BY TYPE SIGNATURE " << m_num_type_unresolved
-         << "\n\n";
+  errs() << "BRUNCH_STAT INDIRECT CALLS "   << m_num_indirect_calls << "\n";
+  errs() << "BRUNCH_STAT RESOLVED CALLS "   << m_num_resolved_calls << "\n";
+  errs() << "BRUNCH_STAT UNRESOLVED CALLS " << m_num_unresolved << "\n";
 }
 } // namespace clam
 

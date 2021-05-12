@@ -4398,6 +4398,11 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
   assert(isSpecialCrabIntrinsic(*calleeF));
 
   std::string name = getCrabIntrinsicName(*calleeF);
+  // We can strip pointer cast here but then the pointer cast
+  // operation will be dead code. This is ok but we trade here a more
+  // robust translation with bloating
+  //Value *Ptr = CB.getArgOperand(0)->stripPointerCasts();
+  Value *Ptr = CB.getArgOperand(0);
   if (name == "is_unfreed_or_null") {
     if (CB.arg_size() != 1) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
@@ -4405,10 +4410,10 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
     if (!I.getType()->isIntegerTy()) {
       CLAM_ERROR("unexpected non-integer output parameter in special intrinsic " << I);
     }
-    if (!CB.getArgOperand(0)->getType()->isPointerTy()) {
+    if (!Ptr->getType()->isPointerTy()) {
       CLAM_ERROR("unexpected non-pointer input parameter in special intrinsic " << I);
     }
-    crab_lit_ref_t refParamLit = m_lfac.getLit(*(CB.getArgOperand(0)));
+    crab_lit_ref_t refParamLit = m_lfac.getLit(*Ptr);
     crab_lit_ref_t outParamLit = m_lfac.getLit(I);
 
     if (!refParamLit || !refParamLit->isVar()) {
@@ -4417,41 +4422,51 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
     if (!outParamLit || !outParamLit->isVar()) {
       CLAM_ERROR("translation of output argument in special intrinsic " << I);
     }
-    
-    var_t rgnParam = m_lfac.mkRegionVar(
-		     getRegion(m_mem, m_func_regions, m_params, I, *CB.getArgOperand(0)));
-    std::vector<var_or_cst_t> inputs{rgnParam, refParamLit->getVar()};
-    std::vector<var_t> outputs {outParamLit->getVar()};
-    m_bb.intrinsic(name, outputs, inputs);
+    Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *Ptr);
+    if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+      // the region is actually a singleton so Ptr is translated as a
+      // scalar variable. In that case, we don't add the intrinsic
+      // because Ptr is not associated with a region.  Hopefully, this
+      // shouldn't happen often since the front-end shouldn't add a
+      // is_unfreed_or_null check for globals because globals are
+      // initially allocated and they cannot be deallocated.
+      m_bb.havoc(outParamLit->getVar(), valueToStr(I));
+    } else {
+      var_t rgnVar = m_lfac.mkRegionVar(rgn);
+      std::vector<var_or_cst_t> inputs{rgnVar, refParamLit->getVar()};
+      std::vector<var_t> outputs {outParamLit->getVar()};
+      m_bb.intrinsic(name, outputs, inputs);
+    }
   } else if (name == "unfreed_or_null") {
     if (CB.arg_size() != 1) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
-    if (!CB.getArgOperand(0)->getType()->isPointerTy()) {
+    if (!Ptr->getType()->isPointerTy()) {
       CLAM_ERROR("unexpected non-pointer parameter in special intrinsic " << I);
     }
 
-    crab_lit_ref_t refParamLit = m_lfac.getLit(*(CB.getArgOperand(0)));
+    crab_lit_ref_t refParamLit = m_lfac.getLit(*Ptr);
 
     if (!refParamLit || !refParamLit->isVar()) {
       CLAM_ERROR("translation of input argument in special intrinsic " << I);
     }
-    
-    var_t rgnParam = m_lfac.mkRegionVar(
-		     getRegion(m_mem, m_func_regions, m_params, I, *CB.getArgOperand(0)));
-    std::vector<var_or_cst_t> inputs{rgnParam, refParamLit->getVar()};
-    std::vector<var_t> outputs;
-    m_bb.intrinsic(name, outputs, inputs);
+    Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *Ptr);
+    if (!getSingletonValue(rgn, m_params.lower_singleton_aliases)) {    
+      var_t rgnVar = m_lfac.mkRegionVar(rgn);
+      std::vector<var_or_cst_t> inputs{rgnVar, refParamLit->getVar()};
+      std::vector<var_t> outputs;
+      m_bb.intrinsic(name, outputs, inputs);
+    }
   } else if (name == "add_tag") {
     if (CB.arg_size() != 2) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
-    if (!CB.getArgOperand(0)->getType()->isPointerTy() ||
+    if (!Ptr->getType()->isPointerTy() ||
 	!CB.getArgOperand(1)->getType()->isIntegerTy()) {
       CLAM_ERROR("unexpected parameters in special intrinsic " << I);
     }
     
-    crab_lit_ref_t refParamLit = m_lfac.getLit(*(CB.getArgOperand(0)));
+    crab_lit_ref_t refParamLit = m_lfac.getLit(*Ptr);
     crab_lit_ref_t tagParamLit = m_lfac.getLit(*(CB.getArgOperand(1)));
 
     if (!refParamLit || !refParamLit->isVar()) {
@@ -4460,24 +4475,24 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
     if (!tagParamLit || tagParamLit->isVar() || !tagParamLit->isInt()) {
       CLAM_ERROR("unexpected 2nd input argument in special intrinsic " << I);
     }
-    
-    var_t rgnParam = m_lfac.mkRegionVar(
-		     getRegion(m_mem, m_func_regions, m_params, I, *CB.getArgOperand(0)));
-    std::vector<var_or_cst_t> inputs{rgnParam, refParamLit->getVar(),
-				     var_or_cst_t(m_lfac.getIntCst(tagParamLit),
-						  crab::variable_type(INT_TYPE, 32))};
-    std::vector<var_t> outputs;
-    m_bb.intrinsic(name, outputs, inputs);
-    
+    Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *Ptr);
+    if (!getSingletonValue(rgn, m_params.lower_singleton_aliases)) {        
+      var_t rgnVar = m_lfac.mkRegionVar(rgn);
+      std::vector<var_or_cst_t> inputs{rgnVar, refParamLit->getVar(),
+				       var_or_cst_t(m_lfac.getIntCst(tagParamLit),
+						    crab::variable_type(INT_TYPE, 32))};
+      std::vector<var_t> outputs;
+      m_bb.intrinsic(name, outputs, inputs);
+    }
   } else if (name == "check_does_not_have_tag") {
     if (CB.arg_size() != 2) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
-    if (!CB.getArgOperand(0)->getType()->isPointerTy() ||
+    if (!Ptr->getType()->isPointerTy() ||
 	!CB.getArgOperand(1)->getType()->isIntegerTy()) {
       CLAM_ERROR("unexpected parameters in special intrinsic " << I);
     }
-    crab_lit_ref_t ptrParamLit = m_lfac.getLit(*(CB.getArgOperand(0)));
+    crab_lit_ref_t ptrParamLit = m_lfac.getLit(*Ptr);
     crab_lit_ref_t tagParamLit = m_lfac.getLit(*(CB.getArgOperand(1)));
 
     if (!ptrParamLit || !ptrParamLit->isVar()) {
@@ -4486,15 +4501,24 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
     if (!tagParamLit || tagParamLit->isVar() || !tagParamLit->isInt()) {
       CLAM_ERROR("unexpected 2nd input argument in special intrinsic " << I);
     }
-    
-    var_t rgnParam = m_lfac.mkRegionVar(
-		     getRegion(m_mem, m_func_regions, m_params, I, *CB.getArgOperand(0)));
-    var_t outParam = m_lfac.mkBoolVar();
-    std::vector<var_or_cst_t> inputs{rgnParam, ptrParamLit->getVar(),
-				     var_or_cst_t(m_lfac.getIntCst(tagParamLit),
-						  crab::variable_type(INT_TYPE, 32))};				     
-    std::vector<var_t> outputs{outParam};
-    m_bb.intrinsic("does_not_have_tag", outputs, inputs);
+    var_t outParam = m_lfac.mkBoolVar();    
+    Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *Ptr);
+    if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+      // Ptr's region is actually a singleton so that Ptr will be
+      // translated as a Crab scalar variable. This means that we
+      // cannot add the intrinsic because Ptr is not associated with a
+      // region.  If you want to keep track of tags associated to
+      // singleton global variables then do not run clam with option
+      // -crab-singleton-aliases.
+      m_bb.havoc(outParam, valueToStr(I));
+    } else {
+      var_t rgnVar = m_lfac.mkRegionVar(rgn);
+      std::vector<var_or_cst_t> inputs{rgnVar, ptrParamLit->getVar(),
+				       var_or_cst_t(m_lfac.getIntCst(tagParamLit),
+						    crab::variable_type(INT_TYPE, 32))};
+      std::vector<var_t> outputs{outParam};
+      m_bb.intrinsic("does_not_have_tag", outputs, inputs);
+    }
     m_bb.bool_assert(outParam, getDebugLoc(&I));
   } else {
     CLAM_ERROR("unsupported intrinsic " << I);
