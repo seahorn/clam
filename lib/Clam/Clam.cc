@@ -88,16 +88,11 @@ using inter_analyzer_t =
 using path_analyzer_t =
     crab::analyzer::path_analyzer<cfg_ref_t, clam_abstract_domain>;
 // -- for pretty-printing results
-using block_annotation_t = crab_pretty_printer::block_annotation;
-using inv_annotation_t = crab_pretty_printer::invariant_annotation;
-using unproven_assume_annotation_t =
-    crab_pretty_printer::unproven_assumption_annotation;
-#if 0
-  using assumption_analysis_t = crab::analyzer::assumption_naive_analysis<cfg_ref_t>;
-#else
-using assumption_analysis_t =
-    crab::analyzer::assumption_dataflow_analysis<cfg_ref_t>;
-#endif
+using block_annotation_t = crab_pretty_printer::block_annotation; // super class
+using invariant_annotation_t = crab_pretty_printer::invariant_annotation;
+using unproven_assume_annotation_t = crab_pretty_printer::unproven_assumption_annotation;
+//using assumption_analysis_t = crab::analyzer::assumption_naive_analysis<cfg_ref_t>;
+using assumption_analysis_t = crab::analyzer::assumption_dataflow_analysis<cfg_ref_t>;
 /** =========== End typedefs =============**/
 
 class AnalysisResults {
@@ -387,7 +382,7 @@ private:
           shadow_varnames = std::vector<varname_t>(
               m_vfac.get_shadow_vars().begin(), m_vfac.get_shadow_vars().end());
         }
-        pool_annotations.emplace_back(std::make_unique<inv_annotation_t>(
+        pool_annotations.emplace_back(std::make_unique<invariant_annotation_t>(
             results.premap, results.postmap, shadow_varnames, &lookup));
       }
 
@@ -399,7 +394,7 @@ private:
         unproven_assumption_analyzer.exec();
         pool_annotations.emplace_back(
             std::make_unique<unproven_assume_annotation_t>(
-                m_cfg_builder->getCfg(), &unproven_assumption_analyzer));
+                m_cfg_builder->getCfg(), unproven_assumption_analyzer));
       }
       crab_pretty_printer::print_annotations(
           m_cfg_builder->getCfg(), results.checksdb, pool_annotations);
@@ -924,7 +919,7 @@ private:
                   m_crab_builder_man.getVarFactory().get_shadow_vars().end());
 	  }
 	  std::vector<std::unique_ptr<block_annotation_t>> annotations;
-	  annotations.emplace_back(std::make_unique<inv_annotation_t>(
+	  annotations.emplace_back(std::make_unique<invariant_annotation_t>(
                 results.premap, results.postmap, shadow_varnames, &lookup));
 	  crab_pretty_printer::print_annotations(cfg, results.checksdb,
 						 annotations);
@@ -1142,7 +1137,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.narrowing_iters = CrabNarrowingIters;
   m_params.widening_jumpset = CrabWideningJumpSet;
   m_params.stats = crab::CrabStatsFlag /*CrabStats*/;
-  m_params.print_invars = CrabPrintAns;
+  m_params.print_invars = CrabPrintInvariants;
   m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;

@@ -21,9 +21,9 @@ public:
 
   virtual std::string name() const = 0;
   // Print at the beginning of a block
-  virtual void print_begin(basic_block_label_t bbl, crab::crab_os &o) const {}
+  virtual void print_begin(const basic_block_label_t &bbl, crab::crab_os &o) const {}
   // Print at the end of a block
-  virtual void print_end(basic_block_label_t bbl, crab::crab_os &o) const {}
+  virtual void print_end(const basic_block_label_t &bbl, crab::crab_os &o) const {}
   // Print at the beginning of a statement
   virtual void print_begin(const statement_t &s, crab::crab_os &o) const {}
   // Print at the end of a statement
@@ -49,34 +49,29 @@ public:
                        const std::vector<varname_t> &shadow_vars,
                        lookup_function lookup);
 
-  void print_begin(basic_block_label_t bbl, crab::crab_os &o) const;
+  void print_begin(const basic_block_label_t &bbl, crab::crab_os &o) const override;
 
-  void print_end(basic_block_label_t bbl, crab::crab_os &o) const;
+  void print_end(const basic_block_label_t &bbl, crab::crab_os &o) const override;
 
-  std::string name() const { return "INVARIANTS"; }
+  std::string name() const override { return "INVARIANTS"; }
 };
 
 /** Unproven assumptions annotations **/
 class unproven_assumption_annotation : public block_annotation {
-private:
-  using assumption_ptr =
-      typename crab::analyzer::assumption_analysis<cfg_ref_t>::assumption_ptr;
-
 public:
-  using unproven_assumption_analysis_t =
-      crab::analyzer::assumption_analysis<cfg_ref_t>;
+  using unproven_assumption_analysis_t = crab::analyzer::assumption_analysis<cfg_ref_t>;
 
 private:
   cfg_ref_t m_cfg;
-  unproven_assumption_analysis_t *m_analyzer;
+  unproven_assumption_analysis_t &m_analyzer;
 
 public:
   unproven_assumption_annotation(cfg_ref_t cfg,
-                                 unproven_assumption_analysis_t *analyzer);
+                                 unproven_assumption_analysis_t &analyzer);
 
-  std::string name() const { return "UNPROVEN ASSUMPTIONS"; }
+  std::string name() const override { return "UNPROVEN ASSUMPTIONS"; }
 
-  void print_begin(const statement_t &s, crab::crab_os &o) const;
+  void print_begin(const statement_t &s, crab::crab_os &o) const override;
 };
 
 /** Print a block together with its annotations **/
@@ -92,7 +87,7 @@ public:
       const typename IntraClam::checks_db_t &checksdb,
       const std::vector<std::unique_ptr<block_annotation>> &annotations);
 
-  void operator()(basic_block_label_t bbl) const;
+  void operator()(const basic_block_label_t &bbl) const;
 };
 
 void print_annotations(

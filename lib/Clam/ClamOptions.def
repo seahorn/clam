@@ -18,7 +18,7 @@ bool CrabEnableBignums;
 bool CrabAddPtrAssumptions;
 bool CrabCheckOnlyTyped;
 bool CrabCheckOnlyNonCyclic;
-bool CrabPrintAns;
+bool CrabPrintInvariants;
 bool CrabStoreInvariants;
 bool CrabBuildOnlyCFG;
 bool CrabPrintUnjustifiedAssumptions;
@@ -123,9 +123,9 @@ XCrabCheckOnlyNonCyclic("crab-check-only-noncyclic-regions",
 /*** Crab Analysis Options ***/
 
 llvm::cl::opt<bool, true>
-XCrabPrintAns("crab-print-invariants", 
+XCrabPrintInvariants("crab-print-invariants", 
               llvm::cl::desc("Print Crab invariants"),
-	      llvm::cl::location(clam::CrabPrintAns),
+	      llvm::cl::location(clam::CrabPrintInvariants),
               llvm::cl::init(false));
 
 llvm::cl::opt<bool, true>

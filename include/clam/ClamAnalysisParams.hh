@@ -33,9 +33,9 @@ struct AnalysisParams {
   unsigned widening_jumpset;
   bool stats;
   bool print_invars;
-  bool print_preconds;
+  bool print_preconds;  /*unused*/  
   bool print_unjustified_assumptions;
-  bool print_summaries;
+  bool print_summaries; /*unused*/
   bool store_invariants;
   bool keep_shadow_vars;
   CheckerKind check;

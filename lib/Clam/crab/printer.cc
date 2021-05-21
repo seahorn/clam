@@ -13,7 +13,7 @@ invariant_annotation::invariant_annotation(
     : block_annotation(), m_premap(premap), m_postmap(postmap),
       m_shadow_vars(shadow_vars), m_lookup(lookup) {}
 
-void invariant_annotation::print_begin(basic_block_label_t bbl,
+void invariant_annotation::print_begin(const basic_block_label_t &bbl,
                                        crab::crab_os &o) const {
   if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
     auto pre = m_lookup(m_premap, *bb, m_shadow_vars);
@@ -26,7 +26,7 @@ void invariant_annotation::print_begin(basic_block_label_t bbl,
   }
 }
 
-void invariant_annotation::print_end(basic_block_label_t bbl,
+void invariant_annotation::print_end(const basic_block_label_t &bbl,
                                      crab::crab_os &o) const {
   if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
     auto post = m_lookup(m_postmap, *bb, m_shadow_vars);
@@ -40,15 +40,16 @@ void invariant_annotation::print_end(basic_block_label_t bbl,
 }
 
 unproven_assumption_annotation::unproven_assumption_annotation(
-    cfg_ref_t cfg, unproven_assumption_analysis_t *analyzer)
+    cfg_ref_t cfg, unproven_assumption_analysis_t &analyzer)
     : block_annotation(), m_cfg(cfg), m_analyzer(analyzer) {}
 
 void unproven_assumption_annotation::print_begin(const statement_t &s,
                                                  crab::crab_os &o) const {
+  using assumption_ptr = typename unproven_assumption_analysis_t::assumption_ptr;
   std::vector<assumption_ptr> assumes;
   if (s.is_assert()) {
     typedef typename cfg_ref_t::basic_block_t::assert_t assert_t;
-    m_analyzer->get_assumptions(static_cast<const assert_t *>(&s), assumes);
+    m_analyzer.get_assumptions(static_cast<const assert_t *>(&s), assumes);
     if (!assumes.empty()) {
       o << "  /** assert verified as ";
       for (std::vector<assumption_ptr>::iterator it = assumes.begin(),
@@ -64,7 +65,7 @@ void unproven_assumption_annotation::print_begin(const statement_t &s,
       o << "**/\n";
     }
   } else {
-    m_analyzer->get_originated_assumptions(&s, assumes);
+    m_analyzer.get_originated_assumptions(&s, assumes);
     for (auto assume_ptr : assumes) {
       o << "  /** ";
       assume_ptr->write(o);
@@ -79,7 +80,7 @@ print_block::print_block(
     const std::vector<std::unique_ptr<block_annotation>> &annotations)
     : m_cfg(cfg), m_o(o), m_checksdb(checksdb), m_annotations(annotations) {}
 
-void print_block::operator()(basic_block_label_t bbl) const {
+void print_block::operator()(const basic_block_label_t &bbl) const {
   // do not print block if no annotations
   if (m_annotations.empty())
     return;
