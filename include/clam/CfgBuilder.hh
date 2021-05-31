@@ -67,10 +67,8 @@ public:
   // return crab control flow graph
   cfg_t &getCfg();
 
-  // compute live symbols per block by running standard liveness
-  // analysis
+  // compute live symbols per block by running liveness analysis
   void computeLiveSymbols();
-
   // return live symbols at the end of block bb. Return None if
   // compute_live_symbols has not been called.
   llvm::Optional<varset> getLiveSymbols(const llvm::BasicBlock *bb) const;
@@ -78,16 +76,20 @@ public:
   // nullptr if compute_live_symbols has not been called.
   const liveness_t *getLiveSymbols() const;
 
+  /***** Begin API to translate LLVM entities to Crab ones *****/  
   // map a llvm basic block to a crab basic block label
   basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
-
   // map a llvm edge to a crab basic block label.
   // return nullptr if the edge is not translated to a crab basic block.
   const basic_block_label_t *
   getCrabBasicBlock(const llvm::BasicBlock *src,
                     const llvm::BasicBlock *dst) const;
-
-  llvm::Optional<var_t> getCrabVariable(const llvm::Value *v);
+  // map a llvm Value to a Crab variable if possible
+  llvm::Optional<var_t> getCrabVariable(const llvm::Value &v);
+  // map the memory region to which v points to into a Crab region
+  // variable if possible.
+  llvm::Optional<var_t> getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v);  
+  /***** End API to translate LLVM entities to Crab ones *****/
   
   // DEPRECATED
   //

@@ -164,7 +164,13 @@ public:
   ClamQueryAPI::Range range(const llvm::Instruction &I) override;
   
   ClamQueryAPI::Range range(const llvm::BasicBlock &B,
-			    const llvm::Value &V) override;  
+			    const llvm::Value &V) override;
+
+  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) override;
+  
+  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
+					       const llvm::Value &V) override;
+  
 };
 
 class InterGlobalClam: public ClamGlobalAnalysis {
@@ -233,7 +239,12 @@ public:
   ClamQueryAPI::Range range(const llvm::Instruction &I) override;
   
   ClamQueryAPI::Range range(const llvm::BasicBlock &B,
-			    const llvm::Value &V) override;  
+			    const llvm::Value &V) override;
+
+  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) override;
+  
+  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
+					       const llvm::Value &V) override;
 };
 
 /**

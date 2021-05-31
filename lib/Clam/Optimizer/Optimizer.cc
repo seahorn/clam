@@ -257,7 +257,7 @@ public:
 // Generate bitcode for the value of v if it is a constant 
 Constant *getConstantInt(CfgBuilderPtr clamCfgBuilder, clam_abstract_domain inv, const Value &v) {
   if (v.getType()->isIntegerTy()) {
-    llvm::Optional<var_t> lhs = clamCfgBuilder->getCrabVariable(&v);
+    llvm::Optional<var_t> lhs = clamCfgBuilder->getCrabVariable(v);
     if (lhs.hasValue()) {
       auto interval = inv[lhs.getValue()];
       if (boost::optional<number_t> constant_opt = interval.singleton()) {

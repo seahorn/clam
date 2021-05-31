@@ -725,10 +725,8 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
    ****/
   // HACK for SeaHorn: If visited special call to seahorn.fail
   bool &m_has_seahorn_fail;
-  // Regions seen so far
+  // regions used by the function
   RegionSet &m_func_regions;
-  // Regions initialized by the current function
-  RegionSet &m_init_regions;
   // map gep to a crab variable
   DenseMap<const GetElementPtrInst *, var_t> &m_gep_map;
   // reverse **partial** map from Crab statements to LLVM instructions
@@ -797,7 +795,7 @@ public:
       const DenseMap<const Function *, std::vector<const Value *>>
           &func_globals,
       basic_block_t *ret_insts, CrabBuilderManagerImpl &man,
-      bool &has_seahorn_fail, RegionSet &func_regions, RegionSet &init_regions,
+      bool &has_seahorn_fail, RegionSet &func_regions, 
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       RegionSet &regions_with_store,
       DenseMap<const GetElementPtrInst *, var_t> &gep_map,
@@ -831,7 +829,7 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
     const CrabBuilderParams &params,
     const DenseMap<const Function *, std::vector<const Value *>> &func_globals,
     basic_block_t *ret_insts, CrabBuilderManagerImpl &man,
-    bool &has_seahorn_fail, RegionSet &func_regions, RegionSet &init_regions,
+    bool &has_seahorn_fail, RegionSet &func_regions, 
     llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
     RegionSet &regions_with_store,
     DenseMap<const GetElementPtrInst *, var_t> &gep_map,
@@ -840,7 +838,7 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
       m_bb(bb), m_entry_bb(entry_bb), m_object_id(0),
       m_params(params), m_func_globals(func_globals), m_ret_insts(ret_insts),
       m_man(man), m_has_seahorn_fail(has_seahorn_fail),
-      m_func_regions(func_regions), m_init_regions(init_regions), m_gep_map(gep_map), m_rev_map(rev_map),
+      m_func_regions(func_regions), m_gep_map(gep_map), m_rev_map(rev_map),
       m_regions_with_store(regions_with_store), m_verif_calls(verif_calls) {}
 
 unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
@@ -1198,8 +1196,7 @@ var_t CrabIntraBlockBuilder::doBoolLogicOp(Instruction::BinaryOps op,
   default:
     CLAM_WARNING("translation skipped bool logic operation at line "
                  << __LINE__);
-    havoc(lhs, "unsupported boolean operator", m_bb,
-          m_params.include_useless_havoc);
+    havoc(lhs, "unsupported boolean operator", m_bb, m_params.include_useless_havoc);
   }
   return lhs;
 }
@@ -1492,8 +1489,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
         if (ref_cst.hasValue()) {
           m_bb.bool_assign(lit->getVar(), ref_cst.getValue());
         } else {
-          havoc(lit->getVar(), valueToStr(I), m_bb,
-                m_params.include_useless_havoc);
+          havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
         }
       }
     }
@@ -1783,15 +1779,9 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     // --- All operands are BOOL
     if (!op1->isBool()) {
       CLAM_ERROR("Expected boolean select operands");
-      // havoc(lhs->getVar(), valueToStr(I), m_bb,
-      // m_params.include_useless_havoc);
-      return;
     }
     if (!op2->isBool()) {
       CLAM_ERROR("Expected boolean select operands");
-      // havoc(lhs->getVar(), valueToStr(I), m_bb,
-      // m_params.include_useless_havoc);
-      return;
     }
 
     // -- simple cases first: we know the condition is either true or false
@@ -1848,15 +1838,9 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     // --- All operands except the condition are INTEGERS
     if (!op1->isInt()) {
       CLAM_ERROR("Expected integer select operands");
-      // havoc(lhs->getVar(), valueToStr(I), m_bb,
-      // m_params.include_useless_havoc);
-      return;
     }
     if (!op2->isInt()) {
       CLAM_ERROR("Expected integer select operands");
-      // havoc(lhs->getVar(), valueToStr(I), m_bb,
-      // m_params.include_useless_havoc);
-      return;
     }
 
     lin_exp_t e1 = m_lfac.getExp(op1);
@@ -1930,9 +1914,7 @@ void CrabIntraBlockBuilder::doFreeFn(CallInst &I) {
 /* memcpy/memmove/memset functions */
 void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
   CLAM_WARNING("Skipped memory intrinsics " << I);
-  // HACK to add a comment
-  m_bb.havoc(m_lfac.mkIntVar(32),
-             "Unsupported memory intrinsics " + valueToStr(I));
+  m_bb.havoc(m_lfac.mkIntVar(32), valueToStr(I));
 }
 
 //
@@ -2709,8 +2691,7 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
         // -- havoc return value of the intrinsics
         crab_lit_ref_t lhs = m_lfac.getLit(I);
         assert(lhs && lhs->isVar());
-        havoc(lhs->getVar(), "LLVM intrinsics: " + valueToStr(I), m_bb,
-              m_params.include_useless_havoc);
+        havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       }
     }
     return;
@@ -2729,19 +2710,9 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
             I, m_params) /* && ShouldCallSiteReturn(I, m_params)*/) {
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       assert(lhs && lhs->isVar());
-      havoc(lhs->getVar(), "External call: " + valueToStr(I), m_bb,
-            m_params.include_useless_havoc);
-
+      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       if (isReference(I, m_params)) {
 	Region rgn_lhs = getRegion(m_mem, m_func_regions, m_params, I, I);
-	// Important assumption: if we track regions and the external function
-	// returns a pointer then we assume that the returned pointer is
-	// associated to a new, initialized region.
-				      
-	if (m_init_regions.insert(rgn_lhs).second) {
-	  m_entry_bb.set_insert_point_front();
-	  m_entry_bb.region_init(m_lfac.mkRegionVar(rgn_lhs));
-	}
 	if (m_params.addPointerAssumptions()) {
           m_bb.intrinsic("unfreed_or_null", {},
                          {m_lfac.mkRegionVar(rgn_lhs), lhs->getVar()});
@@ -2801,8 +2772,7 @@ void CrabIntraBlockBuilder::visitInstruction(Instruction &I) {
   CLAM_WARNING("Skipped " << I);
   crab_lit_ref_t lhs = m_lfac.getLit(I);
   if (lhs && lhs->isVar()) {
-    havoc(lhs->getVar(), "Unsupported instruction " + valueToStr(I), m_bb,
-          m_params.include_useless_havoc);
+    havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
   }
 }
 
@@ -2823,16 +2793,18 @@ public:
   // return crab control flow graph
   cfg_t &getCfg();
 
+  /***** Begin API to translate LLVM entities to Crab ones *****/
   // map a llvm basic block to a crab basic block label
   basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
-
   // map a llvm edge to a crab basic block label.
   // return nullptr if the edge is not translated to a crab basic block.
   const basic_block_label_t *
   getCrabBasicBlock(const llvm::BasicBlock *src,
                     const llvm::BasicBlock *dst) const;
+  llvm::Optional<var_t> getCrabVariable(const llvm::Value &v);
+  llvm::Optional<var_t> getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v);  
+  /***** End API to translate LLVM entities to Crab ones *****/
 
-  llvm::Optional<var_t> getCrabVariable(const llvm::Value *v);
   
   // Most crab statements have back pointers to LLVM operands so it
   // is always possible to find the corresponding LLVM
@@ -2882,8 +2854,6 @@ private:
   edge_to_crab_block_map_t m_edge_to_crab_map;
   // **Unused**: memory regions accessed by m_func
   RegionSet m_func_regions;
-  // Regions that are initialized by this function
-  RegionSet m_init_regions;
   // A fake basic block containing the return instruction and
   // additional statements to normalize the returned value.
   basic_block_t *m_ret_insts;
@@ -2908,9 +2878,11 @@ private:
 
   /// Helpers for buildCfg
 
+  // Lower the global initializers into statements in main.
   void initializeGlobalsAtMain(void);
 
-  void initializeRegions(const RegionSet&);
+  // Add region_init statements (only if CrabBuilderPrecision::MEM)
+  void initializeRegions();
 
   void setExitBlock(void);
 
@@ -2974,11 +2946,29 @@ CfgBuilderImpl::getCrabBasicBlock(const BasicBlock *src,
   }
 }
 
-llvm::Optional<var_t> CfgBuilderImpl::getCrabVariable(const llvm::Value *v) {
-  crab_lit_ref_t lit = m_lfac.getLit(*v);
+llvm::Optional<var_t> CfgBuilderImpl::getCrabVariable(const llvm::Value &v) {
+  crab_lit_ref_t lit = m_lfac.getLit(v);
   return (lit->isVar() ? llvm::Optional<var_t>(lit->getVar()) : llvm::Optional<var_t>());
 }
+
+llvm::Optional<var_t> CfgBuilderImpl::getCrabRegionVariable(const Function &f,
+							    const llvm::Value &v) {
+  if (m_params.precision_level != CrabBuilderPrecision::MEM) {
+    return None;
+  }
+
+  if (!v.getType()->isPointerTy()) {
+    return None;
+  }
   
+  Region rgn = m_mem.getRegion(f, v);
+  if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+    return None;
+  }
+
+  return m_lfac.mkRegionVar(rgn);
+}
+
 void CfgBuilderImpl::initializeGlobalsAtMain(void) {
   if (!m_func.getName().equals("main")) {
     return;
@@ -3076,21 +3066,150 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
   }
 }
 
-void CfgBuilderImpl::initializeRegions(const RegionSet &rgns) {
+// Add region_init statements. To place these statements is tricky
+// because both precision and soundness of Crab might depend on it:
+//
+// - any region should be initialized before used (precision).
+// - same region shouldn't be initialized twice (soundness).
+//
+// Mostly, input regions and output regions returned from callees
+// should NOT be initialized. The rest should be initialized.
+// 
+// Note that if a pointer is used but not dereferenced within a
+// function then our translation will not pass a region for that
+// pointer. As a result, we need to create a temporary region and
+// initialize it for the pointer to be used in a gep_ref or ref_asume.
+void CfgBuilderImpl::initializeRegions() {
   if (m_lfac.getTrack() != CrabBuilderPrecision::MEM) {
     return;
   }
-  basic_block_t *entry = lookup(m_func.getEntryBlock());
-  CRAB_LOG("cfg-mem", llvm::errs() << "Regions initialized by "
-                                   << m_func.getName() << "{";);
+  // JN: we could be more efficient and compute all this information
+  // while we translate the instructions but I prefer to keep it
+  // simple for now and do it once the whole CFG has been built.
+  
+  // -- Collect first all regions that might need initialization and
+  // -- those that must not be initialized. 
+  std::set<var_t> mayInitVars, mustNotInitVars;
+  // we need to be careful with region cast statements
+  std::set<var_t> castSrc, castDst;
+  if (m_cfg->has_func_decl()) {
+    auto const& fdecl = m_cfg->get_func_decl();
+    std::set<var_t> inputs, outputs;
+    std::copy_if(fdecl.get_inputs().begin(), fdecl.get_inputs().end(),
+		 std::inserter(inputs, inputs.end()),
+		 [](const var_t &v) { return v.get_type().is_region();});
+    std::copy_if(fdecl.get_outputs().begin(), fdecl.get_outputs().end(),
+		 std::inserter(outputs, outputs.end()),
+		 [](const var_t &v) { return v.get_type().is_region();});
 
-  for (auto rgn : rgns) {
-    CRAB_LOG("cfg-mem", llvm::errs() << rgn << ";";);
-    if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+    mustNotInitVars.insert(inputs.begin(), inputs.end());
+    // Sometimes we have output regions that are not used in a
+    // function. This might happen with functions that allocate memory
+    // and return.
+    std::set_difference(outputs.begin(), outputs.end(),
+			inputs.begin(), inputs.end(),
+			std::inserter(mayInitVars, mayInitVars.end()));
+  }
+
+  for (auto bit = m_cfg->begin(), bet = m_cfg->end(); bit!=bet; ++bit) {
+    for (auto it = (*bit).begin(), et = (*bit).end(); it!=et ; ++it) {
+      if ((*it).is_callsite()) {
+	auto s = static_cast<typename basic_block_t::callsite_t*>(&*it);
+	std::set<var_t> inputs, outputs;
+	std::copy_if(s->get_args().begin(), s->get_args().end(),
+		     std::inserter(inputs, inputs.end()),
+		     [](const var_t &v) { return v.get_type().is_region();});
+	std::copy_if(s->get_lhs().begin(), s->get_lhs().end(),
+		     std::inserter(outputs, outputs.end()),
+		     [](const var_t &v) { return v.get_type().is_region();});
+	std::set_difference(outputs.begin(), outputs.end(), inputs.begin(), inputs.end(),
+			    std::inserter(mustNotInitVars, mustNotInitVars.end()));
+	mayInitVars.insert(inputs.begin(), inputs.end());
+      } else if ((*it).is_intrinsic()) {
+	auto s = static_cast<typename basic_block_t::intrinsic_t*>(&*it);
+	using var_or_cst_t = typename basic_block_t::variable_or_constant_t;
+	std::set<var_t> inputs, outputs;
+	for (const typename basic_block_t::variable_or_constant_t &v: s->get_args()) {
+	  if (v.is_variable() && v.get_variable().get_type().is_region()) {
+	    inputs.insert(v.get_variable());
+	  } 
+	}
+	std::copy_if(s->get_lhs().begin(), s->get_lhs().end(),
+		     std::inserter(outputs, outputs.end()),
+		     [](const var_t &v) { return v.get_type().is_region();});
+	std::set_difference(outputs.begin(), outputs.end(), inputs.begin(), inputs.end(),
+			    std::inserter(mustNotInitVars, mustNotInitVars.end()));
+	mayInitVars.insert(inputs.begin(), inputs.end());
+      } else if ((*it).is_ref_make()) { 
+	auto s = static_cast<typename basic_block_t::make_ref_t*>(&*it);
+	mayInitVars.insert(s->region());
+      } else if ((*it).is_ref_remove()) {
+	auto s = static_cast<typename basic_block_t::remove_ref_t*>(&*it);
+	mayInitVars.insert(s->region());      
+      } else if ((*it).is_ref_load()) {
+	auto s = static_cast<typename basic_block_t::load_from_ref_t*>(&*it);
+	mayInitVars.insert(s->region());      
+      } else if ((*it).is_ref_store()) {
+	auto s = static_cast<typename basic_block_t::store_to_ref_t*>(&*it);
+	mayInitVars.insert(s->region());
+      } else if ((*it).is_ref_gep()) {
+	auto s = static_cast<typename basic_block_t::gep_ref_t*>(&*it);
+	mayInitVars.insert(s->lhs_region());
+	mayInitVars.insert(s->rhs_region());            
+      } else if ((*it).is_ref_arr_load()) {
+	auto s = static_cast<typename basic_block_t::load_from_arr_ref_t*>(&*it);
+	mayInitVars.insert(s->region());            
+      } else if ((*it).is_ref_arr_store()) {
+	auto s = static_cast<typename basic_block_t::store_to_arr_ref_t*>(&*it);
+	mayInitVars.insert(s->region());            
+      } else if ((*it).is_ref_select()) {
+	auto s = static_cast<typename basic_block_t::ref_select_t*>(&*it);
+	mayInitVars.insert(s->lhs_rgn());
+	if (s->left_rgn()) {
+	  mayInitVars.insert(*(s->left_rgn()));
+	}
+	if (s->right_rgn()) {
+	  mayInitVars.insert(*(s->right_rgn()));
+	}
+      } else if ((*it).is_ref_to_int()) {
+	auto s = static_cast<typename basic_block_t::ref_to_int_t*>(&*it);
+	mayInitVars.insert(s->region());      
+      } else if ((*it).is_int_to_ref()) {
+	auto s = static_cast<typename basic_block_t::int_to_ref_t*>(&*it);
+	mayInitVars.insert(s->region());            
+      } else if ((*it).is_region_copy()) {
+	auto s = static_cast<typename basic_block_t::region_copy_t*>(&*it);
+	// region_copy are used only for renaming function input
+	// parameters which cannot be initialized.
+	//   mayInitVars.insert(s->rhs_region()); 
+	// The lhs shouldn't be initializated 
+	mustNotInitVars.insert(s->lhs_region());
+      } else if ((*it).is_region_cast()) {
+	auto s = static_cast<typename basic_block_t::region_cast_t*>(&*it);
+	castSrc.insert(s->src());
+	castDst.insert(s->dst());	
+      }
+    }
+  }
+
+  // Do not initialize z in "y := foo(x); cast y to z";  
+  for (auto v: castDst) {
+    if (castSrc.count(v) <= 0) {
+      mustNotInitVars.insert(v);
+    }
+  }
+  
+  // Finally, adding Crab region initialization statements
+  basic_block_t *entry = lookup(m_func.getEntryBlock());
+  CRAB_LOG("cfg-mem", llvm::errs() << "Region variables initialized by "
+                                   << m_func.getName() << "{";);
+  for (auto it = mayInitVars.rbegin(), et= mayInitVars.rend(); it!=et; ++it) {
+    if (mustNotInitVars.count(*it)) {
       continue;
     }
+    CRAB_LOG("cfg-mem", crab::errs() << *it << ";";);
     entry->set_insert_point_front();
-    entry->region_init(m_lfac.mkRegionVar(rgn));
+    entry->region_init(*it);
   }
   CRAB_LOG("cfg-mem", llvm::errs() << "}\n";);
 }
@@ -3354,11 +3473,7 @@ void CfgBuilderImpl::buildCfg() {
   }
 
   initializeGlobalsAtMain();
-  auto rgn_vec = m_mem.getInitRegions(m_func);
-  m_init_regions.insert(rgn_vec.begin(), rgn_vec.end());
-  initializeRegions(m_init_regions);
   basic_block_t *entry_bb = lookup(m_func.getEntryBlock());
-  
   for (auto &B : m_func) {
     basic_block_t *bb = lookup(B);
 
@@ -3370,7 +3485,7 @@ void CfgBuilderImpl::buildCfg() {
     CrabIntraBlockBuilder v(m_lfac, m_as_man, m_mem, m_dl, tli,
 			    *bb, *entry_bb, m_params, m_globals,
                             m_ret_insts, m_man, has_seahorn_fail,
-                            m_func_regions, m_init_regions, m_rev_map, regions_with_store,
+                            m_func_regions, m_rev_map, regions_with_store,
                             gep_map, verif_calls);
 
     v.visit(B);
@@ -3407,7 +3522,7 @@ void CfgBuilderImpl::buildCfg() {
       }
     }
   }
-
+  
   if (m_cfg->has_exit()) {
     basic_block_t &exit = m_cfg->get_node(m_cfg->exit());
 
@@ -3439,6 +3554,12 @@ void CfgBuilderImpl::buildCfg() {
       }
     }
   }
+  
+  ////
+  // Add region initialization.
+  ///
+  // This must be called after the CFG has been already constructed.
+  initializeRegions();
 
   if (m_params.simplify) {
     // -- Remove dead statements generated by our translation
@@ -3836,10 +3957,14 @@ CfgBuilder::getCrabBasicBlock(const llvm::BasicBlock *src,
   return m_impl->getCrabBasicBlock(src, dst);
 }
 
-llvm::Optional<var_t> CfgBuilder::getCrabVariable(const llvm::Value *v) {
+llvm::Optional<var_t> CfgBuilder::getCrabVariable(const llvm::Value &v) {
   return m_impl->getCrabVariable(v);
 }
-  
+
+llvm::Optional<var_t> CfgBuilder::getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v) {
+  return m_impl->getCrabRegionVariable(f, v);
+}
+
 const llvm::Instruction *
 CfgBuilder::getInstruction(const statement_t &s) const {
   return m_impl->getInstruction(s);
@@ -4294,7 +4419,7 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
    * the corresponding function parameter. To accomodate this, instead
    * of using syntactic equality between types we assume two types are
    * the same if the function hasCompatibleTypes (defined above)
-   * returns true. Moreover, we use the Crab region_copy statement to
+   * returns true. Moreover, we use the Crab region_cast statement to
    * perform explicitly the type conversion (before and after
    * callsites) between regions (but only between unknown and known
    * ones) so that Crab is happy about it.
@@ -4321,13 +4446,13 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
       };
     
     for (unsigned i = 0, num_args = inputs.size(); i < num_args; ++i) {
-      // o1 := foo(i1) ==> region_copy(i1', i1); o1 := foo(i1')
+      // o1 := foo(i1) ==> region_cast(i1', i1); o1 := foo(i1')
       unifyRgnType(inputs[i], calleeF_decl->get_input_name(i),
 		   pendingInRgnCasts);
     }
     
     for (unsigned i = 0, num_args = outputs.size(); i < num_args; ++i) {
-      // o1 := foo(i1) ==> o1' := foo(i1); region_copy(o1, o1')
+      // o1 := foo(i1) ==> o1' := foo(i1); region_cast(o1, o1')
       unifyRgnType(outputs[i], calleeF_decl->get_output_name(i),
 		   pendingOutRgnCasts);
     }
@@ -4343,8 +4468,9 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
   } else {
     if (m_params.trackMemory()) {
       for (unsigned i = 0, sz = pendingInRgnCasts.size(); i < sz; ++i) {
-	m_bb.region_copy(pendingInRgnCasts[i].second,
-			 pendingInRgnCasts[i].first);
+	m_bb.region_cast(pendingInRgnCasts[i].first,
+	 		 pendingInRgnCasts[i].second);
+			 
       }
     }
 
@@ -4352,8 +4478,8 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
 
     if (m_params.trackMemory()) {    
       for (unsigned i = 0, sz = pendingOutRgnCasts.size(); i < sz; ++i) {
-	m_bb.region_copy(pendingOutRgnCasts[i].first,
-			 pendingOutRgnCasts[i].second);
+	m_bb.region_cast(pendingOutRgnCasts[i].second,
+	 		 pendingOutRgnCasts[i].first);
       }
     }
   }
@@ -4475,6 +4601,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
     if (!tagParamLit || tagParamLit->isVar() || !tagParamLit->isInt()) {
       CLAM_ERROR("unexpected 2nd input argument in special intrinsic " << I);
     }
+
     Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *Ptr);
     if (!getSingletonValue(rgn, m_params.lower_singleton_aliases)) {        
       var_t rgnVar = m_lfac.mkRegionVar(rgn);
@@ -4501,6 +4628,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
     if (!tagParamLit || tagParamLit->isVar() || !tagParamLit->isInt()) {
       CLAM_ERROR("unexpected 2nd input argument in special intrinsic " << I);
     }
+
     var_t outParam = m_lfac.mkBoolVar();    
     Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *Ptr);
     if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
