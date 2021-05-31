@@ -157,7 +157,7 @@ static bool update(abs_dom_map_t &table, const llvm::BasicBlock &block,
   }
   return already;
 }
-
+  
 /**
  * IntraClamImpl: internal implementation of the intra-procedural
  *                analysis.
@@ -634,6 +634,14 @@ public:
   ClamQueryAPI::Range range(const BasicBlock &B, const Value &V) {
     return m_query_cache.range(B, V, getPre(&B, false));
   }
+
+  Optional<ClamQueryAPI::TagVector> tags(const Instruction &I) {
+    return m_query_cache.tags(I, getPre(I.getParent(), false));
+  }
+  
+  Optional<ClamQueryAPI::TagVector> tags(const BasicBlock &B, const Value &V) {
+    return m_query_cache.tags(B, V, getPre(&B, false));
+  }
   
 private:
   const llvm::Module& m_module;
@@ -729,6 +737,14 @@ public:
   
   ClamQueryAPI::Range range(const BasicBlock &B, const Value &V) {
     return m_query_cache.range(B, V, getPre(&B, false));    
+  }
+
+  Optional<ClamQueryAPI::TagVector> tags(const Instruction &I) {
+    return m_query_cache.tags(I, getPre(I.getParent(), false));
+  }
+  
+  Optional<ClamQueryAPI::TagVector> tags(const BasicBlock &B, const Value &V) {
+    return m_query_cache.tags(B, V, getPre(&B, false));
   }
   
   void clear() {
@@ -985,7 +1001,15 @@ ClamQueryAPI::Range IntraGlobalClam::range(const Instruction &I) {
 ClamQueryAPI::Range IntraGlobalClam::range(const BasicBlock &B, const Value &V) {
   return m_impl->range(B, V);
 }
-  
+
+Optional<ClamQueryAPI::TagVector> IntraGlobalClam::tags(const Instruction &I) {
+  return m_impl->tags(I);
+}
+
+Optional<ClamQueryAPI::TagVector> IntraGlobalClam::tags(const BasicBlock &B, const Value &V) {
+  return m_impl->tags(B,V);
+}
+
 /*****************************************************************/
 /*              Begin InterGlobalClam methods                    */
 /*****************************************************************/ 
@@ -1045,10 +1069,20 @@ ClamQueryAPI::Range InterGlobalClam::range(const Instruction &I) {
 ClamQueryAPI::Range InterGlobalClam::range(const BasicBlock &B, const Value &V) {
   return m_impl->range(B, V);
 }
+
+Optional<ClamQueryAPI::TagVector> InterGlobalClam::tags(const Instruction &I) {
+  return m_impl->tags(I);
+}
+
+Optional<ClamQueryAPI::TagVector> InterGlobalClam::tags(const BasicBlock &B, const Value &V) {
+  return m_impl->tags(B,V);
+}
+
   
 /*****************************************************************/
 /*                       ClamPass methods                        */
-/*****************************************************************/  
+/*****************************************************************/
+
 ClamPass::ClamPass():
   ModulePass(ID), m_cfg_builder_man(nullptr), m_ga(nullptr) {
   // initialize sea-dsa dependencies
@@ -1186,8 +1220,8 @@ bool ClamPass::runOnModule(Module &M) {
 #endif
       }
     }
-  }
-
+  }  
+  
   if (m_params.check != CheckerKind::NOCHECKS) {
     llvm::outs() << "\n************** ANALYSIS RESULTS ****************\n";
     printChecks(llvm::outs());

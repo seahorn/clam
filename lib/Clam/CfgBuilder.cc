@@ -1197,8 +1197,7 @@ var_t CrabIntraBlockBuilder::doBoolLogicOp(Instruction::BinaryOps op,
   default:
     CLAM_WARNING("translation skipped bool logic operation at line "
                  << __LINE__);
-    havoc(lhs, "unsupported boolean operator", m_bb,
-          m_params.include_useless_havoc);
+    havoc(lhs, "unsupported boolean operator", m_bb, m_params.include_useless_havoc);
   }
   return lhs;
 }
@@ -1492,8 +1491,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
         if (ref_cst.hasValue()) {
           m_bb.bool_assign(lit->getVar(), ref_cst.getValue());
         } else {
-          havoc(lit->getVar(), valueToStr(I), m_bb,
-                m_params.include_useless_havoc);
+          havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
         }
       }
     }
@@ -1783,15 +1781,9 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     // --- All operands are BOOL
     if (!op1->isBool()) {
       CLAM_ERROR("Expected boolean select operands");
-      // havoc(lhs->getVar(), valueToStr(I), m_bb,
-      // m_params.include_useless_havoc);
-      return;
     }
     if (!op2->isBool()) {
       CLAM_ERROR("Expected boolean select operands");
-      // havoc(lhs->getVar(), valueToStr(I), m_bb,
-      // m_params.include_useless_havoc);
-      return;
     }
 
     // -- simple cases first: we know the condition is either true or false
@@ -1848,15 +1840,9 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     // --- All operands except the condition are INTEGERS
     if (!op1->isInt()) {
       CLAM_ERROR("Expected integer select operands");
-      // havoc(lhs->getVar(), valueToStr(I), m_bb,
-      // m_params.include_useless_havoc);
-      return;
     }
     if (!op2->isInt()) {
       CLAM_ERROR("Expected integer select operands");
-      // havoc(lhs->getVar(), valueToStr(I), m_bb,
-      // m_params.include_useless_havoc);
-      return;
     }
 
     lin_exp_t e1 = m_lfac.getExp(op1);
@@ -1930,9 +1916,7 @@ void CrabIntraBlockBuilder::doFreeFn(Instruction &I) {
 /* memcpy/memmove/memset functions */
 void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
   CLAM_WARNING("Skipped memory intrinsics " << I);
-  // HACK to add a comment
-  m_bb.havoc(m_lfac.mkIntVar(32),
-             "Unsupported memory intrinsics " + valueToStr(I));
+  m_bb.havoc(m_lfac.mkIntVar(32), valueToStr(I));
 }
 
 //
@@ -2709,8 +2693,7 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
         // -- havoc return value of the intrinsics
         crab_lit_ref_t lhs = m_lfac.getLit(I);
         assert(lhs && lhs->isVar());
-        havoc(lhs->getVar(), "LLVM intrinsics: " + valueToStr(I), m_bb,
-              m_params.include_useless_havoc);
+        havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       }
     }
     return;
@@ -2729,9 +2712,7 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
             I, m_params) /* && ShouldCallSiteReturn(I, m_params)*/) {
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       assert(lhs && lhs->isVar());
-      havoc(lhs->getVar(), "External call: " + valueToStr(I), m_bb,
-            m_params.include_useless_havoc);
-
+      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       if (isReference(I, m_params)) {
 	Region rgn_lhs = getRegion(m_mem, m_func_regions, m_params, I, I);
 	if (m_params.addPointerAssumptions()) {
@@ -2793,8 +2774,7 @@ void CrabIntraBlockBuilder::visitInstruction(Instruction &I) {
   CLAM_WARNING("Skipped " << I);
   crab_lit_ref_t lhs = m_lfac.getLit(I);
   if (lhs && lhs->isVar()) {
-    havoc(lhs->getVar(), "Unsupported instruction " + valueToStr(I), m_bb,
-          m_params.include_useless_havoc);
+    havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
   }
 }
 
@@ -2815,16 +2795,18 @@ public:
   // return crab control flow graph
   cfg_t &getCfg();
 
+  /***** Begin API to translate LLVM entities to Crab ones *****/
   // map a llvm basic block to a crab basic block label
   basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
-
   // map a llvm edge to a crab basic block label.
   // return nullptr if the edge is not translated to a crab basic block.
   const basic_block_label_t *
   getCrabBasicBlock(const llvm::BasicBlock *src,
                     const llvm::BasicBlock *dst) const;
+  llvm::Optional<var_t> getCrabVariable(const llvm::Value &v);
+  llvm::Optional<var_t> getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v);  
+  /***** End API to translate LLVM entities to Crab ones *****/
 
-  llvm::Optional<var_t> getCrabVariable(const llvm::Value *v);
   
   // Most crab statements have back pointers to LLVM operands so it
   // is always possible to find the corresponding LLVM
@@ -2966,11 +2948,29 @@ CfgBuilderImpl::getCrabBasicBlock(const BasicBlock *src,
   }
 }
 
-llvm::Optional<var_t> CfgBuilderImpl::getCrabVariable(const llvm::Value *v) {
-  crab_lit_ref_t lit = m_lfac.getLit(*v);
+llvm::Optional<var_t> CfgBuilderImpl::getCrabVariable(const llvm::Value &v) {
+  crab_lit_ref_t lit = m_lfac.getLit(v);
   return (lit->isVar() ? llvm::Optional<var_t>(lit->getVar()) : llvm::Optional<var_t>());
 }
+
+llvm::Optional<var_t> CfgBuilderImpl::getCrabRegionVariable(const Function &f,
+							    const llvm::Value &v) {
+  if (m_params.precision_level != CrabBuilderPrecision::MEM) {
+    return None;
+  }
+
+  if (!v.getType()->isPointerTy()) {
+    return None;
+  }
   
+  Region rgn = m_mem.getRegion(f, v);
+  if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+    return None;
+  }
+
+  return m_lfac.mkRegionVar(rgn);
+}
+
 void CfgBuilderImpl::initializeGlobalsAtMain(void) {
   if (!m_func.getName().equals("main")) {
     return;
@@ -3959,10 +3959,14 @@ CfgBuilder::getCrabBasicBlock(const llvm::BasicBlock *src,
   return m_impl->getCrabBasicBlock(src, dst);
 }
 
-llvm::Optional<var_t> CfgBuilder::getCrabVariable(const llvm::Value *v) {
+llvm::Optional<var_t> CfgBuilder::getCrabVariable(const llvm::Value &v) {
   return m_impl->getCrabVariable(v);
 }
-  
+
+llvm::Optional<var_t> CfgBuilder::getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v) {
+  return m_impl->getCrabRegionVariable(f, v);
+}
+
 const llvm::Instruction *
 CfgBuilder::getInstruction(const statement_t &s) const {
   return m_impl->getInstruction(s);
