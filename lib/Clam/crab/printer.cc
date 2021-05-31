@@ -17,11 +17,12 @@ void invariant_annotation::print_begin(const basic_block_label_t &bbl,
                                        crab::crab_os &o) const {
   if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
     auto pre = m_lookup(m_premap, *bb, m_shadow_vars);
-    o << "  " << name() << ": ";
+    
+    o << name() << ": ";
     if (pre.hasValue()) {
-      o << pre.getValue() << "\n";
+      o << pre.getValue();
     } else {
-      o << "null\n";
+      o << "null";
     }
   }
 }
@@ -30,11 +31,11 @@ void invariant_annotation::print_end(const basic_block_label_t &bbl,
                                      crab::crab_os &o) const {
   if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
     auto post = m_lookup(m_postmap, *bb, m_shadow_vars);
-    o << "  " << name() << ": ";
+    o << name() << ": ";
     if (post.hasValue()) {
-      o << post.getValue() << "\n";
+      o << post.getValue();
     } else {
-      o << "null\n";
+      o << "null";
     }
   }
 }
@@ -51,7 +52,7 @@ void unproven_assumption_annotation::print_begin(const statement_t &s,
     typedef typename cfg_ref_t::basic_block_t::assert_t assert_t;
     m_analyzer.get_assumptions(static_cast<const assert_t *>(&s), assumes);
     if (!assumes.empty()) {
-      o << "  /** assert verified as ";
+      o << "/** assert verified as ";
       for (std::vector<assumption_ptr>::iterator it = assumes.begin(),
                                                  et = assumes.end();
            it != et;) {
@@ -67,7 +68,7 @@ void unproven_assumption_annotation::print_begin(const statement_t &s,
   } else {
     m_analyzer.get_originated_assumptions(&s, assumes);
     for (auto assume_ptr : assumes) {
-      o << "  /** ";
+      o << "/** ";
       assume_ptr->write(o);
       o << "**/\n";
     }
@@ -92,7 +93,7 @@ void print_block::operator()(const basic_block_label_t &bbl) const {
     p->print_begin(bbl, o);
   }
   if (o.str() != "") {
-    m_o << "/**\n" << o.str() << "**/\n";
+    m_o << "/** " << o.str() << " **/\n";
   }
 
   const basic_block_t &bb = m_cfg.get_node(bbl);
@@ -153,7 +154,7 @@ void print_block::operator()(const basic_block_label_t &bbl) const {
       p->print_end(bbl, o);
     }
     if (o.str() != "") {
-      m_o << "/**\n" << o.str() << "**/\n";
+      m_o << "/** " << o.str() << " **/\n";
     }
   }
 
