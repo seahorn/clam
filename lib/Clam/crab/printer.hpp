@@ -51,7 +51,7 @@ public:
 
   void print_begin(const basic_block_label_t &bbl, crab::crab_os &o) const override;
 
-  void print_end(const basic_block_label_t &bbl, crab::crab_os &o) const override;
+  void print_end(const basic_block_label_t &bbl, crab::crab_os &o) const override ;
 
   std::string name() const override { return "INVARIANTS"; }
 };
@@ -71,9 +71,27 @@ public:
 
   std::string name() const override { return "UNPROVEN ASSUMPTIONS"; }
 
-  void print_begin(const statement_t &s, crab::crab_os &o) const override;
+  void print_begin(const statement_t &s, crab::crab_os &o) const override ;
 };
 
+
+/** Variables-of-influence of assertions **/
+class voi_annotation : public block_annotation {
+public:
+  using voi_analysis_t = crab::analyzer::inter_assertion_crawler<cg_t>;
+
+private:
+  cfg_ref_t m_cfg;
+  voi_analysis_t &m_analyzer;
+
+public:
+  voi_annotation(cfg_ref_t cfg, voi_analysis_t &analyzer);
+
+  std::string name() const override { return "VARIABLES-OF-INFLUENCE"; }
+
+  void print_begin(const basic_block_label_t &s, crab::crab_os &o) const override;
+};
+  
 /** Print a block together with its annotations **/
 class print_block {
   cfg_ref_t m_cfg;

@@ -22,6 +22,7 @@ bool CrabPrintInvariants;
 bool CrabStoreInvariants;
 bool CrabBuildOnlyCFG;
 bool CrabPrintUnjustifiedAssumptions;
+bool CrabPrintVoi;
 unsigned int CrabWideningDelay;
 unsigned int CrabNarrowingIters;
 unsigned int CrabWideningJumpSet;
@@ -144,6 +145,12 @@ llvm::cl::opt<bool, true>
 XCrabPrintUnjustifiedAssumptions("crab-print-unjustified-assumptions", 
 llvm::cl::desc("Print unjustified assumptions done by Crab (experimental: only integer overflow)"),
 llvm::cl::location(clam::CrabPrintUnjustifiedAssumptions),
+llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabPrintVoi("crab-print-voi", 
+llvm::cl::desc("Print variables-of-influence of assertions"),
+llvm::cl::location(clam::CrabPrintVoi),
 llvm::cl::init(false));
 
 llvm::cl::opt<unsigned int, true>

@@ -33,23 +33,25 @@ struct AnalysisParams {
   unsigned widening_jumpset;
   bool stats;
   bool print_invars;
-  bool print_preconds;  /*unused*/  
+  bool print_preconds;  /*unused*/
   bool print_unjustified_assumptions;
   bool print_summaries; /*unused*/
+  bool print_voi; 
   bool store_invariants;
   bool keep_shadow_vars;
   CheckerKind check;
   unsigned check_verbose;
 
   AnalysisParams()
-      : dom(CrabDomain::INTERVALS), run_backward(false), run_liveness(false),
+      : dom(CrabDomain::INTERVALS),
+	run_backward(false), run_liveness(false),
         run_inter(false), max_calling_contexts(UINT_MAX),
         analyze_recursive_functions(false), exact_summary_reuse(true),
 	inter_entry_main(false), 
         relational_threshold(10000), widening_delay(1), narrowing_iters(10),
         widening_jumpset(0), stats(false), print_invars(false),
         print_preconds(false), print_unjustified_assumptions(false),
-        print_summaries(false), store_invariants(true), keep_shadow_vars(false),
+        print_summaries(false), print_voi(false), store_invariants(true), keep_shadow_vars(false),
         check(CheckerKind::NOCHECKS), check_verbose(0) {}
 };
 } // end namespace clam
