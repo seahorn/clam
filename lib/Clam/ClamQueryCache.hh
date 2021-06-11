@@ -5,6 +5,7 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/Optional.h>
+#include <llvm/IR/ConstantRange.h>
 
 namespace llvm {
 class Instruction;
@@ -16,7 +17,6 @@ namespace clam {
 class CrabBuilderManager;
 
 class ClamQueryCache {
-  using Range = typename ClamQueryAPI::Range;
   using TagVector = typename ClamQueryAPI::TagVector;
   
   CrabBuilderManager &m_crab_builder_man;
@@ -24,9 +24,9 @@ class ClamQueryCache {
   llvm::DenseMap<
       std::pair<const llvm::MemoryLocation *, const llvm::MemoryLocation *>,
       llvm::AliasResult> m_alias_cache;
-  llvm::DenseMap<const llvm::Instruction *, Range> m_range_inst_cache;
+  llvm::DenseMap<const llvm::Instruction *, llvm::ConstantRange> m_range_inst_cache;
   llvm::DenseMap<std::pair<const llvm::BasicBlock *, const llvm::Value *>,
-                 Range> m_range_value_cache;
+                 llvm::ConstantRange> m_range_value_cache;
   llvm::DenseMap<const llvm::Instruction *, TagVector> m_tag_inst_cache;
   llvm::DenseMap<std::pair<const llvm::BasicBlock *, const llvm::Value *>,
                  TagVector> m_tag_value_cache;
@@ -36,14 +36,14 @@ public:
   llvm::AliasResult alias(const llvm::MemoryLocation &loc1,
                           const llvm::MemoryLocation &loc2,
                           llvm::AAQueryInfo &AAQI);
-  Range range(const llvm::Instruction &I,
-              llvm::Optional<clam_abstract_domain> invAtEntry);
-  Range range(const llvm::BasicBlock &B, const llvm::Value &V,
-              llvm::Optional<clam_abstract_domain> invAtEntry);
+  llvm::ConstantRange range(const llvm::Instruction &I,
+			    llvm::Optional<clam_abstract_domain> invAtEntry);
+  llvm::ConstantRange range(const llvm::BasicBlock &B, const llvm::Value &V,
+			    llvm::Optional<clam_abstract_domain> invAtEntry);
   llvm::Optional<TagVector> tags(const llvm::Instruction &I,
-	      llvm::Optional<clam_abstract_domain> invAtEntry);
+				 llvm::Optional<clam_abstract_domain> invAtEntry);
   llvm::Optional<TagVector> tags(const llvm::BasicBlock &B, const llvm::Value &V,
-              llvm::Optional<clam_abstract_domain> invAtEntry);
+				 llvm::Optional<clam_abstract_domain> invAtEntry);
   
 };
 } // end namespace clam

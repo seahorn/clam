@@ -631,11 +631,11 @@ public:
     return m_query_cache.alias(l1, l2, AAQI);
   }
   
-  ClamQueryAPI::Range range(const Instruction &I) {
+  ConstantRange range(const Instruction &I) {
     return m_query_cache.range(I, getPre(I.getParent(), false));
   }
   
-  ClamQueryAPI::Range range(const BasicBlock &B, const Value &V) {
+  ConstantRange range(const BasicBlock &B, const Value &V) {
     return m_query_cache.range(B, V, getPre(&B, false));
   }
 
@@ -735,11 +735,11 @@ public:
     return m_query_cache.alias(l1, l2, AAQI);    
   }
   
-  ClamQueryAPI::Range range(const Instruction &I) {
+  ConstantRange range(const Instruction &I) {
     return m_query_cache.range(I, getPre(I.getParent(), false));    
   }
   
-  ClamQueryAPI::Range range(const BasicBlock &B, const Value &V) {
+  ConstantRange range(const BasicBlock &B, const Value &V) {
     return m_query_cache.range(B, V, getPre(&B, false));    
   }
 
@@ -1009,11 +1009,11 @@ AliasResult IntraGlobalClam::alias(const MemoryLocation &l1, const MemoryLocatio
   return m_impl->alias(l1, l2, AAQI);
 }
   
-ClamQueryAPI::Range IntraGlobalClam::range(const Instruction &I) {
+ConstantRange IntraGlobalClam::range(const Instruction &I) {
   return m_impl->range(I);
 }
   
-ClamQueryAPI::Range IntraGlobalClam::range(const BasicBlock &B, const Value &V) {
+ConstantRange IntraGlobalClam::range(const BasicBlock &B, const Value &V) {
   return m_impl->range(B, V);
 }
 
@@ -1077,11 +1077,11 @@ AliasResult InterGlobalClam::alias(const MemoryLocation &l1, const MemoryLocatio
   return m_impl->alias(l1, l2, AAQI);
 }
   
-ClamQueryAPI::Range InterGlobalClam::range(const Instruction &I) {
+ConstantRange InterGlobalClam::range(const Instruction &I) {
   return m_impl->range(I);
 }
   
-ClamQueryAPI::Range InterGlobalClam::range(const BasicBlock &B, const Value &V) {
+ConstantRange InterGlobalClam::range(const BasicBlock &B, const Value &V) {
   return m_impl->range(B, V);
 }
 

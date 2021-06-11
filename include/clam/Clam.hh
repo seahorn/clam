@@ -161,9 +161,9 @@ public:
 			  const llvm::MemoryLocation &,
 			  llvm::AAQueryInfo &) override;
   
-  ClamQueryAPI::Range range(const llvm::Instruction &I) override;
+  llvm::ConstantRange range(const llvm::Instruction &I) override;
   
-  ClamQueryAPI::Range range(const llvm::BasicBlock &B,
+  llvm::ConstantRange range(const llvm::BasicBlock &B,
 			    const llvm::Value &V) override;
 
   llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) override;
@@ -236,9 +236,9 @@ public:
 			  const llvm::MemoryLocation &,
 			  llvm::AAQueryInfo &) override;
   
-  ClamQueryAPI::Range range(const llvm::Instruction &I) override;
+  llvm::ConstantRange range(const llvm::Instruction &I) override;
   
-  ClamQueryAPI::Range range(const llvm::BasicBlock &B,
+  llvm::ConstantRange range(const llvm::BasicBlock &B,
 			    const llvm::Value &V) override;
 
   llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) override;
