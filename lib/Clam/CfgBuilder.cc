@@ -36,6 +36,7 @@
  * - Ignore floating point instructions.
  * - Ignore inttoptr/ptrtoint instructions.
  * - Ignore memset/memmove/memcpy.
+ * - Partial translation of calloc/realloc/strdup
  * - Only if tracked precision = SINGLETON_MEM: if a `LoadInst`'s lhs
  *   (`StoreInst` value operand) is a pointer then the translation
  *   ignores safely the LLVM instruction and hence, it won't add the
@@ -271,8 +272,6 @@ static Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
     return (!isNegated ? res : res.negate());
   }
   default:;
-    ;
-    ;
   }
   CLAM_ERROR("TODO: unsupported pointer comparison " << I);
   return llvm::None;
@@ -688,8 +687,9 @@ public:
       m_bb.array_store(m_lfac.mkArrayVar(rgn), lin_exp_t(offset), val,
                        elem_size, first /*strong update*/);
     } else if (m_params.trackMemory()) {
+      
       CLAM_WARNING(
-          "TODO implement global initializer if CrabBuilderPrecision::MEM");
+          "TODO(TRANSLATION) implement global initializer if CrabBuilderPrecision::MEM");
       // m_bb.havoc(m_lfac.mkRegionVar(rgn),
       // 		 "Missing initialization of " + valueToStr(Base) +
       // 		 " at offset=" + std::to_string(offset) +
@@ -1650,9 +1650,9 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
   // -- POINTER CAST
   if (isa<IntToPtrInst>(I) || isa<PtrToIntInst>(I) || isa<BitCastInst>(I)) {
     if (isa<PtrToIntInst>(I)) {
-      // CLAM_WARNING("translation skipped pointer to integer cast");
+      // TODO(TRANSLATION): ptrtoint
     } else if (isa<IntToPtrInst>(I)) {
-      // CLAM_WARNING("translation skipped integer to pointer cast");
+      // TODO(TRANSLATION): inttoptr      
     } else if (isa<BitCastInst>(I) && isReference(*I.getOperand(0), m_params)) {
 
       if (src->isRef()) {
@@ -1884,16 +1884,56 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 
 /* malloc-like functions */
 void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
+  auto addMakeRefFromVal = [&I,this](crab_lit_ref_t retRef, Region rgn, const Value &size) {
+       crab_lit_ref_t litS = m_lfac.getLit(size);
+       if (litS->isInt()) {
+	 var_or_cst_t size = (litS->isVar() ?
+			      var_or_cst_t(litS->getVar()) :
+			      var_or_cst_t(m_lfac.getIntCst(litS),
+					   crab::variable_type(INT_TYPE, 64)));
+	 m_bb.make_ref(retRef->getVar(), m_lfac.mkRegionVar(rgn), size,
+		       m_as_man.mk_tag());
+       } else {
+	 CLAM_ERROR("doAllocFn expected " << size << " to be an integer in " << I);
+       }
+  };
+  
+  auto addMakeRefWithoutSize = [&I,this](crab_lit_ref_t retRef, Region rgn) {
+	var_t size = m_lfac.mkIntVar(64);
+	m_bb.havoc(size, valueToStr(I));
+	m_bb.make_ref(retRef->getVar(), m_lfac.mkRegionVar(rgn), size,
+		      m_as_man.mk_tag());
+  };
+  
+  
   if (!I.getType()->isVoidTy()) {
-    crab_lit_ref_t lit = m_lfac.getLit(I);
-    assert(lit->isVar());
+    crab_lit_ref_t retRef = m_lfac.getLit(I);
+    assert(retRef->isVar());
     if (isReference(I, m_params)) {
       Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
-      m_bb.make_ref(lit->getVar(), m_lfac.mkRegionVar(rgn),
-		    m_as_man.mk_tag());
+      if (isMallocLikeFn(&I, m_tli) || isOpNewLikeFn(&I, m_tli)) {
+	// ptr  := malloc(size) or new(size) allocates size bytes
+	addMakeRefFromVal(retRef, rgn, *(I.getOperand(0)));
+      } else if (isCallocLikeFn(&I, m_tli)) {
+	// TODO(TRANSLATION): we ignore the size of the allocated memory which is num*size
+	// TODO(TRANSLATION): we also ignore that the new allocated memory is zeroed
+	// ptr  := calloc(num, size) allocates num*size bytes
+	addMakeRefWithoutSize(retRef, rgn);
+      } else if (isReallocLikeFn(&I, m_tli)) {
+	// ptr' := realloc(ptr, new_size)
+	// TODO(TRANSLATION): we ignore that the contents of the new allocated memory
+	addMakeRefFromVal(retRef, rgn, *(I.getOperand(1)));
+      } else if (isStrdupLikeFn(&I, m_tli)) {
+	// str' := strdup(str,...)
+	// TODO(TRANSLATION): we ignore the size of the new string
+	// TODO(TRANSLATION): we ignore that the contents of the new string	
+	addMakeRefWithoutSize(retRef, rgn);
+      } else {
+	CLAM_ERROR("unexpected allocation function " << I);
+      }
     } else if (isTracked(I, m_params)) {
       // -- havoc return value
-      havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
+      havoc(retRef->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     }
   }
 }
@@ -1914,6 +1954,7 @@ void CrabIntraBlockBuilder::doFreeFn(CallInst &I) {
 /* memcpy/memmove/memset functions */
 void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
   CLAM_WARNING("Skipped memory intrinsics " << I);
+  // TODO(TRANSLATION): memcpy/memmove/memset
   m_bb.havoc(m_lfac.mkIntVar(32), valueToStr(I));
 }
 
@@ -2367,7 +2408,7 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
     StoreIntoSingletonMem(I, m_lfac.mkArrayVar(rgn), val, rgn);
   } else if (m_params.trackMemory()) {
     // if (rgn.getRegionInfo().isSequence()) {
-    /// TODO: translate to store_to_arr_ref. This might increase precision.
+    /// TODO(TRANSLATION): translate to store_to_arr_ref. This might increase precision.
     ///
     /// The translation needs to add an ref_to_int statement if the
     /// stored value is a pointer.
@@ -2549,7 +2590,7 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
     return;
   } else if (m_params.trackMemory()) {
     // if (rgn.getRegionInfo().isSequence()) {
-    /// TODO: translate to load_from_arr_ref. This might increase precision.
+    /// TODO(TRANSLATION): translate to load_from_arr_ref. This might increase precision.
     ///
     /// The translation needs to add an int_to_ref statement if the
     /// loaded value is a pointer.
@@ -2606,9 +2647,19 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
   if (isReference(I, m_params)) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
-    m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn),
-		  m_as_man.mk_tag());
 
+    llvm::Optional<uint64_t> sizeOpt = I.getAllocationSizeInBits(*m_dl);
+    if (sizeOpt.hasValue()) {
+      m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn),
+		    var_or_cst_t(sizeOpt.getValue()/8, crab::variable_type(INT_TYPE, 64)),
+		    m_as_man.mk_tag());
+    } else {
+      var_t unknownSizeVar = m_lfac.mkIntVar(64);
+      m_bb.havoc(unknownSizeVar, "alloca with unknown size");
+      m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn),
+		    unknownSizeVar, m_as_man.mk_tag());
+    }
+    
     if (m_params.addPointerAssumptions()) {
       // pointers allocated in the stack cannot be null
       m_bb.assume_ref(ref_cst_t::mk_gt_null(lhs->getVar()));
@@ -3011,8 +3062,17 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
           // TODO: make this user optional
           entry.havoc(gv_lit->getVar(), "C string global variable");
         } else {
-          entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn),
-			 m_as_man.mk_tag());
+	  TypeSize tSize = m_dl->getTypeAllocSize(gv.getValueType());
+	  if (tSize.isScalable()) {
+	    var_t unknownSizeVar = m_lfac.mkIntVar(64);
+	    entry.havoc(unknownSizeVar, "global with unknown size");
+	    entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn),
+			   unknownSizeVar,  m_as_man.mk_tag());
+	  } else {
+	    entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn),
+			   var_or_cst_t(tSize.getFixedSize(), crab::variable_type(INT_TYPE, 64)),
+			   m_as_man.mk_tag());
+	  }
         }
       }
       if (m_params.addPointerAssumptions()) {
@@ -3052,10 +3112,12 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	crab_lit_ref_t funptr = m_lfac.getLit(F);
 	assert(funptr && funptr->isVar() && funptr->isRef());
 	Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
+
 	entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
+		       var_or_cst_t(m_dl->getPointerSizeInBits() / 8,
+				    crab::variable_type(INT_TYPE, 64)),
 		       m_as_man.mk_tag());
-	// entry.havoc(funptr->getVar(),
-	//             "Function pointer for " + F.getName().str());
+	
 	if (m_params.addPointerAssumptions()) {
 	  // Add assumptions about function addresses: all function
 	  // addresses are not null

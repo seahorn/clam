@@ -75,6 +75,55 @@ void unproven_assumption_annotation::print_begin(const statement_t &s,
   }
 }
 
+voi_annotation::voi_annotation(cfg_ref_t cfg, voi_annotation::voi_analysis_t &analyzer)
+  : block_annotation(), m_cfg(cfg), m_analyzer(analyzer) {}
+
+void voi_annotation::print_begin(const basic_block_label_t &bbl,
+				 crab::crab_os &o) const {
+  if (!bbl.get_basic_block()) {
+    // return if the crab basic block does not map to a LLVM basic block
+    return;
+  }
+  
+  using assert_map_domain_t = typename voi_annotation::voi_analysis_t::assert_map_domain_t;
+  
+  using assert_t = cfg_t::basic_block_t::assert_t;
+  using assert_ref_t = cfg_t::basic_block_t::assert_ref_t;
+  using bool_assert_t = cfg_t::basic_block_t::bool_assert_t;  
+  
+  assert_map_domain_t dom = m_analyzer.get_results(m_cfg, bbl);
+  if (dom.is_bottom() || dom.is_top()) {
+    return;
+  }
+  o << "\n    VARIABLES-OF-INFLUENCE:";
+  typename assert_map_domain_t::iterator it = dom.begin(), et = dom.end();
+  if (it == et) {
+    o << " {}";
+  } 
+  o << "\n";
+  for (;it!=et;++it)  {
+    auto const &stmt = it->first.get();
+    auto const& dbg_info = stmt.get_debug_info();
+    if (stmt.is_assert()) {
+      const assert_t *as = static_cast<const assert_t*>(&stmt);
+      o << "    assert(" << as->constraint() << ") ";
+    } else if (stmt.is_ref_assert()) {
+      const assert_ref_t *as = static_cast<const assert_ref_t*>(&stmt);
+      o << "    assert(" << as->constraint() << ") ";      
+    } else if (stmt.is_bool_assert()) {
+      const bool_assert_t *as = static_cast<const bool_assert_t*>(&stmt);
+      o << "    assert(" << as->cond() << ") ";      
+    }
+    o << "loc("
+      << "file=" << dbg_info.get_file() << " "
+      << "line=" << dbg_info.get_line() << " "
+      << "col="  << dbg_info.get_column()
+      << ") ";
+    o << it->second << "\n";
+  }
+}
+
+  
 print_block::print_block(
     cfg_ref_t cfg, crab::crab_os &o,
     const typename IntraClam::checks_db_t &checksdb,

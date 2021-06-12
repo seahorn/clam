@@ -8,9 +8,18 @@
 namespace clam {
 using namespace llvm;
 
-static ClamQueryAPI::Range getFullRange() {
-  return std::make_pair(std::numeric_limits<int64_t>::min(),
-                        std::numeric_limits<int64_t>::max());
+static ConstantRange getFullRange() {
+  return ConstantRange::getFull(64);
+}
+
+static ConstantRange getConstantRange(int64_t lower, int64_t upper) {
+  const bool isSigned = true;
+  if (lower == upper) {
+    return ConstantRange(APInt(64, lower, isSigned));
+  } else {
+    return ConstantRange(APInt(64, lower, isSigned),
+			 APInt(64, upper+1, isSigned));
+  }
 }
 
 static bool match(const Instruction &I, statement_t &s) {
@@ -34,8 +43,8 @@ AliasResult ClamQueryCache::alias(const MemoryLocation &loc1,
   return AliasResult::MayAlias;
 }
 
-ClamQueryAPI::Range
-ClamQueryCache::range(const llvm::Instruction &I,
+ConstantRange
+ClamQueryCache::range(const Instruction &I,
                       Optional<clam_abstract_domain> invAtEntry) {
   auto it = m_range_inst_cache.find(&I);
   if (it != m_range_inst_cache.end()) {
@@ -61,7 +70,7 @@ ClamQueryCache::range(const llvm::Instruction &I,
 	crabStmt.accept(&vis); // propagate the invariant one statement forward
 	const clam_abstract_domain &nextInv = vis.get_abs_value();
 	if (match(I, crabStmt)) {
-	  llvm::Optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(I);
+	  Optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(I);
 	  if (crabVar.hasValue()) {
 	    clam_abstract_domain tmp(nextInv);
 	    auto crabInterval = tmp[crabVar.getValue()];
@@ -69,8 +78,8 @@ ClamQueryCache::range(const llvm::Instruction &I,
 	      auto min = *(crabInterval.lb().number());
 	      auto max = *(crabInterval.ub().number());
 	      if (min.fits_int64() && max.fits_int64()) {
-		auto interval = std::make_pair((int64_t)min, (int64_t)max);
-		m_range_inst_cache[&I] = interval;
+		ConstantRange interval = getConstantRange((int64_t)min, (int64_t)max);
+		m_range_inst_cache.insert(std::make_pair(&I, interval));
 		return interval;
 	      }
 	    }
@@ -82,8 +91,8 @@ ClamQueryCache::range(const llvm::Instruction &I,
   return getFullRange();
 }
 
-ClamQueryAPI::Range
-ClamQueryCache::range(const llvm::BasicBlock &BB, const llvm::Value &V,
+ConstantRange
+ClamQueryCache::range(const BasicBlock &BB, const Value &V,
                       Optional<clam_abstract_domain> invAtEntry) {
   auto it = m_range_value_cache.find({&BB, &V});
   if (it != m_range_value_cache.end()) {
@@ -93,16 +102,16 @@ ClamQueryCache::range(const llvm::BasicBlock &BB, const llvm::Value &V,
   if (invAtEntry.hasValue()) {
     const Function &F = *(BB.getParent());
     auto crabCfgBuilder = m_crab_builder_man.getCfgBuilder(F);    
-    llvm::Optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(V);
+    Optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(V);
     if (crabVar.hasValue()) {
       auto crabInterval = invAtEntry.getValue()[crabVar.getValue()];
       if (crabInterval.lb().is_finite() && crabInterval.ub().is_finite()) {
         auto min = *(crabInterval.lb().number());
         auto max = *(crabInterval.ub().number());
         if (min.fits_int64() && max.fits_int64()) {
-          auto interval = std::make_pair((int64_t)min, (int64_t)max);
-          auto k = std::make_pair(&BB, &V);
-          m_range_value_cache[k] = interval;
+	  ConstantRange interval = getConstantRange((int64_t)min, (int64_t)max);
+          m_range_value_cache.insert(std::make_pair(std::make_pair(&BB, &V),
+						    interval));
           return interval;
         }
       }
@@ -112,7 +121,7 @@ ClamQueryCache::range(const llvm::BasicBlock &BB, const llvm::Value &V,
 }
 
 Optional<ClamQueryAPI::TagVector>
-ClamQueryCache::tags(const llvm::Instruction &I,
+ClamQueryCache::tags(const Instruction &I,
 		     Optional<clam_abstract_domain> invAtEntry) {
 
   auto it = m_tag_inst_cache.find(&I);
@@ -140,8 +149,8 @@ ClamQueryCache::tags(const llvm::Instruction &I,
 	const clam_abstract_domain &nextInv = vis.get_abs_value();
 	if (match(I, crabStmt)) {
 	  clam_abstract_domain tmp(nextInv);
-	  llvm::Optional<var_t> crabRefVar = crabCfgBuilder->getCrabVariable(I);
-	  llvm::Optional<var_t> crabRgnVar = crabCfgBuilder->getCrabRegionVariable(fParent, I);	
+	  Optional<var_t> crabRefVar = crabCfgBuilder->getCrabVariable(I);
+	  Optional<var_t> crabRgnVar = crabCfgBuilder->getCrabRegionVariable(fParent, I);	
 	  if (crabRefVar.hasValue() && crabRgnVar.hasValue()) {
 	    std::vector<uint64_t> tags;
 	    bool known = invAtEntry.getValue().get_tags(crabRgnVar.getValue(),
@@ -161,7 +170,7 @@ ClamQueryCache::tags(const llvm::Instruction &I,
 }
 
 Optional<ClamQueryAPI::TagVector>
-ClamQueryCache::tags(const llvm::BasicBlock &BB, const llvm::Value &V,
+ClamQueryCache::tags(const BasicBlock &BB, const Value &V,
 		     Optional<clam_abstract_domain> invAtEntry) {
 
   auto it = m_tag_value_cache.find({&BB, &V});
@@ -172,8 +181,8 @@ ClamQueryCache::tags(const llvm::BasicBlock &BB, const llvm::Value &V,
   if (invAtEntry.hasValue()) {
     const Function &F = *(BB.getParent());
     CfgBuilderPtr cfgBuilder =  m_crab_builder_man.getCfgBuilder(F);
-    llvm::Optional<var_t> crabRgnVar = cfgBuilder->getCrabRegionVariable(F, V);
-    llvm::Optional<var_t> crabRefVar = cfgBuilder->getCrabVariable(V);
+    Optional<var_t> crabRgnVar = cfgBuilder->getCrabRegionVariable(F, V);
+    Optional<var_t> crabRefVar = cfgBuilder->getCrabVariable(V);
     if (crabRgnVar.hasValue() && crabRefVar.hasValue()) {
       std::vector<uint64_t> tags;
       bool known = invAtEntry.getValue().get_tags(crabRgnVar.getValue(),

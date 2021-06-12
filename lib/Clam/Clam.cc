@@ -41,6 +41,7 @@
 #include "crab/config.h"
 #include "crab/analysis/bwd_analyzer.hpp"
 #include "crab/analysis/dataflow/assumptions.hpp"
+#include "crab/analysis/dataflow/assertion_crawler.hpp"
 #include "crab/analysis/fwd_analyzer.hpp"
 #include "crab/analysis/inter/top_down_inter_analyzer.hpp"
 #include "crab/cfg/cfg_to_dot.hpp"
@@ -91,8 +92,10 @@ using path_analyzer_t =
 using block_annotation_t = crab_pretty_printer::block_annotation; // super class
 using invariant_annotation_t = crab_pretty_printer::invariant_annotation;
 using unproven_assume_annotation_t = crab_pretty_printer::unproven_assumption_annotation;
+using voi_annotation_t = crab_pretty_printer::voi_annotation;  
 //using assumption_analysis_t = crab::analyzer::assumption_naive_analysis<cfg_ref_t>;
 using assumption_analysis_t = crab::analyzer::assumption_dataflow_analysis<cfg_ref_t>;
+using voi_analysis_t = crab::analyzer::inter_assertion_crawler<cg_t>;
 /** =========== End typedefs =============**/
 
 class AnalysisResults {
@@ -396,6 +399,7 @@ private:
             std::make_unique<unproven_assume_annotation_t>(
                 m_cfg_builder->getCfg(), unproven_assumption_analyzer));
       }
+      
       crab_pretty_printer::print_annotations(
           m_cfg_builder->getCfg(), results.checksdb, pool_annotations);
     }
@@ -627,11 +631,11 @@ public:
     return m_query_cache.alias(l1, l2, AAQI);
   }
   
-  ClamQueryAPI::Range range(const Instruction &I) {
+  ConstantRange range(const Instruction &I) {
     return m_query_cache.range(I, getPre(I.getParent(), false));
   }
   
-  ClamQueryAPI::Range range(const BasicBlock &B, const Value &V) {
+  ConstantRange range(const BasicBlock &B, const Value &V) {
     return m_query_cache.range(B, V, getPre(&B, false));
   }
 
@@ -731,11 +735,11 @@ public:
     return m_query_cache.alias(l1, l2, AAQI);    
   }
   
-  ClamQueryAPI::Range range(const Instruction &I) {
+  ConstantRange range(const Instruction &I) {
     return m_query_cache.range(I, getPre(I.getParent(), false));    
   }
   
-  ClamQueryAPI::Range range(const BasicBlock &B, const Value &V) {
+  ConstantRange range(const BasicBlock &B, const Value &V) {
     return m_query_cache.range(B, V, getPre(&B, false));    
   }
 
@@ -877,11 +881,17 @@ private:
       results.checksdb += analyzer.get_all_checks();
     }
 
-    if (!params.store_invariants && !params.print_invars) {
+    if (!params.store_invariants && !params.print_invars && !params.print_voi) {
       // nothing else to do
       return;
     }
-	
+
+    std::unique_ptr<voi_analysis_t> voi = nullptr;
+    if (params.print_voi) {
+      voi.reset(new voi_analysis_t(*m_cg, true /*only data*/, true /*ignore region offsets*/));
+      voi->run();
+    }
+    
     for (auto &n : llvm::make_range(vertices(*m_cg))) {
       cfg_ref_t cfg = n.get_cfg();
       if (const Function *F = m_M.getFunction(n.name())) {
@@ -899,7 +909,7 @@ private:
 	    //   evaluation of the assume.
 	    if (analyzer.get_post(cfg, bl).is_bottom()) {
 	      results.infeasible_edges.insert(
-					      {bl.get_edge().first, bl.get_edge().second});
+			 {bl.get_edge().first, bl.get_edge().second});
 	    }
 	  } else if (const BasicBlock *B = bl.get_basic_block()) {
 	    // --- invariants that hold at the entry of the blocks
@@ -918,27 +928,32 @@ private:
 			<< "Finished storing analysis results for "
 			<< F->getName().str() << ".\n");
 
-	// --- print invariants for F
-	if (params.print_invars && isTrackable(*F)) {
+
+	if ((params.print_invars || params.print_voi) && isTrackable(*F)) {
 	  if (cfg.has_func_decl()) {
 	    auto fdecl = cfg.get_func_decl();
 	    crab::outs() << "\n" << fdecl << "\n";
 	  } else {
-	    llvm::outs() << "\n"
-			 << "function " << F->getName() << "\n";
+	    llvm::outs() << "\n" << "function " << F->getName() << "\n";
 	  }
-	  
-	  std::vector<varname_t> shadow_varnames;
-	  if (!params.keep_shadow_vars) {
-	    shadow_varnames = std::vector<varname_t>(
-                  m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
-                  m_crab_builder_man.getVarFactory().get_shadow_vars().end());
-	  }
+
 	  std::vector<std::unique_ptr<block_annotation_t>> annotations;
-	  annotations.emplace_back(std::make_unique<invariant_annotation_t>(
+	  // --- print invariants 
+	  if (params.print_invars) {
+	    std::vector<varname_t> shadow_varnames;
+	    if (!params.keep_shadow_vars) {
+	      shadow_varnames = std::vector<varname_t>(
+                   m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
+                   m_crab_builder_man.getVarFactory().get_shadow_vars().end());
+	    }
+	    annotations.emplace_back(std::make_unique<invariant_annotation_t>(
                 results.premap, results.postmap, shadow_varnames, &lookup));
-	  crab_pretty_printer::print_annotations(cfg, results.checksdb,
-						 annotations);
+	  }
+	  // -- cone of influence of each assertion
+	  if (params.print_voi) {
+	    annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
+	  }
+	  crab_pretty_printer::print_annotations(cfg, results.checksdb, annotations);
 	}
       }
     }
@@ -994,11 +1009,11 @@ AliasResult IntraGlobalClam::alias(const MemoryLocation &l1, const MemoryLocatio
   return m_impl->alias(l1, l2, AAQI);
 }
   
-ClamQueryAPI::Range IntraGlobalClam::range(const Instruction &I) {
+ConstantRange IntraGlobalClam::range(const Instruction &I) {
   return m_impl->range(I);
 }
   
-ClamQueryAPI::Range IntraGlobalClam::range(const BasicBlock &B, const Value &V) {
+ConstantRange IntraGlobalClam::range(const BasicBlock &B, const Value &V) {
   return m_impl->range(B, V);
 }
 
@@ -1062,11 +1077,11 @@ AliasResult InterGlobalClam::alias(const MemoryLocation &l1, const MemoryLocatio
   return m_impl->alias(l1, l2, AAQI);
 }
   
-ClamQueryAPI::Range InterGlobalClam::range(const Instruction &I) {
+ConstantRange InterGlobalClam::range(const Instruction &I) {
   return m_impl->range(I);
 }
   
-ClamQueryAPI::Range InterGlobalClam::range(const BasicBlock &B, const Value &V) {
+ConstantRange InterGlobalClam::range(const BasicBlock &B, const Value &V) {
   return m_impl->range(B, V);
 }
 
@@ -1173,6 +1188,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.stats = crab::CrabStatsFlag /*CrabStats*/;
   m_params.print_invars = CrabPrintInvariants;
   m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
+  m_params.print_voi = CrabPrintVoi;
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;
   m_params.check = CrabCheck;

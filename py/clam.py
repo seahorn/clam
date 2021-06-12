@@ -410,9 +410,12 @@ def parseArgs(argv):
     add_bool_argument(p, 'crab-print-invariants',
                     help='Print invariants',
                     dest='crab_print_invariants', default=True)
-    p.add_argument('--crab-print-unjustified-assumptions',
+    add_bool_argument(p, 'crab-print-unjustified-assumptions',
                     help='Print unjustified assumptions done by the analyzer (experimental, only for integer overflows)',
-                    dest='print_assumptions', default=False, action='store_true')
+                    dest='print_assumptions', default=False)
+    add_bool_argument(p, 'crab-print-voi',
+                    help='Print variables-of-influence of assertions',
+                    dest='print_voi', default=False)
     p.add_argument('--crab-stats',
                     help='Display crab statistics',
                     dest='print_stats', default=False, action='store_true')
@@ -879,6 +882,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.print_cfg: clam_args.append('--crab-print-cfg')
     if args.print_stats: clam_args.append('--crab-stats')
     if args.print_assumptions: clam_args.append('--crab-print-unjustified-assumptions')
+    if args.print_voi: clam_args.append('--crab-print-voi')
     if args.crab_disable_warnings:
         clam_args.append('--crab-enable-warnings=false')
     if args.crab_sanity_checks: clam_args.append('--crab-sanity-checks')
