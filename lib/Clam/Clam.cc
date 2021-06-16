@@ -205,6 +205,11 @@ public:
       } else {
         m_cfg_builder = man.getCfgBuilder(m_fun);
       }
+      
+      if (man.getCfgBuilderParams().dot_cfg) {
+	auto &cfg = man.getCfg(m_fun);
+	crab::cfg::cfg_to_dot(cfg);
+      }
     } else {
       // CRAB_VERBOSE_IF(1, llvm::outs() << "Cannot build CFG for "
       //                                << fun.getName() << "\n");
@@ -312,14 +317,15 @@ private:
                    const lin_csts_map_t &lin_csts_assumptions,
                    const liveness_t *live, AnalysisResults &results) {
 
-    CRAB_VERBOSE_IF(1, auto fdecl = m_cfg_builder->getCfg().get_func_decl();
+    auto &cfg = m_cfg_builder->getCfg();
+    CRAB_VERBOSE_IF(1, auto fdecl = cfg.get_func_decl();
                     crab::get_msg_stream()
                     << "Running intra-procedural analysis with "
                     << "\"" << entry_abs.domain_name() << "\""
                     << " for " << fdecl.get_func_name() << "  ... \n";);
 
     // -- run intra-procedural analysis
-    intra_analyzer_t analyzer(m_cfg_builder->getCfg(), entry_abs);
+    intra_analyzer_t analyzer(cfg, entry_abs);
     typename intra_analyzer_t::assumption_map_t crab_assumptions;
 
     // Reconstruct a crab assumption map from an abs_dom_map_t
@@ -361,9 +367,7 @@ private:
     // -- store invariants
     if (params.store_invariants || params.print_invars) {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing analysis results.\n");
-      for (basic_block_label_t bl :
-           llvm::make_range(m_cfg_builder->getCfg().label_begin(),
-                            m_cfg_builder->getCfg().label_end())) {
+      for (basic_block_label_t bl : llvm::make_range(cfg.label_begin(), cfg.label_end())) {
         if (bl.is_edge()) {
           // Note that we use get_post instead of get_pre:
           //   the crab block (bl) has an assume statement corresponding
@@ -394,7 +398,7 @@ private:
       std::vector<std::unique_ptr<block_annotation_t>> annotations;
       std::vector<varname_t> shadow_varnames;
       crab::crab_string_os output_str;
-      assumption_analysis_t unproven_assumption_analyzer(m_cfg_builder->getCfg());
+      assumption_analysis_t unproven_assumption_analyzer(cfg);
       
       if (params.print_invars) {
         if (!params.keep_shadow_vars) {
@@ -411,12 +415,12 @@ private:
         unproven_assumption_analyzer.exec();
         annotations.emplace_back(
             std::make_unique<unproven_assume_annotation_t>(
-                m_cfg_builder->getCfg(), unproven_assumption_analyzer));
+                cfg, unproven_assumption_analyzer));
       }
 
       crab_pretty_printer::print_annotated_cfg(
 	   (params.output_filename != "" ? output_str : crab::outs()),
-	   m_cfg_builder->getCfg(), results.checksdb, annotations);
+	   cfg, results.checksdb, annotations);
 
       if (params.output_filename != "") {
 	StringRef ext = sys::path::extension(params.output_filename);			
@@ -429,7 +433,7 @@ private:
 	output->keep();
       }
     }
-
+    
     return;
   }
 
@@ -704,6 +708,10 @@ public:
         }
         cfg_t *cfg = &(m_crab_builder_man.getCfg(F));
         cfg_ref_vector.push_back(*cfg);
+
+	if(man.getCfgBuilderParams().dot_cfg) {
+	  crab::cfg::cfg_to_dot(*cfg);
+	}
       }
     }
     // build call graph
@@ -961,27 +969,28 @@ private:
 			<< F->getName().str() << ".\n");
 
 
-	if (isTrackable(*F) &&
-	    (params.output_filename != "" || params.print_invars || params.print_voi)) {
-	  std::vector<std::unique_ptr<block_annotation_t>> annotations;
-	  std::vector<varname_t> shadow_varnames;	  
-	  // --- print invariants 
-	  if (params.print_invars) {
-	    if (!params.keep_shadow_vars) {
-	      shadow_varnames = std::vector<varname_t>(
-                   m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
-                   m_crab_builder_man.getVarFactory().get_shadow_vars().end());
+	if (isTrackable(*F)) {
+	  if (params.output_filename != "" || params.print_invars || params.print_voi) {
+	    std::vector<std::unique_ptr<block_annotation_t>> annotations;
+	    std::vector<varname_t> shadow_varnames;	  
+	    // --- print invariants 
+	    if (params.print_invars) {
+	      if (!params.keep_shadow_vars) {
+		shadow_varnames = std::vector<varname_t>(
+		       m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
+		       m_crab_builder_man.getVarFactory().get_shadow_vars().end());
+	      }
+	      annotations.emplace_back(std::make_unique<invariant_annotation_t>(
+		       results.premap, results.postmap, shadow_varnames, &lookup));
 	    }
-	    annotations.emplace_back(std::make_unique<invariant_annotation_t>(
-                results.premap, results.postmap, shadow_varnames, &lookup));
+	    // -- variables of interest that might affect each assertion
+	    if (params.print_voi) {
+	      annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
+	    }
+	    
+	    crab_pretty_printer::print_annotated_cfg((output ? output_str: crab::outs()),
+						     cfg, results.checksdb, annotations);
 	  }
-	  // -- variables of interest that might affect each assertion
-	  if (params.print_voi) {
-	    annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
-	  }
-	  
-	  crab_pretty_printer::print_annotated_cfg((output ? output_str: crab::outs()),
-						   cfg, results.checksdb, annotations);
 	}
       }
     } // end for
@@ -1237,42 +1246,42 @@ bool ClamPass::runOnModule(Module &M) {
   m_ga->analyze(m_params, abs_dom_assumptions);
 
   
-  if (builder_params.dot_cfg) {
-    for (auto &F : M) {
-      if (m_cfg_builder_man->hasCfg(F)) {
-        cfg_t &cfg = m_cfg_builder_man->getCfg(F);
-#if 1
-	// Print invariants 
-        auto pre_fn = [this](const basic_block_label_t &node)
-            -> boost::optional<clam_abstract_domain> {
-          if (const BasicBlock *BB = node.get_basic_block()) {
-            llvm::Optional<clam_abstract_domain> res = getPre(BB);
-            if (res.hasValue()) {
-              return res.getValue();
-            }
-          }
-          return boost::optional<clam_abstract_domain>();
-        };
-        auto post_fn = [this](const basic_block_label_t &node)
-            -> boost::optional<clam_abstract_domain> {
-          if (const BasicBlock *BB = node.get_basic_block()) {
-            llvm::Optional<clam_abstract_domain> res = getPost(BB);
-            if (res.hasValue()) {
-              return res.getValue();
-            }
-          }
-          return boost::optional<clam_abstract_domain>();
-        };
+//   if (builder_params.dot_cfg) {
+//     for (auto &F : M) {
+//       if (m_cfg_builder_man->hasCfg(F)) {
+//         cfg_t &cfg = m_cfg_builder_man->getCfg(F);
+// #if 1
+// 	// Print invariants 
+//         auto pre_fn = [this](const basic_block_label_t &node)
+//             -> boost::optional<clam_abstract_domain> {
+//           if (const BasicBlock *BB = node.get_basic_block()) {
+//             llvm::Optional<clam_abstract_domain> res = getPre(BB);
+//             if (res.hasValue()) {
+//               return res.getValue();
+//             }
+//           }
+//           return boost::optional<clam_abstract_domain>();
+//         };
+//         auto post_fn = [this](const basic_block_label_t &node)
+//             -> boost::optional<clam_abstract_domain> {
+//           if (const BasicBlock *BB = node.get_basic_block()) {
+//             llvm::Optional<clam_abstract_domain> res = getPost(BB);
+//             if (res.hasValue()) {
+//               return res.getValue();
+//             }
+//           }
+//           return boost::optional<clam_abstract_domain>();
+//         };
 
-	crab::cfg::cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn,
-							   m_ga->getChecksDB());
-#else
-	// Only CFG
-	crab::cfg::cfg_to_dot(cfg);
-#endif
-      }
-    }
-  }  
+// 	crab::cfg::cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn,
+// 							   m_ga->getChecksDB());
+// #else
+// 	// Only CFG
+// 	crab::cfg::cfg_to_dot(cfg);
+// #endif
+//       }
+//     }
+//   }
   
   if (m_params.check != CheckerKind::NOCHECKS) {
     llvm::outs() << "\n************** ANALYSIS RESULTS ****************\n";
