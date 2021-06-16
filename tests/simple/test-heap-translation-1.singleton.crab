@@ -1,4 +1,4 @@
-; RUN: %clam -O0 --crab-inter --crab-track=sing-mem --crab-only-cfg --crab-print-cfg \
+; RUN: %clam -O0 --crab-inter --crab-track=sing-mem --crab-only-cfg --crab-print-cfg=true \
 ; RUN:           --crab-singleton-aliases \ 
 ; RUN:           "%S/test-heap-translation-1.c" 2>&1 | OutputCheck %s --comment=";"
 

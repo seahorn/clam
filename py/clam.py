@@ -6,10 +6,12 @@ Entry point to Clam Abstract Interpreter
 
 import argparse as a
 import atexit
+#from datetime import datetime
 import errno
 import io
 import os
 import os.path
+import platform
 import resource
 import shutil
 import subprocess as sub
@@ -22,7 +24,6 @@ import threading
 
 root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 verbose = True
-
 running_process = None
 
 ####### SPECIAL ERROR CODES USEFUL FOR DEBUGGING ############
@@ -182,6 +183,8 @@ def parseArgs(argv):
                          formatter_class=a.RawTextHelpFormatter)
     p.add_argument ('-oll', '--oll', dest='asm_out_name', metavar='FILE',
                     help='Output analyzed bitecode')
+    p.add_argument ('-ocrab', '--ocrab', dest='crab_out_name', metavar='FILE',
+                    help='Output analyzed CrabIR with (optionally) annotations')
     p.add_argument('--log', dest='log', default=None,
                     metavar='STR', help='Log level for clam')
     p.add_argument('-o', dest='out_name', metavar='FILE',
@@ -401,9 +404,9 @@ def parseArgs(argv):
                    #help='Display computed summaries (if --crab-inter)',
                    help=a.SUPPRESS,
                    dest='print_summs', default=False, action='store_true')
-    p.add_argument('--crab-print-cfg',
-                    help='Display crab CFG',
-                    dest='print_cfg', default=False, action='store_true')
+    add_bool_argument(p, 'crab-print-cfg',
+                    help='Display Crab CFG',
+                    dest='print_cfg', default=False)
     add_bool_argument(p, 'crab-dot-cfg', default=False,
                       help='Print Crab CFG of function to dot file',
                       dest='crab_dot_cfg')
@@ -466,8 +469,8 @@ def createWorkDir(dname = None, save = False):
     else:
         workdir = dname
 
-    if verbose:
-        print("Working directory ".format(workdir))
+    if False: #verbose:
+        print("Working directory {0}".format(workdir))
 
     if not save:
         atexit.register(shutil.rmtree, path=workdir)
@@ -625,7 +628,7 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
             break
 
     if verbose:
-        print(' '.join(clang_args))
+        print('Clang command: ' + ' '.join(clang_args))
     returnvalue, timeout, out_of_mem, segfault, unknown = \
         run_command_with_limits(clang_args, -1, -1)
     if timeout:
@@ -689,7 +692,7 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     opt_args.append(in_name)
 
     if verbose:
-        print(' '.join(opt_args))
+        print('seaopt command: ' + ' '.join(opt_args))
     returnvalue, timeout, out_of_mem, _, unknown = \
         run_command_with_limits(opt_args, cpu, mem)
     if timeout:
@@ -764,7 +767,7 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
 
     crabpp_args.extend(extra_args)
     if verbose:
-        print(' '.join(crabpp_args))
+        print('clam-pp command: ' + ' '.join(crabpp_args))
     returnvalue, timeout, out_of_mem, segfault, unknown = \
         run_command_with_limits(crabpp_args, cpu, mem)
     if timeout:
@@ -787,10 +790,16 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     # for now, there is no option to undo this switch
     clam_args.append('--simplifycfg-sink-common=false')
 
+    if args.only_preprocess:
+        clam_args.append('-no-crab')
     if args.crab_verbose:
         clam_args.append('--crab-verbose={0}'.format(args.crab_verbose))
     if args.crab_only_cfg:
         clam_args.append('--crab-only-cfg')
+    if args.dot_cfg:
+        clam_args.append('--clam-llvm-cfg-dot')
+
+        
     ## This option already run in crabpp
     if args.undef_nondet: clam_args.append( '--crab-turn-undef-nondet')
 
@@ -879,7 +888,10 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.check_verbose:
         clam_args.append('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.print_summs: clam_args.append('--crab-print-summaries')
-    if args.print_cfg: clam_args.append('--crab-print-cfg')
+    if args.print_cfg:
+        clam_args.append('--crab-print-cfg=true')
+    else:
+        clam_args.append('--crab-print-cfg=false')
     if args.print_stats: clam_args.append('--crab-stats')
     if args.print_assumptions: clam_args.append('--crab-print-unjustified-assumptions')
     if args.print_voi: clam_args.append('--crab-print-voi')
@@ -899,6 +911,9 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-dot-cfg=true')
     else:
         clam_args.append('--crab-dot-cfg=false')
+    if args.crab_out_name is not None:
+        clam_args.append('--ocrab={0}'.format(args.crab_out_name))
+        
     # begin hidden options
     if args.crab_dsa_unknown: clam_args.append('--crab-dsa-disambiguate-unknown')
     if args.crab_dsa_ptr_cast: clam_args.append('--crab-dsa-disambiguate-ptr-cast')
@@ -915,7 +930,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     # end hidden options
 
     if verbose:
-        print(' '.join(clam_args))
+        print('clam command: ' + ' '.join(clam_args))
 
     if args.out_name is not None:
         clam_args.append('-o={0}'.format(args.out_name))
@@ -955,6 +970,11 @@ def main(argv):
         print("Clang version " + getClangVersion(getClang(False)))
         return 0
 
+
+    print("Platform: {0} {1}".format(platform.system(), platform.release()))
+    print("LLVM version: {0}".format(llvm_version))
+    #print("Clam started at {0}\n\n".format(datetime.now().strftime("%H:%M:%S")))
+          
     args  = parseArgs(argv[1:])
     workdir = createWorkDir(args.temp_dir, args.save_temps)
     in_name = args.file
@@ -988,20 +1008,16 @@ def main(argv):
     pp_out = defOutPPName(in_name, workdir)
     with stats.timer('Clam'):
         extra_opts = []
-        if args.only_preprocess:
-            extra_opts.append('-no-crab')
-        if args.dot_cfg:
-            extra_opts.append('--clam-llvm-cfg-dot')
-
         clam(in_name, pp_out, args, extra_opts, cpu=args.cpu, mem=args.mem)
 
     #stat('Progress', 'Clam')
 
     if args.asm_out_name is not None and args.asm_out_name != pp_out:
-        if verbose:
+        if False: #verbose:
             print('cp {0} {1}'.format(pp_out, args.asm_out_name))
         shutil.copy2(pp_out, args.asm_out_name)
 
+    #print("\nClam finished at {0}\n".format(datetime.now().strftime("%H:%M:%S")))        
     return 0
 
 def killall():

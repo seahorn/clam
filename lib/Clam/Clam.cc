@@ -14,7 +14,9 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 
 #include "clam/config.h"
@@ -88,12 +90,11 @@ using inter_analyzer_t =
 // -- path analyzer
 using path_analyzer_t =
     crab::analyzer::path_analyzer<cfg_ref_t, clam_abstract_domain>;
-// -- for pretty-printing results
+// -- for pretty-printing 
 using block_annotation_t = crab_pretty_printer::block_annotation; // super class
 using invariant_annotation_t = crab_pretty_printer::invariant_annotation;
 using unproven_assume_annotation_t = crab_pretty_printer::unproven_assumption_annotation;
 using voi_annotation_t = crab_pretty_printer::voi_annotation;  
-//using assumption_analysis_t = crab::analyzer::assumption_naive_analysis<cfg_ref_t>;
 using assumption_analysis_t = crab::analyzer::assumption_dataflow_analysis<cfg_ref_t>;
 using voi_analysis_t = crab::analyzer::inter_assertion_crawler<cg_t>;
 /** =========== End typedefs =============**/
@@ -120,6 +121,25 @@ public:
 
 static bool isTrackable(const Function &fun) {
   return !fun.isDeclaration() && !fun.empty() && !fun.isVarArg();
+}
+
+static std::unique_ptr<llvm::ToolOutputFile> openOutputFile(StringRef filename) {
+  std::error_code error_code;
+  auto output = std::make_unique<llvm::ToolOutputFile>
+    (filename, error_code, llvm::sys::fs::F_None); 
+  if (error_code) {
+    if (llvm::errs().has_colors()) {
+      llvm::errs().changeColor(llvm::raw_ostream::RED);
+    } 
+    llvm::errs() << "CLAM ERROR: could not open " << filename  << ": "
+		 << error_code.message() << "\n";
+    if (llvm::errs().has_colors()) {
+      llvm::errs().resetColor();
+    }
+    return nullptr;
+  } else {
+    return output;
+  }
 }
 
 /** return invariant for block in table but filtering out shadow_varnames **/
@@ -229,7 +249,7 @@ public:
     }
 
     if (DomainRegistry::count(params.dom)) {
-      crabAnalyze(params, entry, DomainRegistry::at(params.dom),
+      analyzeImpl(params, entry, DomainRegistry::at(params.dom),
                   abs_dom_assumptions, lin_csts_assumptions,
                   (params.run_liveness) ? live : nullptr, results);
     } else {
@@ -260,7 +280,7 @@ public:
 
     bool res = true;
     if (DomainRegistry::count(params.dom)) {
-      crabPathAnalyze(path, DomainRegistry::at(params.dom), core,
+      pathAnalyzeImpl(path, DomainRegistry::at(params.dom), core,
                       layered_solving, populate_inv_map, post, res);
     } else {
       CLAM_ERROR("Path analysis for  " << params.dom.name() << " not found.");
@@ -286,7 +306,7 @@ private:
   edges_set m_infeasible_edges;
   checks_db_t m_checks_db;
   
-  void crabAnalyze(const AnalysisParams &params, const BasicBlock *entry,
+  void analyzeImpl(const AnalysisParams &params, const BasicBlock *entry,
                    clam_abstract_domain entry_abs,
                    const abs_dom_map_t &abs_dom_assumptions,
                    const lin_csts_map_t &lin_csts_assumptions,
@@ -369,46 +389,52 @@ private:
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished storing analysis results.\n");
     }
 
-    // -- print all cfg annotations (if any)
-    if (params.print_invars || params.print_unjustified_assumptions) {
-      std::vector<std::unique_ptr<block_annotation_t>> pool_annotations;
-      if (m_cfg_builder->getCfg().has_func_decl()) {
-        auto fdecl = m_cfg_builder->getCfg().get_func_decl();
-        crab::outs() << "\n" << fdecl << "\n";
-      } else {
-        llvm::outs() << "\n"
-                     << "function " << m_fun.getName() << "\n";
-      }
+    // -- Print annotated CFG
+    if (params.output_filename != "" || params.print_invars || params.print_unjustified_assumptions) {
+      std::vector<std::unique_ptr<block_annotation_t>> annotations;
+      std::vector<varname_t> shadow_varnames;
+      crab::crab_string_os output_str;
+      assumption_analysis_t unproven_assumption_analyzer(m_cfg_builder->getCfg());
+      
       if (params.print_invars) {
-        std::vector<varname_t> shadow_varnames;
         if (!params.keep_shadow_vars) {
           shadow_varnames = std::vector<varname_t>(
-              m_vfac.get_shadow_vars().begin(), m_vfac.get_shadow_vars().end());
+	     m_vfac.get_shadow_vars().begin(), m_vfac.get_shadow_vars().end());
         }
-        pool_annotations.emplace_back(std::make_unique<invariant_annotation_t>(
+        annotations.emplace_back(std::make_unique<invariant_annotation_t>(
             results.premap, results.postmap, shadow_varnames, &lookup));
       }
 
-      // XXX: it must be alive when print_annotations is called.
-      assumption_analysis_t unproven_assumption_analyzer(
-          m_cfg_builder->getCfg());
+      
       if (params.print_unjustified_assumptions) {
         // -- run first the analysis
         unproven_assumption_analyzer.exec();
-        pool_annotations.emplace_back(
+        annotations.emplace_back(
             std::make_unique<unproven_assume_annotation_t>(
                 m_cfg_builder->getCfg(), unproven_assumption_analyzer));
       }
-      
-      crab_pretty_printer::print_annotations(
-          m_cfg_builder->getCfg(), results.checksdb, pool_annotations);
+
+      crab_pretty_printer::print_annotated_cfg(
+	   (params.output_filename != "" ? output_str : crab::outs()),
+	   m_cfg_builder->getCfg(), results.checksdb, annotations);
+
+      if (params.output_filename != "") {
+	StringRef ext = sys::path::extension(params.output_filename);			
+	std::string output_filename(params.output_filename);
+	StringRef output_filename_ref(output_filename);
+	SmallString<128> path(output_filename_ref);
+	sys::path::replace_extension(path, m_fun.getName() + ext);
+	std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(path.str());
+	output->os() << output_str.str();
+	output->keep();
+      }
     }
 
     return;
   }
 
   // res is false iff the analysis of the path implies bottom
-  void crabPathAnalyze(const std::vector<basic_block_label_t> &path,
+  void pathAnalyzeImpl(const std::vector<basic_block_label_t> &path,
                        clam_abstract_domain init,
                        std::vector<statement_t *> &core, bool layered_solving,
                        bool populate_inv_map, abs_dom_map_t &post,
@@ -891,6 +917,12 @@ private:
       voi.reset(new voi_analysis_t(*m_cg, true /*only data*/, true /*ignore region offsets*/));
       voi->run();
     }
+
+    std::unique_ptr<llvm::ToolOutputFile> output = nullptr;
+    crab::crab_string_os output_str;
+    if (params.output_filename != "") {
+      output = openOutputFile(params.output_filename);
+    }
     
     for (auto &n : llvm::make_range(vertices(*m_cg))) {
       cfg_ref_t cfg = n.get_cfg();
@@ -929,18 +961,12 @@ private:
 			<< F->getName().str() << ".\n");
 
 
-	if ((params.print_invars || params.print_voi) && isTrackable(*F)) {
-	  if (cfg.has_func_decl()) {
-	    auto fdecl = cfg.get_func_decl();
-	    crab::outs() << "\n" << fdecl << "\n";
-	  } else {
-	    llvm::outs() << "\n" << "function " << F->getName() << "\n";
-	  }
-
+	if (isTrackable(*F) &&
+	    (params.output_filename != "" || params.print_invars || params.print_voi)) {
 	  std::vector<std::unique_ptr<block_annotation_t>> annotations;
+	  std::vector<varname_t> shadow_varnames;	  
 	  // --- print invariants 
 	  if (params.print_invars) {
-	    std::vector<varname_t> shadow_varnames;
 	    if (!params.keep_shadow_vars) {
 	      shadow_varnames = std::vector<varname_t>(
                    m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
@@ -949,13 +975,20 @@ private:
 	    annotations.emplace_back(std::make_unique<invariant_annotation_t>(
                 results.premap, results.postmap, shadow_varnames, &lookup));
 	  }
-	  // -- cone of influence of each assertion
+	  // -- variables of interest that might affect each assertion
 	  if (params.print_voi) {
 	    annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
 	  }
-	  crab_pretty_printer::print_annotations(cfg, results.checksdb, annotations);
+	  
+	  crab_pretty_printer::print_annotated_cfg((output ? output_str: crab::outs()),
+						   cfg, results.checksdb, annotations);
 	}
       }
+    } // end for
+    
+    if (output) {
+      output->os() << output_str.str();	    
+      output->keep();      
     }
     return;
   }
@@ -1189,6 +1222,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.print_invars = CrabPrintInvariants;
   m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
   m_params.print_voi = CrabPrintVoi;
+  m_params.output_filename = CrabOutputFilename;  
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;
   m_params.check = CrabCheck;
@@ -1208,6 +1242,7 @@ bool ClamPass::runOnModule(Module &M) {
       if (m_cfg_builder_man->hasCfg(F)) {
         cfg_t &cfg = m_cfg_builder_man->getCfg(F);
 #if 1
+	// Print invariants 
         auto pre_fn = [this](const basic_block_label_t &node)
             -> boost::optional<clam_abstract_domain> {
           if (const BasicBlock *BB = node.get_basic_block()) {
@@ -1232,6 +1267,7 @@ bool ClamPass::runOnModule(Module &M) {
 	crab::cfg::cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn,
 							   m_ga->getChecksDB());
 #else
+	// Only CFG
 	crab::cfg::cfg_to_dot(cfg);
 #endif
       }

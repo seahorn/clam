@@ -58,7 +58,7 @@ static llvm::cl::opt<bool> DisableCrab(
 static llvm::cl::opt<bool> TurnUndefNondet(
     "crab-turn-undef-nondet",
     llvm::cl::desc("Turn undefined behaviour into non-determinism"),
-    llvm::cl::init(false), llvm::cl::Hidden);
+    llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
     LowerUnsignedICmp("crab-lower-unsigned-icmp",

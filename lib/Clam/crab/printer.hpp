@@ -108,8 +108,9 @@ public:
   void operator()(const basic_block_label_t &bbl) const;
 };
 
-void print_annotations(
-    cfg_ref_t cfg, const typename IntraClam::checks_db_t &checksdb,
+void print_annotated_cfg(
+    crab::crab_os &os, cfg_ref_t cfg,
+    const typename IntraClam::checks_db_t &checksdb,
     const std::vector<std::unique_ptr<block_annotation>> &annotations);
 
 } // namespace crab_pretty_printer

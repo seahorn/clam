@@ -131,10 +131,6 @@ print_block::print_block(
     : m_cfg(cfg), m_o(o), m_checksdb(checksdb), m_annotations(annotations) {}
 
 void print_block::operator()(const basic_block_label_t &bbl) const {
-  // do not print block if no annotations
-  if (m_annotations.empty())
-    return;
-
   m_o << bbl.get_name() << ":\n";
 
   crab::crab_string_os o;
@@ -246,11 +242,17 @@ template <typename T> void dfs(cfg_ref_t cfg, T f) {
   dfs_rec(cfg, cfg.entry(), visited, f);
 }
 
-void print_annotations(
-    cfg_ref_t cfg, const typename IntraClam::checks_db_t &checksdb,
+void print_annotated_cfg(
+    crab::crab_os &o, cfg_ref_t cfg, 
+    const typename IntraClam::checks_db_t &checksdb,
     const std::vector<std::unique_ptr<block_annotation>> &annotations) {
-  print_block f(cfg, crab::outs(), checksdb, annotations);
+  print_block f(cfg, o, checksdb, annotations);
+  if (cfg.has_func_decl()){
+    auto fdecl = cfg.get_func_decl();
+    o << fdecl << "\n";
+  }
   dfs(cfg, f);
+  o << "\n";
 }
 
 } // namespace crab_pretty_printer
