@@ -3,22 +3,45 @@
 #include "llvm/ADT/Optional.h"
 #include "ClamQueryCache.hh"
 #include "clam/CfgBuilder.hh"
+#include "clam/Support/Debug.hh"
 #include "crab/analysis/fwd_analyzer.hpp"
 
 namespace clam {
 using namespace llvm;
 
-static ConstantRange getFullRange() {
-  return ConstantRange::getFull(64);
+
+static unsigned getBitWidth(const DataLayout &DL, const Type *Ty) {
+  if (Ty->isIntegerTy()) {
+    const IntegerType *ITy = cast<IntegerType>(Ty);
+    return ITy->getBitWidth();
+  } else if (Ty->isPointerTy()) {
+    return DL.getPointerTypeSizeInBits(const_cast<Type*>(Ty));
+  } else {
+    CLAM_ERROR("getConstantRange should called only on integers or pointers");
+  }
 }
 
-static ConstantRange getConstantRange(int64_t lower, int64_t upper) {
+static unsigned getBitWidth(const Instruction &I) {
+  const DataLayout &DL = I.getParent()->getParent()->getParent()->getDataLayout();
+  return getBitWidth(DL, I.getType());
+}
+
+static unsigned getBitWidth(const BasicBlock &B, const Value& V) {
+  const DataLayout &DL = B.getParent()->getParent()->getDataLayout();
+  return getBitWidth(DL, V.getType());
+}
+
+static ConstantRange getFullRange(unsigned bitwidth) {
+  return ConstantRange::getFull(bitwidth);
+}
+
+static ConstantRange getConstantRange(int64_t lower, int64_t upper, unsigned bitwidth) {
   const bool isSigned = true;
   if (lower == upper) {
-    return ConstantRange(APInt(64, lower, isSigned));
+    return ConstantRange(APInt(bitwidth, lower, isSigned));
   } else {
-    return ConstantRange(APInt(64, lower, isSigned),
-			 APInt(64, upper+1, isSigned));
+    return ConstantRange(APInt(bitwidth, lower, isSigned),
+			 APInt(bitwidth, upper+1, isSigned));
   }
 }
 
@@ -51,6 +74,7 @@ ClamQueryCache::range(const Instruction &I,
     return it->second;
   }
 
+  unsigned bitwidth = getBitWidth(I);
   if (invAtEntry.hasValue()) {
     const BasicBlock &BB = *(I.getParent());
     const Function &fParent = *(BB.getParent());
@@ -78,7 +102,7 @@ ClamQueryCache::range(const Instruction &I,
 	      auto min = *(crabInterval.lb().number());
 	      auto max = *(crabInterval.ub().number());
 	      if (min.fits_int64() && max.fits_int64()) {
-		ConstantRange interval = getConstantRange((int64_t)min, (int64_t)max);
+		ConstantRange interval = getConstantRange((int64_t)min, (int64_t)max, bitwidth);
 		m_range_inst_cache.insert(std::make_pair(&I, interval));
 		return interval;
 	      }
@@ -88,7 +112,7 @@ ClamQueryCache::range(const Instruction &I,
       }
     }
   }
-  return getFullRange();
+  return getFullRange(bitwidth);
 }
 
 ConstantRange
@@ -99,6 +123,7 @@ ClamQueryCache::range(const BasicBlock &BB, const Value &V,
     return it->second;
   }
 
+  unsigned bitwidth = getBitWidth(BB, V);  
   if (invAtEntry.hasValue()) {
     const Function &F = *(BB.getParent());
     auto crabCfgBuilder = m_crab_builder_man.getCfgBuilder(F);    
@@ -109,7 +134,7 @@ ClamQueryCache::range(const BasicBlock &BB, const Value &V,
         auto min = *(crabInterval.lb().number());
         auto max = *(crabInterval.ub().number());
         if (min.fits_int64() && max.fits_int64()) {
-	  ConstantRange interval = getConstantRange((int64_t)min, (int64_t)max);
+	  ConstantRange interval = getConstantRange((int64_t)min, (int64_t)max, bitwidth);
           m_range_value_cache.insert(std::make_pair(std::make_pair(&BB, &V),
 						    interval));
           return interval;
@@ -117,7 +142,7 @@ ClamQueryCache::range(const BasicBlock &BB, const Value &V,
       }
     }
   }
-  return getFullRange();
+  return getFullRange(bitwidth);
 }
 
 Optional<ClamQueryAPI::TagVector>
