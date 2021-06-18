@@ -9,6 +9,8 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 
+#include <cstdint>
+
 namespace clam {
 
 using namespace ikos;
@@ -111,24 +113,22 @@ bool hasDebugLoc(const Instruction *inst) {
   return dloc;
 }
 
-crab::cfg::debug_info getDebugLoc(const Instruction *inst) {
-  if (!hasDebugLoc(inst))
+crab::cfg::debug_info getDebugLoc(const Instruction *I) {
+  if (!hasDebugLoc(I))
     return crab::cfg::debug_info();
-  const DebugLoc &dloc = inst->getDebugLoc();
+  const DebugLoc &dloc = I->getDebugLoc();
   unsigned Line = dloc.getLine();
   unsigned Col = dloc.getCol();
   std::string File = (*dloc).getFilename();
-  if (File == "")
+  int64_t Id = -1;
+  
+  if (File == "") {
     File = "unknown file";
-
-  // HACK: append assertion ID to the filename for bookeeping
-  if (MDNode *MDN = inst->getMetadata("clam-assertion")) {
-    StringRef Check = cast<MDString>(MDN->getOperand(0))->getString();
-    if (Check != "") {
-      File += "#" + Check.str();
-    }
   }
-  return crab::cfg::debug_info(File, Line, Col);
+
+  // Id can be -1 if I is not an assertion
+  Id = getAssertIdFromMetadata(I->getMetadata("clam-assertion"));
+  return crab::cfg::debug_info(File, Line, Col, Id);
 }
 
 uint64_t storageSize(const Type *t, const DataLayout &dl) {
@@ -244,9 +244,30 @@ bool isIntInitializer(const CallInst &CI) {
   return false;
 }
 
-std::string getAssertKindFromMetadata(const llvm::CallInst &I) {
-  if (MDNode *MDN = I.getMetadata("clam-assertion")) {
-    return cast<MDString>(MDN->getOperand(0))->getString();
+int64_t getAssertIdFromMetadata(MDNode *MDN) {
+  // assume MDN is the metadata associate to getMetadata("clam-assertion")
+  int64_t id = -1; // no id found
+  if (MDN) {
+    if (MDTuple *t = dyn_cast<MDTuple>(MDN->getOperand(0))) {
+      if (MDString *s = dyn_cast<MDString>(t->getOperand(1))) {
+	StringRef checkId = s->getString();
+	unsigned long long n;
+	if (!(getAsUnsignedInteger(checkId, 10, n) || (n > INT64_MAX))) {
+	  id = (int64_t) n;
+	}
+      }
+    }
+  }
+  return id;
+}
+  
+std::string getAssertKindFromMetadata(MDNode *MDN) {
+  // assume MDN is the metadata associate to getMetadata("clam-assertion")
+  if (MDN) {
+    if (MDTuple *t = dyn_cast<MDTuple>(MDN->getOperand(0))) {
+      std::string checkName = cast<MDString>(t->getOperand(0))->getString();
+      return checkName;
+    } 
   }
   return "";
 }

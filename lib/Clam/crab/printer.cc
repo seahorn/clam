@@ -118,7 +118,8 @@ void voi_annotation::print_begin(const basic_block_label_t &bbl,
       << "file=" << dbg_info.get_file() << " "
       << "line=" << dbg_info.get_line() << " "
       << "col="  << dbg_info.get_column()
-      << ") ";
+      << ") "
+      << "id=" << dbg_info.get_id() << " ";
     o << it->second << "\n";
   }
 }

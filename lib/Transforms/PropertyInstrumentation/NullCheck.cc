@@ -107,7 +107,11 @@ void NullCheck::insertNullCheck(Value *Ptr, IRBuilder<> B, Instruction *I) {
   // add some metadata
   CI->setMetadata(
       "clam-assertion",
-      MDNode::get(ctx, MDString::get(ctx, "nullity_" + std::to_string(id++))));
+      MDNode::get(ctx,
+		  MDTuple::get(ctx,
+			       {MDString::get(ctx, "nullity"),
+				MDString::get(ctx, std::to_string(id++))})));
+  
 
   // update call graph
   if (CG) {

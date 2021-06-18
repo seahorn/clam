@@ -1324,8 +1324,9 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
       return (Value*) nullptr;
     };
 					   
-    std::string assertKind = getAssertKindFromMetadata(I);
+    
     Value *Ptr = nullptr;
+    std::string assertKind = getAssertKindFromMetadata(I.getMetadata("clam-assertion"));  
     if (startsWith(assertKind, "nullity")) {
       Ptr = extractPointerFromNullAssertion(cond);
     } else if (startsWith(assertKind, "not_dangling")) {
@@ -1333,7 +1334,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
     } else {
       CLAM_WARNING("Unsupported assertion " << I);
     }
-
+    
     /// FIXME: It will leave dead code (the call to
     /// __CRAB_intrinsic_is_unfreed_or_null or the comparison
     /// instruction)

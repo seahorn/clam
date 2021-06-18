@@ -363,9 +363,12 @@ private:
       CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                              << "Finished assert checking.\n");
     }
-
-    // -- store invariants
-    if (params.store_invariants || params.print_invars) {
+    
+    const bool storeInvariants = (params.store_invariants || params.print_invars);
+    const bool printAnnotatedCFG = (params.output_filename != "" || params.print_invars ||
+				    params.print_unjustified_assumptions);
+    
+    if (storeInvariants) {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing analysis results.\n");
       for (basic_block_label_t bl : llvm::make_range(cfg.label_begin(), cfg.label_end())) {
         if (bl.is_edge()) {
@@ -393,8 +396,7 @@ private:
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished storing analysis results.\n");
     }
 
-    // -- Print annotated CFG
-    if (params.output_filename != "" || params.print_invars || params.print_unjustified_assumptions) {
+    if (printAnnotatedCFG) {
       std::vector<std::unique_ptr<block_annotation_t>> annotations;
       std::vector<varname_t> shadow_varnames;
       crab::crab_string_os output_str;
@@ -909,20 +911,27 @@ private:
     inter_params.widening_delay = params.widening_delay;
     inter_params.descending_iters = params.narrowing_iters;
     inter_params.thresholds_size = params.widening_jumpset;
+    
     inter_analyzer_t analyzer(*m_cg, init, inter_params);
     analyzer.run(init);
     if (inter_params.run_checker) {
       results.checksdb += analyzer.get_all_checks();
     }
 
-    if (!params.store_invariants && !params.print_invars && !params.print_voi) {
+    const bool storeInvariants = (params.store_invariants || params.print_invars);    
+    const bool printAnnotatedCFG = (params.output_filename != "" ||
+				    params.print_invars || params.print_voi);
+    
+    if (!storeInvariants && !printAnnotatedCFG) {
       // nothing else to do
       return;
     }
 
     std::unique_ptr<voi_analysis_t> voi = nullptr;
     if (params.print_voi) {
-      voi.reset(new voi_analysis_t(*m_cg, true /*only data*/, true /*ignore region offsets*/));
+      voi.reset(new voi_analysis_t(*m_cg,
+				   true /*only data*/,
+				   true /*ignore region offsets*/));
       voi->run();
     }
 
@@ -935,62 +944,61 @@ private:
     for (auto &n : llvm::make_range(vertices(*m_cg))) {
       cfg_ref_t cfg = n.get_cfg();
       if (const Function *F = m_M.getFunction(n.name())) {
-	// -- storing analysis results for F
-	CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-			<< "Storing analysis results for "
-			<< F->getName().str() << ".\n");
-	for (basic_block_label_t bl :
-               llvm::make_range(cfg.label_begin(), cfg.label_end())) {
-	  if (bl.is_edge()) {
-	    // Note that we use get_post instead of getPre:
-	    //   the crab block (bl) has an assume statement corresponding
-	    //   to the branch condition in the predecessor of the
-	    //   LLVM edge. We want the invariant *after* the
-	    //   evaluation of the assume.
-	    if (analyzer.get_post(cfg, bl).is_bottom()) {
-	      results.infeasible_edges.insert(
-			 {bl.get_edge().first, bl.get_edge().second});
+
+	if (storeInvariants) {
+	  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+			  << "Storing analysis results for "
+			  << F->getName().str() << ".\n");
+	  for (basic_block_label_t bl :
+		 llvm::make_range(cfg.label_begin(), cfg.label_end())) {
+	    if (bl.is_edge()) {
+	      // Note that we use get_post instead of getPre:
+	      //   the crab block (bl) has an assume statement corresponding
+	      //   to the branch condition in the predecessor of the
+	      //   LLVM edge. We want the invariant *after* the
+	      //   evaluation of the assume.
+	      if (analyzer.get_post(cfg, bl).is_bottom()) {
+		results.infeasible_edges.insert(
+			{bl.get_edge().first, bl.get_edge().second});
+	      }
+	    } else if (const BasicBlock *B = bl.get_basic_block()) {
+	      // --- invariants that hold at the entry of the blocks
+	      auto pre = analyzer.get_pre(cfg, getCrabBasicBlock(B));
+	      update(results.premap, *B, pre);
+	      // --- invariants that hold at the exit of the blocks
+	      auto post = analyzer.get_post(cfg, getCrabBasicBlock(B));
+	      update(results.postmap, *B, post);
+	    } else {
+	      // this should be unreachable
+	      assert(false && "A Crab block should correspond to either an "
+		     "LLVM edge or block");
 	    }
-	  } else if (const BasicBlock *B = bl.get_basic_block()) {
-	    // --- invariants that hold at the entry of the blocks
-	    auto pre = analyzer.get_pre(cfg, getCrabBasicBlock(B));
-	    update(results.premap, *B, pre);
-	    // --- invariants that hold at the exit of the blocks
-	    auto post = analyzer.get_post(cfg, getCrabBasicBlock(B));
-	    update(results.postmap, *B, post);
-	  } else {
-	    // this should be unreachable
-	    assert(false && "A Crab block should correspond to either an "
-		   "LLVM edge or block");
 	  }
+	  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+			  << "Finished storing analysis results for "
+			  << F->getName().str() << ".\n");
 	}
-	CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-			<< "Finished storing analysis results for "
-			<< F->getName().str() << ".\n");
 
-
-	if (isTrackable(*F)) {
-	  if (params.output_filename != "" || params.print_invars || params.print_voi) {
-	    std::vector<std::unique_ptr<block_annotation_t>> annotations;
-	    std::vector<varname_t> shadow_varnames;	  
-	    // --- print invariants 
-	    if (params.print_invars) {
-	      if (!params.keep_shadow_vars) {
-		shadow_varnames = std::vector<varname_t>(
+	if (printAnnotatedCFG) {
+	  std::vector<std::unique_ptr<block_annotation_t>> annotations;
+	  std::vector<varname_t> shadow_varnames;	  
+	  // --- print invariants 
+	  if (params.print_invars) {
+	    if (!params.keep_shadow_vars) {
+	      shadow_varnames = std::vector<varname_t>(
 		       m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
 		       m_crab_builder_man.getVarFactory().get_shadow_vars().end());
-	      }
-	      annotations.emplace_back(std::make_unique<invariant_annotation_t>(
+	    }
+	    annotations.emplace_back(std::make_unique<invariant_annotation_t>(
 		       results.premap, results.postmap, shadow_varnames, &lookup));
-	    }
-	    // -- variables of interest that might affect each assertion
-	    if (params.print_voi) {
-	      annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
-	    }
-	    
-	    crab_pretty_printer::print_annotated_cfg((output ? output_str: crab::outs()),
-						     cfg, results.checksdb, annotations);
 	  }
+	  // -- variables of interest that might affect each assertion
+	  if (params.print_voi) {
+	    annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
+	  }
+	  
+	  crab_pretty_printer::print_annotated_cfg((output ? output_str: crab::outs()),
+						   cfg, results.checksdb, annotations);
 	}
       }
     } // end for
@@ -1236,7 +1244,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.keep_shadow_vars = CrabKeepShadows;
   m_params.check = CrabCheck;
   m_params.check_verbose = CrabCheckVerbose;
-
+  
   if (m_params.run_inter) {
     m_ga.reset(new InterGlobalClam(M, *m_cfg_builder_man));
   } else {
