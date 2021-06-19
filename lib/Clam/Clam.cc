@@ -45,6 +45,7 @@
 #include "crab/analysis/dataflow/assumptions.hpp"
 #include "crab/analysis/dataflow/assertion_crawler.hpp"
 #include "crab/analysis/fwd_analyzer.hpp"
+#include "crab/analysis/inter/inter_params.hpp"
 #include "crab/analysis/inter/top_down_inter_analyzer.hpp"
 #include "crab/cfg/cfg_to_dot.hpp"
 #include "crab/cg/cg.hpp"
@@ -84,7 +85,7 @@ using assertion_property_checker_t =
     crab::checker::assert_property_checker<intra_analyzer_t>;
 // -- inter-procedural analysis
 using inter_params_t =
-    crab::analyzer::top_down_inter_analyzer_parameters<cg_t>;
+    crab::analyzer::inter_analyzer_parameters<cg_t>;
 using inter_analyzer_t =
     crab::analyzer::top_down_inter_analyzer<cg_t, clam_abstract_domain>;
 // -- path analyzer
