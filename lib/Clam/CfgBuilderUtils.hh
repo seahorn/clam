@@ -14,6 +14,7 @@ class ConstantInt;
 class DataLayout;
 class CastInt;
 class CmpInst;
+class MDNode;
 } // namespace llvm
 
 namespace clam {
@@ -96,7 +97,8 @@ bool isIntInitializer(const llvm::Function &F);
 
 bool isIntInitializer(const llvm::CallInst &CI);
 
-std::string getAssertKindFromMetadata(const llvm::CallInst &CI);
+int64_t getAssertIdFromMetadata(llvm::MDNode *MDN);
+std::string getAssertKindFromMetadata(llvm::MDNode *MDN);
 
 // Return true if all uses are BranchInst's
 bool AllUsesAreBrInst(llvm::Value &V);

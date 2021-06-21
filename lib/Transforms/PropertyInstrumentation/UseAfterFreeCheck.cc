@@ -76,7 +76,9 @@ void UseAfterFreeCheck::insertNonDanglingCheck(Value *Ptr, IRBuilder<> &B,
   AssertCI->setMetadata(
       "clam-assertion",
       MDNode::get(ctx,
-                  MDString::get(ctx, "not_dangling_" + std::to_string(id++))));
+		  MDTuple::get(ctx,
+			       {MDString::get(ctx, "not_dangling"),
+				MDString::get(ctx, std::to_string(id++))})));
   if (CG) {
     Function *Fn = I->getParent()->getParent();
     auto f1 = CG->getOrInsertFunction(Fn);

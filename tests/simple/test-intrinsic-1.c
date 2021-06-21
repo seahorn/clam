@@ -1,4 +1,4 @@
-// RUN: %clam -O0 --crab-only-cfg --crab-print-cfg "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --crab-only-cfg --crab-print-cfg=true "%s" 2>&1 | OutputCheck %s
 // CHECK: crab_intrinsic
 
 extern void __CRAB_assert(int);

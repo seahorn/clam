@@ -387,3 +387,10 @@ XCrabStats("crab-stats",
            llvm::cl::desc("Show Crab statistics and analysis results"),
 	   llvm::cl::location(CrabStats),
 	   llvm::cl::value_desc("bool"));
+
+
+static llvm::cl::opt<std::string>
+CrabOutputFilename("ocrab", 
+llvm::cl::desc("Output CrabIR analyzed with (optionally) annotations. Use preferably \".crabir\" extension"),
+llvm::cl::value_desc("filename"),
+llvm::cl::init(""));

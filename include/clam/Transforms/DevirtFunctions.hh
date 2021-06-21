@@ -44,10 +44,12 @@ struct DevirtStats {
   unsigned m_num_resolved_calls;
   // number of calls unresolved by Dsa
   unsigned m_num_unresolved;
+  // number of asm calls
+  unsigned m_num_asm_calls;
 
   DevirtStats()
     : m_num_indirect_calls(0), m_num_resolved_calls(0),
-      m_num_unresolved(0) {}
+      m_num_unresolved(0), m_num_asm_calls(0) {}
 
   void dump() const;
 };
