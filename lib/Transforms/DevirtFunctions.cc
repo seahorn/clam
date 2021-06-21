@@ -280,9 +280,6 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
   */
 
   // build the target map
-  unsigned num_indirect_calls = 0;
-  unsigned num_complete_calls = 0;
-  unsigned num_resolved_calls = 0;
   for (auto &F : m_M) {
     for (auto &BB : F) {
       for (auto &I : BB) {
@@ -296,9 +293,7 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
         if (CI) {
           CallSite CS(CI);
           if (isIndirectCall(CS)) {
-            num_indirect_calls++;
             if (m_allow_incomplete || m_dsa.isComplete(CS)) {
-              num_complete_calls++;
               AliasSet dsa_targets;
               dsa_targets.append(m_dsa.begin(CS), m_dsa.end(CS));
               if (dsa_targets.empty()) {
@@ -306,7 +301,7 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
                 DEVIRT_WARNING(
                     errs()
                         << "WARNING Devirt (dsa): does not have any target for "
-                        << *(CS.getInstruction()) << "\n";);
+		    << *(CS.getInstruction()) << " in " << F.getName() << "\n";);
                 continue;
               }
 	      
@@ -316,7 +311,6 @@ CallSiteResolverByDsa<Dsa>::CallSiteResolverByDsa(Module &M, Dsa &dsa,
               std::sort(dsa_targets.begin(), dsa_targets.end());
 
 	      if (dsa_targets.size() <= m_max_num_targets) {
-		num_resolved_calls++;
 		m_targets_map.insert({CS.getInstruction(), dsa_targets});
 		DEVIRT_LOG(errs() << "Devirt (dsa): resolved the " << *(CS.getInstruction())
 			         << " with targets: ";
@@ -564,6 +558,8 @@ void DevirtualizeFunctions::mkDirectCall(CallSite CS, CallSiteResolver *CSR) {
     // cannot resolve the indirect call
     return;
   }
+  m_stats.m_num_resolved_calls++;
+  
   // HACK: remove constness
   std::vector<Function *> Callees;
   Callees.resize(Targets->size());
@@ -676,10 +672,11 @@ bool DevirtualizeFunctions::resolveCallSites(Module &M, CallSiteResolver *CSR) {
 }
 
 void DevirtStats::dump() const {
-  errs() << "=== Devirtualization stats===\n";
-  errs() << "BRUNCH_STAT INDIRECT CALLS "   << m_num_indirect_calls << "\n";
-  errs() << "BRUNCH_STAT RESOLVED CALLS "   << m_num_resolved_calls << "\n";
-  errs() << "BRUNCH_STAT UNRESOLVED CALLS " << m_num_unresolved << "\n";
+  errs() << "=== Resolution of indirect calls ===\n";
+  errs() << "BRUNCH_STAT INDIRECT CALLS "    << m_num_indirect_calls << "\n";
+  errs() << "BRUNCH_STAT RESOLVED CALLS "    << m_num_resolved_calls << "\n";
+  errs() << "BRUNCH_STAT UNRESOLVED CALLS "  << m_num_unresolved - m_num_asm_calls << "\n";
+  errs() << "BRUNCH_STAT IGNORED ASM CALLS " << m_num_asm_calls << "\n";
 }
 } // namespace clam
 
