@@ -118,7 +118,7 @@ public:
 
 private:
   seadsa::GlobalAnalysis *m_dsa;
-  SetFactory *m_fac;
+  std::unique_ptr<SetFactory> m_fac;
   const llvm::DataLayout &m_dl;
   /// map from Node to id
   llvm::DenseMap<const seadsa::Node *, RegionId> m_node_ids;

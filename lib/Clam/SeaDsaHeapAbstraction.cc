@@ -495,13 +495,10 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
     const seadsa::DsaLibFuncInfo &spec_graph_info, bool is_context_sensitive,
     bool disambiguate_unknown, bool disambiguate_ptr_cast,
     bool disambiguate_external)
-    : m_dsa(nullptr), m_fac(nullptr), m_dl(M.getDataLayout()), m_max_id(0),
-      m_disambiguate_unknown(disambiguate_unknown),
-      m_disambiguate_ptr_cast(disambiguate_ptr_cast),
-      m_disambiguate_external(disambiguate_external) {
-
-  // The factory must be alive while seadsa is in use
-  m_fac = new SetFactory();
+  : m_dsa(nullptr), m_fac(new SetFactory()), m_dl(M.getDataLayout()), m_max_id(0),
+    m_disambiguate_unknown(disambiguate_unknown),
+    m_disambiguate_ptr_cast(disambiguate_ptr_cast),
+    m_disambiguate_external(disambiguate_external) {
 
   // -- Run sea-dsa
   if (!is_context_sensitive) {
@@ -513,10 +510,7 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
         m_dl, *(const_cast<llvm::TargetLibraryInfoWrapperPass *>(&tli)),
         alloc_info, spec_graph_info, cg, *m_fac);
   }
-
   m_dsa->runOnModule(const_cast<Module &>(M));
-
-  
   
   initialize(M);
 }
@@ -538,7 +532,6 @@ SeaDsaHeapAbstraction::~SeaDsaHeapAbstraction() {
   if (m_fac) {
     // if m_fac is not null we know that we own m_dsa
     delete m_dsa;
-    delete m_fac;
   }
 }
 
