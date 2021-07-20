@@ -109,8 +109,6 @@ public:
  * A builder contains the crab CFG plus some extra information about
  * the translation.
  **/
-using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
-
 class CrabBuilderManager {
 public:
   CrabBuilderManager(CrabBuilderParams params,
@@ -123,13 +121,15 @@ public:
 
   CrabBuilderManager &operator=(const CrabBuilderManager &o) = delete;
 
-  CfgBuilderPtr mkCfgBuilder(const llvm::Function &func);
+  CfgBuilder &mkCfgBuilder(const llvm::Function &func);
 
   bool hasCfg(const llvm::Function &f) const;
 
+  // pre: hasCfg(f) returns true
   cfg_t &getCfg(const llvm::Function &f) const;
 
-  CfgBuilderPtr getCfgBuilder(const llvm::Function &f) const;
+  // return null if mkCfgBuilder was not called on f
+  CfgBuilder *getCfgBuilder(const llvm::Function &f) const;
 
   variable_factory_t &getVarFactory();
 

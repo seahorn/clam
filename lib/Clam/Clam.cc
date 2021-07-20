@@ -199,7 +199,7 @@ public:
         CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                                << "Started Crab CFG construction for "
                                << fun.getName() << "\n");
-        m_cfg_builder = man.mkCfgBuilder(m_fun);
+        m_cfg_builder = &(man.mkCfgBuilder(m_fun));
         CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                                << "Finished Crab CFG construction for "
                                << fun.getName() << "\n");
@@ -303,7 +303,7 @@ public:
   
 private:
   CrabBuilderManager &m_cfg_builder_man;  
-  CfgBuilderPtr m_cfg_builder;
+  CfgBuilder *m_cfg_builder;
   const Function &m_fun;
   variable_factory_t &m_vfac;
   // To store analysis results

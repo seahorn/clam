@@ -4084,13 +4084,13 @@ public:
 
   CrabBuilderManagerImpl &operator=(const CrabBuilderManagerImpl &o) = delete;
 
-  CfgBuilderPtr mkCfgBuilder(const llvm::Function &func);
+  CfgBuilder& mkCfgBuilder(const llvm::Function &func);
 
   bool hasCfg(const llvm::Function &f) const;
 
   cfg_t &getCfg(const llvm::Function &f) const;
 
-  CfgBuilderPtr getCfgBuilder(const llvm::Function &f) const;
+  CfgBuilder* getCfgBuilder(const llvm::Function &f) const;
 
   variable_factory_t &getVarFactory();
 
@@ -4107,7 +4107,7 @@ private:
   // User-definable parameters for building the Crab CFGs
   CrabBuilderParams m_params;
   // Map LLVM function to Crab CfgBuilder
-  llvm::DenseMap<const llvm::Function *, CfgBuilderPtr> m_cfg_builder_map;
+  llvm::DenseMap<const llvm::Function *, std::unique_ptr<CfgBuilder>> m_cfg_builder_map;
   // Used for the translation from bitcode to Crab CFG
   llvm::TargetLibraryInfoWrapperPass &m_tli;
   // All CFGs created by this manager are created using the same
@@ -4129,7 +4129,7 @@ CrabBuilderManagerImpl::CrabBuilderManagerImpl(
   CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
 }
 
-CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
+CfgBuilder& CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
   static bool initialization_done = false;
 
   auto extractGlobals = [this](const Module &M) {
@@ -4175,9 +4175,11 @@ CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
     }
     for (auto &F : M) {
       if (!F.empty()) {
-        CfgBuilderPtr builder(new CfgBuilder(F, *this));
+	// don't use make_unique because the constructor of CfgBuilder
+	// is private
+	std::unique_ptr<CfgBuilder> builder(new CfgBuilder(F, *this));
         builder->addFunctionDeclaration();
-        m_cfg_builder_map[&F] = builder;
+        m_cfg_builder_map.insert(std::make_pair(&F, std::move(builder)));
       }
     }
     initialization_done = true;
@@ -4185,8 +4187,8 @@ CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
 
   auto it = m_cfg_builder_map.find(&f);
   if (it != m_cfg_builder_map.end()) {
-    auto builder = it->second;
-    builder->buildCfg();
+    CfgBuilder &builder = *(it->second);
+    builder.buildCfg();
     return builder;
   } else {
     CLAM_ERROR("Not found cfg builder for " << f.getName());
@@ -4201,12 +4203,12 @@ cfg_t &CrabBuilderManagerImpl::getCfg(const Function &f) const {
   return getCfgBuilder(f)->getCfg();
 }
 
-CfgBuilderPtr CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
+CfgBuilder* CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
   auto it = m_cfg_builder_map.find(&f);
   if (it == m_cfg_builder_map.end()) {
     CLAM_ERROR("Cannot find crab cfg for " <<  f.getName());
   }
-  return it->second;
+  return &(*it->second);
 }
 
 variable_factory_t &CrabBuilderManagerImpl::getVarFactory() { return m_vfac; }
@@ -4749,7 +4751,7 @@ CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
 
 CrabBuilderManager::~CrabBuilderManager() {}
 
-CfgBuilderPtr CrabBuilderManager::mkCfgBuilder(const Function &f) {
+CfgBuilder &CrabBuilderManager::mkCfgBuilder(const Function &f) {
   return m_impl->mkCfgBuilder(f);
 }
 
@@ -4761,7 +4763,7 @@ cfg_t &CrabBuilderManager::getCfg(const Function &f) const {
   return m_impl->getCfg(f);
 }
 
-CfgBuilderPtr CrabBuilderManager::getCfgBuilder(const Function &f) const {
+CfgBuilder *CrabBuilderManager::getCfgBuilder(const Function &f) const {
   return m_impl->getCfgBuilder(f);
 }
 

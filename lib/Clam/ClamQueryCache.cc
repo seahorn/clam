@@ -205,19 +205,20 @@ ClamQueryCache::tags(const BasicBlock &BB, const Value &V,
   
   if (invAtEntry.hasValue()) {
     const Function &F = *(BB.getParent());
-    CfgBuilderPtr cfgBuilder =  m_crab_builder_man.getCfgBuilder(F);
-    Optional<var_t> crabRgnVar = cfgBuilder->getCrabRegionVariable(F, V);
-    Optional<var_t> crabRefVar = cfgBuilder->getCrabVariable(V);
-    if (crabRgnVar.hasValue() && crabRefVar.hasValue()) {
-      std::vector<uint64_t> tags;
-      bool known = invAtEntry.getValue().get_tags(crabRgnVar.getValue(),
-						  crabRefVar.getValue(), tags);
-      if (known) {
-	auto k = std::make_pair(&BB, &V);
-	m_tag_value_cache[k] = tags;
-	return tags;
-      } else {
-	return None;
+    if (CfgBuilder *cfgBuilder =  m_crab_builder_man.getCfgBuilder(F)) {
+      Optional<var_t> crabRgnVar = cfgBuilder->getCrabRegionVariable(F, V);
+      Optional<var_t> crabRefVar = cfgBuilder->getCrabVariable(V);
+      if (crabRgnVar.hasValue() && crabRefVar.hasValue()) {
+	std::vector<uint64_t> tags;
+	bool known = invAtEntry.getValue().get_tags(crabRgnVar.getValue(),
+						    crabRefVar.getValue(), tags);
+	if (known) {
+	  auto k = std::make_pair(&BB, &V);
+	  m_tag_value_cache[k] = tags;
+	  return tags;
+	} else {
+	  return None;
+	}
       }
     }
   }
