@@ -13,6 +13,7 @@ llvm::Pass *createRemoveUnreachableBlocksPass();
 llvm::Pass *createSimplifyAssumePass();
 llvm::Pass *createDevirtualizeFunctionsPass();
 llvm::Pass *createExternalizeAddressTakenFunctionsPass();
+llvm::Pass *createExternalizeFunctionsPass();
 llvm::Pass *createPromoteMallocPass();
 llvm::Pass *createPromoteAssumePass();
 llvm::Pass *createRenameNondetPass();

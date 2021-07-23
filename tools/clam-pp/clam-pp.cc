@@ -240,6 +240,9 @@ int main(int argc, char **argv) {
     pass_manager.add(clam::createDevirtualizeFunctionsPass());
   }
 
+  // -- externalize some user-selected functions
+  pass_manager.add(clam::createExternalizeFunctionsPass());
+ 
   if (ExternalizeAddrTakenFuncs) {
     // -- externalize uses of address-taken functions
     pass_manager.add(clam::createExternalizeAddressTakenFunctionsPass());
