@@ -1,6 +1,7 @@
 #include "path_analyzer.hpp"
 #include <clam/crab/crab_lang.hh>
 #include <crab/domains/discrete_domains.hpp>
+#include <crab/support/debug.hpp>
 
 #include <unordered_set>
 
@@ -8,7 +9,6 @@ namespace crab {
 namespace analyzer {
 
 static bool do_sanity_check = true;
-static bool do_debugging = false;
 static bool only_syntactic_core = false;
 // remove irrelevant constraints in two phases: first, by considering
 // only data dependencies. This usually creates small set of
@@ -65,6 +65,10 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
       if (!s.is_assert() && !s.is_ref_assert() && !s.is_bool_assert()) {
         path_statements.push_back(&s);
       }
+      
+      CRAB_LOG("path-analyzer",
+	       crab::outs() << "CRAB interpreting " << s << "\n";);
+      
       s.accept(&abs_tr);
 
       if (abs_tr.get_abs_value().is_bottom()) {
@@ -186,13 +190,6 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   basic_block_t *parent_bb = core[size - 1]->get_parent();
   assert(parent_bb);
 
-  if (do_debugging) {
-    crab::outs() << "CRAB PATH:\n";
-    for (auto s : core) {
-      crab::outs() << "\t" << *s << "\n";
-    }
-  }
-
   // if the core contains at most one constraint then we are done
   if (size <= 1) {
     if (size == 1) {
@@ -261,9 +258,8 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     d += bool_assume->cond();
   }
 
-  if (do_debugging) {
-    crab::outs() << "Slicing criteria: " << *last_stmt << "\n";
-  }
+  CRAB_LOG("path-analyzer",
+	   crab::outs() << "Slicing criteria: " << *last_stmt << "\n";);
 
   // Traverse the whole path backwards and remove irrelevant
   // statements based on data dependencies.
@@ -298,16 +294,14 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     }
   }
 
-  if (do_debugging) {
-    crab::outs() << "SYNTACTIC UNSAT CORE PATH:\n";
-  }
+  CRAB_LOG("path-analyzer", crab::outs() << "SYNTACTIC UNSAT CORE PATH:\n";);    
+	   
   std::vector<statement_t *> res;
   res.reserve(size);
   for (unsigned i = 0; i < size; ++i) {
     if (enabled[i]) {
-      if (do_debugging) {
-        crab::outs() << "\t" << *(core[i]) << "\n";
-      }
+      CRAB_LOG("path-analyzer",      
+	       crab::outs() << "\t" << *(core[i]) << "\n";);
       res.push_back(core[i]);
     }
   }
@@ -394,17 +388,15 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
       }
     }
 
-    if (do_debugging) {
-      crab::outs() << "SEMANTIC UNSAT CORE PATH:\n";
-    }
+    CRAB_LOG("path-analyzer",
+	     crab::outs() << "SEMANTIC UNSAT CORE PATH:\n";);
 
     m_core.reserve(core.size());
     for (unsigned i = 0; i < core.size(); ++i) {
       if (enabled[i]) {
         m_core.push_back(core[i]);
-        if (do_debugging) {
-          crab::outs() << "\t" << *(core[i]) << "\n";
-        }
+	CRAB_LOG("path-analyzer",	  
+		 crab::outs() << "\t" << *(core[i]) << "\n";);
       }
     }
 
