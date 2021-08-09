@@ -90,17 +90,17 @@ public:
   // variable if possible.
   llvm::Optional<var_t> getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v);  
   /***** End API to translate LLVM entities to Crab ones *****/
-  
-  // DEPRECATED
+
+  /***** Begin API to translate Crab entities to LLVM ones *****/    
+  // Most crab operands have back pointers to LLVM operands so it
+  // is often possible to find the corresponding LLVM
+  // instruction for a given crab statement. Memory operations might not be the case.
   //
-  // Most crab statements have back pointers to LLVM operands so it
-  // is always possible to find the corresponding LLVM
-  // instruction. Array crab operations are an exceptions.
-  //
-  // This method maps an **array** crab statement to its
-  // corresponding llvm instruction. Return null if the the array
-  // instruction is not mapped to a LLVM instruction.
+  // This method maps a memory/array crab statement to its
+  // corresponding llvm instruction. Return null if the crab statement
+  // cannot be mapped to a LLVM instruction.
   const llvm::Instruction *getInstruction(const statement_t &s) const;
+  /***** End API to translate Crab entities to LLVM ones *****/      
 
 }; // end class CfgBuilder
 

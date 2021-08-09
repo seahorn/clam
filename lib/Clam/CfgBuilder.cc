@@ -2423,13 +2423,15 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
 
     if (rgn.isUnknown()) {
       /* untyped region */
+      const statement_t *crab_stmt = nullptr;
       if (val->isVar()) {
-        m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
-                          val->getVar());
+        crab_stmt = m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
+				      val->getVar());
       } else {
-        m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
-                          m_lfac.getTypedConst(val));
+        crab_stmt = m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
+				      m_lfac.getTypedConst(val));
       }
+      insertRevMap(crab_stmt, I);      
 
     } else {
       /* typed region: we need to make sure that the region's type and
@@ -2463,8 +2465,9 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
           m_bb.sext(val->getVar(), ext_or_trunc_val);
         }
 
-        m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
-                          ext_or_trunc_val);
+        auto crab_stmt =
+	  m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), ext_or_trunc_val);
+	insertRevMap(crab_stmt, I);
       } else { // val is a constant
         auto typed_const = m_lfac.getTypedConst(val);
         unsigned val_bitwidth = 0;
@@ -2483,7 +2486,9 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
               "TODO: bitwidth of store value operand different from region");
           return;
         }
-        m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), typed_const);
+        auto crab_stmt =
+	  m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), typed_const);
+	insertRevMap(crab_stmt, I);
       }
     }
   }
@@ -2603,7 +2608,9 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
 
     if (rgn.isUnknown()) {
       /* untyped region */
-      m_bb.load_from_ref(lhs->getVar(), ptr->getVar(), m_lfac.mkRegionVar(rgn));
+      auto crab_stmt =
+	m_bb.load_from_ref(lhs->getVar(), ptr->getVar(), m_lfac.mkRegionVar(rgn));
+      insertRevMap(crab_stmt, I);      
     } else {
       /* typed region: we need to make sure that the region's type and
        * the type of the load's lhs match.
@@ -2629,7 +2636,9 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
         lhs_v = m_lfac.mkIntVar(rgn.getRegionInfo().getType().second);
       }
 
-      m_bb.load_from_ref(lhs_v, ptr->getVar(), m_lfac.mkRegionVar(rgn));
+      auto crab_stmt =
+	m_bb.load_from_ref(lhs_v, ptr->getVar(), m_lfac.mkRegionVar(rgn));
+      insertRevMap(crab_stmt, I);      
 
       if (rgn.getRegionInfo().getType().second < lhs_bitwidth) {
         m_bb.sext(lhs_v, ext_or_trunc_lhs_v);
@@ -2860,9 +2869,9 @@ public:
   /***** End API to translate LLVM entities to Crab ones *****/
 
   
-  // Most crab statements have back pointers to LLVM operands so it
+  // Most crab operands have back pointers to LLVM operands so it
   // is always possible to find the corresponding LLVM
-  // instruction. Array/Region crab operations are an exception.
+  // instruction. Array/region crab operations are an exception.
   //
   // This method maps (partially) a crab statement to its
   // corresponding llvm instruction. Return null if the mapping cannot
