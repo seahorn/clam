@@ -50,6 +50,7 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
     if (it == m_fwd_dom_map.end()) {
       m_fwd_dom_map.insert(std::make_pair(node, new_pre));
     }
+
     // compute strongest post-condition for one block
     auto &b = m_cfg.get_node(node);
     bottom_stmt = 0;
@@ -114,12 +115,14 @@ bool path_analyzer<CFG, AbsDom>::solve(
       }
       if (i < path.size() - 1) {
         if (!has_kid(path[i], path[i + 1])) {
-          CRAB_WARN(
-              "There is no an edge from ",
+	  // Enable temporarily warning messages
+	  bool flag = crab::CrabWarningFlag;
+	  crab::CrabEnableWarningMsg(true);
+          CRAB_WARN("There is no an edge from ",
               crab::basic_block_traits<clam::basic_block_t>::to_string(path[i]),
               " to ",
-              crab::basic_block_traits<clam::basic_block_t>::to_string(
-                  path[i + 1]));
+		    crab::basic_block_traits<clam::basic_block_t>::to_string(path[i + 1]));
+	  crab::CrabEnableWarningMsg(flag);
           return true;
         }
       }
