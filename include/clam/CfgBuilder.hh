@@ -76,6 +76,10 @@ public:
   // nullptr if compute_live_symbols has not been called.
   const liveness_t *getLiveSymbols() const;
 
+  // heap abstraction for whole program
+  HeapAbstraction &getHeapAbstraction();
+  const HeapAbstraction &getHeapAbstraction() const;
+  
   /***** Begin API to translate LLVM entities to Crab ones *****/  
   // map a llvm basic block to a crab basic block label
   basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
@@ -126,10 +130,12 @@ public:
   bool hasCfg(const llvm::Function &f) const;
 
   // pre: hasCfg(f) returns true
-  cfg_t &getCfg(const llvm::Function &f) const;
+  cfg_t &getCfg(const llvm::Function &f);  
+  const cfg_t &getCfg(const llvm::Function &f) const;
 
   // return null if mkCfgBuilder was not called on f
-  CfgBuilder *getCfgBuilder(const llvm::Function &f) const;
+  CfgBuilder *getCfgBuilder(const llvm::Function &f);
+  const CfgBuilder *getCfgBuilder(const llvm::Function &f) const;  
 
   variable_factory_t &getVarFactory();
 
@@ -138,7 +144,8 @@ public:
   const llvm::TargetLibraryInfo &getTLI(const llvm::Function &) const;
   llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
 
-  HeapAbstraction &getHeapAbstraction();  
+  HeapAbstraction &getHeapAbstraction();
+  const HeapAbstraction &getHeapAbstraction() const;    
 private:
   std::unique_ptr<CrabBuilderManagerImpl> m_impl;
 };

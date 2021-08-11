@@ -2856,6 +2856,10 @@ public:
   // return crab control flow graph
   cfg_t &getCfg();
 
+  // return heap abstraction for whole program
+  HeapAbstraction &getHeapAbstraction();
+  const HeapAbstraction &getHeapAbstraction() const;  
+  
   /***** Begin API to translate LLVM entities to Crab ones *****/
   // map a llvm basic block to a crab basic block label
   basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
@@ -2978,6 +2982,14 @@ cfg_t &CfgBuilderImpl::getCfg() {
   return *m_cfg;
 }
 
+HeapAbstraction &CfgBuilderImpl::getHeapAbstraction() {
+  return m_mem;
+}
+  
+const HeapAbstraction &CfgBuilderImpl::getHeapAbstraction() const{
+  return m_mem;
+}
+  
 const llvm::Instruction *
 CfgBuilderImpl::getInstruction(const statement_t &s) const {
   auto it = m_rev_map.find(&s);
@@ -4020,6 +4032,14 @@ void CfgBuilder::addFunctionDeclaration() { m_impl->addFunctionDeclaration(); }
 
 cfg_t &CfgBuilder::getCfg() { return m_impl->getCfg(); }
 
+HeapAbstraction &CfgBuilder::getHeapAbstraction() {
+  return m_impl->getHeapAbstraction();
+}
+
+const HeapAbstraction &CfgBuilder::getHeapAbstraction() const{
+  return m_impl->getHeapAbstraction();
+}
+  
 basic_block_label_t
 CfgBuilder::getCrabBasicBlock(const llvm::BasicBlock *bb) const {
   return m_impl->getCrabBasicBlock(bb);
@@ -4111,6 +4131,7 @@ public:
   llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
 
   HeapAbstraction &getHeapAbstraction();
+  const HeapAbstraction &getHeapAbstraction() const;  
 
 private:
   // User-definable parameters for building the Crab CFGs
@@ -4238,7 +4259,13 @@ CrabBuilderManagerImpl::getTLIWrapper() const {
   return m_tli;
 }
 
-HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() { return *m_mem; }
+HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() {
+  return *m_mem;
+}
+  
+const HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() const {
+  return *m_mem;
+}  
 
 // === Begin must be located after CrabBuilderManagerImpl is defined  === //
 /**
@@ -4768,14 +4795,22 @@ bool CrabBuilderManager::hasCfg(const Function &f) const {
   return m_impl->hasCfg(f);
 }
 
-cfg_t &CrabBuilderManager::getCfg(const Function &f) const {
+cfg_t &CrabBuilderManager::getCfg(const Function &f) {
   return m_impl->getCfg(f);
 }
 
-CfgBuilder *CrabBuilderManager::getCfgBuilder(const Function &f) const {
+const cfg_t &CrabBuilderManager::getCfg(const Function &f) const {
+  return m_impl->getCfg(f);
+}
+  
+CfgBuilder *CrabBuilderManager::getCfgBuilder(const Function &f) {
   return m_impl->getCfgBuilder(f);
 }
 
+const CfgBuilder *CrabBuilderManager::getCfgBuilder(const Function &f) const {
+  return m_impl->getCfgBuilder(f);
+}
+  
 variable_factory_t &CrabBuilderManager::getVarFactory() {
   return m_impl->getVarFactory();
 }
@@ -4794,6 +4829,10 @@ llvm::TargetLibraryInfoWrapperPass &CrabBuilderManager::getTLIWrapper() const {
 }
 
 HeapAbstraction &CrabBuilderManager::getHeapAbstraction() {
+  return m_impl->getHeapAbstraction();
+}
+
+const HeapAbstraction &CrabBuilderManager::getHeapAbstraction() const {
   return m_impl->getHeapAbstraction();
 }
 
