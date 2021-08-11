@@ -7,9 +7,8 @@
 #include "clam/CfgBuilderParams.hh"
 #include "clam/crab/crab_lang.hh"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
-
-#include "crab/analysis/dataflow/liveness.hpp"
 
 #include <memory>
 
@@ -39,17 +38,11 @@ class IntraClam_Impl;
 class InterClam_Impl;
 
 class CfgBuilder {
-public:
-  using liveness_t = crab::analyzer::live_and_dead_analysis<cfg_ref_t>;
-  using varset = typename liveness_t::varset_domain_t;
-
 private:
   friend class CrabBuilderManagerImpl;
 
   // the actual cfg builder
   std::unique_ptr<CfgBuilderImpl> m_impl;
-  // live and dead symbols
-  std::unique_ptr<liveness_t> m_ls;
 
   CfgBuilder(const llvm::Function &func, CrabBuilderManagerImpl &man);
 
@@ -71,7 +64,14 @@ public:
   void computeLiveSymbols();
   // return live symbols at the end of block bb. Return None if
   // compute_live_symbols has not been called.
-  llvm::Optional<varset> getLiveSymbols(const llvm::BasicBlock *bb) const;
+  llvm::Optional<varset_t> getLiveSymbols(const llvm::BasicBlock *bb) const;
+  // return live LLVM symbols at the end of block bb. The returned
+  // value will be empty whether no live symbols found or
+  // compute_live_symbols has not been called. Note also that not all
+  // Crab symbols are easily translated back to LLVM symbols. Thus,
+  // some crab ghost variables can be ignored.
+  llvm::DenseSet<const llvm::Value*>
+  getLiveLLVMSymbols(const llvm::BasicBlock *bb) const;  
   // Low-level API: return live symbols for the whole cfg. Return
   // nullptr if compute_live_symbols has not been called.
   const liveness_t *getLiveSymbols() const;

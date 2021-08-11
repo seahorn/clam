@@ -73,7 +73,6 @@ using lin_csts_map_t = typename IntraClam::lin_csts_map_t;
 using edges_set =
       std::set<std::pair<const llvm::BasicBlock *, const llvm::BasicBlock *>>;
 // -- live symbols
-using liveness_t = crab::analyzer::live_and_dead_analysis<cfg_ref_t>;
 using liveness_map_t = std::unordered_map<cfg_ref_t, const liveness_t *>;
 // -- forward/backward analyzer for intra-procedural analysis
 using intra_analyzer_t =

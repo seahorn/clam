@@ -2856,10 +2856,26 @@ public:
   // return crab control flow graph
   cfg_t &getCfg();
 
+  // compute live symbols per block by running liveness analysis
+  void computeLiveSymbols();
+  // return live symbols at the end of block bb. Return None if
+  // compute_live_symbols has not been called.
+  llvm::Optional<varset_t> getLiveSymbols(const llvm::BasicBlock *bb) const;
+  // return live LLVM symbols at the end of block bb. The returned
+  // value will be empty whether no live symbols found or
+  // compute_live_symbols has not been called. Note also that not all
+  // Crab symbols are easily translated back to LLVM symbols. Thus,
+  // some crab ghost variables can be ignored.  
+  DenseSet<const llvm::Value*>
+  getLiveLLVMSymbols(const llvm::BasicBlock *B) const;
+  // Low-level API: return live symbols for the whole cfg. Return
+  // nullptr if compute_live_symbols has not been called.
+  const liveness_t *getLiveSymbols() const;
+
   // return heap abstraction for whole program
   HeapAbstraction &getHeapAbstraction();
   const HeapAbstraction &getHeapAbstraction() const;  
-  
+
   /***** Begin API to translate LLVM entities to Crab ones *****/
   // map a llvm basic block to a crab basic block label
   basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
@@ -2913,6 +2929,8 @@ private:
   HeapAbstraction &m_mem;
   // the crab CFG
   std::unique_ptr<cfg_t> m_cfg;
+  // live and dead symbols
+  std::unique_ptr<liveness_t> m_ls;
   // generate unique identifiers for crab basic block ids
   unsigned int m_id;
   // map llvm CFG basic blocks to crab basic block ids
@@ -3026,6 +3044,58 @@ llvm::Optional<var_t> CfgBuilderImpl::getCrabVariable(const llvm::Value &v) {
   return (lit->isVar() ? llvm::Optional<var_t>(lit->getVar()) : llvm::Optional<var_t>());
 }
 
+
+void CfgBuilderImpl::computeLiveSymbols() {
+  if (!m_ls) {
+    auto &cfg = getCfg();
+    m_ls = std::make_unique<liveness_t>(cfg);
+    CRAB_VERBOSE_IF(1, auto fdecl = cfg.get_func_decl();
+                    crab::get_msg_stream()
+                    << "Running liveness analysis for " << fdecl.get_func_name()
+                    << "  ...\n";);
+    m_ls->exec();
+
+    unsigned total_live, avg_live_per_blk, max_live_per_blk;
+    m_ls->get_stats(total_live, max_live_per_blk, avg_live_per_blk);
+    CRAB_VERBOSE_IF(1, crab::outs()
+                           << "-- Max number of out live vars per block="
+                           << max_live_per_blk << "\n"
+                           << "-- Avg number of out live vars per block="
+                           << avg_live_per_blk << "\n";);
+    crab::CrabStats::count_max("Liveness.count.maxOutVars", max_live_per_blk);
+  }
+}
+
+const liveness_t* CfgBuilderImpl::getLiveSymbols() const {
+  return (m_ls ? &*m_ls : nullptr);
+}
+
+Optional<varset_t>
+CfgBuilderImpl::getLiveSymbols(const BasicBlock *B) const {
+  if (!m_ls) {
+    return llvm::None;
+  } else {
+    basic_block_label_t bbl = getCrabBasicBlock(B);
+    return m_ls->get(bbl);
+  }
+}
+
+  
+DenseSet<const llvm::Value*>
+CfgBuilderImpl::getLiveLLVMSymbols(const llvm::BasicBlock *B) const {
+  DenseSet<const llvm::Value*> res;
+  if (m_ls) {
+    basic_block_label_t bbl = getCrabBasicBlock(B);
+    varset_t live = m_ls->get(bbl);
+    for (auto it = live.begin(), et = live.end(); it!=et; ++it) {
+      if (const Value *v = m_lfac.getLLVMVar(*it)) {
+	res.insert(v);
+      }
+    }
+  }
+  return res;
+}
+  
 llvm::Optional<var_t> CfgBuilderImpl::getCrabRegionVariable(const Function &f,
 							    const llvm::Value &v) {
   if (m_params.precision_level != CrabBuilderPrecision::MEM) {
@@ -4022,7 +4092,7 @@ void CrabBuilderParams::write(raw_ostream &o) const {
 
 /* CFG Builder class */
 CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManagerImpl &man)
-    : m_impl(std::make_unique<CfgBuilderImpl>(func, man)), m_ls(nullptr) {}
+    : m_impl(std::make_unique<CfgBuilderImpl>(func, man)) {}
 
 CfgBuilder::~CfgBuilder() {}
 
@@ -4055,6 +4125,7 @@ llvm::Optional<var_t> CfgBuilder::getCrabVariable(const llvm::Value &v) {
   return m_impl->getCrabVariable(v);
 }
 
+  
 llvm::Optional<var_t> CfgBuilder::getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v) {
   return m_impl->getCrabRegionVariable(f, v);
 }
@@ -4065,38 +4136,21 @@ CfgBuilder::getInstruction(const statement_t &s) const {
 }
 
 void CfgBuilder::computeLiveSymbols() {
-  if (!m_ls) {
-    auto &cfg = m_impl->getCfg();
-    m_ls = std::make_unique<liveness_t>(cfg);
-    CRAB_VERBOSE_IF(1, auto fdecl = cfg.get_func_decl();
-                    crab::get_msg_stream()
-                    << "Running liveness analysis for " << fdecl.get_func_name()
-                    << "  ...\n";);
-    m_ls->exec();
-
-    unsigned total_live, avg_live_per_blk, max_live_per_blk;
-    m_ls->get_stats(total_live, max_live_per_blk, avg_live_per_blk);
-    CRAB_VERBOSE_IF(1, crab::outs()
-                           << "-- Max number of out live vars per block="
-                           << max_live_per_blk << "\n"
-                           << "-- Avg number of out live vars per block="
-                           << avg_live_per_blk << "\n";);
-    crab::CrabStats::count_max("Liveness.count.maxOutVars", max_live_per_blk);
-  }
+  m_impl->computeLiveSymbols();
 }
 
-const CfgBuilder::liveness_t *CfgBuilder::getLiveSymbols() const {
-  return (m_ls ? &*m_ls : nullptr);
+const liveness_t *CfgBuilder::getLiveSymbols() const {
+  return m_impl->getLiveSymbols();
 }
 
-Optional<CfgBuilder::varset>
+Optional<varset_t>
 CfgBuilder::getLiveSymbols(const BasicBlock *B) const {
-  if (!m_ls) {
-    return llvm::None;
-  } else {
-    basic_block_label_t bbl = getCrabBasicBlock(B);
-    return m_ls->get(bbl);
-  }
+  return m_impl->getLiveSymbols(B);
+}
+
+DenseSet<const llvm::Value*>
+CfgBuilder::getLiveLLVMSymbols(const llvm::BasicBlock *B) const {
+  return m_impl->getLiveLLVMSymbols(B);
 }
 
 /* CFG Manager class */

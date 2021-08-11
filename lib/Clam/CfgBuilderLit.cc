@@ -36,6 +36,9 @@ public:
   // Create a fresh variable from a Value
   llvm::Optional<var_t> mkVar(const llvm::Value &v);
 
+  // Inverse of mkVar. Return null if no Value found.
+  const Value* getLLVMVar(const var_t &v) const;
+
   // Create a fresh array variable
   var_t mkArrayVar(RegionInfo rgnInfo);
 
@@ -292,6 +295,14 @@ Optional<var_t> crabLitFactoryImpl::mkVar(const Value &v) {
   return None;
 }
 
+const Value* crabLitFactoryImpl::getLLVMVar(const var_t &v) const {
+  const Value *res = nullptr;
+  if (v.name().get()) {
+    res = dyn_cast<const Value>(*(v.name().get()));
+  }
+  return res;
+}
+  
 bool crabLitFactoryImpl::isBoolTrue(const crab_lit_ref_t ref) const {
   if (!ref || !ref->isBool())
     CLAM_ERROR("Literal is not a Boolean");
@@ -459,6 +470,10 @@ Optional<var_t> crabLitFactory::mkVar(const Value &v) {
   return m_impl->mkVar(v);
 }
 
+const Value* crabLitFactory::getLLVMVar(const var_t &v) const {
+  return m_impl->getLLVMVar(v);
+}
+  
 var_t crabLitFactory::mkArrayVar(Region rgn) { return m_impl->mkArrayVar(rgn); }
 
 var_t crabLitFactory::mkRegionVar(Region rgn) {

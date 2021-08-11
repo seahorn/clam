@@ -10,6 +10,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "crab/analysis/dataflow/liveness.hpp"
 #include "crab/cfg/cfg.hpp"
 #include "crab/cg/cg.hpp"
 #include "crab/types/indexable.hpp"
@@ -154,6 +155,9 @@ using lin_exp_unordered_map =
 template <typename Value>
 using lin_cst_unordered_map =
     ikos::linear_constraint_unordered_map<number_t, varname_t, Value>;
+
+using liveness_t = crab::analyzer::live_and_dead_analysis<cfg_ref_t>;
+using varset_t = typename liveness_t::varset_domain_t;
 } // end namespace clam
 
 namespace crab {
