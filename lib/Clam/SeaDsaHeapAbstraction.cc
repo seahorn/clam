@@ -630,38 +630,48 @@ stable_difference(SeaDsaHeapAbstraction::RegionVec &v1,
   return out;
 }
 
+template<class Map, class MapKey>
+static SeaDsaHeapAbstraction::RegionVec lookup(const Map &m, const MapKey func) {
+  auto it = m.find(func);
+  if (it != m.end()) {
+    return it->second;
+  } else {
+    return SeaDsaHeapAbstraction::RegionVec();
+  }
+}
+  
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {
-  RegionVec v1 = m_func_accessed[&fn];
-  RegionVec v2 = m_func_mods[&fn];
+SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) const {
+  RegionVec v1 = lookup(m_func_accessed, &fn);
+  RegionVec v2 = lookup(m_func_mods,&fn);
   return stable_difference(v1, v2);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getModifiedRegions(const llvm::Function &fn) {
-  return m_func_mods[&fn];
+SeaDsaHeapAbstraction::getModifiedRegions(const llvm::Function &fn) const {
+  return lookup(m_func_mods, &fn);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getNewRegions(const llvm::Function &fn) {
-  return m_func_news[&fn];
+SeaDsaHeapAbstraction::getNewRegions(const llvm::Function &fn) const {
+  return lookup(m_func_news, &fn);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) {
-  RegionVec v1 = m_callsite_accessed[&I];
-  RegionVec v2 = m_callsite_mods[&I];
+SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) const {
+  RegionVec v1 = lookup(m_callsite_accessed, &I);
+  RegionVec v2 = lookup(m_callsite_mods, &I);
   return stable_difference(v1, v2);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst &I) {
-  return m_callsite_mods[&I];
+SeaDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst &I) const {
+  return lookup(m_callsite_mods, &I);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getNewRegions(const llvm::CallInst &I) {
-  return m_callsite_news[&I];
+SeaDsaHeapAbstraction::getNewRegions(const llvm::CallInst &I) const {
+  return lookup(m_callsite_news, &I);
 }
 
 } // namespace clam

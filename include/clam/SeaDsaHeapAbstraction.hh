@@ -90,6 +90,7 @@ public:
   }
 
   seadsa::GlobalAnalysis *getSeaDsa() { return m_dsa; }
+  const seadsa::GlobalAnalysis *getSeaDsa() const { return m_dsa; }  
 
   // Use F and V to get sea-dsa cell associated to it.
   virtual Region getRegion(const llvm::Function &F,
@@ -100,17 +101,17 @@ public:
   Region getRegion(const llvm::Function &F, const llvm::Value &V,
                    unsigned offset, const llvm::Type &AccessedType);
 
-  virtual RegionVec getOnlyReadRegions(const llvm::Function &F) override;
+  virtual RegionVec getOnlyReadRegions(const llvm::Function &F) const override;
 
-  virtual RegionVec getModifiedRegions(const llvm::Function &F) override;
+  virtual RegionVec getModifiedRegions(const llvm::Function &F) const override;
 
-  virtual RegionVec getNewRegions(const llvm::Function &F) override;
+  virtual RegionVec getNewRegions(const llvm::Function &F) const override;
 
-  virtual RegionVec getOnlyReadRegions(const llvm::CallInst &I) override;
+  virtual RegionVec getOnlyReadRegions(const llvm::CallInst &I) const override;
 
-  virtual RegionVec getModifiedRegions(const llvm::CallInst &I) override;
+  virtual RegionVec getModifiedRegions(const llvm::CallInst &I) const override;
 
-  virtual RegionVec getNewRegions(const llvm::CallInst &I) override;
+  virtual RegionVec getNewRegions(const llvm::CallInst &I) const override;
 
   virtual llvm::StringRef getName() const override {
     return "SeaDsaHeapAbstraction";

@@ -48,6 +48,7 @@ public:
   
   /* Return the manager used to build all CFGs */
   virtual CrabBuilderManager &getCfgBuilderMan() = 0;
+  virtual const CrabBuilderManager &getCfgBuilderMan() const = 0;
 
   /**
    * Call crab analysis on the call graph under assumptions.
@@ -122,6 +123,7 @@ public:
 
   /* return the manager used to build all CFGs */
   CrabBuilderManager &getCfgBuilderMan() override;
+  const CrabBuilderManager &getCfgBuilderMan() const override;  
 
   /**
    * Clear all the internal state
@@ -192,6 +194,7 @@ public:
 
   /* return the manager used to build all CFGs */
   CrabBuilderManager &getCfgBuilderMan() override;
+  const CrabBuilderManager &getCfgBuilderMan() const override;  
 
   /**
    * Clear all the internal state
@@ -281,6 +284,7 @@ public:
   
   /* return the manager used to build all CFGs */
   CrabBuilderManager &getCfgBuilderMan();
+  const CrabBuilderManager &getCfgBuilderMan() const;  
 
   /* return the analysis options */
   const AnalysisParams &getAnalysisParams() const { return m_params; }
@@ -381,6 +385,7 @@ public:
 
   /* return the manager used to build all CFGs */
   CrabBuilderManager &getCfgBuilderMan();
+  const CrabBuilderManager &getCfgBuilderMan() const;
 
   /**
    * Call crab analysis on the CFG under assumptions.

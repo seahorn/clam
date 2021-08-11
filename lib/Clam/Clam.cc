@@ -486,6 +486,10 @@ CrabBuilderManager &IntraClam::getCfgBuilderMan() {
   return m_impl->m_cfg_builder_man;
 }
 
+const CrabBuilderManager &IntraClam::getCfgBuilderMan() const {
+  return m_impl->m_cfg_builder_man;
+}
+  
 void IntraClam::analyze(AnalysisParams &params,
                         const abs_dom_map_t &assumptions) {
   AnalysisResults results =
@@ -587,6 +591,10 @@ public:
   ~IntraGlobalClamImpl() = default;
 
   CrabBuilderManager &getCfgBuilderMan() {
+    return m_builder_man;
+  }
+
+  const CrabBuilderManager &getCfgBuilderMan() const {
     return m_builder_man;
   }
 
@@ -1031,6 +1039,10 @@ CrabBuilderManager &IntraGlobalClam::getCfgBuilderMan() {
   return m_impl->getCfgBuilderMan();
 }
 
+const CrabBuilderManager &IntraGlobalClam::getCfgBuilderMan() const {
+  return m_impl->getCfgBuilderMan();
+}
+  
 void IntraGlobalClam::analyze(AnalysisParams &params,
 			      const abs_dom_map_t &abs_dom_assumptions) {
   m_impl->analyze(params, abs_dom_assumptions);
@@ -1094,6 +1106,10 @@ CrabBuilderManager &InterGlobalClam::getCfgBuilderMan() {
   return m_impl->m_crab_builder_man;
 }
 
+const CrabBuilderManager &InterGlobalClam::getCfgBuilderMan() const {
+  return m_impl->m_crab_builder_man;
+}
+  
 void InterGlobalClam::analyze(AnalysisParams &params,
 			      const abs_dom_map_t &assumptions) {
   m_impl->analyze(params, assumptions);
@@ -1360,8 +1376,14 @@ cfg_ref_t ClamPass::getCfg(llvm::Function &F) {
   return m_cfg_builder_man->getCfg(F);
 }
 
-CrabBuilderManager &ClamPass::getCfgBuilderMan() { return *m_cfg_builder_man; }
+CrabBuilderManager &ClamPass::getCfgBuilderMan() {
+  return *m_cfg_builder_man;
+}
 
+const CrabBuilderManager &ClamPass::getCfgBuilderMan() const {
+  return *m_cfg_builder_man;
+}
+  
 // return invariants that hold at the entry of block
 llvm::Optional<clam_abstract_domain>
 ClamPass::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {

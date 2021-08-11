@@ -252,26 +252,26 @@ public:
 
   // Read-Only regions reachable by function parameters and globals
   // but not returns
-  virtual RegionVec getOnlyReadRegions(const llvm::Function &) = 0;
+  virtual RegionVec getOnlyReadRegions(const llvm::Function &) const = 0;
 
   // Written regions reachable by function parameters and globals but
   // not returns
-  virtual RegionVec getModifiedRegions(const llvm::Function &) = 0;
+  virtual RegionVec getModifiedRegions(const llvm::Function &) const  = 0;
 
   // Regions that are reachable only from the return of the function
-  virtual RegionVec getNewRegions(const llvm::Function &) = 0;
+  virtual RegionVec getNewRegions(const llvm::Function &) const = 0;
 
   // Read-only regions at the caller that are mapped to callee's
   // formal parameters and globals.
-  virtual RegionVec getOnlyReadRegions(const llvm::CallInst &) = 0;
+  virtual RegionVec getOnlyReadRegions(const llvm::CallInst &) const = 0;
 
   // Written regions at the caller that are mapped to callee's formal
   // parameters and globals.
-  virtual RegionVec getModifiedRegions(const llvm::CallInst &) = 0;
+  virtual RegionVec getModifiedRegions(const llvm::CallInst &) const = 0;
 
   // Regions at the caller that are mapped to those that are only
   // reachable from callee's returns.
-  virtual RegionVec getNewRegions(const llvm::CallInst &) = 0;
+  virtual RegionVec getNewRegions(const llvm::CallInst &) const = 0;
 };
 
 } // namespace clam

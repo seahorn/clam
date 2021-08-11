@@ -22,17 +22,17 @@ struct DummyHeapAbstraction : public HeapAbstraction {
     return Region();
   }
 
-  RegionVec getOnlyReadRegions(const llvm::Function &) { return RegionVec(); }
+  RegionVec getOnlyReadRegions(const llvm::Function &) const { return RegionVec(); }
 
-  RegionVec getModifiedRegions(const llvm::Function &) { return RegionVec(); }
+  RegionVec getModifiedRegions(const llvm::Function &) const { return RegionVec(); }
 
-  RegionVec getNewRegions(const llvm::Function &) { return RegionVec(); }
+  RegionVec getNewRegions(const llvm::Function &) const { return RegionVec(); }
 
-  RegionVec getOnlyReadRegions(const llvm::CallInst &) { return RegionVec(); }
+  RegionVec getOnlyReadRegions(const llvm::CallInst &) const { return RegionVec(); }
 
-  RegionVec getModifiedRegions(const llvm::CallInst &) { return RegionVec(); }
+  RegionVec getModifiedRegions(const llvm::CallInst &) const { return RegionVec(); }
 
-  RegionVec getNewRegions(const llvm::CallInst &) { return RegionVec(); }
+  RegionVec getNewRegions(const llvm::CallInst &) const { return RegionVec(); }
 
   llvm::StringRef getName() const { return "DummyHeapAbstraction"; }
 };
