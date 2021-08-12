@@ -411,12 +411,11 @@ public:
                const lin_csts_map_t &assumptions);
 
   /**
-   * Compute strongest post-condition of an acyclic path.
-   * Return false iff the path implies false.
-   *
-   * post contains the post-conditions at each block.
-   * If it returns false then:
-   *   - core is a minimal subset of statements that implies false
+   * Compute strongest post-condition of an acyclic path.  
+   * 
+   * Return false if the path implies false and an explanation (core)
+   * is found. An explanation is a subset of statements that implies
+   * false.
    **/
   bool
   pathAnalyze(const AnalysisParams &params,

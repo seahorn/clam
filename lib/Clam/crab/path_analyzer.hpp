@@ -29,15 +29,10 @@ public:
   path_analyzer<CFG, AbsDom> &
   operator=(const path_analyzer<CFG, AbsDom> &o) = delete;
 
-  /* Return true iff the forward analysis of path is not bottom.
-   *
-   * If it returns true:
-   *   get_fwd_constraints returns for each block the constraints that hold at
-   * the entry.
-   *
-   * If it returns false:
-   *   get_unsat_core returns the minimal subset of statements that
-   *   still implies false.
+  /* Return false if the forward analysis of path results in bottom
+   * and an explanation (subset of statements that implies bottom) can
+   * be found. If it returns true then get_fwd_constraints returns for
+   * each block the abstract state that holds at the entry.
    */
   bool solve(const std::vector<basic_block_label_t> &path,
              // it first try boolean reasoning before resorting to
@@ -62,11 +57,24 @@ public:
 
 private:
   bool has_kid(basic_block_label_t b1, basic_block_label_t b2);
-  void minimize_path(const std::vector<statement_t *> &path,
+
+  bool minimize_path(const std::vector<statement_t *> &path,
                      unsigned bottom_stmt);
-  bool remove_irrelevant_statements(std::vector<statement_t *> &path,
-                                    unsigned bottom_stmt,
-                                    bool only_data_dependencies);
+
+  // The path is false (i.e., its abstract forward analysis returned
+  // bottom)
+  enum class FalsePathInfo {
+    /*trivial explanation: e.g., the path contains an assume(false)*/
+    TRIVIAL_EXPLANATION,
+    /*cases where we don't want to generate an explanation: e.g., the
+      path contains an assert(false) */
+    NOT_EXPLANATION,
+    /*we should be able to produce an explanation*/    
+    EXPLANATION 
+  };
+  FalsePathInfo remove_irrelevant_statements(std::vector<statement_t *> &path,
+					     unsigned bottom_stmt,
+					     bool only_data_dependencies);
   bool solve_path(const std::vector<basic_block_label_t> &path,
                   const bool only_bool_reasoning,
                   std::vector<statement_t *> &stmts, unsigned &bottom_block,
