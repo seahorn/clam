@@ -81,6 +81,7 @@ ClamQueryCache::range(const Instruction &I,
     if (m_crab_builder_man.hasCfg(fParent)) {
       auto &crabCfg = m_crab_builder_man.getCfg(fParent);
       auto crabCfgBuilder = m_crab_builder_man.getCfgBuilder(fParent);
+      assert(crabCfgBuilder);
       auto &crabBB = crabCfg.get_node(crabCfgBuilder->getCrabBasicBlock(&BB));
       // Forward propagation through the basic block but ignoring
       // callsites. This might be imprecise if the analysis was
@@ -126,19 +127,20 @@ ClamQueryCache::range(const BasicBlock &BB, const Value &V,
   unsigned bitwidth = getBitWidth(BB, V);  
   if (invAtEntry.hasValue()) {
     const Function &F = *(BB.getParent());
-    auto crabCfgBuilder = m_crab_builder_man.getCfgBuilder(F);    
-    Optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(V);
-    if (crabVar.hasValue()) {
-      auto crabInterval = invAtEntry.getValue()[crabVar.getValue()];
-      if (crabInterval.lb().is_finite() && crabInterval.ub().is_finite()) {
-        auto min = *(crabInterval.lb().number());
-        auto max = *(crabInterval.ub().number());
-        if (min.fits_int64() && max.fits_int64()) {
-	  ConstantRange interval = getConstantRange((int64_t)min, (int64_t)max, bitwidth);
-          m_range_value_cache.insert(std::make_pair(std::make_pair(&BB, &V),
-						    interval));
-          return interval;
-        }
+    if (auto crabCfgBuilder = m_crab_builder_man.getCfgBuilder(F)) {
+      Optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(V);
+      if (crabVar.hasValue()) {
+	auto crabInterval = invAtEntry.getValue()[crabVar.getValue()];
+	if (crabInterval.lb().is_finite() && crabInterval.ub().is_finite()) {
+	  auto min = *(crabInterval.lb().number());
+	  auto max = *(crabInterval.ub().number());
+	  if (min.fits_int64() && max.fits_int64()) {
+	    ConstantRange interval = getConstantRange((int64_t)min, (int64_t)max, bitwidth);
+	    m_range_value_cache.insert(std::make_pair(std::make_pair(&BB, &V),
+						      interval));
+	    return interval;
+	  }
+	}
       }
     }
   }
@@ -160,6 +162,7 @@ ClamQueryCache::tags(const Instruction &I,
     if (m_crab_builder_man.hasCfg(fParent)) {
       auto &crabCfg = m_crab_builder_man.getCfg(fParent);
       auto crabCfgBuilder = m_crab_builder_man.getCfgBuilder(fParent);
+      assert(crabCfgBuilder);
       auto &crabBB = crabCfg.get_node(crabCfgBuilder->getCrabBasicBlock(&BB));
       // Forward propagation through the basic block but ignoring
       // callsites. This might be imprecise if the analysis was

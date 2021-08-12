@@ -4289,10 +4289,11 @@ cfg_t &CrabBuilderManagerImpl::getCfg(const Function &f) const {
 
 CfgBuilder* CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
   auto it = m_cfg_builder_map.find(&f);
-  if (it == m_cfg_builder_map.end()) {
-    CLAM_ERROR("Cannot find crab cfg for " <<  f.getName());
+  if (it != m_cfg_builder_map.end()) {
+    return &(*it->second);
+  } else {
+    return nullptr;
   }
-  return &(*it->second);
 }
 
 variable_factory_t &CrabBuilderManagerImpl::getVarFactory() { return m_vfac; }

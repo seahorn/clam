@@ -204,6 +204,7 @@ public:
                                << fun.getName() << "\n");
       } else {
         m_cfg_builder = man.getCfgBuilder(m_fun);
+	assert(m_cfg_builder);
       }
       
       if (man.getCfgBuilderParams().dot_cfg) {
@@ -822,8 +823,11 @@ private:
   
   basic_block_label_t getCrabBasicBlock(const BasicBlock *bb) const {
     const Function *f = bb->getParent();
-    auto builder = m_crab_builder_man.getCfgBuilder(*f);
-    return builder->getCrabBasicBlock(bb);
+    if (auto builder = m_crab_builder_man.getCfgBuilder(*f)) {
+      return builder->getCrabBasicBlock(bb);
+    } else {
+      CLAM_ERROR("Cannot find crab cfg for " <<  f->getName());      
+    }
   }
 
   /** Run inter-procedural analysis on the whole call graph **/  
