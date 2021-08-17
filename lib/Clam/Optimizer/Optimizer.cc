@@ -254,8 +254,8 @@ public:
   
 };
 
-// Generate bitcode for the value of v if it is a constant 
-Constant *getConstantInt(CfgBuilderPtr clamCfgBuilder, clam_abstract_domain inv, const Value &v) {
+// Generate bitcode for the value of v if it is a constant
+Constant *getConstantInt(CfgBuilder *clamCfgBuilder, clam_abstract_domain inv, const Value &v) {
   if (v.getType()->isIntegerTy()) {
     llvm::Optional<var_t> lhs = clamCfgBuilder->getCrabVariable(v);
     if (lhs.hasValue()) {
@@ -402,9 +402,9 @@ public:
 };
   
 class ConstantReplaceStmt {
-  CfgBuilderPtr m_clamCfgBuilder;
+  CfgBuilder *m_clamCfgBuilder;
 public:
-  ConstantReplaceStmt(CfgBuilderPtr clamCfgBuilder)
+  ConstantReplaceStmt(CfgBuilder *clamCfgBuilder)
     : m_clamCfgBuilder(clamCfgBuilder) {}
   
   bool Skip(const statement_t &s) {
@@ -465,7 +465,7 @@ static bool instrumentLoadInst(clam_abstract_domain inv, basic_block_t &bb,
 }
 
 // Do constant replacement  
-static bool constantReplacement(CfgBuilderPtr clamCfgBuilder,
+static bool constantReplacement(CfgBuilder *clamCfgBuilder,
 				clam_abstract_domain inv,
 				basic_block_t &bb) {
   ConstantReplaceStmt CRS(clamCfgBuilder);
@@ -684,6 +684,7 @@ bool Optimizer::runOnFunction(Function &F) {
       llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
       if (pre.hasValue()) {
 	auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);
+	assert(cfg_builder_ptr);
 	basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
 	change |= instrumentLoadInst(pre.getValue(), cfg.get_node(bb_label),
 				     F.getContext(), m_cg, m_assumeFn);
@@ -694,7 +695,8 @@ bool Optimizer::runOnFunction(Function &F) {
       const bool keep_ghost = false;
       llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
       if (pre.hasValue()) {
-	auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);	
+	auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);
+	assert(cfg_builder_ptr);	
 	basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
 	change |= constantReplacement(cfg_builder_ptr, pre.getValue(), cfg.get_node(bb_label));
       }

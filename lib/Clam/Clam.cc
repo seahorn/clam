@@ -73,7 +73,6 @@ using lin_csts_map_t = typename IntraClam::lin_csts_map_t;
 using edges_set =
       std::set<std::pair<const llvm::BasicBlock *, const llvm::BasicBlock *>>;
 // -- live symbols
-using liveness_t = crab::analyzer::live_and_dead_analysis<cfg_ref_t>;
 using liveness_map_t = std::unordered_map<cfg_ref_t, const liveness_t *>;
 // -- forward/backward analyzer for intra-procedural analysis
 using intra_analyzer_t =
@@ -199,12 +198,13 @@ public:
         CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                                << "Started Crab CFG construction for "
 			       << fun.getName().str() << "\n");
-        m_cfg_builder = man.mkCfgBuilder(m_fun);
+        m_cfg_builder = &(man.mkCfgBuilder(m_fun));
         CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                                << "Finished Crab CFG construction for "
 			       << fun.getName().str() << "\n");
       } else {
         m_cfg_builder = man.getCfgBuilder(m_fun);
+	assert(m_cfg_builder);
       }
       
       if (man.getCfgBuilderParams().dot_cfg) {
@@ -303,7 +303,7 @@ public:
   
 private:
   CrabBuilderManager &m_cfg_builder_man;  
-  CfgBuilderPtr m_cfg_builder;
+  CfgBuilder *m_cfg_builder;
   const Function &m_fun;
   variable_factory_t &m_vfac;
   // To store analysis results
@@ -486,6 +486,10 @@ CrabBuilderManager &IntraClam::getCfgBuilderMan() {
   return m_impl->m_cfg_builder_man;
 }
 
+const CrabBuilderManager &IntraClam::getCfgBuilderMan() const {
+  return m_impl->m_cfg_builder_man;
+}
+  
 void IntraClam::analyze(AnalysisParams &params,
                         const abs_dom_map_t &assumptions) {
   AnalysisResults results =
@@ -587,6 +591,10 @@ public:
   ~IntraGlobalClamImpl() = default;
 
   CrabBuilderManager &getCfgBuilderMan() {
+    return m_builder_man;
+  }
+
+  const CrabBuilderManager &getCfgBuilderMan() const {
     return m_builder_man;
   }
 
@@ -815,8 +823,11 @@ private:
   
   basic_block_label_t getCrabBasicBlock(const BasicBlock *bb) const {
     const Function *f = bb->getParent();
-    auto builder = m_crab_builder_man.getCfgBuilder(*f);
-    return builder->getCrabBasicBlock(bb);
+    if (auto builder = m_crab_builder_man.getCfgBuilder(*f)) {
+      return builder->getCrabBasicBlock(bb);
+    } else {
+      CLAM_ERROR("Cannot find crab cfg for " <<  f->getName());      
+    }
   }
 
   /** Run inter-procedural analysis on the whole call graph **/  
@@ -1031,6 +1042,10 @@ CrabBuilderManager &IntraGlobalClam::getCfgBuilderMan() {
   return m_impl->getCfgBuilderMan();
 }
 
+const CrabBuilderManager &IntraGlobalClam::getCfgBuilderMan() const {
+  return m_impl->getCfgBuilderMan();
+}
+  
 void IntraGlobalClam::analyze(AnalysisParams &params,
 			      const abs_dom_map_t &abs_dom_assumptions) {
   m_impl->analyze(params, abs_dom_assumptions);
@@ -1094,6 +1109,10 @@ CrabBuilderManager &InterGlobalClam::getCfgBuilderMan() {
   return m_impl->m_crab_builder_man;
 }
 
+const CrabBuilderManager &InterGlobalClam::getCfgBuilderMan() const {
+  return m_impl->m_crab_builder_man;
+}
+  
 void InterGlobalClam::analyze(AnalysisParams &params,
 			      const abs_dom_map_t &assumptions) {
   m_impl->analyze(params, assumptions);
@@ -1360,8 +1379,14 @@ cfg_ref_t ClamPass::getCfg(llvm::Function &F) {
   return m_cfg_builder_man->getCfg(F);
 }
 
-CrabBuilderManager &ClamPass::getCfgBuilderMan() { return *m_cfg_builder_man; }
+CrabBuilderManager &ClamPass::getCfgBuilderMan() {
+  return *m_cfg_builder_man;
+}
 
+const CrabBuilderManager &ClamPass::getCfgBuilderMan() const {
+  return *m_cfg_builder_man;
+}
+  
 // return invariants that hold at the entry of block
 llvm::Optional<clam_abstract_domain>
 ClamPass::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {

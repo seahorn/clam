@@ -7,9 +7,8 @@
 #include "clam/CfgBuilderParams.hh"
 #include "clam/crab/crab_lang.hh"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
-
-#include "crab/analysis/dataflow/liveness.hpp"
 
 #include <memory>
 
@@ -39,17 +38,11 @@ class IntraClam_Impl;
 class InterClam_Impl;
 
 class CfgBuilder {
-public:
-  using liveness_t = crab::analyzer::live_and_dead_analysis<cfg_ref_t>;
-  using varset = typename liveness_t::varset_domain_t;
-
 private:
   friend class CrabBuilderManagerImpl;
 
   // the actual cfg builder
   std::unique_ptr<CfgBuilderImpl> m_impl;
-  // live and dead symbols
-  std::unique_ptr<liveness_t> m_ls;
 
   CfgBuilder(const llvm::Function &func, CrabBuilderManagerImpl &man);
 
@@ -71,11 +64,22 @@ public:
   void computeLiveSymbols();
   // return live symbols at the end of block bb. Return None if
   // compute_live_symbols has not been called.
-  llvm::Optional<varset> getLiveSymbols(const llvm::BasicBlock *bb) const;
+  llvm::Optional<varset_t> getLiveSymbols(const llvm::BasicBlock *bb) const;
+  // return live LLVM symbols at the end of block bb. The returned
+  // value will be empty whether no live symbols found or
+  // compute_live_symbols has not been called. Note also that not all
+  // Crab symbols are easily translated back to LLVM symbols. Thus,
+  // some crab ghost variables can be ignored.
+  llvm::DenseSet<const llvm::Value*>
+  getLiveLLVMSymbols(const llvm::BasicBlock *bb) const;  
   // Low-level API: return live symbols for the whole cfg. Return
   // nullptr if compute_live_symbols has not been called.
   const liveness_t *getLiveSymbols() const;
 
+  // heap abstraction for whole program
+  HeapAbstraction &getHeapAbstraction();
+  const HeapAbstraction &getHeapAbstraction() const;
+  
   /***** Begin API to translate LLVM entities to Crab ones *****/  
   // map a llvm basic block to a crab basic block label
   basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
@@ -90,17 +94,17 @@ public:
   // variable if possible.
   llvm::Optional<var_t> getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v);  
   /***** End API to translate LLVM entities to Crab ones *****/
-  
-  // DEPRECATED
+
+  /***** Begin API to translate Crab entities to LLVM ones *****/    
+  // Most crab operands have back pointers to LLVM operands so it
+  // is often possible to find the corresponding LLVM
+  // instruction for a given crab statement. Memory operations might not be the case.
   //
-  // Most crab statements have back pointers to LLVM operands so it
-  // is always possible to find the corresponding LLVM
-  // instruction. Array crab operations are an exceptions.
-  //
-  // This method maps an **array** crab statement to its
-  // corresponding llvm instruction. Return null if the the array
-  // instruction is not mapped to a LLVM instruction.
+  // This method maps a memory/array crab statement to its
+  // corresponding llvm instruction. Return null if the crab statement
+  // cannot be mapped to a LLVM instruction.
   const llvm::Instruction *getInstruction(const statement_t &s) const;
+  /***** End API to translate Crab entities to LLVM ones *****/      
 
 }; // end class CfgBuilder
 
@@ -109,8 +113,6 @@ public:
  * A builder contains the crab CFG plus some extra information about
  * the translation.
  **/
-using CfgBuilderPtr = std::shared_ptr<clam::CfgBuilder>;
-
 class CrabBuilderManager {
 public:
   CrabBuilderManager(CrabBuilderParams params,
@@ -123,13 +125,17 @@ public:
 
   CrabBuilderManager &operator=(const CrabBuilderManager &o) = delete;
 
-  CfgBuilderPtr mkCfgBuilder(const llvm::Function &func);
+  CfgBuilder &mkCfgBuilder(const llvm::Function &func);
 
   bool hasCfg(const llvm::Function &f) const;
 
-  cfg_t &getCfg(const llvm::Function &f) const;
+  // pre: hasCfg(f) returns true
+  cfg_t &getCfg(const llvm::Function &f);  
+  const cfg_t &getCfg(const llvm::Function &f) const;
 
-  CfgBuilderPtr getCfgBuilder(const llvm::Function &f) const;
+  // return null if mkCfgBuilder was not called on f
+  CfgBuilder *getCfgBuilder(const llvm::Function &f);
+  const CfgBuilder *getCfgBuilder(const llvm::Function &f) const;  
 
   variable_factory_t &getVarFactory();
 
@@ -138,7 +144,8 @@ public:
   const llvm::TargetLibraryInfo &getTLI(const llvm::Function &) const;
   llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
 
-  HeapAbstraction &getHeapAbstraction();  
+  HeapAbstraction &getHeapAbstraction();
+  const HeapAbstraction &getHeapAbstraction() const;    
 private:
   std::unique_ptr<CrabBuilderManagerImpl> m_impl;
 };

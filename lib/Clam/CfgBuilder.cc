@@ -2421,13 +2421,15 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
 
     if (rgn.isUnknown()) {
       /* untyped region */
+      const statement_t *crab_stmt = nullptr;
       if (val->isVar()) {
-        m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
-                          val->getVar());
+        crab_stmt = m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
+				      val->getVar());
       } else {
-        m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
-                          m_lfac.getTypedConst(val));
+        crab_stmt = m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
+				      m_lfac.getTypedConst(val));
       }
+      insertRevMap(crab_stmt, I);      
 
     } else {
       /* typed region: we need to make sure that the region's type and
@@ -2461,8 +2463,9 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
           m_bb.sext(val->getVar(), ext_or_trunc_val);
         }
 
-        m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn),
-                          ext_or_trunc_val);
+        auto crab_stmt =
+	  m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), ext_or_trunc_val);
+	insertRevMap(crab_stmt, I);
       } else { // val is a constant
         auto typed_const = m_lfac.getTypedConst(val);
         unsigned val_bitwidth = 0;
@@ -2481,7 +2484,9 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
               "TODO: bitwidth of store value operand different from region");
           return;
         }
-        m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), typed_const);
+        auto crab_stmt =
+	  m_bb.store_to_ref(ptr->getVar(), m_lfac.mkRegionVar(rgn), typed_const);
+	insertRevMap(crab_stmt, I);
       }
     }
   }
@@ -2601,7 +2606,9 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
 
     if (rgn.isUnknown()) {
       /* untyped region */
-      m_bb.load_from_ref(lhs->getVar(), ptr->getVar(), m_lfac.mkRegionVar(rgn));
+      auto crab_stmt =
+	m_bb.load_from_ref(lhs->getVar(), ptr->getVar(), m_lfac.mkRegionVar(rgn));
+      insertRevMap(crab_stmt, I);      
     } else {
       /* typed region: we need to make sure that the region's type and
        * the type of the load's lhs match.
@@ -2627,7 +2634,9 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
         lhs_v = m_lfac.mkIntVar(rgn.getRegionInfo().getType().second);
       }
 
-      m_bb.load_from_ref(lhs_v, ptr->getVar(), m_lfac.mkRegionVar(rgn));
+      auto crab_stmt =
+	m_bb.load_from_ref(lhs_v, ptr->getVar(), m_lfac.mkRegionVar(rgn));
+      insertRevMap(crab_stmt, I);      
 
       if (rgn.getRegionInfo().getType().second < lhs_bitwidth) {
         m_bb.sext(lhs_v, ext_or_trunc_lhs_v);
@@ -2845,6 +2854,26 @@ public:
   // return crab control flow graph
   cfg_t &getCfg();
 
+  // compute live symbols per block by running liveness analysis
+  void computeLiveSymbols();
+  // return live symbols at the end of block bb. Return None if
+  // compute_live_symbols has not been called.
+  llvm::Optional<varset_t> getLiveSymbols(const llvm::BasicBlock *bb) const;
+  // return live LLVM symbols at the end of block bb. The returned
+  // value will be empty whether no live symbols found or
+  // compute_live_symbols has not been called. Note also that not all
+  // Crab symbols are easily translated back to LLVM symbols. Thus,
+  // some crab ghost variables can be ignored.  
+  DenseSet<const llvm::Value*>
+  getLiveLLVMSymbols(const llvm::BasicBlock *B) const;
+  // Low-level API: return live symbols for the whole cfg. Return
+  // nullptr if compute_live_symbols has not been called.
+  const liveness_t *getLiveSymbols() const;
+
+  // return heap abstraction for whole program
+  HeapAbstraction &getHeapAbstraction();
+  const HeapAbstraction &getHeapAbstraction() const;  
+
   /***** Begin API to translate LLVM entities to Crab ones *****/
   // map a llvm basic block to a crab basic block label
   basic_block_label_t getCrabBasicBlock(const llvm::BasicBlock *bb) const;
@@ -2858,9 +2887,9 @@ public:
   /***** End API to translate LLVM entities to Crab ones *****/
 
   
-  // Most crab statements have back pointers to LLVM operands so it
+  // Most crab operands have back pointers to LLVM operands so it
   // is always possible to find the corresponding LLVM
-  // instruction. Array/Region crab operations are an exception.
+  // instruction. Array/region crab operations are an exception.
   //
   // This method maps (partially) a crab statement to its
   // corresponding llvm instruction. Return null if the mapping cannot
@@ -2898,6 +2927,8 @@ private:
   HeapAbstraction &m_mem;
   // the crab CFG
   std::unique_ptr<cfg_t> m_cfg;
+  // live and dead symbols
+  std::unique_ptr<liveness_t> m_ls;
   // generate unique identifiers for crab basic block ids
   unsigned int m_id;
   // map llvm CFG basic blocks to crab basic block ids
@@ -2967,6 +2998,14 @@ cfg_t &CfgBuilderImpl::getCfg() {
   return *m_cfg;
 }
 
+HeapAbstraction &CfgBuilderImpl::getHeapAbstraction() {
+  return m_mem;
+}
+  
+const HeapAbstraction &CfgBuilderImpl::getHeapAbstraction() const{
+  return m_mem;
+}
+  
 const llvm::Instruction *
 CfgBuilderImpl::getInstruction(const statement_t &s) const {
   auto it = m_rev_map.find(&s);
@@ -3003,6 +3042,58 @@ llvm::Optional<var_t> CfgBuilderImpl::getCrabVariable(const llvm::Value &v) {
   return (lit->isVar() ? llvm::Optional<var_t>(lit->getVar()) : llvm::Optional<var_t>());
 }
 
+
+void CfgBuilderImpl::computeLiveSymbols() {
+  if (!m_ls) {
+    auto &cfg = getCfg();
+    m_ls = std::make_unique<liveness_t>(cfg);
+    CRAB_VERBOSE_IF(1, auto fdecl = cfg.get_func_decl();
+                    crab::get_msg_stream()
+                    << "Running liveness analysis for " << fdecl.get_func_name()
+                    << "  ...\n";);
+    m_ls->exec();
+
+    unsigned total_live, avg_live_per_blk, max_live_per_blk;
+    m_ls->get_stats(total_live, max_live_per_blk, avg_live_per_blk);
+    CRAB_VERBOSE_IF(1, crab::outs()
+                           << "-- Max number of out live vars per block="
+                           << max_live_per_blk << "\n"
+                           << "-- Avg number of out live vars per block="
+                           << avg_live_per_blk << "\n";);
+    crab::CrabStats::count_max("Liveness.count.maxOutVars", max_live_per_blk);
+  }
+}
+
+const liveness_t* CfgBuilderImpl::getLiveSymbols() const {
+  return (m_ls ? &*m_ls : nullptr);
+}
+
+Optional<varset_t>
+CfgBuilderImpl::getLiveSymbols(const BasicBlock *B) const {
+  if (!m_ls) {
+    return llvm::None;
+  } else {
+    basic_block_label_t bbl = getCrabBasicBlock(B);
+    return m_ls->get(bbl);
+  }
+}
+
+  
+DenseSet<const llvm::Value*>
+CfgBuilderImpl::getLiveLLVMSymbols(const llvm::BasicBlock *B) const {
+  DenseSet<const llvm::Value*> res;
+  if (m_ls) {
+    basic_block_label_t bbl = getCrabBasicBlock(B);
+    varset_t live = m_ls->get(bbl);
+    for (auto it = live.begin(), et = live.end(); it!=et; ++it) {
+      if (const Value *v = m_lfac.getLLVMVar(*it)) {
+	res.insert(v);
+      }
+    }
+  }
+  return res;
+}
+  
 llvm::Optional<var_t> CfgBuilderImpl::getCrabRegionVariable(const Function &f,
 							    const llvm::Value &v) {
   if (m_params.precision_level != CrabBuilderPrecision::MEM) {
@@ -3999,7 +4090,7 @@ void CrabBuilderParams::write(raw_ostream &o) const {
 
 /* CFG Builder class */
 CfgBuilder::CfgBuilder(const llvm::Function &func, CrabBuilderManagerImpl &man)
-    : m_impl(std::make_unique<CfgBuilderImpl>(func, man)), m_ls(nullptr) {}
+    : m_impl(std::make_unique<CfgBuilderImpl>(func, man)) {}
 
 CfgBuilder::~CfgBuilder() {}
 
@@ -4009,6 +4100,14 @@ void CfgBuilder::addFunctionDeclaration() { m_impl->addFunctionDeclaration(); }
 
 cfg_t &CfgBuilder::getCfg() { return m_impl->getCfg(); }
 
+HeapAbstraction &CfgBuilder::getHeapAbstraction() {
+  return m_impl->getHeapAbstraction();
+}
+
+const HeapAbstraction &CfgBuilder::getHeapAbstraction() const{
+  return m_impl->getHeapAbstraction();
+}
+  
 basic_block_label_t
 CfgBuilder::getCrabBasicBlock(const llvm::BasicBlock *bb) const {
   return m_impl->getCrabBasicBlock(bb);
@@ -4024,6 +4123,7 @@ llvm::Optional<var_t> CfgBuilder::getCrabVariable(const llvm::Value &v) {
   return m_impl->getCrabVariable(v);
 }
 
+  
 llvm::Optional<var_t> CfgBuilder::getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v) {
   return m_impl->getCrabRegionVariable(f, v);
 }
@@ -4034,38 +4134,21 @@ CfgBuilder::getInstruction(const statement_t &s) const {
 }
 
 void CfgBuilder::computeLiveSymbols() {
-  if (!m_ls) {
-    auto &cfg = m_impl->getCfg();
-    m_ls = std::make_unique<liveness_t>(cfg);
-    CRAB_VERBOSE_IF(1, auto fdecl = cfg.get_func_decl();
-                    crab::get_msg_stream()
-                    << "Running liveness analysis for " << fdecl.get_func_name()
-                    << "  ...\n";);
-    m_ls->exec();
-
-    unsigned total_live, avg_live_per_blk, max_live_per_blk;
-    m_ls->get_stats(total_live, max_live_per_blk, avg_live_per_blk);
-    CRAB_VERBOSE_IF(1, crab::outs()
-                           << "-- Max number of out live vars per block="
-                           << max_live_per_blk << "\n"
-                           << "-- Avg number of out live vars per block="
-                           << avg_live_per_blk << "\n";);
-    crab::CrabStats::count_max("Liveness.count.maxOutVars", max_live_per_blk);
-  }
+  m_impl->computeLiveSymbols();
 }
 
-const CfgBuilder::liveness_t *CfgBuilder::getLiveSymbols() const {
-  return (m_ls ? &*m_ls : nullptr);
+const liveness_t *CfgBuilder::getLiveSymbols() const {
+  return m_impl->getLiveSymbols();
 }
 
-Optional<CfgBuilder::varset>
+Optional<varset_t>
 CfgBuilder::getLiveSymbols(const BasicBlock *B) const {
-  if (!m_ls) {
-    return llvm::None;
-  } else {
-    basic_block_label_t bbl = getCrabBasicBlock(B);
-    return m_ls->get(bbl);
-  }
+  return m_impl->getLiveSymbols(B);
+}
+
+DenseSet<const llvm::Value*>
+CfgBuilder::getLiveLLVMSymbols(const llvm::BasicBlock *B) const {
+  return m_impl->getLiveLLVMSymbols(B);
 }
 
 /* CFG Manager class */
@@ -4082,13 +4165,13 @@ public:
 
   CrabBuilderManagerImpl &operator=(const CrabBuilderManagerImpl &o) = delete;
 
-  CfgBuilderPtr mkCfgBuilder(const llvm::Function &func);
+  CfgBuilder& mkCfgBuilder(const llvm::Function &func);
 
   bool hasCfg(const llvm::Function &f) const;
 
   cfg_t &getCfg(const llvm::Function &f) const;
 
-  CfgBuilderPtr getCfgBuilder(const llvm::Function &f) const;
+  CfgBuilder* getCfgBuilder(const llvm::Function &f) const;
 
   variable_factory_t &getVarFactory();
 
@@ -4100,12 +4183,13 @@ public:
   llvm::TargetLibraryInfoWrapperPass &getTLIWrapper() const;
 
   HeapAbstraction &getHeapAbstraction();
+  const HeapAbstraction &getHeapAbstraction() const;  
 
 private:
   // User-definable parameters for building the Crab CFGs
   CrabBuilderParams m_params;
   // Map LLVM function to Crab CfgBuilder
-  llvm::DenseMap<const llvm::Function *, CfgBuilderPtr> m_cfg_builder_map;
+  llvm::DenseMap<const llvm::Function *, std::unique_ptr<CfgBuilder>> m_cfg_builder_map;
   // Used for the translation from bitcode to Crab CFG
   llvm::TargetLibraryInfoWrapperPass &m_tli;
   // All CFGs created by this manager are created using the same
@@ -4127,7 +4211,7 @@ CrabBuilderManagerImpl::CrabBuilderManagerImpl(
   CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
 }
 
-CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
+CfgBuilder& CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
   static bool initialization_done = false;
 
   auto extractGlobals = [this](const Module &M) {
@@ -4173,9 +4257,11 @@ CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
     }
     for (auto &F : M) {
       if (!F.empty()) {
-        CfgBuilderPtr builder(new CfgBuilder(F, *this));
+	// don't use make_unique because the constructor of CfgBuilder
+	// is private
+	std::unique_ptr<CfgBuilder> builder(new CfgBuilder(F, *this));
         builder->addFunctionDeclaration();
-        m_cfg_builder_map[&F] = builder;
+        m_cfg_builder_map.insert(std::make_pair(&F, std::move(builder)));
       }
     }
     initialization_done = true;
@@ -4183,8 +4269,8 @@ CfgBuilderPtr CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
 
   auto it = m_cfg_builder_map.find(&f);
   if (it != m_cfg_builder_map.end()) {
-    auto builder = it->second;
-    builder->buildCfg();
+    CfgBuilder &builder = *(it->second);
+    builder.buildCfg();
     return builder;
   } else {
     CLAM_ERROR("Not found cfg builder for " << f.getName());
@@ -4199,12 +4285,13 @@ cfg_t &CrabBuilderManagerImpl::getCfg(const Function &f) const {
   return getCfgBuilder(f)->getCfg();
 }
 
-CfgBuilderPtr CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
+CfgBuilder* CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
   auto it = m_cfg_builder_map.find(&f);
-  if (it == m_cfg_builder_map.end()) {
-    CLAM_ERROR("Cannot find crab cfg for " <<  f.getName());
+  if (it != m_cfg_builder_map.end()) {
+    return &(*it->second);
+  } else {
+    return nullptr;
   }
-  return it->second;
 }
 
 variable_factory_t &CrabBuilderManagerImpl::getVarFactory() { return m_vfac; }
@@ -4225,7 +4312,13 @@ CrabBuilderManagerImpl::getTLIWrapper() const {
   return m_tli;
 }
 
-HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() { return *m_mem; }
+HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() {
+  return *m_mem;
+}
+  
+const HeapAbstraction &CrabBuilderManagerImpl::getHeapAbstraction() const {
+  return *m_mem;
+}  
 
 // === Begin must be located after CrabBuilderManagerImpl is defined  === //
 /**
@@ -4746,7 +4839,7 @@ CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
 
 CrabBuilderManager::~CrabBuilderManager() {}
 
-CfgBuilderPtr CrabBuilderManager::mkCfgBuilder(const Function &f) {
+CfgBuilder &CrabBuilderManager::mkCfgBuilder(const Function &f) {
   return m_impl->mkCfgBuilder(f);
 }
 
@@ -4754,14 +4847,22 @@ bool CrabBuilderManager::hasCfg(const Function &f) const {
   return m_impl->hasCfg(f);
 }
 
-cfg_t &CrabBuilderManager::getCfg(const Function &f) const {
+cfg_t &CrabBuilderManager::getCfg(const Function &f) {
   return m_impl->getCfg(f);
 }
 
-CfgBuilderPtr CrabBuilderManager::getCfgBuilder(const Function &f) const {
+const cfg_t &CrabBuilderManager::getCfg(const Function &f) const {
+  return m_impl->getCfg(f);
+}
+  
+CfgBuilder *CrabBuilderManager::getCfgBuilder(const Function &f) {
   return m_impl->getCfgBuilder(f);
 }
 
+const CfgBuilder *CrabBuilderManager::getCfgBuilder(const Function &f) const {
+  return m_impl->getCfgBuilder(f);
+}
+  
 variable_factory_t &CrabBuilderManager::getVarFactory() {
   return m_impl->getVarFactory();
 }
@@ -4780,6 +4881,10 @@ llvm::TargetLibraryInfoWrapperPass &CrabBuilderManager::getTLIWrapper() const {
 }
 
 HeapAbstraction &CrabBuilderManager::getHeapAbstraction() {
+  return m_impl->getHeapAbstraction();
+}
+
+const HeapAbstraction &CrabBuilderManager::getHeapAbstraction() const {
   return m_impl->getHeapAbstraction();
 }
 

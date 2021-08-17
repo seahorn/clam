@@ -493,13 +493,10 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
     const seadsa::DsaLibFuncInfo &spec_graph_info, bool is_context_sensitive,
     bool disambiguate_unknown, bool disambiguate_ptr_cast,
     bool disambiguate_external)
-    : m_dsa(nullptr), m_fac(nullptr), m_dl(M.getDataLayout()), m_max_id(0),
-      m_disambiguate_unknown(disambiguate_unknown),
-      m_disambiguate_ptr_cast(disambiguate_ptr_cast),
-      m_disambiguate_external(disambiguate_external) {
-
-  // The factory must be alive while seadsa is in use
-  m_fac = new SetFactory();
+  : m_dsa(nullptr), m_fac(new SetFactory()), m_dl(M.getDataLayout()), m_max_id(0),
+    m_disambiguate_unknown(disambiguate_unknown),
+    m_disambiguate_ptr_cast(disambiguate_ptr_cast),
+    m_disambiguate_external(disambiguate_external) {
 
   // -- Run sea-dsa
   if (!is_context_sensitive) {
@@ -511,10 +508,7 @@ SeaDsaHeapAbstraction::SeaDsaHeapAbstraction(
         m_dl, *(const_cast<llvm::TargetLibraryInfoWrapperPass *>(&tli)),
         alloc_info, spec_graph_info, cg, *m_fac);
   }
-
   m_dsa->runOnModule(const_cast<Module &>(M));
-
-  
   
   initialize(M);
 }
@@ -536,7 +530,6 @@ SeaDsaHeapAbstraction::~SeaDsaHeapAbstraction() {
   if (m_fac) {
     // if m_fac is not null we know that we own m_dsa
     delete m_dsa;
-    delete m_fac;
   }
 }
 
@@ -635,38 +628,48 @@ stable_difference(SeaDsaHeapAbstraction::RegionVec &v1,
   return out;
 }
 
+template<class Map, class MapKey>
+static SeaDsaHeapAbstraction::RegionVec lookup(const Map &m, const MapKey func) {
+  auto it = m.find(func);
+  if (it != m.end()) {
+    return it->second;
+  } else {
+    return SeaDsaHeapAbstraction::RegionVec();
+  }
+}
+  
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) {
-  RegionVec v1 = m_func_accessed[&fn];
-  RegionVec v2 = m_func_mods[&fn];
+SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::Function &fn) const {
+  RegionVec v1 = lookup(m_func_accessed, &fn);
+  RegionVec v2 = lookup(m_func_mods,&fn);
   return stable_difference(v1, v2);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getModifiedRegions(const llvm::Function &fn) {
-  return m_func_mods[&fn];
+SeaDsaHeapAbstraction::getModifiedRegions(const llvm::Function &fn) const {
+  return lookup(m_func_mods, &fn);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getNewRegions(const llvm::Function &fn) {
-  return m_func_news[&fn];
+SeaDsaHeapAbstraction::getNewRegions(const llvm::Function &fn) const {
+  return lookup(m_func_news, &fn);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) {
-  RegionVec v1 = m_callsite_accessed[&I];
-  RegionVec v2 = m_callsite_mods[&I];
+SeaDsaHeapAbstraction::getOnlyReadRegions(const llvm::CallInst &I) const {
+  RegionVec v1 = lookup(m_callsite_accessed, &I);
+  RegionVec v2 = lookup(m_callsite_mods, &I);
   return stable_difference(v1, v2);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst &I) {
-  return m_callsite_mods[&I];
+SeaDsaHeapAbstraction::getModifiedRegions(const llvm::CallInst &I) const {
+  return lookup(m_callsite_mods, &I);
 }
 
 SeaDsaHeapAbstraction::RegionVec
-SeaDsaHeapAbstraction::getNewRegions(const llvm::CallInst &I) {
-  return m_callsite_news[&I];
+SeaDsaHeapAbstraction::getNewRegions(const llvm::CallInst &I) const {
+  return lookup(m_callsite_news, &I);
 }
 
 } // namespace clam

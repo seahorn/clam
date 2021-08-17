@@ -152,9 +152,7 @@ void print_block::operator()(const basic_block_label_t &bbl) const {
     if (s.is_assert() || s.is_ref_assert() || s.is_bool_assert()) {
       const crab::cfg::debug_info &di = s.get_debug_info();
       if (m_checksdb.has_checks(di)) {
-        m_o << "  // File:" << di.get_file() << " line:" << di.get_line()
-            << " col:" << di.get_column() << " ";
-        m_o << "Result: ";
+        m_o << "  // " << di << " " << "Result: "; 
         auto const &checks = m_checksdb.get_checks(di);
         unsigned safe = 0;
         unsigned warning = 0;

@@ -227,6 +227,11 @@ public:
   var_t mkArrayVar(RegionInfo rgnInfo);
   var_t mkRegionVar(RegionInfo rgnInfo);
 
+  /** This is the inverse of mkVar.
+   **  Return null if no Value associated with v 
+   ***/
+  const llvm::Value* getLLVMVar(const var_t &v) const;
+  
   /** make typed variables associated with regions.
    ** Multiple calls with same parameters return the same variable.
    **/

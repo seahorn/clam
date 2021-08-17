@@ -1,6 +1,7 @@
 #include "path_analyzer.hpp"
 #include <clam/crab/crab_lang.hh>
 #include <crab/domains/discrete_domains.hpp>
+#include <crab/support/debug.hpp>
 
 #include <unordered_set>
 
@@ -8,7 +9,6 @@ namespace crab {
 namespace analyzer {
 
 static bool do_sanity_check = true;
-static bool do_debugging = false;
 static bool only_syntactic_core = false;
 // remove irrelevant constraints in two phases: first, by considering
 // only data dependencies. This usually creates small set of
@@ -38,10 +38,6 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
   for (unsigned i = 0, e = path.size(); i < e; ++i) {
     const AbsDom &new_pre = abs_tr.get_abs_value();
     if (new_pre.is_bottom()) {
-      if (!bottom_found) {
-        bottom_block = i; // update only the first time bottom is found
-      }
-      bottom_found = true;
       break;
     }
     // store constraints that hold at the entry of the block
@@ -50,6 +46,7 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
     if (it == m_fwd_dom_map.end()) {
       m_fwd_dom_map.insert(std::make_pair(node, new_pre));
     }
+
     // compute strongest post-condition for one block
     auto &b = m_cfg.get_node(node);
     bottom_stmt = 0;
@@ -62,12 +59,21 @@ bool path_analyzer<CFG, AbsDom>::solve_path(
           continue;
         }
       }
-      if (!s.is_assert() && !s.is_ref_assert() && !s.is_bool_assert()) {
-        path_statements.push_back(&s);
-      }
+      
+      //if (!s.is_assert() && !s.is_ref_assert() && !s.is_bool_assert()) {
+      path_statements.push_back(&s);
+      //}
+      
+      CRAB_LOG("path-analyzer",
+	       crab::outs() << "CRAB interpreting " << s << "\n";);
+      
       s.accept(&abs_tr);
 
       if (abs_tr.get_abs_value().is_bottom()) {
+	if (!bottom_found) {
+	  bottom_block = i; // update only the first time bottom is found
+	}
+	bottom_found = true;
         break;
       } else {
         bottom_stmt++;
@@ -110,12 +116,14 @@ bool path_analyzer<CFG, AbsDom>::solve(
       }
       if (i < path.size() - 1) {
         if (!has_kid(path[i], path[i + 1])) {
-          CRAB_WARN(
-              "There is no an edge from ",
+	  // Enable temporarily warning messages
+	  bool flag = crab::CrabWarningFlag;
+	  crab::CrabEnableWarningMsg(true);
+          CRAB_WARN("There is no an edge from ",
               crab::basic_block_traits<clam::basic_block_t>::to_string(path[i]),
               " to ",
-              crab::basic_block_traits<clam::basic_block_t>::to_string(
-                  path[i + 1]));
+		    crab::basic_block_traits<clam::basic_block_t>::to_string(path[i + 1]));
+	  crab::CrabEnableWarningMsg(flag);
           return true;
         }
       }
@@ -148,16 +156,17 @@ bool path_analyzer<CFG, AbsDom>::solve(
       }
       bottom_found = solve_path(path, false /*only_bool_reasoning*/,
                                 path_statements, bottom_block, bottom_stmt);
-    } // else {
-    //   crab::outs() << "Crab proved infeasibility of the path using only
-    //   boolean reasoning\n";
-    // }
+    } 
   }
 
   if (bottom_found) {
     // -- Compute minimal subset of statements that still implies
     //    bottom.
-    minimize_path(path_statements, bottom_stmt);
+    if (!minimize_path(path_statements, bottom_stmt)) {
+      // If we cannot explain why the path is bottom the we return
+      // true.
+      return true;
+    }
   }
   return !bottom_found;
 }
@@ -176,7 +185,8 @@ bool path_analyzer<CFG, AbsDom>::has_kid(basic_block_label_t b1,
 // dependencies.
 // Return true if the core is just the statement "assume(false)"
 template <typename CFG, typename AbsDom>
-bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
+typename path_analyzer<CFG, AbsDom>::FalsePathInfo
+path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     std::vector<statement_t *> &core, unsigned bottom_stmt,
     bool only_data_dependencies) {
   typedef typename CFG::basic_block_t::assume_t assume_t;
@@ -186,23 +196,16 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   basic_block_t *parent_bb = core[size - 1]->get_parent();
   assert(parent_bb);
 
-  if (do_debugging) {
-    crab::outs() << "CRAB PATH:\n";
-    for (auto s : core) {
-      crab::outs() << "\t" << *s << "\n";
-    }
-  }
-
   // if the core contains at most one constraint then we are done
   if (size <= 1) {
     if (size == 1) {
       if (auto assume = static_cast<const assume_t *>(core[0])) {
         if (assume->constraint().is_contradiction()) {
-          return true;
+          return FalsePathInfo::TRIVIAL_EXPLANATION;
         }
       }
     }
-    return false;
+    return FalsePathInfo::EXPLANATION;
   }
 
   // if there is an "assume(false)" then we are done
@@ -213,7 +216,7 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
       if (assume->constraint().is_contradiction()) {
         core.clear();
         core.push_back(&s);
-        return true;
+        return FalsePathInfo::TRIVIAL_EXPLANATION;
       }
     }
   }
@@ -230,10 +233,12 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     i++;
   }
 
-  if (!last_stmt || (!last_stmt->is_assume() && !last_stmt->is_bool_assume())) {
-    crab::outs() << "WARNING path analyzer: "
-                 << "we couldn't find an assume in the last basic block.\n";
-    return false;
+  if (!last_stmt ||
+      (!last_stmt->is_assume() && !last_stmt->is_bool_assume() && !last_stmt->is_ref_assume())) {
+    // One common reason is that the last statement is assert(false)
+    CRAB_LOG("path-analyzer",    
+	     crab::outs() << "Bail out: cannot find an assume in the last basic block.\n";);
+    return FalsePathInfo::NOT_EXPLANATION;
   }
 
   // start from the last statement and go reverse skipping statements
@@ -261,9 +266,8 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     d += bool_assume->cond();
   }
 
-  if (do_debugging) {
-    crab::outs() << "Slicing criteria: " << *last_stmt << "\n";
-  }
+  CRAB_LOG("path-analyzer",
+	   crab::outs() << "Slicing criteria: " << *last_stmt << "\n";);
 
   // Traverse the whole path backwards and remove irrelevant
   // statements based on data dependencies.
@@ -298,41 +302,52 @@ bool path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     }
   }
 
-  if (do_debugging) {
-    crab::outs() << "SYNTACTIC UNSAT CORE PATH:\n";
-  }
+  CRAB_LOG("path-analyzer",
+	   crab::outs() << "SYNTACTIC UNSAT CORE PATH ";
+	   if (only_data_dependencies) {
+	     crab::outs() << " (only data dependencies)";
+	   } else {
+	     crab::outs() << " (data+control dependencies)";	     
+	   }
+	   crab::outs() << ":\n";);    
+	   
   std::vector<statement_t *> res;
   res.reserve(size);
   for (unsigned i = 0; i < size; ++i) {
     if (enabled[i]) {
-      if (do_debugging) {
-        crab::outs() << "\t" << *(core[i]) << "\n";
-      }
+      CRAB_LOG("path-analyzer",      
+	       crab::outs() << "\t" << *(core[i]) << "\n";);
       res.push_back(core[i]);
     }
   }
   core.assign(res.begin(), res.end());
-  return false;
+  return FalsePathInfo::EXPLANATION;
 }
 
 /**
- ** Compute a minimal subset of statements needed to prove that the
- ** path is infeasible.
+ ** Return true if it can compute a minimal subset of statements
+ ** needed to prove that the path is false (i.e., bottom).
  **
  ** Pre: the strongest post-condition of path is false.
  ** Pre: path is well-formed.
  **/
 template <typename CFG, typename AbsDom>
-void path_analyzer<CFG, AbsDom>::minimize_path(
+bool path_analyzer<CFG, AbsDom>::minimize_path(
     const std::vector<statement_t *> &path, unsigned bottom_stmt) {
 
   std::vector<statement_t *> core(path.begin(), path.end());
 
   if (only_syntactic_core) {
     /* only syntactic */
-    remove_irrelevant_statements(core, bottom_stmt,
-                                 false /*data+control dependencies*/);
+    FalsePathInfo res = remove_irrelevant_statements(core, bottom_stmt,
+						  false /*data+control dependencies*/);
     m_core.clear();
+    if (res == FalsePathInfo::NOT_EXPLANATION) {
+      // we give up here because the path might be false because some
+      // assert(false) was found but the assertion is not actually
+      // reachable under a more precise abstraction.
+      return false;
+    }
     m_core.insert(m_core.end(), core.begin(), core.end());
   } else {
     /* syntactic + semantic */
@@ -346,13 +361,18 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
         core.assign(path.begin(), path.end());
       }
 
-      if (remove_irrelevant_statements(core, bottom_stmt, only_data)) {
+      FalsePathInfo res = remove_irrelevant_statements(core, bottom_stmt, only_data);
+      
+      if (res == FalsePathInfo::TRIVIAL_EXPLANATION) {
         // the path contains "assume(false)"
         m_core.clear();
         m_core.insert(m_core.end(), core.begin(), core.end());
-        return;
+        return true;
+      } else if (res == FalsePathInfo::NOT_EXPLANATION) {
+	m_core.clear();
+	return false;
       }
-
+      
       if (only_data) {
         // check that what we get still implies bottom: it might not
         // imply bottom because we only considered data dependencies.
@@ -375,7 +395,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
       } else {
         break;
       }
-    }
+    } // end for
 
     std::vector<bool> enabled(core.size(), true);
     for (unsigned i = 0; i < core.size(); ++i) {
@@ -394,17 +414,15 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
       }
     }
 
-    if (do_debugging) {
-      crab::outs() << "SEMANTIC UNSAT CORE PATH:\n";
-    }
+    CRAB_LOG("path-analyzer",
+	     crab::outs() << "SEMANTIC UNSAT CORE PATH:\n";);
 
     m_core.reserve(core.size());
     for (unsigned i = 0; i < core.size(); ++i) {
       if (enabled[i]) {
         m_core.push_back(core[i]);
-        if (do_debugging) {
-          crab::outs() << "\t" << *(core[i]) << "\n";
-        }
+	CRAB_LOG("path-analyzer",	  
+		 crab::outs() << "\t" << *(core[i]) << "\n";);
       }
     }
 
@@ -423,6 +441,7 @@ void path_analyzer<CFG, AbsDom>::minimize_path(
         CRAB_ERROR("Abstract core is not unsat!");
       }
     }
+    return true;
   }
 }
 } // namespace analyzer

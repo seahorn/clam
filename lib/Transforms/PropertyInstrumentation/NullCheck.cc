@@ -1,7 +1,6 @@
 /*
- * Instrument a program to add null dereference checks for Load and
- * Store instructions.
- * TODO: other memory operations
+ * Instrument a program to add null dereference checks to all memory
+ * accesses.
  */
 
 #include "llvm/ADT/PointerIntPair.h"
@@ -9,6 +8,7 @@
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -18,15 +18,23 @@
 #include "./MemoryCheck.hh"
 
 static llvm::cl::opt<bool>
-    OptimizeChecks("clam-null-check-optimize",
-                   llvm::cl::desc("Minimize the number of instrumented checks"),
-                   llvm::cl::init(true));
+OptimizeChecks("clam-null-check-optimize",
+	       llvm::cl::desc("Minimize the number of instrumented checks"),
+	       llvm::cl::Hidden,
+	       llvm::cl::init(true));
 
-static llvm::cl::opt<bool> AddMemSafety(
-    "clam-null-check-mem-safety",
-    llvm::cl::desc("Add safety assumptions such as "
-                   "successful load/store imply validity of their arguments"),
-    llvm::cl::init(false), llvm::cl::Hidden);
+static llvm::cl::opt<bool>
+AddMemSafety("clam-null-check-mem-safety",
+	     llvm::cl::desc("Add safety assumptions such as "
+			    "successful load/store imply validity of their arguments"),
+	     llvm::cl::Hidden,
+	     llvm::cl::init(false));
+
+static llvm::cl::opt<bool>
+IgnoreMemoryInstrinsics("clam-null-ignore-memintrinsics",
+	       llvm::cl::desc("Skip checks on memory intrinsics"),
+	       llvm::cl::Hidden,
+	       llvm::cl::init(false));
 
 #define NC_LOG(...)
 //#define NC_LOG(...) llvm::errs() << "NullCheck: "; __VA_ARGS__
@@ -67,6 +75,14 @@ public:
 };
 
 void NullCheck::insertNullCheck(Value *Ptr, IRBuilder<> &B, Instruction *I) {
+/*
+  Before:
+       I;
+  After:
+       %b = Ptr != null;
+       clam_assert(%b);  
+       I;
+*/  
   static unsigned id = 0;
   B.SetInsertPoint(I);
   Value *GtNull = B.CreateICmpNE /*SGT*/ (
@@ -123,39 +139,81 @@ void NullCheck::insertNullCheck(Value *Ptr, IRBuilder<> &B, Instruction *I) {
 }
 
 bool NullCheck::runOnFunction(Function &F) {
+  // Cache to avoid checking the same thing
+  SmallSet<Value *, 16> TempsToInstrument;
+  // Contain a pair of a pointer to be checked and its user.
+  std::vector<std::pair<Value*, Instruction *>> Worklist;
+  
   if (F.empty()) {
     return false;
   }
 
-  SmallSet<Value *, 16> TempsToInstrument;
-  std::vector<Instruction *> Worklist;
+  // Decide if the check is relevant
+  auto isRelevantCheck = [](Value *Ptr, SmallSet<Value*, 16> &seen) {
+       auto BasePair = property_instrumentation::getBasePtr(Ptr);
+       if (Value *BasePtr = BasePair.getPointer()) {
+	 if (BasePair.getInt() == 1) {
+	   NC_LOG(errs() << "Skipped " << *BasePtr
+		         << " because it is dereferenceable!\n";);
+	   return false;
+	 }
+	 // We've checked BasePtr in the current BB.
+	 if (!seen.insert(BasePtr).second) {
+	   NC_LOG(errs() << "Skipped " << *BasePtr
+		         << " because already checked!\n";);
+	   return false;
+	 }
+       }
+       return true;
+  };
+
+  // Extract pointer operand
+  auto getPtrFromUnaryMemOp = [](Instruction &I) -> Value* {
+	  if (isa<LoadInst>(I)) {
+	    return I.getOperand(0);
+	  } else if (isa<StoreInst>(I)) {
+	    return I.getOperand(1);
+	  } else if (!IgnoreMemoryInstrinsics && isa<MemSetInst>(I)) {
+	    return I.getOperand(0);
+	  } else {
+	    return nullptr;
+	  }
+  };
+
+  // Extract pointer operands
+  auto getPtrFromBinaryMemOp = [](Instruction &I) -> std::pair<Value*,Value*> {
+      if (!IgnoreMemoryInstrinsics && (isa<MemCpyInst>(I) || isa<MemMoveInst>(I))) {
+	return {I.getOperand(0), I.getOperand(1)};
+      } else {
+	return {nullptr, nullptr};
+      }
+  };
+  
+  
   for (auto &BB : F) {
     TempsToInstrument.clear();
     for (auto &i : BB) {
-      Instruction *I = &i;
-      if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
-        if (OptimizeChecks) {
-	  Value *Ptr = (isa<LoadInst>(I) ? I->getOperand(0) : I->getOperand(1));
-          auto BasePair = property_instrumentation::getBasePtr(Ptr);
-          if (Value *BasePtr = BasePair.getPointer()) {
-            if (BasePair.getInt() == 1) {
-              NC_LOG(errs() << "Skipped " << *BasePtr
-                            << " because it is dereferenceable!\n";);
-              TrivialChecks++;
-              continue;
-            }
-            // We've checked BasePtr in the current BB.
-            if (!TempsToInstrument.insert(BasePtr).second) {
-              NC_LOG(errs() << "Skipped " << *BasePtr
-                            << " because already checked!\n";);
-              TrivialChecks++;
-              continue;
-            }
-          }
-        }
-        Worklist.push_back(I);
+      Instruction &I = *&i;
+      if (Value *Ptr = getPtrFromUnaryMemOp(I)) {
+	if (!isRelevantCheck(Ptr, TempsToInstrument)) {
+	  TrivialChecks++;
+	} else {
+	  Worklist.push_back({Ptr, &I});
+	}
       } else {
-        // TODO: memory intrinsics
+	std::pair<Value*,Value*> PtrPair = getPtrFromBinaryMemOp(I);
+	if (PtrPair.first && PtrPair.second) {
+	  if (!isRelevantCheck(PtrPair.first, TempsToInstrument)) {
+	    TrivialChecks++;
+	  } else {
+	    Worklist.push_back({PtrPair.first, &I});
+	  }
+	  if (!isRelevantCheck(PtrPair.second, TempsToInstrument)) {
+	    TrivialChecks++;
+	  } else {
+	    Worklist.push_back({PtrPair.second, &I});
+	  }
+	}
       }
     }
   }
@@ -163,39 +221,23 @@ bool NullCheck::runOnFunction(Function &F) {
   LLVMContext &ctx = F.getContext();
   IRBuilder<> B(ctx);
   bool change = false;
-  for (auto I : Worklist) {
-
-    Value *Ptr = nullptr;
-    if (auto *LI = dyn_cast<LoadInst>(I)) {
-      Ptr = LI->getPointerOperand();
-    } else if (auto *SI = dyn_cast<StoreInst>(I)) {
-      Ptr = SI->getPointerOperand();
-    } else {
-      errs() << "ERROR: unknown instruction " << *I << "\n";
-      continue;
-    }
-
-    // property_instrumentation::DerefPointer BasePair;
-    // if (OptimizeChecks) {
-    //   BasePair = property_instrumentation::getBasePtr(Ptr);
-    // }
-    // insertNullCheck(BasePair.getPointer() ? BasePair.getPointer() : Ptr, B,
-    // I);
-
-    insertNullCheck(Ptr, B, I);
-
+  for (auto p : Worklist) {
+    Value *Ptr = p.first;
+    Instruction *PtrUser = p.second;
+    insertNullCheck(Ptr, B, PtrUser);
+    
     if (AddMemSafety) {
       // -- Add extra memory safety assumption: successful load/store
       //    implies validity of their arguments.
       if (GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(Ptr)) {
         if (gep->isInBounds() && gep->getPointerAddressSpace() == 0) {
           Value *base = gep->getPointerOperand();
-          B.SetInsertPoint(I);
+          B.SetInsertPoint(PtrUser);
           auto It = B.GetInsertPoint();
           ++It;
-          B.SetInsertPoint(I->getParent(), It);
+          B.SetInsertPoint(PtrUser->getParent(), It);
           CallInst *CI = B.CreateCall(AssumeFn, B.CreateIsNotNull(base));
-          CI->setDebugLoc(I->getDebugLoc());
+          CI->setDebugLoc(PtrUser->getDebugLoc());
 
           NC_LOG(errs() << "Added memory safety assumption for " << *base
                         << "\n";);
@@ -260,7 +302,7 @@ bool NullCheck::runOnModule(llvm::Module &M) {
   errs() << "-- Inserted " << ChecksAdded;
   errs() << " null dereference checks ";
   errs() << " (skipped " << TrivialChecks << " trivial checks). "
-         << "Considering only Load and Store instructions.\n";
+         << "Considering Load/Store/MemSet/MemCpy/MemMove instructions.\n";
 
   return change;
 }

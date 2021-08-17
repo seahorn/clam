@@ -266,9 +266,12 @@ def parseArgs(argv):
                     dest='devirt',
                     choices=['none','types','sea-dsa'],
                     default='none')
+    p.add_argument ('--externalize-functions',
+                    help='Externalize these functions',
+                    dest='extern_funcs', type=str, metavar='str,...')    
     p.add_argument('--externalize-addr-taken-functions',
                     help='Externalize uses of address-taken functions (potentially unsound)',
-                    dest='enable_ext_funcs', default=False,
+                    dest='extern_addr_taken_funcs', default=False,
                     action='store_true')
     p.add_argument('--print-after-all',
                     help='Print IR after each pass (for debugging)',
@@ -760,8 +763,13 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
             crabpp_args.append('--sea-dsa-type-aware=true')
         elif args.devirt == 'dsa':
             crabpp_args.append('--devirt-resolver=dsa')
-    if args.enable_ext_funcs:
+            
+    if args.extern_funcs:
+        for f in args.extern_funcs.split(','):
+            crabpp_args.append('--crab-externalize-function={0}'.format(f))
+    if args.extern_addr_taken_funcs:
         crabpp_args.append('--crab-externalize-addr-taken-funcs')
+        
     if args.print_after_all: crabpp_args.append('--print-after-all')
     if args.debug_pass: crabpp_args.append('--debug-pass=Structure')
 

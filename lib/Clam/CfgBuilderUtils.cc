@@ -114,21 +114,17 @@ bool hasDebugLoc(const Instruction *inst) {
 }
 
 crab::cfg::debug_info getDebugLoc(const Instruction *I) {
-  if (!hasDebugLoc(I))
-    return crab::cfg::debug_info();
-  const DebugLoc &dloc = I->getDebugLoc();
-  unsigned Line = dloc.getLine();
-  unsigned Col = dloc.getCol();
-  std::string File = (*dloc).getFilename().str();
-  int64_t Id = -1;
-  
-  if (File == "") {
-    File = "unknown file";
-  }
-
-  // Id can be -1 if I is not an assertion
-  Id = getAssertIdFromMetadata(I->getMetadata("clam-assertion"));
-  return crab::cfg::debug_info(File, Line, Col, Id);
+  if (hasDebugLoc(I)) {
+    const DebugLoc &dloc = I->getDebugLoc();
+    unsigned Line = dloc.getLine();
+    unsigned Col = dloc.getCol();
+    std::string File = (*dloc).getFilename().str();
+    int64_t Id = getAssertIdFromMetadata(I->getMetadata("clam-assertion"));
+    return crab::cfg::debug_info(File, Line, Col, Id);
+  } else {
+    int64_t Id = getAssertIdFromMetadata(I->getMetadata("clam-assertion"));
+    return crab::cfg::debug_info(Id);
+  } 
 }
 
 uint64_t storageSize(const Type *t, const DataLayout &dl) {
