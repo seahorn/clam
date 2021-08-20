@@ -1,5 +1,6 @@
-/*
- * Translate a LLVM function to a CFG language understood by Crab.
+/**
+ * Translate a LLVM function to a CFG language understood by Crab
+ * (CrabIR).
  *
  * Crab supports operations over boolean, integers and references
  * (pointers). Moreover, Crab supports unidimensional arrays. Arrays
@@ -41,11 +42,12 @@
  *   (`StoreInst` value operand) is a pointer then the translation
  *   ignores safely the LLVM instruction and hence, it won't add the
  *   corresponding Crab array statement `array_load` (`array_store`).
- */
+ **/
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
@@ -80,6 +82,37 @@ using namespace crab;
 using namespace ikos;
 using namespace crab::cfg;
 
+/**
+ *   === Structure of the code ===
+ *
+ *  The translation of LLVM bitcode to CrabIR is done by the following
+ *  classes:
+ *
+ * - CrabBuilderManager is the public class but delegates all the work
+ *   to CrabBuilderManagerImpl. The manager keeps in memory all the
+ *   CfgBuilder's (see below) so, for instance, it has the information
+ *   necessary to build call graphs.
+ *
+ * - CfgBuilder is the other public class and also delegates all the
+ *   work to CfgBuilderImpl. This class keeps the Crab CFG for a
+ *   particular function and also bookeeping information so that we can
+ *   translate back from CrabIR to LLVM IR.
+ *
+ * - CrabBuilderManagerImpl is the only class that can create instances
+ *   of CfgBuilder class for a LLVM function. This is done by
+ *   mkCfgBuilder. The rest of methods of CrabBuilderManagerImpl are
+ *   mostly getters.
+ *
+ * - CfgBuilderImpl provides the method buildCfg(). This class has
+ *   methods to add Crab basic blocks, edges between blocks,
+ *   initialization of globals, etc. This methods makes uses of two
+ *   main classes:
+ *   + CrabIntraBlockBuilder: translates all LLVM instructions except
+ *     branches and PHI nodes.
+ *   + CrabInterBlockBuilder: translates PHI nodes.
+ * 
+ *   The translation of LLVM branches is mostly done in execEdge. 
+ **/
 namespace clam {
 
 static bool checkAllDefinitionsHaveNames(const Function &F) {
@@ -738,7 +771,9 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   // value is its parameter. The operands of map value are guaranteed
   // to be integers.
   DenseMap<CallInst *, CmpInst *> &m_verif_calls;
-
+  // To assign unique identifiers to assertions (if any)
+  uint32_t &m_assertion_id;
+  
   unsigned fieldOffset(const StructType *t, unsigned field) const;
   uint64_t storageSize(const Type *t) const;
   /*
@@ -800,7 +835,8 @@ public:
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       RegionSet &regions_with_store,
       DenseMap<const GetElementPtrInst *, var_t> &gep_map,
-      DenseMap<CallInst *, CmpInst *> &verif_calls);
+      DenseMap<CallInst *, CmpInst *> &verif_calls,
+      uint32_t &assertion_id);
 
   /// skip PHI nodes (processed elsewhere)
   void visitPHINode(PHINode &I) {}
@@ -834,13 +870,15 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
     llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
     RegionSet &regions_with_store,
     DenseMap<const GetElementPtrInst *, var_t> &gep_map,
-    DenseMap<CallInst *, CmpInst *> &verif_calls)
+    DenseMap<CallInst *, CmpInst *> &verif_calls,
+    uint32_t &assertion_id)
     : m_lfac(lfac), m_as_man(as_man), m_mem(mem), m_dl(dl), m_tli(tli),
       m_bb(bb), m_entry_bb(entry_bb), m_object_id(0),
       m_params(params), m_func_globals(func_globals), m_ret_insts(ret_insts),
       m_man(man), m_has_seahorn_fail(has_seahorn_fail),
       m_func_regions(func_regions), m_gep_map(gep_map), m_rev_map(rev_map),
-      m_regions_with_store(regions_with_store), m_verif_calls(verif_calls) {}
+      m_regions_with_store(regions_with_store), m_verif_calls(verif_calls),
+      m_assertion_id(assertion_id) {}
 
 unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
                                             unsigned field) const {
@@ -1251,7 +1289,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
     return;
 
   if (isErrorFn(*callee)) {
-    m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
+    m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I, m_assertion_id++));
     return;
   }
 
@@ -1334,7 +1372,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
     } else {
       CLAM_WARNING("Unsupported assertion " << I);
     }
-    
+
     /// FIXME: It will leave dead code (the call to
     /// __CRAB_intrinsic_is_unfreed_or_null or the comparison
     /// instruction)
@@ -1374,7 +1412,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
           m_bb.assume(lin_cst_t::get_false());
         } else {
           assert(isAssertFn(*callee));
-          m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I));
+          m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I, m_assertion_id++));
         }
       }
     }
@@ -1384,7 +1422,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
       auto cst_opt = cmpInstToCrabInt(*Cond, m_lfac, isNotAssumeFn(*callee));
       if (cst_opt.hasValue()) {
         if (isAssertFn(*callee)) {
-          m_bb.assertion(cst_opt.getValue(), getDebugLoc(&I));
+          m_bb.assertion(cst_opt.getValue(), getDebugLoc(&I, m_assertion_id++));
         } else {
           m_bb.assume(cst_opt.getValue());
         }
@@ -1393,7 +1431,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
             cmpInstToCrabRef(*Cond, m_lfac, isNotAssumeFn(*callee));
         if (cst_ref_opt.hasValue()) {
           if (isAssertFn(*callee)) {
-            m_bb.assert_ref(cst_ref_opt.getValue(), getDebugLoc(&I));
+            m_bb.assert_ref(cst_ref_opt.getValue(), getDebugLoc(&I, m_assertion_id++));
           } else {
             m_bb.assume_ref(cst_ref_opt.getValue());
           }
@@ -1415,7 +1453,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
           m_bb.bool_assume(v);
         else {
           assert(isAssertFn(*callee));
-          m_bb.bool_assert(v, getDebugLoc(&I));
+          m_bb.bool_assert(v, getDebugLoc(&I, m_assertion_id++));
         }
       } else if (cond_lit->isInt()) {
 
@@ -1437,7 +1475,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
             m_bb.bool_assume(v);
           } else {
             assert(isAssertFn(*callee));
-            m_bb.bool_assert(v, getDebugLoc(&I));
+            m_bb.bool_assert(v, getDebugLoc(&I, m_assertion_id++));
           }
         } else {
           if (isNotAssumeFn(*callee)) {
@@ -1446,7 +1484,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
             m_bb.assume(v >= number_t(1));
           } else {
             assert(isAssertFn(*callee));
-            m_bb.assertion(v >= number_t(1), getDebugLoc(&I));
+            m_bb.assertion(v >= number_t(1), getDebugLoc(&I, m_assertion_id++));
           }
         }
       }
@@ -1887,25 +1925,24 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 
 /* malloc-like functions */
 void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
-  auto addMakeRefFromVal = [&I,this](crab_lit_ref_t retRef, Region rgn, const Value &size) {
+  auto addMakeRefFromVal = [this, &I]
+    (crab_lit_ref_t retRef, Region rgn, const Value &size) {
        crab_lit_ref_t litS = m_lfac.getLit(size);
        if (litS->isInt()) {
 	 var_or_cst_t size = (litS->isVar() ?
 			      var_or_cst_t(litS->getVar()) :
 			      var_or_cst_t(m_lfac.getIntCst(litS),
 					   crab::variable_type(INT_TYPE, 64)));
-	 m_bb.make_ref(retRef->getVar(), m_lfac.mkRegionVar(rgn), size,
-		       m_as_man.mk_tag());
+	 m_bb.make_ref(retRef->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
        } else {
 	 CLAM_ERROR("doAllocFn expected " << size << " to be an integer in " << I);
        }
   };
-  
-  auto addMakeRefWithoutSize = [&I,this](crab_lit_ref_t retRef, Region rgn) {
-	var_t size = m_lfac.mkIntVar(64);
-	m_bb.havoc(size, valueToStr(I));
-	m_bb.make_ref(retRef->getVar(), m_lfac.mkRegionVar(rgn), size,
-		      m_as_man.mk_tag());
+  auto addMakeRefWithoutSize = [this, &I]
+    (crab_lit_ref_t retRef, Region rgn) {
+	var_or_cst_t size(m_lfac.mkIntVar(64));
+	m_bb.havoc(size.get_variable(), valueToStr(I));
+	m_bb.make_ref(retRef->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
   };
   
   
@@ -1941,14 +1978,54 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
   }
 }
 
+void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
+  Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
+
+  if (isReference(I, m_params)) {
+    crab_lit_ref_t lhs = m_lfac.getLit(I);
+    assert(lhs && lhs->isVar());
+
+    llvm::Optional<uint64_t> sizeOpt = I.getAllocationSizeInBits(*m_dl);
+    var_or_cst_t size = (sizeOpt.hasValue() ?
+			 var_or_cst_t(sizeOpt.getValue()/8, crab::variable_type(INT_TYPE, 64)):
+			 var_or_cst_t(m_lfac.mkIntVar(64)));
+    
+    if (!sizeOpt.hasValue()) {
+      m_bb.havoc(size.get_variable(), "alloca with unknown size");
+    }
+
+    m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
+    if (m_params.addPointerAssumptions()) {
+      // pointers allocated in the stack cannot be null
+      m_bb.assume_ref(ref_cst_t::mk_gt_null(lhs->getVar()));
+    }
+  } else if (m_params.trackOnlySingletonMemory() && !rgn.isUnknown() && 
+             rgn.getRegionInfo().containScalar()) {
+    // Memory allocated in the stack is uninitialized.
+    //
+    // We assume they are zero initialized so that Crab's array
+    // smashing can infer something meaningful. Even Crab's array
+    // adaptive domain may benefit from this in case an array is
+    // initialized in a loop.
+    //
+    // This can generate two consecutive array stores if the alloca
+    // instruction is followed by an array store.  A better solution
+    // for array adaptive is to unroll loops one iteration.
+    Function *parentF = I.getParent()->getParent();
+    MemoryInitializer MI(m_lfac, m_mem, m_func_regions, *m_dl, m_params,
+                         *parentF, m_bb);
+    Type *ATy = I.getAllocatedType();
+    MI.InitZeroInitializer(I, *ATy, 0);
+  }
+}
+
 /* free-like functions */
 void CrabIntraBlockBuilder::doFreeFn(Instruction &I) {
   if (m_params.trackMemory()) {
     CallSite CS(&I);
     crab_lit_ref_t Ptr = m_lfac.getLit(*(CS.getArgument(0)));
     if (Ptr->isVar() && Ptr->isRef()) {
-      Region RgnPtr =
-          getRegion(m_mem, m_func_regions, m_params, I, *(CS.getArgument(0)));
+      Region RgnPtr = getRegion(m_mem, m_func_regions, m_params, I, *(CS.getArgument(0)));
       m_bb.remove_ref(m_lfac.mkRegionVar(RgnPtr), Ptr->getVar());
     }
   }
@@ -1979,7 +2056,7 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
          (!base.hasValue() ||
           (lhs.get_type().get_integer_bitwidth() ==
            base.getValue().get_type().get_integer_bitwidth())));
-
+  
   Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
   if (lhs.get_type().is_integer() && rgn.isUnknown()) {
     return;
@@ -2653,50 +2730,6 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
   havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
 }
 
-void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
-  Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
-
-  if (isReference(I, m_params)) {
-    crab_lit_ref_t lhs = m_lfac.getLit(I);
-    assert(lhs && lhs->isVar());
-
-    llvm::Optional<uint64_t> sizeOpt = I.getAllocationSizeInBits(*m_dl);
-    if (sizeOpt.hasValue()) {
-      m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn),
-		    var_or_cst_t(sizeOpt.getValue()/8, crab::variable_type(INT_TYPE, 64)),
-		    m_as_man.mk_tag());
-    } else {
-      var_t unknownSizeVar = m_lfac.mkIntVar(64);
-      m_bb.havoc(unknownSizeVar, "alloca with unknown size");
-      m_bb.make_ref(lhs->getVar(), m_lfac.mkRegionVar(rgn),
-		    unknownSizeVar, m_as_man.mk_tag());
-    }
-    
-    if (m_params.addPointerAssumptions()) {
-      // pointers allocated in the stack cannot be null
-      m_bb.assume_ref(ref_cst_t::mk_gt_null(lhs->getVar()));
-    }
-
-  } else if (m_params.trackOnlySingletonMemory() && !rgn.isUnknown() && 
-             rgn.getRegionInfo().containScalar()) {
-    // Memory allocated in the stack is uninitialized.
-    //
-    // We assume they are zero initialized so that Crab's array
-    // smashing can infer something meaningful. Even Crab's array
-    // adaptive domain may benefit from this in case an array is
-    // initialized in a loop.
-    //
-    // This can generate two consecutive array stores if the alloca
-    // instruction is followed by an array store.  A better solution
-    // for array adaptive is to unroll loops one iteration.
-    Function *parentF = I.getParent()->getParent();
-    MemoryInitializer MI(m_lfac, m_mem, m_func_regions, *m_dl, m_params,
-                         *parentF, m_bb);
-    Type *ATy = I.getAllocatedType();
-    MI.InitZeroInitializer(I, *ATy, 0);
-  }
-}
-
 void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   CallSite CS(&I);
   const Value *calleeV = CS.getCalledValue();
@@ -2841,7 +2874,7 @@ void CrabIntraBlockBuilder::visitInstruction(Instruction &I) {
 
 class CfgBuilderImpl {
 public:
-  CfgBuilderImpl(const llvm::Function &func, CrabBuilderManagerImpl &man);
+  CfgBuilderImpl(const llvm::Function &func, CrabBuilderManagerImpl &man);		 
 
   void buildCfg(void);
 
@@ -2923,8 +2956,9 @@ private:
   // The function should be const because it's never modified.
   llvm::Function &m_func;
   // literal factory
-  crabLitFactory m_lfac;
+  crabLitFactory &m_lfac;
   tag_manager &m_as_man;
+  uint32_t &m_assertion_id;
   // heap analysis for memory translation
   HeapAbstraction &m_mem;
   // the crab CFG
@@ -2960,7 +2994,7 @@ private:
   const DenseMap<const Function *, std::vector<const Value *>> &m_globals;
   // The manager to access to function declarations of other functions
   CrabBuilderManagerImpl &m_man;
-
+  
   /// Helpers for buildCfg
 
   // Lower the global initializers into statements in main.
@@ -3642,7 +3676,7 @@ void CfgBuilderImpl::buildCfg() {
 			    *bb, *entry_bb, m_params, m_globals,
                             m_ret_insts, m_man, has_seahorn_fail,
                             m_func_regions, m_rev_map, regions_with_store,
-                            gep_map, verif_calls);
+                            gep_map, verif_calls, m_assertion_id);
 
     v.visit(B);
 
@@ -4088,6 +4122,8 @@ void CrabBuilderParams::write(raw_ostream &o) const {
     << "\n";
   o << "\tadd pointer assumptions: " << addPointerAssumptions() << "\n";
   o << "\tenable big numbers: " << enable_bignums << "\n";
+  o << "\tcheck only typed regions: " << check_only_typed_regions << "\n";
+  o << "\tcheck only acyclic regions: " << check_only_noncyclic_regions << "\n";
 }
 
 /* CFG Builder class */
@@ -4176,6 +4212,7 @@ public:
   CfgBuilder* getCfgBuilder(const llvm::Function &f) const;
 
   variable_factory_t &getVarFactory();
+  crabLitFactory &getCrabLitFactory();
 
   tag_manager &getAllocSiteMan();
   
@@ -4197,6 +4234,8 @@ private:
   // All CFGs created by this manager are created using the same
   // variable factory and the same allocation site manager.
   variable_factory_t m_vfac;
+  crabLitFactory m_lfac;
+  uint32_t m_assertion_id;
   tag_manager m_as_man;
   // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
@@ -4209,7 +4248,10 @@ private:
 CrabBuilderManagerImpl::CrabBuilderManagerImpl(
     CrabBuilderParams params, llvm::TargetLibraryInfoWrapperPass &tli,
     std::unique_ptr<HeapAbstraction> mem)
-    : m_params(params), m_tli(tli), m_mem(std::move(mem)) {
+    : m_params(params), m_tli(tli),
+      m_lfac(m_vfac, m_params),
+      m_assertion_id(1) /* reserve id=0*/, m_mem(std::move(mem)) {
+      
   CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
 }
 
@@ -4297,6 +4339,8 @@ CfgBuilder* CrabBuilderManagerImpl::getCfgBuilder(const Function &f) const {
 }
 
 variable_factory_t &CrabBuilderManagerImpl::getVarFactory() { return m_vfac; }
+
+crabLitFactory &CrabBuilderManagerImpl::getCrabLitFactory() { return m_lfac; }
 
 tag_manager &CrabBuilderManagerImpl::getAllocSiteMan() { return m_as_man; }
 
@@ -4806,15 +4850,11 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       std::vector<var_t> outputs{outParam};
       m_bb.intrinsic("does_not_have_tag", outputs, inputs);
     }
-    m_bb.bool_assert(outParam, getDebugLoc(&I));
+    m_bb.bool_assert(outParam, getDebugLoc(&I, m_assertion_id++));
   } else {
     CLAM_ERROR("unsupported intrinsic " << I);
   }
 }
-
-
-
-
   
 CfgBuilderImpl::CfgBuilderImpl(const Function &func,
                                CrabBuilderManagerImpl &man)
@@ -4822,7 +4862,8 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func,
       // HACK: it's safe to remove constness because we know that the
       // Builder never modifies the bitcode.
       m_func(const_cast<Function &>(func)),
-      m_lfac(man.getVarFactory(), man.getCfgBuilderParams()),
+      m_lfac(man.getCrabLitFactory()),
+      m_assertion_id(man.m_assertion_id),
       m_as_man(man.getAllocSiteMan()),
       m_mem(man.getHeapAbstraction()), m_cfg(nullptr), m_id(0),
       m_dl(&(func.getParent()->getDataLayout())), m_tli(&(man.getTLIWrapper())),
