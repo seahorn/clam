@@ -1,6 +1,7 @@
 add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CfgBuilder.cc
   CfgBuilderLit.cc
+  CfgBuilderMemRegions.cc
   CfgBuilderUtils.cc
   Clam.cc
   ClamQueryCache.cc
