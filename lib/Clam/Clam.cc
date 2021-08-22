@@ -1262,7 +1262,8 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.output_filename = CrabOutputFilename;  
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;
-  m_params.check = CrabCheck;
+  m_params.check = (CrabCheck ?
+		    clam::CheckerKind::ASSERTION : clam::CheckerKind::NOCHECKS);
   m_params.check_verbose = CrabCheckVerbose;
   
   if (m_params.run_inter) {

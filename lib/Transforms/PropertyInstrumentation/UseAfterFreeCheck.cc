@@ -21,6 +21,7 @@
 static llvm::cl::opt<bool>
     OptimizeChecks("clam-uaf-check-optimize",
                    llvm::cl::desc("Minimize the number of instrumented checks"),
+		   llvm::cl::Hidden,
                    llvm::cl::init(true));
 
 #define UAF_LOG(...)

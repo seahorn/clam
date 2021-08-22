@@ -56,32 +56,32 @@ static llvm::cl::opt<bool> DisableCrab(
     llvm::cl::init(false), llvm::cl::Hidden);
 
 static llvm::cl::opt<bool> TurnUndefNondet(
-    "crab-turn-undef-nondet",
+    "clam-turn-undef-nondet",
     llvm::cl::desc("Turn undefined behaviour into non-determinism"),
     llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-    LowerUnsignedICmp("crab-lower-unsigned-icmp",
+    LowerUnsignedICmp("clam-lower-unsigned-icmp",
                       llvm::cl::desc("Lower ULT and ULE instructions"),
                       llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-    LowerCstExpr("crab-lower-constant-expr",
+    LowerCstExpr("clam-lower-constant-expr",
                  llvm::cl::desc("Lower constant expressions to instructions"),
                  llvm::cl::init(true));
 
 static llvm::cl::opt<bool>
-    LowerInvoke("crab-lower-invoke",
+    LowerInvoke("clam-lower-invoke",
                 llvm::cl::desc("Lower invoke instructions"),
                 llvm::cl::init(true));
 
 static llvm::cl::opt<bool>
-    LowerSwitch("crab-lower-switch",
+    LowerSwitch("clam-lower-switch",
                 llvm::cl::desc("Lower switch instructions"),
                 llvm::cl::init(true));
 
 static llvm::cl::opt<bool>
-    LowerSelect("crab-lower-select",
+    LowerSelect("clam-lower-select",
                 llvm::cl::desc("Lower all select instructions"),
                 llvm::cl::init(false));
 
@@ -101,12 +101,12 @@ static llvm::cl::opt<bool> DotLLVMCFG(
     llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-    NullCheck("crab-null-check",
+    NullCheck("clam-null-check",
               llvm::cl::desc("Add checks for null dereference errors"),
               llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-    UafCheck("crab-uaf-check",
+    UafCheck("clam-uaf-check",
              llvm::cl::desc("Add checks for use-after-free errors"),
              llvm::cl::init(false));
 

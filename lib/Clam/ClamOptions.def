@@ -39,7 +39,7 @@ heap_analysis_t CrabHeapAnalysis;
 bool CrabDsaDisambiguateUnknown;
 bool CrabDsaDisambiguatePtrCast;
 bool CrabDsaDisambiguateExternal;
-CheckerKind CrabCheck;
+bool CrabCheck;
 unsigned int CrabCheckVerbose;
 bool CrabKeepShadows;
 } // end namespace clam
@@ -291,14 +291,11 @@ XCrabDsaDisambiguateExternal("crab-dsa-disambiguate-external",
     llvm::cl::Hidden);
 
 // Prove assertions
-llvm::cl::opt<clam::CheckerKind, true>
+llvm::cl::opt<bool, true>
 XCrabCheck("crab-check", 
-	   llvm::cl::desc("Check user assertions"),
-	   llvm::cl::values(
-	       clEnumValN(clam::CheckerKind::NOCHECKS  , "none"  , "None"),
-	       clEnumValN(clam::CheckerKind::ASSERTION , "assert", "User assertions")),
+	   llvm::cl::desc("Run Crab Assertion Checker"),
 	   llvm::cl::location(clam::CrabCheck),
-	   llvm::cl::init(clam::CheckerKind::NOCHECKS));
+	   llvm::cl::init(false));
 
 llvm::cl::opt<unsigned int, true>
 XCrabCheckVerbose("crab-check-verbose", 

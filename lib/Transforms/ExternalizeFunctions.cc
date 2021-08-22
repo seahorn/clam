@@ -20,12 +20,12 @@
 using namespace llvm;
 
 static llvm::cl::list<std::string>
-ExternalizeFunctionNames("crab-externalize-function",
+ExternalizeFunctionNames("clam-externalize-function",
 			  llvm::cl::desc("Set the linkage to external"),
 			  llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
 
 static llvm::cl::opt<bool>
-RemoveBodies("crab-externalize-functions-delete",
+RemoveBodies("clam-externalize-functions-delete",
 	     llvm::cl::desc("Delete bodies of externalized functions"),
 	     llvm::cl::init(true),
 	     llvm::cl::Hidden);
