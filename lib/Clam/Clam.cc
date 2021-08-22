@@ -1201,9 +1201,7 @@ bool ClamPass::runOnModule(Module &M) {
   case heap_analysis_t::CI_SEA_DSA:
   case heap_analysis_t::CS_SEA_DSA: {
     CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
-    // CallGraph &cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
-    CallGraph &cg =
-        getAnalysis<seadsa::CompleteCallGraph>().getCompleteCallGraph();
+    CallGraph &cg = getAnalysis<seadsa::CompleteCallGraph>().getCompleteCallGraph();
     seadsa::AllocWrapInfo &allocWrapInfo = getAnalysis<seadsa::AllocWrapInfo>();
     // FIXME: if we pass "this" then allocWrapInfo can be more
     // precise because it can use LoopInfo. However, I get some
@@ -1347,14 +1345,11 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.addRequired<LoopInfoWrapperPass>();
     AU.addRequired<seadsa::AllocWrapInfo>();
     AU.addRequired<seadsa::DsaLibFuncInfo>();
+    AU.addRequired<seadsa::CompleteCallGraph>();
   }
 
   AU.addRequired<UnifyFunctionExitNodes>();
   AU.addRequired<clam::NameValues>();
-
-  // More precise than LLVM callgraph
-  AU.addRequired<seadsa::CompleteCallGraph>();
-  // AU.addRequired<CallGraphWrapperPass>();
 }
 
 /**
