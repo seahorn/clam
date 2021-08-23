@@ -389,7 +389,7 @@ def parseArgs(argv):
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
                    help='Check properties (default no check)',
-                   choices=['none', 'assert', 'null', 'uaf'],
+                   choices=['none', 'assert', 'null', 'uaf', 'bounds', 'null-legacy', 'uaf-legacy'],
                    dest='crab_check', default='none')
     add_bool_argument(p, 'crab-check-only-typed', default=False,
                       help='Add checks only on typed regions (only for null and uaf). False by default',
@@ -876,13 +876,20 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
 
     if args.crab_promote_assume:
         clam_args.append('--crab-promote-assume')
-    if args.crab_check:
+        
+    if args.crab_check != 'none':
         clam_args.append('--crab-check')
-        if args.crab_check == 'null':
-            clam_args.append('--clam-null-check')
-        elif  args.crab_check == 'uaf':
-            clam_args.append('--clam-uaf-check')
-        if args.crab_check in ['null', 'uaf']:
+        if args.crab_check == 'null-legacy':
+            clam_args.append('--clam-null-check-legacy')
+        elif args.crab_check == 'uaf-legacy':
+            clam_args.append('--clam-uaf-check-legacy')
+        elif args.crab_check == 'null':
+            clam_args.append('--crab-null-check')
+        elif args.crab_check == 'uaf':
+            clam_args.append('--crab-uaf-check')
+        elif args.crab_check == 'bounds':
+            clam_args.append('--crab-bounds-check')
+        if args.crab_check in ['null-legacy', 'uaf-legacy', 'null', 'uaf', 'bounds']:
             if args.crab_check_only_typed:
                 clam_args.append('--crab-check-only-typed-regions=true')
             else:

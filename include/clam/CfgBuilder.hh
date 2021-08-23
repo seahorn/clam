@@ -5,6 +5,7 @@
  */
 
 #include "clam/CfgBuilderParams.hh"
+#include "clam/CrabIREmitter.hh"
 #include "clam/crab/crab_lang.hh"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -119,6 +120,11 @@ public:
                      llvm::TargetLibraryInfoWrapperPass &tli,
                      std::unique_ptr<HeapAbstraction> mem);
 
+  CrabBuilderManager(CrabBuilderParams params,
+                     llvm::TargetLibraryInfoWrapperPass &tli,
+                     std::unique_ptr<HeapAbstraction> mem,
+		     CrabIREmitterVec &&propertyEmitters);
+  
   ~CrabBuilderManager();
 
   CrabBuilderManager(const CrabBuilderManager &o) = delete;

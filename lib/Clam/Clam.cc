@@ -1188,6 +1188,9 @@ bool ClamPass::runOnModule(Module &M) {
   builder_params.include_useless_havoc = CrabIncludeHavoc;
   builder_params.enable_bignums = CrabEnableBignums;
   builder_params.add_pointer_assumptions = CrabAddPtrAssumptions;
+  builder_params.add_null_checks = CrabNullChecks;
+  builder_params.add_uaf_checks = CrabUafChecks;
+  builder_params.add_bounds_checks = CrabBoundsChecks;
   builder_params.check_only_typed_regions = CrabCheckOnlyTyped;
   builder_params.check_only_noncyclic_regions = CrabCheckOnlyNonCyclic;
   builder_params.print_cfg = CrabPrintCFG;

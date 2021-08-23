@@ -14,7 +14,9 @@ enum class CrabBuilderPrecision {
 struct CrabBuilderParams {
   // Level of abstraction of the CFG
   CrabBuilderPrecision precision_level;
-  // Perform dead code elimination, cfg simplifications, etc
+  // Perform dead code elimination, cfg simplifications, etc.  If
+  // enabled, this option might make harder to map back from CrabIR to
+  // LLVM IR.
   bool simplify;
   // translate precisely calls
   bool interprocedural;
@@ -29,7 +31,13 @@ struct CrabBuilderParams {
   /// globals cannot be null, external functions do not return
   /// dangling pointers, etc.)
   bool add_pointer_assumptions;
-  /// Add assertions only on certain heap shapes
+  /// Emit crabIR to perform null-dereference checks
+  bool add_null_checks;
+  /// Emit crabIR to perform use-after-free checks  
+  bool add_uaf_checks;
+  /// Emit crabIR to perform buffer-overflow checks
+  bool add_bounds_checks;
+  /// Add above checks only on certain heap shapes
   bool check_only_typed_regions;
   bool check_only_noncyclic_regions;
   //// --- printing options
@@ -39,12 +47,20 @@ struct CrabBuilderParams {
   bool dot_cfg;
 
   CrabBuilderParams()
-      : precision_level(CrabBuilderPrecision::NUM), simplify(false),
-        interprocedural(true), lower_singleton_aliases(false),
-        include_useless_havoc(true), enable_bignums(false),
+      : precision_level(CrabBuilderPrecision::NUM),
+	simplify(false),
+        interprocedural(true),
+	lower_singleton_aliases(false),
+        include_useless_havoc(true),
+	enable_bignums(false),
         add_pointer_assumptions(true),
-	check_only_typed_regions(false), check_only_noncyclic_regions(false),
-	print_cfg(false), dot_cfg(false) {}
+	add_null_checks(false),
+	add_uaf_checks(false),
+	add_bounds_checks(false),
+	check_only_typed_regions(false),
+	check_only_noncyclic_regions(false),
+	print_cfg(false),
+	dot_cfg(false) {}
 
   bool trackMemory() const {
     return precision_level == CrabBuilderPrecision::MEM;
@@ -59,7 +75,9 @@ struct CrabBuilderParams {
   }
 
   /* Set the level of abstraction for Crab programs */
-  void setPrecision(CrabBuilderPrecision val) { precision_level = val; }
+  void setPrecision(CrabBuilderPrecision val) {
+    precision_level = val;
+  }
 
   void write(llvm::raw_ostream &o) const;
 };

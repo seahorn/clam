@@ -101,13 +101,13 @@ static llvm::cl::opt<bool> DotLLVMCFG(
     llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-    NullCheck("clam-null-check",
-              llvm::cl::desc("Add checks for null dereference errors"),
+    NullCheck("clam-null-check-legacy",
+              llvm::cl::desc("Insert checks for null dereference errors in LLVM IR"),
               llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-    UafCheck("clam-uaf-check",
-             llvm::cl::desc("Add checks for use-after-free errors"),
+    UafCheck("clam-uaf-check-legacy",
+             llvm::cl::desc("Insert checks for use-after-free errors in LLVM IR"),
              llvm::cl::init(false));
 
 
