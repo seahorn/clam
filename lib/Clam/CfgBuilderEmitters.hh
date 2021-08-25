@@ -46,6 +46,14 @@ public:
                                          CrabIREmitterVec &propertyEmitters,
                                          basic_block_t &bb, var_t ref,
                                          var_t region, var_or_cst_t val);
+
+  // Insert select_ref statement in bb
+  static const statement_t *select_ref(llvm::SelectInst &I,
+                                       CrabIREmitterVec &propertyEmitters,
+                                       basic_block_t &bb, var_t lhs_ref,
+                                       var_t lhs_region, var_t cond,
+                                       CrabSelectRefOps::opt_pair_var_t op1,
+                                       CrabSelectRefOps::opt_pair_var_t op2);
 };
 
 } // namespace clam

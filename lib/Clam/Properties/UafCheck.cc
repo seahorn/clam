@@ -173,6 +173,10 @@ void EmitUafChecks::visitAfterLoad(llvm::LoadInst &I, CrabLoadRefOps &s) {}
 void EmitUafChecks::visitAfterMemset(llvm::MemSetInst &I, CrabMemsetOps &s) {}
 void EmitUafChecks::visitAfterMemTransfer(llvm::MemTransferInst &I,
                                           CrabMemTransferOps &s) {}
+void EmitUafChecks::visitBeforeRefSelect(llvm::SelectInst &I,
+                                         CrabSelectRefOps &s) {}
+void EmitUafChecks::visitAfterRefSelect(llvm::SelectInst &I,
+                                        CrabSelectRefOps &s) {}
 /* End empty implementations */
 
 } // end namespace clam
