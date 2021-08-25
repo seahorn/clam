@@ -60,6 +60,7 @@
 #include "CfgBuilderLit.hh"
 #include "CfgBuilderMemRegions.hh"
 #include "CfgBuilderUtils.hh"
+#include "Properties/BndCheck.hh"
 #include "Properties/NullCheck.hh"
 #include "Properties/UafCheck.hh"
 
@@ -4705,7 +4706,8 @@ CrabBuilderManagerImpl::CrabBuilderManagerImpl(
 				     (m_params, m_lfac, m_assertion_id));
   }
   if (params.add_bounds_checks) {
-    // TODO
+    m_property_emitters.emplace_back(
+        std::make_unique<EmitBndChecks>(m_params, m_lfac, m_assertion_id));
   }
 }
 
