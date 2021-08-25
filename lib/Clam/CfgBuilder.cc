@@ -1832,18 +1832,22 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     crab_lit_ref_t cond = m_lfac.getLit(condV);
     assert(cond->isVar());
 
+    CrabSelectRefOps::opt_pair_var_t pair_op1 = llvm::None;
+    CrabSelectRefOps::opt_pair_var_t pair_op2 = llvm::None;
+
     if (op1->isVar() && op2->isVar()) {
-      m_bb.select_ref(lhs->getVar(), lhs_rgn, cond->getVar(), op1->getVar(),
-                      op1_rgn, op2->getVar(), op2_rgn);
-
+      pair_op1 = std::make_pair(op1->getVar(), op1_rgn);
+      pair_op2 = std::make_pair(op2->getVar(), op2_rgn);
     } else if (!op1->isVar()) {
-      m_bb.select_ref_null_true_value(lhs->getVar(), lhs_rgn, cond->getVar(),
-                                      op2->getVar(), op2_rgn);
-
+      pair_op2 = std::make_pair(op2->getVar(), op2_rgn);
     } else if (!op2->isVar()) {
-      m_bb.select_ref_null_false_value(lhs->getVar(), lhs_rgn, cond->getVar(),
-                                       op1->getVar(), op1_rgn);
+      pair_op1 = std::make_pair(op1->getVar(), op1_rgn);
+    }
 
+    if (pair_op1.hasValue() || pair_op2.hasValue()) {
+      insertCrabIRWithEmitter::select_ref(I, m_propertyEmitters, m_bb,
+                                          lhs->getVar(), lhs_rgn,
+                                          cond->getVar(), pair_op1, pair_op2);
     } else {
       // both op1 and op2 should be null
       if (m_lfac.isRefNull(op1) && m_lfac.isRefNull(op2)) {

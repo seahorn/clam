@@ -178,6 +178,10 @@ void EmitNullDerefChecks::visitAfterMemset(llvm::MemSetInst &I,
                                            CrabMemsetOps &s) {}
 void EmitNullDerefChecks::visitAfterMemTransfer(llvm::MemTransferInst &I,
                                                 CrabMemTransferOps &s) {}
+void EmitNullDerefChecks::visitBeforeRefSelect(llvm::SelectInst &I,
+                                               CrabSelectRefOps &s) {}
+void EmitNullDerefChecks::visitAfterRefSelect(llvm::SelectInst &I,
+                                              CrabSelectRefOps &s) {}
 /* End empty implementations */
 
 } // end namespace clam

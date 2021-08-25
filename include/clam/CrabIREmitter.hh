@@ -14,6 +14,7 @@ class StoreInst;
 class LoadInst;
 class MemSetInst;
 class MemTransferInst;
+class SelectInst;
 } // namespace llvm
 
 namespace clam {
@@ -25,6 +26,7 @@ class CrabStoreRefOps;
 class CrabLoadRefOps;
 class CrabMemsetOps;
 class CrabMemTransferOps;
+class CrabSelectRefOps;
 /*
  * Allow to add extra Crab statements _before_ and _after_ each of
  * these instructions are translated to CrabIR by CfgBuilder.  This is
@@ -72,6 +74,10 @@ public:
                                       CrabMemTransferOps &s) = 0;
   virtual void visitAfterMemTransfer(llvm::MemTransferInst &I,
                                      CrabMemTransferOps &s) = 0;
+  virtual void visitBeforeRefSelect(llvm::SelectInst &I,
+                                    CrabSelectRefOps &s) = 0;
+  virtual void visitAfterRefSelect(llvm::SelectInst &I,
+                                   CrabSelectRefOps &s) = 0;
 };
 
 using CrabIREmitterPtr = std::unique_ptr<CrabIREmitter>;
@@ -286,6 +292,45 @@ public:
   const var_or_cst_t &getLength() const { return m_len; }
   
   basic_block_t &getBasicBlock() { return m_bb; }
+};
+
+/**
+ * This is a convenient wrapper for selecting the arguments of
+ * CrabIR select_ref statement.
+ **/
+class CrabSelectRefOps {
+public:
+  using opt_pair_var_t = llvm::Optional<std::pair<var_t, var_t>>;
+
+  CrabSelectRefOps(var_t ref_lhs, var_t region_lhs, var_t cond,
+                   opt_pair_var_t op1, opt_pair_var_t op2, basic_block_t &bb)
+      : m_ref_lhs(ref_lhs), m_region_lhs(region_lhs), m_cond(cond), m_op1(op1),
+        m_op2(op2), m_bb(bb) {}
+
+  var_t &getRefCond() { return m_cond; }
+  const var_t &getRefCond() const { return m_cond; }
+
+  var_t &getRefLhs() { return m_ref_lhs; }
+  const var_t &getRefLhs() const { return m_ref_lhs; }
+
+  var_t &getRegionLhs() { return m_region_lhs; }
+  const var_t &getRegionLhs() const { return m_region_lhs; }
+
+  opt_pair_var_t &getOp1() { return m_op1; }
+  const opt_pair_var_t &getOp1() const { return m_op1; }
+
+  opt_pair_var_t &getOp2() { return m_op2; }
+  const opt_pair_var_t &getOp2() const { return m_op2; }
+
+  basic_block_t &getBasicBlock() { return m_bb; }
+
+private:
+  var_t m_cond;
+  opt_pair_var_t m_op1;
+  opt_pair_var_t m_op2;
+  var_t m_ref_lhs;
+  var_t m_region_lhs;
+  basic_block_t &m_bb;
 };
 
 } // end namespace clam
