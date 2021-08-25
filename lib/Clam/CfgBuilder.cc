@@ -1918,8 +1918,7 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
                                                      : lin_cst_t::get_false()));
       m_bb.bool_select(lhs->getVar(), c->getVar(), op1->getVar(), ff_v);
     } else {
-      m_bb.bool_select(lhs->getVar(), c->getVar(), op1->getVar(),
-                       op1->getVar());
+      m_bb.bool_select(lhs->getVar(), c->getVar(), op1->getVar(), op2->getVar());
     }
   } else if (isInteger(I)) {
 
