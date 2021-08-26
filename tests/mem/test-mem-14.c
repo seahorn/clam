@@ -4,10 +4,10 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-// RUN: %clam -O0 --crab-inter --crab-dom=oct --crab-track=mem --crab-check=bounds "%s" 2>&1 | OutputCheck %s
-// CHECK: ^2  Number of total safe checks$
-// CHECK: ^0  Number of total warning checks$
-  
+// RUN: %clam -O0 --crab-inter --crab-dom=oct --promote-malloc=false
+// --crab-track=mem --crab-check=bounds "%s" 2>&1 | OutputCheck %s CHECK: ^2
+// Number of total safe checks$ CHECK: ^0  Number of total warning checks$
+
 extern void __CRAB_assert(int);
 extern void __CRAB_assume(int);
 extern int int_nd(void);
