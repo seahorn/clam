@@ -64,58 +64,6 @@ class EmitBndChecksImpl {
     return;
   }
 
-  void addSelectRefBndCheck(SelectInst &I, basic_block_t &bb) {
-    const Value &vtrue = *(I.getTrueValue());
-    const Value &vfalse = *(I.getFalseValue());
-    const Value &condV = *I.getCondition();
-    crab_lit_ref_t c = m_lfac.getLit(condV);
-    assert(c);
-    crab_lit_ref_t op1 = m_lfac.getLit(vtrue);
-    assert(op1);
-    crab_lit_ref_t op2 = m_lfac.getLit(vfalse);
-    assert(op2);
-    Type *elemTy = vtrue.getType()->getPointerElementType();
-    const llvm::DataLayout *dl = getInsDatalayout(I);
-    unsigned width = dl->getTypeSizeInBits(elemTy);
-    var_t offset_op1 = m_lfac.mkIntVar(width);
-    var_t size_op1 = m_lfac.mkIntVar(width);
-    var_t offset_op2 = m_lfac.mkIntVar(width);
-    var_t size_op2 = m_lfac.mkIntVar(width);
-    if (m_lfac.isRefNull(op1)) {
-      bb.assign(offset_op1, number_t(0));
-      bb.assign(size_op1, number_t(0));
-    } else {
-      auto it = m_ref_bnd_map->find(&vtrue);
-      if (it == m_ref_bnd_map->end()) {
-        CLAM_ERROR("Could not find from select ptr "
-                   << vtrue << " from reference map \n Stop at" << I);
-        return;
-      } else {
-        offset_op1 = it->second.first;
-        size_op1 = it->second.second;
-      }
-    }
-    if (m_lfac.isRefNull(op2)) {
-      bb.assign(offset_op2, number_t(0));
-      bb.assign(size_op2, number_t(0));
-    } else {
-      auto it = m_ref_bnd_map->find(&vfalse);
-      if (it == m_ref_bnd_map->end()) {
-        CLAM_ERROR("Could not find from select ptr "
-                   << vfalse << " from reference map \n Stop at" << I);
-        return;
-      } else {
-        offset_op2 = it->second.first;
-        size_op2 = it->second.second;
-      }
-    }
-    var_t lhs_obj_sz = m_lfac.mkIntVar(width);
-    var_t lhs_offset = m_lfac.mkIntVar(width);
-    bb.select(lhs_offset, c->getVar(), offset_op1, offset_op2);
-    bb.select(lhs_obj_sz, c->getVar(), size_op1, size_op2);
-    m_ref_bnd_map->insert({&I, {lhs_obj_sz, lhs_offset}});
-  }
-
 public:
   EmitBndChecksImpl(const CrabBuilderParams &params, crabLitFactory &lfac,
                     uint32_t &assertionId)
@@ -251,8 +199,8 @@ public:
     Value *vptr = I.getOperand(0);
     auto it = m_ref_bnd_map->find(vptr);
     if (it == m_ref_bnd_map->end()) {
-      CLAM_ERROR("Could not find gep ptr "
-                 << *vptr << " from reference map \n Stop at" << I);
+      CLAM_WARNING("Could not find gep ptr " << *vptr << " from reference map"
+                                             << I);
     } else {
       var_t ptr_obj_sz = it->second.first;
       var_t ptr_offset = it->second.second;
@@ -264,6 +212,59 @@ public:
       bb.assign(lhs_offset, offset);
       m_ref_bnd_map->insert({&I, {lhs_obj_sz, lhs_offset}});
     }
+  }
+
+  void visitAfterRefSelect(SelectInst &I, CrabSelectRefOps &s) {
+    const Value &vtrue = *(I.getTrueValue());
+    const Value &vfalse = *(I.getFalseValue());
+    const Value &condV = *I.getCondition();
+    crab_lit_ref_t c = m_lfac.getLit(condV);
+    assert(c);
+    crab_lit_ref_t op1 = m_lfac.getLit(vtrue);
+    assert(op1);
+    crab_lit_ref_t op2 = m_lfac.getLit(vfalse);
+    assert(op2);
+    basic_block_t &bb = s.getBasicBlock();
+    Type *elemTy = vtrue.getType()->getPointerElementType();
+    const llvm::DataLayout *dl = getInsDatalayout(I);
+    unsigned width = dl->getTypeSizeInBits(elemTy);
+    var_t offset_op1 = m_lfac.mkIntVar(width);
+    var_t size_op1 = m_lfac.mkIntVar(width);
+    var_t offset_op2 = m_lfac.mkIntVar(width);
+    var_t size_op2 = m_lfac.mkIntVar(width);
+    if (m_lfac.isRefNull(op1)) {
+      bb.assign(offset_op1, number_t(0));
+      bb.assign(size_op1, number_t(0));
+    } else {
+      auto it = m_ref_bnd_map->find(&vtrue);
+      if (it == m_ref_bnd_map->end()) {
+        CLAM_WARNING("Could not find from select ptr "
+                     << vtrue << " from reference map" << I);
+        return;
+      } else {
+        offset_op1 = it->second.first;
+        size_op1 = it->second.second;
+      }
+    }
+    if (m_lfac.isRefNull(op2)) {
+      bb.assign(offset_op2, number_t(0));
+      bb.assign(size_op2, number_t(0));
+    } else {
+      auto it = m_ref_bnd_map->find(&vfalse);
+      if (it == m_ref_bnd_map->end()) {
+        CLAM_WARNING("Could not find from select ptr "
+                     << vfalse << " from reference map" << I);
+        return;
+      } else {
+        offset_op2 = it->second.first;
+        size_op2 = it->second.second;
+      }
+    }
+    var_t lhs_obj_sz = m_lfac.mkIntVar(width);
+    var_t lhs_offset = m_lfac.mkIntVar(width);
+    bb.select(lhs_offset, c->getVar(), offset_op1, offset_op2);
+    bb.select(lhs_obj_sz, c->getVar(), size_op1, size_op2);
+    m_ref_bnd_map->insert({&I, {lhs_obj_sz, lhs_offset}});
   }
 };
 
@@ -292,6 +293,11 @@ void EmitBndChecks::visitAfterGep(llvm::Instruction &I, CrabGepRefOps &s) {
   m_impl->visitAfterGep(I, s);
 }
 
+void EmitBndChecks::visitAfterRefSelect(llvm::SelectInst &I,
+                                        CrabSelectRefOps &s) {
+  m_impl->visitAfterRefSelect(I, s);
+}
+
 /* Begin empty implementations */
 void EmitBndChecks::visitBeforeBasicBlock(llvm::BasicBlock &BB) {}
 void EmitBndChecks::visitAfterBasicBlock(llvm::BasicBlock &BB) {}
@@ -313,6 +319,8 @@ void EmitBndChecks::visitBeforeMemTransfer(llvm::MemTransferInst &I,
                                            CrabMemTransferOps &s) {}
 void EmitBndChecks::visitAfterMemTransfer(llvm::MemTransferInst &I,
                                           CrabMemTransferOps &s) {}
+void EmitBndChecks::visitBeforeRefSelect(llvm::SelectInst &I,
+                                         CrabSelectRefOps &s) {}
 /* End empty implementations */
 
 } // end namespace clam

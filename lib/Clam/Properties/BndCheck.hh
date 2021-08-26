@@ -46,6 +46,10 @@ public:
                                       CrabMemTransferOps &s) override;
   virtual void visitAfterMemTransfer(llvm::MemTransferInst &I,
                                      CrabMemTransferOps &s) override;
+  virtual void visitBeforeRefSelect(llvm::SelectInst &I,
+                                    CrabSelectRefOps &s) override;
+  virtual void visitAfterRefSelect(llvm::SelectInst &I,
+                                   CrabSelectRefOps &s) override;
 };
 
 } // end namespace clam
