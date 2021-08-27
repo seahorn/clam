@@ -782,10 +782,14 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   DenseMap<const statement_t *, const Instruction *> &m_rev_map;
   // HACK: to translate to strong updates with SINGLETON_MEMORY
   RegionSet &m_regions_with_store;
+  // Replace boolean CrabIR statements with numerical ones.
+  // 
   // The map key is a verifier call (assert or assume) and the map
   // value is its parameter. The operands of map value are guaranteed
-  // to be integers.
-  DenseMap<CallInst *, CmpInst *> &m_verif_calls;
+  // to be integers.  The map states that CmpInst hasn't been
+  // translated to CrabIR yet but it will be translated when CallInst
+  // is processed.	  
+  DenseMap<CallInst *, CmpInst *> &m_pending_cmp_insts;
   // To assign unique identifiers to assertions (if any)
   uint32_t &m_assertion_id;
   // Property instrumentation
@@ -852,7 +856,7 @@ public:
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       RegionSet &regions_with_store,
       DenseMap<const GetElementPtrInst *, var_t> &gep_map,
-      DenseMap<CallInst *, CmpInst *> &verif_calls,
+      DenseMap<CallInst *, CmpInst *> &pending_cmp_insts,
       uint32_t &assertion_id,
       CrabIREmitterVec &propertyEmitters);
 
@@ -888,7 +892,7 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
     llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
     RegionSet &regions_with_store,
     DenseMap<const GetElementPtrInst *, var_t> &gep_map,
-    DenseMap<CallInst *, CmpInst *> &verif_calls,
+    DenseMap<CallInst *, CmpInst *> &pending_cmp_insts,
     uint32_t &assertion_id,
     CrabIREmitterVec &propertyEmitters)
     : m_lfac(lfac), m_as_man(as_man), m_mem(mem), m_dl(dl), m_tli(tli),
@@ -896,7 +900,7 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
       m_params(params), m_func_globals(func_globals), m_ret_insts(ret_insts),
       m_man(man), m_has_seahorn_fail(has_seahorn_fail),
       m_func_regions(func_regions), m_gep_map(gep_map), m_rev_map(rev_map),
-      m_regions_with_store(regions_with_store), m_verif_calls(verif_calls),
+      m_regions_with_store(regions_with_store), m_pending_cmp_insts(pending_cmp_insts),
       m_assertion_id(assertion_id), m_propertyEmitters(propertyEmitters) {}
 
 unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
@@ -1454,8 +1458,24 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
       }
     }
   } else {
-    if (CmpInst *Cond = m_verif_calls[&I]) {
-      // Optimization step: avoid boolean statements
+    if (CmpInst *Cond = m_pending_cmp_insts[&I]) {      
+      /*
+       * Avoid boolean CrabIR statements: use numerical ones instead
+       * if possible.
+       * 
+       * Given LLVM code:
+       *    %b = icmp %x, %y
+       *    ....
+       *    assert(%b)
+       * 
+       * If m_params.avoid_boolean = false then 
+       *    %b := (x rel_op y);
+       *    bool_assert(b);
+       * 
+       * If m_params.avoid_boolean = true then 
+       *    assert(x rel_op y);
+       */
+      
       auto cst_opt = cmpInstToCrabInt(*Cond, m_lfac, isNotAssumeFn(*callee));
       if (cst_opt.hasValue()) {
         if (isAssertFn(*callee)) {
@@ -1555,10 +1575,11 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
       // already lowered elsewhere
     } else {
       SmallVector<CallInst *, 4> verifierCalls;
-      if (AllUsesAreVerifierCalls(I, true /*goThroughIntegerCasts*/,
+      if (m_params.avoid_boolean &&
+	  AllUsesAreVerifierCalls(I, true /*goThroughIntegerCasts*/,
                                   true /*nonBoolCond*/, verifierCalls)) {
         for (CallInst *CI : verifierCalls) {
-          m_verif_calls.insert({CI, &I});
+          m_pending_cmp_insts.insert({CI, &I});
         }
         // do nothing: lowered elsewhere
       } else {
@@ -1596,10 +1617,11 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
       // do nothing: already lowered elsewhere
     } else {
       SmallVector<CallInst *, 4> verifierCalls;
-      if (AllUsesAreVerifierCalls(I, true /*goThroughIntegerCasts*/,
+      if (m_params.avoid_boolean &&
+	  AllUsesAreVerifierCalls(I, true /*goThroughIntegerCasts*/,
                                   true /*nonBoolCond*/, verifierCalls)) {
         for (CallInst *CI : verifierCalls) {
-          m_verif_calls.insert({CI, &I});
+          m_pending_cmp_insts.insert({CI, &I});
         }
         // do nothing: lowered elsewhere
       } else {
@@ -3778,8 +3800,10 @@ void CfgBuilderImpl::buildCfg() {
   RegionSet regions_with_store;
   // Map GEP instruction to a Crab variable
   DenseMap<const GetElementPtrInst *, var_t> gep_map;
-  // Assert or assume instruction together with its parameter
-  DenseMap<CallInst *, CmpInst *> verif_calls;
+  // Assert or assume instruction together with its parameter.  Used
+  // to delay the translation of CmpInst so that adding boolean CrabIR
+  // statements can be avoided.
+  DenseMap<CallInst *, CmpInst *> pending_cmp_insts;
 
   const TargetLibraryInfo *tli = (m_tli ? &m_tli->getTLI(m_func) : nullptr);
 
@@ -3810,7 +3834,7 @@ void CfgBuilderImpl::buildCfg() {
 			    *bb, *entry_bb, m_params, m_globals,
                             m_ret_insts, m_man, has_seahorn_fail,
                             m_func_regions, m_rev_map, regions_with_store,
-                            gep_map, verif_calls, m_assertion_id, m_propertyEmitters);
+                            gep_map, pending_cmp_insts, m_assertion_id, m_propertyEmitters);
 
     v.visit(B);
 
@@ -4260,6 +4284,8 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tinterproc cfg: " << interprocedural << "\n";
   o << "\tlower singleton aliases into scalars: " << lower_singleton_aliases
     << "\n";
+  o << "\tavoid some boolean CrabIR statements (e.g., bool_assume, bool_assert): "
+    << avoid_boolean << "\n";
   o << "\tadd pointer assumptions: " << addPointerAssumptions() << "\n";
   o << "\tenable big numbers: " << enable_bignums << "\n";
   o << "\tcheck only typed regions: " << check_only_typed_regions << "\n";

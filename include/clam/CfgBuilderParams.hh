@@ -27,6 +27,10 @@ struct CrabBuilderParams {
   // Translate bignums (> 64), otherwise operations with big numbers
   // are havoced.
   bool enable_bignums;
+  // Avoid adding boolean crabIR statements in some cases (e.g.,
+  // bool_assume/bool_assert) because Crab is, in general, not very
+  // good at boolean reasoning.
+  bool avoid_boolean;
   /// Add reasonable assumptions about pointers (e.g., allocas and
   /// globals cannot be null, external functions do not return
   /// dangling pointers, etc.)
@@ -52,6 +56,7 @@ struct CrabBuilderParams {
         interprocedural(true),
 	lower_singleton_aliases(false),
         include_useless_havoc(true),
+	avoid_boolean(true),
 	enable_bignums(false),
         add_pointer_assumptions(true),
 	add_null_checks(false),
