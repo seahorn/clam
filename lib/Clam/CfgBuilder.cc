@@ -2133,7 +2133,7 @@ void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
       }
     };
     auto translatePtr = [this, &I](Value &ptr) -> std::pair<var_t, var_t> {
-      assert(ptr->getType()->isPointerType());
+      assert(ptr.getType()->isPointerTy());
       var_t rgnVar = m_lfac.mkRegionVar(getRegion(m_mem, m_func_regions, m_params, I, ptr));
       var_t refVar = m_lfac.getLit(ptr)->getVar();
       return {refVar, rgnVar};
