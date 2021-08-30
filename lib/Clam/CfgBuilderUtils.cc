@@ -114,15 +114,17 @@ bool hasDebugLoc(const Instruction *inst) {
 }
 
 crab::cfg::debug_info getDebugLoc(const Instruction *I) {
+  return getDebugLoc(I, 0);
+}
+
+crab::cfg::debug_info getDebugLoc(const Instruction *I, uint32_t Id) {
   if (hasDebugLoc(I)) {
     const DebugLoc &dloc = I->getDebugLoc();
     unsigned Line = dloc.getLine();
     unsigned Col = dloc.getCol();
     std::string File = (*dloc).getFilename().str();
-    int64_t Id = getAssertIdFromMetadata(I->getMetadata("clam-assertion"));
-    return crab::cfg::debug_info(File, Line, Col, Id);
+    return crab::cfg::debug_info(File, Line, Col, Id == 0 ? -1 : (int64_t) Id);
   } else {
-    int64_t Id = getAssertIdFromMetadata(I->getMetadata("clam-assertion"));
     return crab::cfg::debug_info(Id);
   } 
 }
@@ -240,23 +242,6 @@ bool isIntInitializer(const CallInst &CI) {
   return false;
 }
 
-int64_t getAssertIdFromMetadata(MDNode *MDN) {
-  // assume MDN is the metadata associate to getMetadata("clam-assertion")
-  int64_t id = -1; // no id found
-  if (MDN) {
-    if (MDTuple *t = dyn_cast<MDTuple>(MDN->getOperand(0))) {
-      if (MDString *s = dyn_cast<MDString>(t->getOperand(1))) {
-	StringRef checkId = s->getString();
-	unsigned long long n;
-	if (!(getAsUnsignedInteger(checkId, 10, n) || (n > INT64_MAX))) {
-	  id = (int64_t) n;
-	}
-      }
-    }
-  }
-  return id;
-}
-  
 std::string getAssertKindFromMetadata(MDNode *MDN) {
   // assume MDN is the metadata associate to getMetadata("clam-assertion")
   if (MDN) {

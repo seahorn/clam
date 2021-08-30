@@ -5,7 +5,6 @@
 #include <crab/domains/split_dbm.hpp>
 
 namespace clam {
-using namespace crab::domains;
 /// To choose DBM parameters
 struct BigNumDBMParams {
   /* This version uses unlimited integers so no overflow */
@@ -36,17 +35,17 @@ struct FastDBMParams {
 };
 
 #ifdef USE_DBM_BIGNUM
-using BASE(split_dbm_domain_t) =
-    split_dbm_domain<number_t, dom_varname_t, BigNumDBMParams>;
+using DBMParams = BigNumDBMParams;
 #else
 #ifdef USE_DBM_SAFEINT
-using BASE(split_dbm_domain_t) =
-    split_dbm_domain<number_t, dom_varname_t, SafeFastDBMParams>;
+using DBMParams = SafeFastDBMParams;
 #else
+using DBMParams = FastDBMParams;
+#endif
+#endif
+
 using BASE(split_dbm_domain_t) =
-    split_dbm_domain<number_t, dom_varname_t, FastDBMParams>;
-#endif
-#endif
+  crab::domains::split_dbm_domain<number_t, region_dom_varname_t, DBMParams>;
 using split_dbm_domain_t =
     RGN_FUN(ARRAY_FUN(BOOL_NUM(BASE(split_dbm_domain_t))));
 } // end namespace clam

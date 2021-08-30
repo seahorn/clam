@@ -12,5 +12,9 @@
 
 /** Include all default abstract domains.**/
 #cmakedefine INCLUDE_ALL_DOMAINS ${INCLUDE_ALL_DOMAINS}
- 
+
+/** whether region domain without ghost variables is available or not **/
+#cmakedefine HAS_FAST_REGION_DOMAIN ${HAS_FAST_REGION_DOMAIN}
+
+
 

@@ -1,12 +1,14 @@
 #pragma once
 
 #include <clam/crab/domains/split_dbm.hh>
-#include <clam/crab/domains/terms_dis_intervals.hh>
+#include <crab/domains/dis_intervals.hpp>
 
 namespace clam {
 /// -- Reduced product of term(dis_intervals) and zones
+using str_dis_interval_domain_t = crab::domains::dis_interval_domain<number_t, str_varname_t>;
 using BASE(num_domain_t) = reduced_numerical_domain_product2<
-    TERM_FUN(BASE(dis_interval_domain_t)), BASE(split_dbm_domain_t),
-    reduced_product_impl::term_dbm_params>;
+  TERM_FUN(str_dis_interval_domain_t),
+  BASE(split_dbm_domain_t),
+  reduced_product_impl::term_dbm_params>;
 using num_domain_t = RGN_FUN(ARRAY_FUN(BOOL_NUM(BASE(num_domain_t))));
 } // end namespace clam

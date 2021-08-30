@@ -12,12 +12,21 @@
 
 #include <crab/domains/array_adaptive.hpp>
 #include <crab/domains/flat_boolean_domain.hpp>
+#ifdef HAS_FAST_REGION_DOMAIN
+#include <crab/domains/region_without_ghost_domain.hpp>
+#else
 #include <crab/domains/region_domain.hpp>
+#endif 
 #include <crab/domains/term_equiv.hpp>
 
 namespace clam {
 using namespace crab::domains;
 using namespace ikos;
+
+// Variable factory based on strings used by domains which create
+// ghost variables (e.g., region and term domains)
+using str_var_allocator = crab::var_factory_impl::str_var_alloc_col;
+using str_varname_t = str_var_allocator::varname_t;
 
 /* ====================================================================== */  
 /* BEGIN MACROS to create the hierarchy of domains. Only for internal use */
@@ -26,13 +35,17 @@ using namespace ikos;
 #define BASE(DOM) base_ ## DOM
 // Term functor domain 
 #define TERM_FUN(DOM) \
-  term_domain<term::TDomInfo<number_t, dom_varname_t, DOM>>
+  term_domain<term::TDomInfo<number_t, region_dom_varname_t, DOM>>
 // Reduced product of boolean domain with numerical domain
 #define BOOL_NUM(DOM) flat_boolean_numerical_domain<DOM>
 // Array functor domain where the parameter domain is DOM
 #define ARRAY_FUN(DOM) array_adapt_domain<DOM>
 // Region functor domain -- the root of the hierarchy of domains.
+#ifndef HAS_FAST_REGION_DOMAIN
 #define RGN_FUN(DOM) region_domain<RegionParams<DOM>>
+#else
+#define RGN_FUN(DOM) region_without_ghost_domain<DOM, FastRegionParams>
+#endif 
 /* ====================================================================== */    
 /* END MACROS to create the hierarchy of domains. Only for internal use   */
 /* ====================================================================== */    
@@ -58,14 +71,14 @@ using array_adapt_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;
 /* ====================================================================== */        
 /* BEGIN region domain                                                    */
 /* ====================================================================== */
-using domvar_allocator = crab::var_factory_impl::str_var_alloc_col;
-using dom_varname_t = domvar_allocator::varname_t;
+#ifndef HAS_FAST_REGION_DOMAIN  
+using region_dom_varname_t = str_varname_t;
 template<class BaseAbsDom>
 class RegionParams {
 public:
   using number_t = z_number;
   using varname_t = clam::varname_t;
-  using varname_allocator_t = crab::var_factory_impl::str_var_alloc_col;  
+  using varname_allocator_t = str_var_allocator;  
   using base_abstract_domain_t = BaseAbsDom;
   using base_varname_t = typename BaseAbsDom::varname_t;
   /* Enable reasoning about allocation sites*/
@@ -77,6 +90,16 @@ public:
   /* Tag analysis */
   enum { tag_analysis = 1};  
 };
+#else
+using region_dom_varname_t = clam::varname_t;
+class FastRegionParams {
+public:
+  enum { allocation_sites = 1 };
+  enum { deallocation = 1 };
+  enum { refine_uninitialized_regions = 0 };
+  enum { tag_analysis = 1 };
+};
+#endif 
 /* ====================================================================== */    
 /* END region domain                                                      */
 /* ====================================================================== */    

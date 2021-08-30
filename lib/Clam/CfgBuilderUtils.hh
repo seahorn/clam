@@ -60,6 +60,8 @@ bool hasDebugLoc(const llvm::Instruction *inst);
 
 crab::cfg::debug_info getDebugLoc(const llvm::Instruction *inst);
 
+crab::cfg::debug_info getDebugLoc(const llvm::Instruction *inst, uint32_t assertion_id);
+
 uint64_t storageSize(const llvm::Type *t, const llvm::DataLayout &dl);
 
 // Convert GT and GE integer comparisons to LE and LT
@@ -97,7 +99,7 @@ bool isIntInitializer(const llvm::Function &F);
 
 bool isIntInitializer(const llvm::CallInst &CI);
 
-int64_t getAssertIdFromMetadata(llvm::MDNode *MDN);
+// deprecated
 std::string getAssertKindFromMetadata(llvm::MDNode *MDN);
 
 // Return true if all uses are BranchInst's

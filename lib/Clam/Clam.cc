@@ -1188,6 +1188,9 @@ bool ClamPass::runOnModule(Module &M) {
   builder_params.include_useless_havoc = CrabIncludeHavoc;
   builder_params.enable_bignums = CrabEnableBignums;
   builder_params.add_pointer_assumptions = CrabAddPtrAssumptions;
+  builder_params.add_null_checks = CrabNullChecks;
+  builder_params.add_uaf_checks = CrabUafChecks;
+  builder_params.add_bounds_checks = CrabBoundsChecks;
   builder_params.check_only_typed_regions = CrabCheckOnlyTyped;
   builder_params.check_only_noncyclic_regions = CrabCheckOnlyNonCyclic;
   builder_params.print_cfg = CrabPrintCFG;
@@ -1201,9 +1204,7 @@ bool ClamPass::runOnModule(Module &M) {
   case heap_analysis_t::CI_SEA_DSA:
   case heap_analysis_t::CS_SEA_DSA: {
     CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
-    // CallGraph &cg = getAnalysis<CallGraphWrapperPass>().getCallGraph();
-    CallGraph &cg =
-        getAnalysis<seadsa::CompleteCallGraph>().getCompleteCallGraph();
+    CallGraph &cg = getAnalysis<seadsa::CompleteCallGraph>().getCompleteCallGraph();
     seadsa::AllocWrapInfo &allocWrapInfo = getAnalysis<seadsa::AllocWrapInfo>();
     // FIXME: if we pass "this" then allocWrapInfo can be more
     // precise because it can use LoopInfo. However, I get some
@@ -1262,7 +1263,8 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.output_filename = CrabOutputFilename;  
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;
-  m_params.check = CrabCheck;
+  m_params.check = (CrabCheck ?
+		    clam::CheckerKind::ASSERTION : clam::CheckerKind::NOCHECKS);
   m_params.check_verbose = CrabCheckVerbose;
   
   if (m_params.run_inter) {
@@ -1346,14 +1348,11 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.addRequired<LoopInfoWrapperPass>();
     AU.addRequired<seadsa::AllocWrapInfo>();
     AU.addRequired<seadsa::DsaLibFuncInfo>();
+    AU.addRequired<seadsa::CompleteCallGraph>();
   }
 
   AU.addRequired<UnifyFunctionExitNodes>();
   AU.addRequired<clam::NameValues>();
-
-  // More precise than LLVM callgraph
-  AU.addRequired<seadsa::CompleteCallGraph>();
-  // AU.addRequired<CallGraphWrapperPass>();
 }
 
 /**

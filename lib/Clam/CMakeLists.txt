@@ -1,6 +1,8 @@
 add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CfgBuilder.cc
+  CfgBuilderEmitters.cc  
   CfgBuilderLit.cc
+  CfgBuilderMemRegions.cc
   CfgBuilderUtils.cc
   Clam.cc
   ClamQueryCache.cc
@@ -13,6 +15,9 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   crab/printer.cc
   Support/BoostException.cc
   Support/CFGPrinter.cc
+  Properties/MemoryCheckUtils.cc
+  Properties/NullCheck.cc
+  Properties/UafCheck.cc  
   )
 
 llvm_map_components_to_libnames(LLVM_LIBS

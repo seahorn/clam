@@ -389,8 +389,8 @@ def parseArgs(argv):
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
                    help='Check properties (default no check)',
-                   choices=['none', 'assert', 'null', 'uaf'],
-                   dest='assert_check', default='none')
+                   choices=['none', 'assert', 'null', 'uaf', 'bounds', 'null-legacy', 'uaf-legacy'],
+                   dest='crab_check', default='none')
     add_bool_argument(p, 'crab-check-only-typed', default=False,
                       help='Add checks only on typed regions (only for null and uaf). False by default',
                       dest='crab_check_only_typed')
@@ -728,34 +728,34 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     crabpp_args.append('--simplifycfg-sink-common=false')
 
     if args.promote_malloc:
-        crabpp_args.append('--crab-promote-malloc=true')
+        crabpp_args.append('--clam-promote-malloc=true')
     else:
-        crabpp_args.append('--crab-promote-malloc=false')
+        crabpp_args.append('--clam-promote-malloc=false')
 
     if args.inline:
-        crabpp_args.append('--crab-inline-all')
+        crabpp_args.append('--clam-inline-all')
     if args.pp_loops:
         crabpp_args.append('--clam-pp-loops')
     if args.peel_loops > 0:
         crabpp_args.append('--clam-peel-loops={0}'.format(args.peel_loops))
     if args.undef_nondet:
-        crabpp_args.append('--crab-turn-undef-nondet')
+        crabpp_args.append('--clam-turn-undef-nondet')
 
     if args.disable_scalarize:
-        crabpp_args.append('--crab-scalarize=false')
+        crabpp_args.append('--clam-scalarize=false')
     else:
         # Force to scalarize everthing
         crabpp_args.append('--scalarize-load-store=true')
     if args.disable_lower_cst_expr:
-        crabpp_args.append('--crab-lower-constant-expr=false')
+        crabpp_args.append('--clam-lower-constant-expr=false')
     if args.disable_lower_switch:
-        crabpp_args.append('--crab-lower-switch=false')
+        crabpp_args.append('--clam-lower-switch=false')
 
     # Postponed until clam is run, otherwise it can be undone by the optLlvm
     # if args.lower_unsigned_icmp:
-    #     crabpp_args.append( '--crab-lower-unsigned-icmp')
+    #     crabpp_args.append( '--clam-lower-unsigned-icmp')
     if args.devirt != 'none':
-        crabpp_args.append('--crab-devirt')
+        crabpp_args.append('--clam-devirt')
         if args.devirt == 'types':
             crabpp_args.append('--devirt-resolver=types')
         elif args.devirt == 'sea-dsa':
@@ -766,9 +766,9 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
             
     if args.extern_funcs:
         for f in args.extern_funcs.split(','):
-            crabpp_args.append('--crab-externalize-function={0}'.format(f))
+            crabpp_args.append('--clam-externalize-function={0}'.format(f))
     if args.extern_addr_taken_funcs:
-        crabpp_args.append('--crab-externalize-addr-taken-funcs')
+        crabpp_args.append('--clam-externalize-addr-taken-funcs')
         
     if args.print_after_all: crabpp_args.append('--print-after-all')
     if args.debug_pass: crabpp_args.append('--debug-pass=Structure')
@@ -809,16 +809,16 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
 
         
     ## This option already run in crabpp
-    if args.undef_nondet: clam_args.append( '--crab-turn-undef-nondet')
+    if args.undef_nondet: clam_args.append( '--clam-turn-undef-nondet')
 
     if args.lower_unsigned_icmp:
-        clam_args.append('--crab-lower-unsigned-icmp')
+        clam_args.append('--clam-lower-unsigned-icmp')
     if args.lower_select:
-        clam_args.append('--crab-lower-select')
+        clam_args.append('--clam-lower-select')
     if args.disable_lower_cst_expr:
-        clam_args.append('--crab-lower-constant-expr=false')
+        clam_args.append('--clam-lower-constant-expr=false')
     if args.disable_lower_switch:
-        clam_args.append('--crab-lower-switch=false')
+        clam_args.append('--clam-lower-switch=false')
 
     clam_args.append('--crab-dom={0}'.format(args.crab_dom))
     clam_args.append('--crab-widening-delay={0}'.format(args.widening_delay))
@@ -874,17 +874,22 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         if args.crab_optimizer == 'add-invariants' or args.crab_optimizer == 'all':
             clam_args.append('--crab-opt-add-invariants={0}'.format(args.crab_optimizer_inv_loc))
 
-    if args.crab_promote_assume: clam_args.append('--crab-promote-assume')
-    if args.assert_check:
-        if args.assert_check == 'null':
+    if args.crab_promote_assume:
+        clam_args.append('--crab-promote-assume')
+        
+    if args.crab_check != 'none':
+        clam_args.append('--crab-check')
+        if args.crab_check == 'null-legacy':
+            clam_args.append('--clam-null-check-legacy')
+        elif args.crab_check == 'uaf-legacy':
+            clam_args.append('--clam-uaf-check-legacy')
+        elif args.crab_check == 'null':
             clam_args.append('--crab-null-check')
-            clam_args.append('--crab-check=assert')
-        elif  args.assert_check == 'uaf':
+        elif args.crab_check == 'uaf':
             clam_args.append('--crab-uaf-check')
-            clam_args.append('--crab-check=assert')
-        else:
-            clam_args.append('--crab-check={0}'.format(args.assert_check))
-        if args.assert_check == 'null' or args.assert_check == 'uaf':
+        elif args.crab_check == 'bounds':
+            clam_args.append('--crab-bounds-check')
+        if args.crab_check in ['null-legacy', 'uaf-legacy', 'null', 'uaf', 'bounds']:
             if args.crab_check_only_typed:
                 clam_args.append('--crab-check-only-typed-regions=true')
             else:

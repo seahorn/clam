@@ -16,6 +16,9 @@ bool CrabEnableUniqueScalars;
 bool CrabIncludeHavoc;
 bool CrabEnableBignums;
 bool CrabAddPtrAssumptions;
+bool CrabNullChecks;
+bool CrabUafChecks;
+bool CrabBoundsChecks;
 bool CrabCheckOnlyTyped;
 bool CrabCheckOnlyNonCyclic;
 bool CrabPrintInvariants;
@@ -39,12 +42,12 @@ heap_analysis_t CrabHeapAnalysis;
 bool CrabDsaDisambiguateUnknown;
 bool CrabDsaDisambiguatePtrCast;
 bool CrabDsaDisambiguateExternal;
-CheckerKind CrabCheck;
+bool CrabCheck;
 unsigned int CrabCheckVerbose;
 bool CrabKeepShadows;
 } // end namespace clam
 
-/*** Translation LLVM to Crab Parameters ***/
+/*** Translation LLVM to CrabIR Options ***/
 
 llvm::cl::opt<clam::CrabBuilderPrecision, true>
 XCrabTrackLev("crab-track",
@@ -119,6 +122,25 @@ llvm::cl::opt<bool, true>
 XCrabCheckOnlyNonCyclic("crab-check-only-noncyclic-regions",
      llvm::cl::desc("Add check only if abstract memory region is not cyclic"),
      llvm::cl::location(clam::CrabCheckOnlyNonCyclic),
+     llvm::cl::init(false));
+
+
+llvm::cl::opt<bool, true>
+XCrabNullChecks("crab-null-check",
+     llvm::cl::desc("Insert checks for null dereference errors in CrabIR"),
+     llvm::cl::location(clam::CrabNullChecks),
+     llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabUafChecks("crab-uaf-check",
+     llvm::cl::desc("Insert checks for use-after-free errors in CrabIR"),
+     llvm::cl::location(clam::CrabUafChecks),
+     llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabBoundsChecks("crab-bounds-check",
+     llvm::cl::desc("Insert checks for array bounds errors in CrabIR"),
+     llvm::cl::location(clam::CrabBoundsChecks),
      llvm::cl::init(false));
 
 /*** Crab Analysis Options ***/
@@ -291,14 +313,11 @@ XCrabDsaDisambiguateExternal("crab-dsa-disambiguate-external",
     llvm::cl::Hidden);
 
 // Prove assertions
-llvm::cl::opt<clam::CheckerKind, true>
+llvm::cl::opt<bool, true>
 XCrabCheck("crab-check", 
-	   llvm::cl::desc("Check user assertions"),
-	   llvm::cl::values(
-	       clEnumValN(clam::CheckerKind::NOCHECKS  , "none"  , "None"),
-	       clEnumValN(clam::CheckerKind::ASSERTION , "assert", "User assertions")),
+	   llvm::cl::desc("Run Crab Assertion Checker"),
 	   llvm::cl::location(clam::CrabCheck),
-	   llvm::cl::init(clam::CheckerKind::NOCHECKS));
+	   llvm::cl::init(false));
 
 llvm::cl::opt<unsigned int, true>
 XCrabCheckVerbose("crab-check-verbose", 
