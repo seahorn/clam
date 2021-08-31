@@ -14,6 +14,7 @@ bool CrabPrintCFG;
 bool CrabDotCFG;
 bool CrabEnableUniqueScalars;
 bool CrabIncludeHavoc;
+bool CrabLowerUnsignedICmp;
 bool CrabEnableBignums;
 bool CrabAddPtrAssumptions;
 bool CrabNullChecks;
@@ -141,6 +142,12 @@ llvm::cl::opt<bool, true>
 XCrabBoundsChecks("crab-bounds-check",
      llvm::cl::desc("Insert checks for array bounds errors in CrabIR"),
      llvm::cl::location(clam::CrabBoundsChecks),
+     llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabLowerUnsignedICmp("crab-lower-unsigned-icmp",
+     llvm::cl::desc("Insert translation from unsigned icmp into signed in CrabIR"),
+     llvm::cl::location(clam::CrabLowerUnsignedICmp),
      llvm::cl::init(false));
 
 /*** Crab Analysis Options ***/
