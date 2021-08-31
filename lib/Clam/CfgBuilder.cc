@@ -147,6 +147,101 @@ static void havoc(var_t v, std::string comment, basic_block_t &bb,
   }
 }
 
+static void
+addUnsignedCmpTranslationIntoSign(var_t &res, lin_exp_t &op0, lin_exp_t &op1,
+                                  crabLitFactory &lfac, basic_block_t &bb,
+                                  const bool isNegated, const bool isCmpULE) {
+  // translating unsigned comparisons by using select operators
+  // x cmp y, where cmp will be either <= or <
+  // will be translated into:
+  // if x >= 0
+  //     if y >= 0 then x cmp y
+  //     else // x >= 0 y < 0
+  //        false
+  // else
+  //     if y >= 0 then // x < 0 y >= 0
+  //        true
+  //     else x cmp y
+  // reverse cmp, true and false if isNegated is set
+  lin_cst_t cmp;
+  if (isCmpULE) {
+    if (!isNegated)
+      cmp = lin_cst_t(op0 <= op1);
+    else
+      cmp = lin_cst_t(op0 >= op1 + number_t(1));
+  } else {
+    if (!isNegated)
+      cmp = lin_cst_t(op0 <= op1 - number_t(1));
+    else
+      cmp = lin_cst_t(op0 >= op1);
+  }
+  lin_cst_t cst_op0 = lin_cst_t(op0 >= 0);
+  lin_cst_t cst_op1 = lin_cst_t(op1 >= 0);
+  if (cst_op0.is_tautology()) {   // if the first operand is >= 0
+    if (cst_op1.is_tautology()) { // if the second operand is >= 0
+      bb.bool_assign(res, cmp);
+    } else if (cst_op1.is_contradiction()) { // if the second operand is < 0
+      bb.bool_assign(res, !isNegated ? lin_cst_t::get_false()
+                                     : lin_cst_t::get_true());
+    } else { // don't know the value of the second operand
+      var_t select_cond_1 = lfac.mkBoolVar();
+      bb.bool_assign(select_cond_1, cst_op1);
+      var_t cmp_var = lfac.mkBoolVar();
+      bb.bool_assign(cmp_var, cmp);
+      var_t v_false = lfac.mkBoolVar();
+      bb.bool_assign(v_false, !isNegated ? lin_cst_t::get_false()
+                                         : lin_cst_t::get_true());
+      bb.bool_select(res, select_cond_1, cmp_var, v_false);
+    }
+  } else if (cst_op0.is_contradiction()) { // if the first operand is < 0
+    if (cst_op1.is_tautology()) {          // if the second operand is >= 0
+      bb.bool_assign(res, !isNegated ? lin_cst_t::get_true()
+                                     : lin_cst_t::get_false());
+    } else if (cst_op1.is_contradiction()) { // if the second operand is < 0
+      bb.bool_assign(res, cmp);
+    } else { // don't know the value of the second operand
+      var_t select_cond_1 = lfac.mkBoolVar();
+      bb.bool_assign(select_cond_1, cst_op1);
+      var_t v_true = lfac.mkBoolVar();
+      bb.bool_assign(v_true, !isNegated ? lin_cst_t::get_true()
+                                        : lin_cst_t::get_false());
+      var_t cmp_var = lfac.mkBoolVar();
+      bb.bool_assign(cmp_var, cmp);
+      bb.bool_select(res, select_cond_1, v_true, cmp_var);
+    }
+  } else { // don't know the value of the first operand
+    var_t select_cond_2 = lfac.mkBoolVar();
+    var_t op0_ge_0 = lfac.mkBoolVar();
+    var_t op0_lt_0 = lfac.mkBoolVar();
+    bb.bool_assign(select_cond_2, cst_op0);
+    if (cst_op1.is_tautology()) { // if the second operand is >= 0
+      bb.bool_assign(op0_ge_0, cmp);
+      bb.bool_assign(op0_lt_0, !isNegated ? lin_cst_t::get_true()
+                                          : lin_cst_t::get_false());
+    } else if (cst_op1.is_contradiction()) { // if the second operand is < 0
+      bb.bool_assign(op0_ge_0, !isNegated ? lin_cst_t::get_false()
+                                          : lin_cst_t::get_true());
+      bb.bool_assign(op0_lt_0, cmp);
+    } else { // don't know the value of those operands, general cases
+      var_t select_cond_1 = lfac.mkBoolVar();
+      bb.bool_assign(select_cond_1, cst_op1);
+      var_t cmp_var_true = lfac.mkBoolVar();
+      bb.bool_assign(cmp_var_true, cmp);
+      var_t v_false = lfac.mkBoolVar();
+      bb.bool_assign(v_false, !isNegated ? lin_cst_t::get_false()
+                                         : lin_cst_t::get_true());
+      bb.bool_select(op0_ge_0, select_cond_1, cmp_var_true, v_false);
+      var_t cmp_var_false = lfac.mkBoolVar();
+      bb.bool_assign(cmp_var_false, cmp);
+      var_t v_true = lfac.mkBoolVar();
+      bb.bool_assign(v_true, !isNegated ? lin_cst_t::get_true()
+                                        : lin_cst_t::get_false());
+      bb.bool_select(op0_lt_0, select_cond_1, v_true, cmp_var_false);
+    }
+    bb.bool_select(res, select_cond_2, op0_ge_0, op0_lt_0);
+  }
+}
+
 // %x = icmp geq %y, 10  ---> bool_assign(%x, y >= 0)
 static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
                               basic_block_t &bb) {
@@ -193,7 +288,6 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
     bb.bool_assign(lhs, cst);
     break;
   }
-  case CmpInst::ICMP_ULT:
   case CmpInst::ICMP_SLT: {
     lin_cst_t cst(op0 <= op1 - number_t(1));
     if (I.getPredicate() == CmpInst::ICMP_ULT) {
@@ -202,13 +296,18 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
     bb.bool_assign(lhs, cst);
     break;
   }
-  case CmpInst::ICMP_ULE:
   case CmpInst::ICMP_SLE: {
     lin_cst_t cst(op0 <= op1);
     if (I.getPredicate() == CmpInst::ICMP_ULE) {
       cst.set_unsigned();
     }
     bb.bool_assign(lhs, cst);
+    break;
+  }
+  case CmpInst::ICMP_ULT:
+  case CmpInst::ICMP_ULE: {
+    addUnsignedCmpTranslationIntoSign(lhs, op0, op1, lfac, bb, false,
+                                      I.getPredicate() == CmpInst::ICMP_ULE);
     break;
   }
   default:
@@ -315,9 +414,10 @@ static Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
   return llvm::None;
 }
 
-/* If possible, return a Crab linear constraint from CmpInst */
-static Optional<lin_cst_t> cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
-                                            const bool isNegated = false) {
+/* signed only: If possible, return a Crab linear constraint from CmpInst */
+static Optional<lin_cst_t>
+signedCmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
+                       const bool isNegated = false) {
   normalizeCmpInst(I);
 
   const Value &v0 = *I.getOperand(0);
@@ -375,6 +475,43 @@ static Optional<lin_cst_t> cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
   }
   default:;
     ;
+  }
+  return llvm::None;
+}
+
+/* unsigned only: If possible, return value assigned Crab variable from CmpInst
+ */
+static Optional<var_t> unsignedCmpInstToCrabInt(CmpInst &I,
+                                                crabLitFactory &lfac,
+                                                basic_block_t &bb,
+                                                const bool isNegated = false) {
+  normalizeCmpInst(I);
+
+  const Value &v0 = *I.getOperand(0);
+  const Value &v1 = *I.getOperand(1);
+
+  crab_lit_ref_t ref0 = lfac.getLit(v0);
+  if (!ref0 || !(ref0->isInt()))
+    return llvm::None;
+
+  crab_lit_ref_t ref1 = lfac.getLit(v1);
+  if (!ref1 || !(ref1->isInt()))
+    return llvm::None;
+
+  lin_exp_t op0 = lfac.getExp(ref0);
+  lin_exp_t op1 = lfac.getExp(ref1);
+
+  switch (I.getPredicate()) {
+  case CmpInst::ICMP_ULE:
+  case CmpInst::ICMP_ULT: {
+    var_t res = lfac.mkBoolVar();
+    addUnsignedCmpTranslationIntoSign(res, op0, op1, lfac, bb, isNegated,
+                                      I.getPredicate() == CmpInst::ICMP_ULE);
+    return res;
+    break;
+  }
+  default:
+    CLAM_ERROR("signed comparisons should call signed subroutine");
   }
   return llvm::None;
 }
@@ -1458,6 +1595,26 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
       }
     }
   } else {
+    if (CmpInst *Cond = dyn_cast<CmpInst>(cond)) {
+      // Handle translation of unsigned cmp into signed
+      if (m_params.lower_unsigned_icmp &&
+          Cond->isUnsigned()) { // handle unsigned int
+        auto var_opt = unsignedCmpInstToCrabInt(*Cond, m_lfac, m_bb,
+                                                isNotAssumeFn(*callee));
+        if (var_opt.hasValue()) {
+          if (isAssertFn(*callee)) {
+            m_bb.bool_assert(var_opt.getValue(),
+                             getDebugLoc(&I, m_assertion_id++));
+          } else {
+            m_bb.bool_assume(var_opt.getValue());
+          }
+        } else {
+          // Unreachable
+          CLAM_WARNING("Could not translate unsigned comparisons: " << I);
+        }
+      }
+    }
+
     if (CmpInst *Cond = m_pending_cmp_insts[&I]) {      
       /*
        * Avoid boolean CrabIR statements: use numerical ones instead
@@ -1475,8 +1632,8 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
        * If m_params.avoid_boolean = true then 
        *    assert(x rel_op y);
        */
-      
-      auto cst_opt = cmpInstToCrabInt(*Cond, m_lfac, isNotAssumeFn(*callee));
+      auto cst_opt =
+          signedCmpInstToCrabInt(*Cond, m_lfac, isNotAssumeFn(*callee));
       if (cst_opt.hasValue()) {
         if (isAssertFn(*callee)) {
           m_bb.assertion(cst_opt.getValue(), getDebugLoc(&I, m_assertion_id++));
@@ -1971,9 +2128,16 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 
     // -- general case: we don't know whether the condition is true or not
     if (CmpInst *CI = dyn_cast<CmpInst>(&condV)) {
-      if (auto cst_opt = cmpInstToCrabInt(*CI, m_lfac)) {
-        m_bb.select(lhs->getVar(), *cst_opt, e1, e2);
-        return;
+      if (m_params.lower_unsigned_icmp && CI->isUnsigned()) {
+        if (auto var_opt = unsignedCmpInstToCrabInt(*CI, m_lfac, m_bb)) {
+          m_bb.select(lhs->getVar(), *var_opt, e1, e2);
+          return;
+        }
+      } else {
+        if (auto cst_opt = signedCmpInstToCrabInt(*CI, m_lfac)) {
+          m_bb.select(lhs->getVar(), *cst_opt, e1, e2);
+          return;
+        }
       }
     }
 
@@ -3668,9 +3832,17 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
             lower_cond_as_bool = true;
           } else if (isInteger(*(CI->getOperand(0))) &&
                      isInteger(*(CI->getOperand(1)))) {
-            auto cst_opt = cmpInstToCrabInt(*CI, m_lfac, isNegated);
-            if (cst_opt.hasValue()) {
-              bb.assume(cst_opt.getValue());
+            if (m_params.lower_unsigned_icmp && CI->isUnsigned()) {
+              auto var_opt =
+                  unsignedCmpInstToCrabInt(*CI, m_lfac, bb, isNegated);
+              if (var_opt.hasValue()) {
+                bb.bool_assume(var_opt.getValue());
+              }
+            } else {
+              auto cst_opt = signedCmpInstToCrabInt(*CI, m_lfac, isNegated);
+              if (cst_opt.hasValue()) {
+                bb.assume(cst_opt.getValue());
+              }
             }
           } else if (isReference(*(CI->getOperand(0)), m_params) &&
                      isReference(*(CI->getOperand(1)), m_params)) {
