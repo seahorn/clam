@@ -1595,6 +1595,18 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
       }
     }
   } else {
+
+    #if 0
+    // JN: I think this code is redundant. This code tries to handle this case:
+    //
+    //  b:= x <=_u y;
+    //  assert(b) or assume(b);
+    //
+    // Note that currently m_params.lower_unsigned_icmp=true implies
+    // that m_params.avoid_boolean=false.  Therefore, when we
+    // translate the assert or the assume the statement "b := x <=_u
+    // y" has been already translated by the call to cmpInstToCrabBool
+    // in visitCmpInst. Here, we would translate twice that statement.
     if (CmpInst *Cond = dyn_cast<CmpInst>(cond)) {
       // Handle translation of unsigned cmp into signed
       if (m_params.lower_unsigned_icmp &&
@@ -1614,7 +1626,8 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
         }
       }
     }
-
+    #endif
+    
     if (CmpInst *Cond = m_pending_cmp_insts[&I]) {      
       /*
        * Avoid boolean CrabIR statements: use numerical ones instead
