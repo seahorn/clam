@@ -1,4 +1,5 @@
-// RUN: %clam -O0 --lower-unsigned-icmp --crab-widening-delay=1 --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck %s 
+// RUN: %clam -O0 --lower-unsigned-icmp --crab-widening-delay=1 --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --crab-lower-unsigned-icmp --crab-widening-delay=1 --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck %s 
 // CHECK: ^3  Number of total warning checks$
 
 extern int __VERIFIER_NONDET();
