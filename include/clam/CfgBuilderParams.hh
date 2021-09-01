@@ -27,6 +27,9 @@ struct CrabBuilderParams {
   // Translate bignums (> 64), otherwise operations with big numbers
   // are havoced.
   bool enable_bignums;
+  // Lower unsigned comparison operators into signed one
+  // The translation is made under crab IR
+  bool lower_unsigned_icmp;
   // Avoid adding boolean crabIR statements in some cases (e.g.,
   // bool_assume/bool_assert) because Crab is, in general, not very
   // good at boolean reasoning.
@@ -51,21 +54,14 @@ struct CrabBuilderParams {
   bool dot_cfg;
 
   CrabBuilderParams()
-      : precision_level(CrabBuilderPrecision::NUM),
-	simplify(false),
-        interprocedural(true),
-	lower_singleton_aliases(false),
-        include_useless_havoc(true),
-	avoid_boolean(true),
-	enable_bignums(false),
-        add_pointer_assumptions(true),
-	add_null_checks(false),
-	add_uaf_checks(false),
-	add_bounds_checks(false),
-	check_only_typed_regions(false),
-	check_only_noncyclic_regions(false),
-	print_cfg(false),
-	dot_cfg(false) {}
+      : precision_level(CrabBuilderPrecision::NUM), simplify(false),
+        interprocedural(true), lower_singleton_aliases(false),
+        include_useless_havoc(true), avoid_boolean(true),
+        lower_unsigned_icmp(false), enable_bignums(false),
+        add_pointer_assumptions(true), add_null_checks(false),
+        add_uaf_checks(false), add_bounds_checks(false),
+        check_only_typed_regions(false), check_only_noncyclic_regions(false),
+        print_cfg(false), dot_cfg(false) {}
 
   bool trackMemory() const {
     return precision_level == CrabBuilderPrecision::MEM;
@@ -77,6 +73,14 @@ struct CrabBuilderParams {
 
   bool addPointerAssumptions() const {
     return trackMemory() && add_pointer_assumptions;
+  }
+
+  /* Set lower unsigned cmp into signed for Crab programs */
+  void lowerUnsignedICmpIntoSigned() {
+    if (!lower_unsigned_icmp) {
+      lower_unsigned_icmp = true;
+      avoid_boolean = false;
+    }
   }
 
   /* Set the level of abstraction for Crab programs */

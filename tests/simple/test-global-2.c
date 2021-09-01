@@ -1,4 +1,5 @@
 // RUN: %clam -O0 --lower-unsigned-icmp --crab-dom=int --crab-widening-delay=3 --crab-check=assert --inline --crab-sanity-checks --crab-track=sing-mem --crab-singleton-aliases "%s"  2>&1 | OutputCheck %s
+// RUN: %clam -O0 --crab-lower-unsigned-icmp --crab-dom=int --crab-widening-delay=3 --crab-check=assert --inline --crab-sanity-checks --crab-track=sing-mem --crab-singleton-aliases "%s"  2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
 

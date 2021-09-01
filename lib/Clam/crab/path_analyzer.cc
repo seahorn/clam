@@ -189,9 +189,65 @@ typename path_analyzer<CFG, AbsDom>::FalsePathInfo
 path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     std::vector<statement_t *> &core, unsigned bottom_stmt,
     bool only_data_dependencies) {
-  typedef typename CFG::basic_block_t::assume_t assume_t;
-  typedef typename CFG::basic_block_t::bool_assume_t bool_assume_t;
+  
+  using assume_t = typename CFG::basic_block_t::assume_t;
+  using bool_assume_t = typename CFG::basic_block_t::bool_assume_t;
+  using ref_assume_t = typename CFG::basic_block_t::assume_ref_t;
+  using assert_t = typename CFG::basic_block_t::assert_t;
+  using bool_assert_t = typename CFG::basic_block_t::bool_assert_t;
+  using ref_assert_t = typename CFG::basic_block_t::assert_ref_t;  
+  
+  using var_dom_t = ikos::discrete_domain<typename CFG::variable_t>;
 
+  auto isAssumeFalse = [](const statement_t &s) {
+			 if (s.is_assume()) {
+			   auto assume = static_cast<const assume_t *>(&s);
+			   return (assume->constraint().is_contradiction());
+			 } else if (s.is_ref_assume()) {
+			   auto ref_assume = static_cast<const ref_assume_t *>(&s);
+			   return ref_assume->constraint().is_contradiction();
+			 } else {
+			   // Note that bool_assume(false) is not part
+			   // of the CrabIR.
+			   return false;
+			 }
+  };
+
+  auto getSliceCriteriaVariables = [](const statement_t &s) -> var_dom_t {
+     // we consider both assume and assert statements
+     var_dom_t res;
+     
+     if (s.is_assume()) {
+       auto assume = static_cast<const assume_t *>(&s);
+       for (typename CFG::variable_t v : assume->constraint().variables()) {
+	 res += v;
+       }
+     } else if (s.is_bool_assume()) {
+       auto bool_assume = static_cast<const bool_assume_t *>(&s);
+       res += bool_assume->cond();
+     } else if (s.is_ref_assume()) {
+       auto ref_assume = static_cast<const ref_assume_t *>(&s);
+       for (typename CFG::variable_t v : ref_assume->constraint().variables()) {
+	 res += v;
+       }
+     } else if (s.is_assert()) {
+       auto assrt = static_cast<const assert_t *>(&s);
+       for (typename CFG::variable_t v : assrt->constraint().variables()) {
+	 res += v;
+       }
+     } else if (s.is_bool_assert()) {
+       auto bool_assrt = static_cast<const bool_assert_t *>(&s);
+       res += bool_assrt->cond();
+     } else if (s.is_ref_assert()) {
+       auto ref_assrt = static_cast<const ref_assert_t *>(&s);
+       for (typename CFG::variable_t v : ref_assrt->constraint().variables()) {
+	 res += v;
+       }
+     }
+     
+     return res;
+  };
+  
   unsigned size = core.size();
   basic_block_t *parent_bb = core[size - 1]->get_parent();
   assert(parent_bb);
@@ -199,10 +255,8 @@ path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   // if the core contains at most one constraint then we are done
   if (size <= 1) {
     if (size == 1) {
-      if (auto assume = static_cast<const assume_t *>(core[0])) {
-        if (assume->constraint().is_contradiction()) {
-          return FalsePathInfo::TRIVIAL_EXPLANATION;
-        }
+      if (isAssumeFalse(*(core[0]))) {
+	return FalsePathInfo::TRIVIAL_EXPLANATION;
       }
     }
     return FalsePathInfo::EXPLANATION;
@@ -211,13 +265,10 @@ path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
   // if there is an "assume(false)" then we are done
   for (auto it = parent_bb->rbegin(), et = parent_bb->rend(); it != et; ++it) {
     auto &s = *it;
-    if (s.is_assume()) {
-      auto assume = static_cast<assume_t *>(&s);
-      if (assume->constraint().is_contradiction()) {
-        core.clear();
-        core.push_back(&s);
-        return FalsePathInfo::TRIVIAL_EXPLANATION;
-      }
+    if (isAssumeFalse(s)) {
+      core.clear();
+      core.push_back(&s);
+      return FalsePathInfo::TRIVIAL_EXPLANATION;
     }
   }
 
@@ -233,11 +284,10 @@ path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     i++;
   }
 
-  if (!last_stmt ||
-      (!last_stmt->is_assume() && !last_stmt->is_bool_assume() && !last_stmt->is_ref_assume())) {
-    // One common reason is that the last statement is assert(false)
+  if (!last_stmt) {
+    // This probably shouldn't happen
     CRAB_LOG("path-analyzer",    
-	     crab::outs() << "Bail out: cannot find an assume in the last basic block.\n";);
+	     crab::outs() << "Bail out: cannot find statement where path become false\n";);
     return FalsePathInfo::NOT_EXPLANATION;
   }
 
@@ -253,21 +303,16 @@ path_analyzer<CFG, AbsDom>::remove_irrelevant_statements(
     }
   }
 
-  using var_dom_t = ikos::discrete_domain<typename CFG::variable_t>;
-  var_dom_t d;
-  if (last_stmt->is_assume()) {
-    auto assume = static_cast<const assume_t *>(last_stmt);
-    assert(!assume->constraint().is_contradiction());
-    for (typename CFG::variable_t v : assume->constraint().variables()) {
-      d += v;
-    }
-  } else {
-    auto bool_assume = static_cast<const bool_assume_t *>(last_stmt);
-    d += bool_assume->cond();
+  var_dom_t d = getSliceCriteriaVariables(*last_stmt);
+  if (d.is_bottom()) {
+    // One common reason is that the last statement is assert(false)
+    CRAB_LOG("path-analyzer",
+	     crab::outs() << "Bail out: cannot use " << *last_stmt << " to produce a slicing target\n");
+    return FalsePathInfo::NOT_EXPLANATION;
   }
 
   CRAB_LOG("path-analyzer",
-	   crab::outs() << "Slicing criteria: " << *last_stmt << "\n";);
+	   crab::outs() << "Slicing criteria: " << *last_stmt << " with variables " << d << "\n";);
 
   // Traverse the whole path backwards and remove irrelevant
   // statements based on data dependencies.

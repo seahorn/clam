@@ -365,6 +365,9 @@ def parseArgs(argv):
     p.add_argument('--crab-live',
                     help='Delete dead symbols: may lose precision with relational domains.',
                     dest='crab_live', default=False, action='store_true')
+    add_bool_argument(p, 'crab-lower-unsigned-icmp', default=False,
+                    help='Lower ULT and ULE instructions in CrabIR',
+                    dest='crab_lower_unsigned_icmp')
     p.add_argument('--crab-opt',
                     help='Optimize LLVM bitcode using invariants',
                     choices=['none',
@@ -819,6 +822,9 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--clam-lower-constant-expr=false')
     if args.disable_lower_switch:
         clam_args.append('--clam-lower-switch=false')
+
+    if args.crab_lower_unsigned_icmp:
+        clam_args.append('--crab-lower-unsigned-icmp')
 
     clam_args.append('--crab-dom={0}'.format(args.crab_dom))
     clam_args.append('--crab-widening-delay={0}'.format(args.widening_delay))

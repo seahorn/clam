@@ -1195,7 +1195,10 @@ bool ClamPass::runOnModule(Module &M) {
   builder_params.check_only_noncyclic_regions = CrabCheckOnlyNonCyclic;
   builder_params.print_cfg = CrabPrintCFG;
   builder_params.dot_cfg = CrabDotCFG;
-  
+
+  if (CrabLowerUnsignedICmp)
+    builder_params.lowerUnsignedICmpIntoSigned();
+
   auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>();
 
   /// Create the CFG builder manager
