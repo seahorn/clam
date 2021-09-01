@@ -244,7 +244,7 @@ addUnsignedCmpTranslationIntoSign(var_t &res, lin_exp_t &op0, lin_exp_t &op1,
 
 // %x = icmp geq %y, 10  ---> bool_assign(%x, y >= 0)
 static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
-                              basic_block_t &bb) {
+                              basic_block_t &bb, bool removeUnsignedCmp) {
   // The type of I is a boolean or vector of booleans
   normalizeCmpInst(I);
 
@@ -290,24 +290,34 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
   }
   case CmpInst::ICMP_SLT: {
     lin_cst_t cst(op0 <= op1 - number_t(1));
-    if (I.getPredicate() == CmpInst::ICMP_ULT) {
-      cst.set_unsigned();
-    }
     bb.bool_assign(lhs, cst);
     break;
   }
-  case CmpInst::ICMP_SLE: {
+  case CmpInst::ICMP_SLE:{
     lin_cst_t cst(op0 <= op1);
-    if (I.getPredicate() == CmpInst::ICMP_ULE) {
-      cst.set_unsigned();
-    }
     bb.bool_assign(lhs, cst);
     break;
   }
-  case CmpInst::ICMP_ULT:
+  case CmpInst::ICMP_ULT: {
+    if (removeUnsignedCmp) {
+      addUnsignedCmpTranslationIntoSign(lhs, op0, op1, lfac, bb,
+					false /*isNegated*/, false /* isCmpULE*/);
+    } else {
+      lin_cst_t cst(op0 <= op1 - number_t(1));
+      cst.set_unsigned();
+      bb.bool_assign(lhs, cst);
+    }
+    break;
+  }
   case CmpInst::ICMP_ULE: {
-    addUnsignedCmpTranslationIntoSign(lhs, op0, op1, lfac, bb, false,
-                                      I.getPredicate() == CmpInst::ICMP_ULE);
+    if (removeUnsignedCmp) {
+      addUnsignedCmpTranslationIntoSign(lhs, op0, op1, lfac, bb,
+					false /*isNegated*/, true /*isCmpULE*/); 
+    } else {
+      lin_cst_t cst(op0 <= op1);
+      cst.set_unsigned();
+      bb.bool_assign(lhs, cst);
+    }
     break;
   }
   default:
@@ -414,9 +424,9 @@ static Optional<ref_cst_t> cmpInstToCrabRef(CmpInst &I, crabLitFactory &lfac,
   return llvm::None;
 }
 
-/* signed only: If possible, return a Crab linear constraint from CmpInst */
+/* If possible, return a Crab linear constraint from CmpInst */
 static Optional<lin_cst_t>
-signedCmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
+cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
                        const bool isNegated = false) {
   normalizeCmpInst(I);
 
@@ -511,7 +521,7 @@ static Optional<var_t> unsignedCmpInstToCrabInt(CmpInst &I,
     break;
   }
   default:
-    CLAM_ERROR("signed comparisons should call signed subroutine");
+    CLAM_ERROR("non unsigned comparisons should be handled by cmpInstToCrabInt");
   }
   return llvm::None;
 }
@@ -1597,12 +1607,13 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
   } else {
 
     #if 0
-    // JN: I think this code is redundant. This code tries to handle this case:
+    // JN: I think this code is adding a duplicate statement. This
+    // code tries to handle this case:
     //
     //  b:= x <=_u y;
     //  assert(b) or assume(b);
     //
-    // Note that currently m_params.lower_unsigned_icmp=true implies
+    // Note that currently  m_params.lower_unsigned_icmp=true implies
     // that m_params.avoid_boolean=false.  Therefore, when we
     // translate the assert or the assume the statement "b := x <=_u
     // y" has been already translated by the call to cmpInstToCrabBool
@@ -1646,7 +1657,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
        *    assert(x rel_op y);
        */
       auto cst_opt =
-          signedCmpInstToCrabInt(*Cond, m_lfac, isNotAssumeFn(*callee));
+          cmpInstToCrabInt(*Cond, m_lfac, isNotAssumeFn(*callee));
       if (cst_opt.hasValue()) {
         if (isAssertFn(*callee)) {
           m_bb.assertion(cst_opt.getValue(), getDebugLoc(&I, m_assertion_id++));
@@ -1795,7 +1806,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
         }
         // do nothing: lowered elsewhere
       } else {
-        cmpInstToCrabBool(I, m_lfac, m_bb);
+        cmpInstToCrabBool(I, m_lfac, m_bb, m_params.lower_unsigned_icmp);
       }
     }
   }
@@ -2155,7 +2166,7 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
           return;
         }
       } else {
-        if (auto cst_opt = signedCmpInstToCrabInt(*CI, m_lfac)) {
+        if (auto cst_opt = cmpInstToCrabInt(*CI, m_lfac)) {
           m_bb.select(lhs->getVar(), *cst_opt, e1, e2);
           return;
         }
@@ -3860,7 +3871,7 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
                 bb.bool_assume(var_opt.getValue());
               }
             } else {
-              auto cst_opt = signedCmpInstToCrabInt(*CI, m_lfac, isNegated);
+              auto cst_opt = cmpInstToCrabInt(*CI, m_lfac, isNegated);
               if (cst_opt.hasValue()) {
                 bb.assume(cst_opt.getValue());
               }
