@@ -2130,7 +2130,15 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     if (CmpInst *CI = dyn_cast<CmpInst>(&condV)) {
       if (m_params.lower_unsigned_icmp && CI->isUnsigned()) {
         if (auto var_opt = unsignedCmpInstToCrabInt(*CI, m_lfac, m_bb)) {
-          m_bb.select(lhs->getVar(), *var_opt, e1, e2);
+	  // select only take integer variables and *var_opt is a
+	  // boolean variable.
+	  var_t bvar = *var_opt;
+	  // A bitwidth of 8 is enough and it cannot create type
+	  // inconsistencies since ivar is only used in the condition
+	  // of select.
+	  var_t ivar = m_lfac.mkIntVar(8); 
+	  m_bb.zext(bvar, ivar);
+          m_bb.select(lhs->getVar(), lin_cst_t(ivar >= 1), e1, e2);
           return;
         }
       } else {
