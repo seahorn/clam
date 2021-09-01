@@ -11,15 +11,19 @@
  * is pretty straightforward.  LLVM branches are translated to Crab
  * assume and goto statements. The translation also removes phi nodes.
  *
- * If tracked precision = SINGLETON_MEM then only pointer operations
- * over singleton memory objects are translated to Crab array
- * operations. This translation requires the Heap analysis used to
- * partition statically memory into disjoint regions. Then, each
+ * [DEPRECATED] If tracked precision = SINGLETON_MEM then only pointer
+ * operations over singleton memory objects are translated to Crab
+ * array operations. This translation requires the Heap analysis used
+ * to partition statically memory into disjoint regions. Then, each
  * memory region's _field_ (i.e., partitioning memory model) is mapped
- * to a Crab array and LLVM load/store are translated to array
- * read/write statements. A memory object is considered a singleton if
- * it represents a single allocated memory region. This is usually the
- * case of global and stack variables.
+ * to a Crab array and LLVM load/store are translated to array_load
+ * and array_store statements. A memory object is considered a
+ * singleton if only one pointer owns it. This is usually the case of
+ * global and stack variables (unless their addresses can be
+ * taken). As a limitation, if a `LoadInst`'s lhs (`StoreInst` value
+ * operand) is a pointer then the translation ignores safely the LLVM
+ * instruction and hence, it won't add the corresponding Crab array
+ * statement `array_load` (`array_store`).
  *
  * If tracked precision = MEM then all LLVM pointer operations are
  * translated to Crab region abstract domain operations over
@@ -38,10 +42,6 @@
  * - Ignore inttoptr/ptrtoint instructions.
  * - Ignore memset/memmove/memcpy.
  * - Partial translation of calloc/realloc/strdup
- * - Only if tracked precision = SINGLETON_MEM: if a `LoadInst`'s lhs
- *   (`StoreInst` value operand) is a pointer then the translation
- *   ignores safely the LLVM instruction and hence, it won't add the
- *   corresponding Crab array statement `array_load` (`array_store`).
  **/
 
 #include "llvm/ADT/APInt.h"
@@ -923,7 +923,7 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   bool &m_has_seahorn_fail;
   // regions used by the function
   RegionSet &m_func_regions;
-  // map gep to a crab variable
+  // map gep to a crab variable (only used if SINGLETON_MEMORY)
   DenseMap<const GetElementPtrInst *, var_t> &m_gep_map;
   // reverse **partial** map from Crab statements to LLVM instructions
   DenseMap<const statement_t *, const Instruction *> &m_rev_map;
@@ -942,24 +942,27 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   // Property instrumentation
   CrabIREmitterVec &m_propertyEmitters;
   
-  unsigned fieldOffset(const StructType *t, unsigned field) const;
-  uint64_t storageSize(const Type *t) const;
-  /*
-   *  Special function to return an unconstrained array index
-   *  variable. This is used when we cannot statically know the
-   *  integer offset of a pointer with respect to its memory object.
-   */
-  var_t getUnconstrainedArrayIdxVar(llvm_variable_factory &vfac,
-                                    unsigned bitwidth);
+  unsigned fieldOffset(const StructType *t, unsigned field) const {
+    return m_dl->getStructLayout(const_cast<StructType *>(t))
+      ->getElementOffset(field);
+  }
+  
+  uint64_t storageSize(const Type *t) const {
+    return clam::storageSize(t, *m_dl);    
+  }
+
+  unsigned getPointerSizeInBits() const {
+    return m_dl->getPointerSizeInBits();
+  }
+  
   /* Evaluate the offset of an object pointed to by v statically */
   Optional<z_number> evalOffset(Value &v, LLVMContext &ctx);
   /*
-   * Try extra a Crab arithmetic offset from load or store pointer
-   * operand.
+   * Get arithmetic index for array read and writes (only if
+   * SINGLETON_MEMORY)
    */
-  lin_exp_t inferArrayIndex(Value *v, LLVMContext &ctx, Region reg,
-                            llvm_variable_factory &vfac);
-  unsigned getMaxBitWidthFromGepIndexes(GetElementPtrInst &I);
+  lin_exp_t inferArrayIndex(Value *v, LLVMContext &ctx, Region reg);
+  
   /*
    *  Insert key-value in the reverse map but only if no CFG
    *  simplifications enabled
@@ -982,8 +985,7 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   void doFreeFn(Instruction &I);
   void doMemIntrinsic(MemIntrinsic &I);
   void doVerifierCall(CallInst &I);
-  void doGep(GetElementPtrInst &I, unsigned bitwidth, var_t lhs,
-             llvm::Optional<var_t> base);
+  void doGep(GetElementPtrInst &I, var_t lhs, llvm::Optional<var_t> base);
   void StoreIntoSingletonMem(StoreInst &I, var_t array_var, crab_lit_ref_t val,
                              Region reg);
   void LoadFromSingletonMem(LoadInst &I, var_t lhs, var_t rhs,
@@ -1050,43 +1052,6 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
       m_regions_with_store(regions_with_store), m_pending_cmp_insts(pending_cmp_insts),
       m_assertion_id(assertion_id), m_propertyEmitters(propertyEmitters) {}
 
-unsigned CrabIntraBlockBuilder::fieldOffset(const StructType *t,
-                                            unsigned field) const {
-  return m_dl->getStructLayout(const_cast<StructType *>(t))
-      ->getElementOffset(field);
-}
-
-uint64_t CrabIntraBlockBuilder::storageSize(const Type *t) const {
-  return clam::storageSize(t, *m_dl);
-}
-
-var_t CrabIntraBlockBuilder::getUnconstrainedArrayIdxVar(
-    llvm_variable_factory &vfac, unsigned bitwidth) {
-#if 0
-  static var_t v(vfac.get(), crab::variable_type(crab::INT_TYPE, bitwidth));
-  m_bb.havoc(v, "unknown array index");
-#else
-  var_t v(vfac.get(), crab::variable_type(crab::INT_TYPE, bitwidth));
-#endif
-  return v;
-}
-
-unsigned
-CrabIntraBlockBuilder::getMaxBitWidthFromGepIndexes(GetElementPtrInst &I) {
-  unsigned bitwidth = 0;
-  for (unsigned i = 1, e = I.getNumOperands(); i < e; ++i) {
-    if (IntegerType *ITy = cast<IntegerType>(I.getOperand(i)->getType())) {
-      bitwidth = std::max(bitwidth, ITy->getBitWidth());
-    } else {
-      CLAM_ERROR("Expected gep instruction only with integer indexes: " << I);
-    }
-  }
-  if (bitwidth == 0) {
-    CLAM_ERROR("Unexpected gep instruction without indexes: " << I);
-  }
-  return bitwidth;
-}
-
 Optional<z_number> CrabIntraBlockBuilder::evalOffset(Value &v,
                                                      LLVMContext &ctx) {
   llvm::ObjectSizeOpts Opts;
@@ -1106,9 +1071,7 @@ Optional<z_number> CrabIntraBlockBuilder::evalOffset(Value &v,
 //
 // v is a pointer operand. It tries to figure out its numerical
 // offset. If it can it returns an unconstrained variable.
-lin_exp_t CrabIntraBlockBuilder::inferArrayIndex(Value *v, LLVMContext &ctx,
-                                                 Region reg,
-                                                 llvm_variable_factory &vfac) {
+lin_exp_t CrabIntraBlockBuilder::inferArrayIndex(Value *v, LLVMContext &ctx, Region reg) {
   auto offsetOpt = evalOffset(*v, ctx);
   if (offsetOpt.hasValue()) {
     // we were able to get the offset statically
@@ -1121,7 +1084,7 @@ lin_exp_t CrabIntraBlockBuilder::inferArrayIndex(Value *v, LLVMContext &ctx,
           // This is unexpected so we print a warning
           CLAM_WARNING("Could not find shadow gep variable for " << *GEPI);
         }
-        return getUnconstrainedArrayIdxVar(vfac, 32);
+        return m_lfac.mkIntVar(getPointerSizeInBits());
       } else {
         return it->second;
       }
@@ -1129,11 +1092,11 @@ lin_exp_t CrabIntraBlockBuilder::inferArrayIndex(Value *v, LLVMContext &ctx,
       CRAB_LOG("cfg-gep", const Function &F = *(Arg->getParent()); CLAM_WARNING(
                    "cannot infer statically base address of formal input "
                    << *Arg << " at function " << F.getName()));
-      return getUnconstrainedArrayIdxVar(vfac, 32);
+      return m_lfac.mkIntVar(getPointerSizeInBits());
     } else {
       CRAB_LOG("cfg-gep",
                CLAM_WARNING("cannot infer statically base address of  " << *v));
-      return getUnconstrainedArrayIdxVar(vfac, 32);
+      return m_lfac.mkIntVar(getPointerSizeInBits());
     }
   }
 }
@@ -2196,7 +2159,8 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
 	 var_or_cst_t size = (litS->isVar() ?
 			      var_or_cst_t(litS->getVar()) :
 			      var_or_cst_t(m_lfac.getIntCst(litS),
-					   crab::variable_type(INT_TYPE, 64)));
+					   crab::variable_type(INT_TYPE,
+							       getPointerSizeInBits())));
 	 insertCrabIRWithEmitter::
 	   make_ref(I, m_propertyEmitters, m_bb, *m_tli,
 		    retRef->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
@@ -2206,7 +2170,7 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
   };
   auto addMakeRefWithoutSize = [this, &I]
     (crab_lit_ref_t retRef, Region rgn) {
-	var_or_cst_t size(m_lfac.mkIntVar(64));
+        var_or_cst_t size(m_lfac.mkIntVar(getPointerSizeInBits()));
 	m_bb.havoc(size.get_variable(), valueToStr(I));
 	 insertCrabIRWithEmitter::
 	   make_ref(I, m_propertyEmitters, m_bb, *m_tli,
@@ -2247,21 +2211,31 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
 }
 
 void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
-  Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
 
+  // note that it has side-effects (it might add a multiplication in the basic block)
+  auto getAllocaSize = [this](AllocaInst &I) -> var_or_cst_t {
+    Type *ty = I.getType()->getElementType();
+    unsigned typeSz = (size_t)m_dl->getTypeAllocSize(ty);
+    llvm::Optional<var_or_cst_t> size;
+    if (const ConstantInt *cv = dyn_cast<const ConstantInt>(I.getOperand(0))) {
+      unsigned nElts = cv->getZExtValue();
+      return var_or_cst_t(typeSz * nElts,
+			  crab::variable_type(INT_TYPE, getPointerSizeInBits()));
+    } else {
+      crab_lit_ref_t nElts = m_lfac.getLit(*(I.getOperand(0)));
+      assert(nElts && nElts->isVar());
+      var_or_cst_t size(m_lfac.mkIntVar(getPointerSizeInBits()));
+      assert(size.is_variable());
+      m_bb.mul(size.get_variable(), nElts->getVar(), typeSz);
+      return size;
+    }
+  };
+
+  Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
   if (isReference(I, m_params)) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
-
-    llvm::Optional<uint64_t> sizeOpt = I.getAllocationSizeInBits(*m_dl);
-    var_or_cst_t size = (sizeOpt.hasValue() ?
-			 var_or_cst_t(sizeOpt.getValue()/8, crab::variable_type(INT_TYPE, 64)):
-			 var_or_cst_t(m_lfac.mkIntVar(64)));
-    
-    if (!sizeOpt.hasValue()) {
-      m_bb.havoc(size.get_variable(), "alloca with unknown size");
-    }
-
+    var_or_cst_t size = getAllocaSize(I);
     insertCrabIRWithEmitter::
 	   make_ref(I, m_propertyEmitters, m_bb, *m_tli,
 		    lhs->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
@@ -2308,7 +2282,7 @@ void CrabIntraBlockBuilder::doFreeFn(Instruction &I) {
 void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
   // TODO(TRANSLATION): memcpy/memmove/memset
   CLAM_WARNING("Skipped memory intrinsics " << I);
-  m_bb.havoc(m_lfac.mkIntVar(32), valueToStr(I));
+  m_bb.havoc(m_lfac.mkIntVar(32 /*any bitwidth*/), valueToStr(I));
 
   if (m_params.trackMemory()) {
     /** 
@@ -2323,7 +2297,8 @@ void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
 	return (lit->isVar() ?
 		var_or_cst_t(lit->getVar()) :
 		var_or_cst_t(m_lfac.getIntCst(lit),
-			     crab::variable_type(INT_TYPE, 64)));
+			     crab::variable_type(INT_TYPE,
+						 getPointerSizeInBits())));
       } else {
 	CLAM_ERROR("doMemInstrinsics expected " << len << " to be an integer in " << I);
       }
@@ -2389,12 +2364,8 @@ void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
 //   GEP it is translated as a sequence of Crab arithmetic statements
 //   to be used by a Crab array statement. If base.hasValue() is false
 //   then the base pointer of GEP is zero.
-void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
-                                  unsigned max_index_bitwidth, var_t lhs,
-                                  llvm::Optional<var_t> base) {
+void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I, var_t lhs, llvm::Optional<var_t> base) {
   assert(lhs.get_type().is_integer() || lhs.get_type().is_reference());
-  assert(!lhs.get_type().is_integer() ||
-         (max_index_bitwidth == lhs.get_type().get_integer_bitwidth()));
   assert(!lhs.get_type().is_integer() ||
          (!base.hasValue() ||
           (lhs.get_type().get_integer_bitwidth() ==
@@ -2412,8 +2383,7 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
   }
 
   // -- translation if the GEP offset is constant
-  unsigned bitwidth = m_dl->getPointerTypeSizeInBits(I.getType());
-  APInt offset(bitwidth, 0);
+  APInt offset(getPointerSizeInBits(), 0);
   if (I.accumulateConstantOffset(*m_dl, offset)) {
     bool is_bignum = false;
     z_number o(toZNumber(offset, m_params, is_bignum));
@@ -2432,19 +2402,19 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
 		  lhs, crab_rgn, base.getValue(), crab_base_rgn, lin_exp_t(o));
 	
         CRAB_LOG("cfg-gep", crab::outs()
-                                << "-- " << lhs << ":=" << base.getValue()
-                                << "+" << o << "\n");
+		 << lhs << ":" << lhs.get_type() << ":=" << base.getValue()
+		 << "+" << o << "\n");
       } else if (lhs.get_type().is_integer()) {
         // pure arithmetic
         if (base.hasValue()) {
           m_bb.assign(lhs, base.getValue() + lin_exp_t(o));
           CRAB_LOG("cfg-gep",
-                   crab::outs() << "-- " << lhs << ":" << lhs.get_type()
+                   crab::outs() << lhs << ":" << lhs.get_type()
                                 << ":=" << base.getValue() << "+" << o << "\n");
         } else {
           m_bb.assign(lhs, lin_exp_t(o));
           CRAB_LOG("cfg-gep", crab::outs()
-                                  << "-- " << lhs << ":" << lhs.get_type()
+                                  << lhs << ":" << lhs.get_type()
                                   << ":=" << o << "\n");
         }
       }
@@ -2476,27 +2446,30 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
               "cfg-gep",
               if (!already_assigned) {
                 crab::outs()
-                    << lhs << "=" << base.getValue() << "+" << offset << "\n";
-              } else { crab::outs() << lhs << "+=" << offset << "\n"; });
+		  << lhs << ":" << lhs.get_type() << ":="
+		  << base.getValue() << "+" << offset << "\n";
+              } else {
+		crab::outs() << lhs << ":" << lhs.get_type() << "+=" << offset << "\n";
+	      });
         } else if (lhs.get_type().is_integer()) {
           // pure arithmetic
           if (!already_assigned) {
             if (base.hasValue()) {
               m_bb.assign(lhs, base.getValue() + offset);
               CRAB_LOG("cfg-gep", crab::outs()
-                                      << "-- " << lhs << ":" << lhs.get_type()
-                                      << "=" << base.getValue() << "+" << offset
+                                      << lhs << ":" << lhs.get_type()
+                                      << ":=" << base.getValue() << "+" << offset
                                       << "\n");
             } else {
               m_bb.assign(lhs, offset);
               CRAB_LOG("cfg-gep", crab::outs()
-                                      << "-- " << lhs << ":" << lhs.get_type()
-                                      << "=" << offset << "\n");
+                                      << lhs << ":" << lhs.get_type()
+                                      << ":=" << offset << "\n");
             }
           } else {
             m_bb.add(lhs, lhs, offset);
             CRAB_LOG("cfg-gep", crab::outs()
-                                    << "-- " << lhs << ":" << lhs.get_type()
+                                    << lhs << ":" << lhs.get_type()
                                     << "+=" << offset << "\n");
           }
         }
@@ -2515,7 +2488,7 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
 
       crab_lit_ref_t idx = m_lfac.getLit(*GTI.getOperand());
       if (!idx || !idx->isInt()) {
-        CLAM_ERROR("unexpected GEP index");
+        CLAM_ERROR("unexpected GEP index " << *GTI.getOperand());
       }
 
       // Signed-extension of the index if needed.
@@ -2523,16 +2496,18 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
       auto Iidx = std::static_pointer_cast<const crabIntLit>(idx);
       if (Iidx->isVar()) {
         unsigned w = Iidx->getBitwidth();
-        assert(w <= max_index_bitwidth);
-        if (w < max_index_bitwidth) {
-          var_t sext_idx = m_lfac.mkIntVar(max_index_bitwidth);
+        if (w < getPointerSizeInBits()) {
+          var_t sext_idx = m_lfac.mkIntVar(getPointerSizeInBits());
           m_bb.sext(Iidx->getVar(), sext_idx);
+	  CRAB_LOG("cfg-gep",
+		   crab::outs() << "sext(" << Iidx->getVar() << "," << sext_idx << ")\n";);
           offsetOpt = (sext_idx * number_t(storageSize(GTI.getIndexedType())));
-        }
+        } else if (w > getPointerSizeInBits()) {
+	  CLAM_ERROR("unexpected GEP index " << *GTI.getOperand());
+	}
       }
       if (!offsetOpt.hasValue()) {
-        offsetOpt =
-            (m_lfac.getExp(idx) * number_t(storageSize(GTI.getIndexedType())));
+        offsetOpt = (m_lfac.getExp(idx) * number_t(storageSize(GTI.getIndexedType())));
       }
 
       lin_exp_t offset = offsetOpt.getValue();
@@ -2550,9 +2525,11 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I,
         CRAB_LOG(
             "cfg-gep",
             if (!already_assigned) {
-              crab::outs() << lhs << "=" << base.getValue() << "+" << offset
-                           << "\n";
-            } else { crab::outs() << lhs << "+=" << offset << "\n"; });
+              crab::outs() << lhs << ":" << lhs.get_type() << ":="
+			   << base.getValue() << "+" << offset << "\n";
+            } else {
+	      crab::outs() << lhs << ":" << lhs.get_type() << "+=" << offset << "\n";
+	    });
       } else if (lhs.get_type().is_integer()) {
         // pure arithmetic
         if (!already_assigned) {
@@ -2622,7 +2599,6 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
     return;
   }
 
-  unsigned bitwidth = getMaxBitWidthFromGepIndexes(I);
   if (m_params.trackMemory()) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
     assert(lhs && lhs->isVar());
@@ -2636,17 +2612,16 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
       havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       return;
     }
-    assert(ptr->isVar());
+    
     // Translate GEP as a sequence of arithmetic operations + gep_ref
-    doGep(I, bitwidth, lhs->getVar(), ptr->getVar() /*base address*/);
+    doGep(I, lhs->getVar(), ptr->getVar() /*base address*/);
   } else if (m_params.trackOnlySingletonMemory()) {
     Value *Ptr = I.getPointerOperand();
     Ptr = Ptr->stripPointerCasts();
-    const bool isSingletonMemory =
-        isa<AllocaInst>(Ptr) || isa<GlobalVariable>(Ptr);
+    var_t shadowGep = m_lfac.mkIntVar(getPointerSizeInBits());
+    const bool isSingletonMemory = isa<AllocaInst>(Ptr) || isa<GlobalVariable>(Ptr);
     if (isSingletonMemory) {
-      llvm::Optional<var_t> baseAddress =
-          llvm::None; /* i.e., zero base address*/
+      llvm::Optional<var_t> baseAddress = llvm::None; /* i.e., zero base address*/
       // Check if the GEP pointer operand is the result of another GEP
       // instruction
       if (GetElementPtrInst *GepPtr = dyn_cast<GetElementPtrInst>(Ptr)) {
@@ -2654,34 +2629,22 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
         if (it != m_gep_map.end()) {
           var_t gepVar = it->second;
           assert(gepVar.get_type().is_integer());
-          // Adjust the bitwdith of gepVar wrt bitwitdh which is the
-          // max bitwidth of all the GEP's indices.
-          if (bitwidth < gepVar.get_type().get_integer_bitwidth()) {
-            bitwidth = gepVar.get_type().get_integer_bitwidth();
-          } else if (bitwidth > gepVar.get_type().get_integer_bitwidth()) {
-            var_t sextGepVar = m_lfac.mkIntVar(bitwidth);
-            m_bb.sext(gepVar, sextGepVar);
-            baseAddress = sextGepVar;
-          }
+	  baseAddress = gepVar;
         }
       }
-      var_t shadowV(m_lfac.getVFac().get(),
-                    crab::variable_type(crab::INT_TYPE, bitwidth));
-      m_gep_map.insert(std::make_pair(&I, shadowV));
       // Translate GEP as a sequence of arithmetic operations + assign
-      doGep(I, bitwidth, shadowV, baseAddress);
+      doGep(I, shadowGep, baseAddress);
     } else {
-      // We give up and translate the GEP to an unconstrained Crab
-      // variable
-      var_t shadowV = getUnconstrainedArrayIdxVar(m_lfac.getVFac(), bitwidth);
+      // Translate the GEP to an unconstrained Crab variable
       CRAB_LOG("cfg-gep",
                CLAM_WARNING("cannot infer statically base address of  "
                             << *Ptr << " at function "
                             << I.getParent()->getParent()->getName()
                             << ".\nUsing unconstrained crab variable "
-                            << shadowV.name().str()););
-      m_gep_map.insert(std::make_pair(&I, shadowV));
+                            << shadowGep.name().str()););
     }
+    m_gep_map.insert(std::make_pair(&I, shadowGep));
+    
   } else { /* do unreachable */
   }
 }
@@ -2693,8 +2656,7 @@ void CrabIntraBlockBuilder::StoreIntoSingletonMem(StoreInst &I, var_t v,
   assert(m_params.trackOnlySingletonMemory());
   assert(val->isInt() || val->isBool());
 
-  lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), rgn,
-                                  m_lfac.getVFac());
+  lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), rgn);
   /**
    * We can help the array domain if we know already that
    * the array store is a strong update.
@@ -2947,8 +2909,7 @@ void CrabIntraBlockBuilder::LoadFromSingletonMem(LoadInst &I, var_t lhs_v,
   }
 
   /// Crab array load
-  lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), rgn,
-                                  m_lfac.getVFac());
+  lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), rgn);
   auto const *crab_stmt = m_bb.array_load(
       lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()).getFixedSize());
   insertRevMap(crab_stmt, I);
@@ -3556,7 +3517,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
         } else {
 	  TypeSize tSize = m_dl->getTypeAllocSize(gv.getValueType());
 	  if (tSize.isScalable()) {
-	    var_t unknownSizeVar = m_lfac.mkIntVar(64);
+	    var_t unknownSizeVar = m_lfac.mkIntVar(m_dl->getPointerSizeInBits());
 	    entry.havoc(unknownSizeVar, "global with unknown size");
 	    // Revisit: we do not call insertCrabIRWithEmitter
 	    entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn),
@@ -3564,7 +3525,9 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	  } else {
 	    // Revisit: we do not call insertCrabIRWithEmitter
 	    entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn),
-			   var_or_cst_t(tSize.getFixedSize(), crab::variable_type(INT_TYPE, 64)),
+			   var_or_cst_t(tSize.getFixedSize(),
+					crab::variable_type(INT_TYPE,
+							    m_dl->getPointerSizeInBits())),
 			   m_as_man.mk_tag());
 	  }
         }
@@ -3610,7 +3573,8 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	// Revisit: we do not call insertCrabIRWithEmitter	
 	entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
 		       var_or_cst_t(m_dl->getPointerSizeInBits() / 8,
-				    crab::variable_type(INT_TYPE, 64)),
+				    crab::variable_type(INT_TYPE,
+							m_dl->getPointerSizeInBits())),
 		       m_as_man.mk_tag());
 	
 	if (m_params.addPointerAssumptions()) {
