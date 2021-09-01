@@ -2134,6 +2134,8 @@ void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
     };
     auto translatePtr = [this, &I](Value &ptr) -> std::pair<var_t, var_t> {
       assert(ptr.getType()->isPointerTy());
+      assert(m_lfac.getLit(ptr)->isVar());
+      
       var_t rgnVar = m_lfac.mkRegionVar(getRegion(m_mem, m_func_regions, m_params, I, ptr));
       var_t refVar = m_lfac.getLit(ptr)->getVar();
       return {refVar, rgnVar};
@@ -2142,7 +2144,13 @@ void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
     if (MemSetInst *MSI = dyn_cast<MemSetInst>(&I)) {
       // Ignored MSI->getValue() and MSI->getDestAlignment
       Value *dst = MSI->getDest();
-      Value *len = MSI->getLength();  
+      Value *len = MSI->getLength();
+
+      if (isa<ConstantPointerNull>(dst)) { 
+	CLAM_WARNING("memset pointer operand is null " << I);
+	return;
+      }
+      
       std::pair<var_t, var_t> pdestV = translatePtr(*dst);
       var_or_cst_t lenV = translateLength(*len);
       CrabMemsetOps s(pdestV.first, pdestV.second, lenV, m_bb);
@@ -2154,7 +2162,17 @@ void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
       // Ignored MIT->getDestAlignment
       Value *dst = MTI->getDest();
       Value *src = MTI->getSource();    
-      Value *len = MTI->getLength();  
+      Value *len = MTI->getLength();
+
+      if (isa<ConstantPointerNull>(dst)) { 
+	CLAM_WARNING("memcpy/memove destination is a null pointer " << *MTI);
+	return;
+      }
+      if (isa<ConstantPointerNull>(src)) { 
+	CLAM_WARNING("memcpy/memove source is a null pointer " << *MTI);
+	return;
+      }
+      
       std::pair<var_t, var_t> pdestV = translatePtr(*dst);
       std::pair<var_t, var_t> psrcV = translatePtr(*src);    
       var_or_cst_t lenV = translateLength(*len);
