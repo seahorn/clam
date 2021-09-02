@@ -3223,33 +3223,36 @@ doArithmeticWithOverflowIntrinsic(WithOverflowInst &I, var_t res) {
 void CrabIntraBlockBuilder::visitExtractValueInst(ExtractValueInst &I) {
   // We only translate this instruction if it's used to extract the
   // values returned by an arithmetic with overflow intrinsics.
-  if (!m_params.lower_arithmetic_with_overflow_intrinsics) {
-    visitInstruction(I);
-    return;
+  if (m_params.lower_arithmetic_with_overflow_intrinsics) {
+    if (WithOverflowInst *II = dyn_cast<WithOverflowInst>(I.getAggregateOperand())) {
+      if (I.getNumIndices() == 1) {
+	unsigned idx = I.getIndices()[0];
+	crab_lit_ref_t lit0 = m_lfac.getLit(I);
+	
+	// %_15 = extractvalue { i64, i1 } %_13, 0
+	if (idx == 0) { // result of the operation
+	  if (lit0 && lit0->isVar() && lit0->isInt()) {
+	    doArithmeticWithOverflowIntrinsic(*II, lit0->getVar());
+	    return;
+	  } else {
+	    CLAM_WARNING("Expected integer lhs in " << I);
+	  }
+	}
+	// %_16 = extractvalue { i64, i1 } %_13, 1	
+	if (idx == 1) { // assume always 0 (i.e., no overflow)
+	  if (lit0 && lit0->isVar() && lit0->isBool()) {
+	    m_bb.bool_assign(lit0->getVar(), lin_cst_t::get_false());
+	    return;
+	  } else {
+	    CLAM_WARNING("Expected Boolean lhs in " << I);
+	  }
+	}
+      }
+    }
   }
   
-  if (WithOverflowInst *II = dyn_cast<WithOverflowInst>(I.getAggregateOperand())) {
-    if (I.getNumIndices() != 1) {
-      return;
-    }
-    unsigned idx = I.getIndices()[0];      
-    // %_15 = extractvalue { i64, i1 } %_13, 0
-    if (idx == 0) { // result of the operation
-      crab_lit_ref_t lit0 = m_lfac.getLit(I);
-      if (!lit0 || !lit0->isVar() || !lit0->isInt()) {
-	CLAM_ERROR("Expected integer lhs in " << I);
-      }
-      doArithmeticWithOverflowIntrinsic(*II, lit0->getVar());
-    }
-    // %_16 = extractvalue { i64, i1 } %_13, 1	
-    if (idx == 1) { // assume always 0 (i.e., no overflow)
-      crab_lit_ref_t lit0 = m_lfac.getLit(I);
-      if (!lit0 || !lit0->isVar() || !lit0->isBool()) {
-	CLAM_ERROR("Expected Boolean lhs in " << I);
-      }
-      m_bb.bool_assign(lit0->getVar(), lin_cst_t::get_false());
-    }
-  }
+  // Ignore I
+  visitInstruction(I);
 }
 
 void CrabIntraBlockBuilder::visitUnreachableInst(UnreachableInst &I) {
