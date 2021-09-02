@@ -117,4 +117,23 @@ const statement_t *insertCrabIRWithEmitter::select_ref(
   return res;
 }
 
+const statement_t *insertCrabIRWithEmitter::havoc_with_ref_input(
+    llvm::CallBase &I, CrabIREmitterVec &propertyEmitters, basic_block_t &bb,
+    std::vector<var_t> inputs_ref, std::vector<var_t> inputs_region,
+    std::string func_name) {
+  CrabCallSiteOps s(inputs_ref, inputs_region, std::vector<var_t>(),
+                    std::vector<var_t>(), func_name, bb);
+  for (unsigned i = 0, sz = propertyEmitters.size(); i < sz; ++i) {
+    propertyEmitters[i]->visitBeforeCallSite(I, s);
+  }
+  std::string strInst;
+  raw_string_ostream os(strInst);
+  os << I;
+  const statement_t *res = bb.havoc(inputs_ref[0], strInst);
+  for (unsigned i = 0, sz = propertyEmitters.size(); i < sz; ++i) {
+    propertyEmitters[i]->visitAfterCallSite(I, s);
+  }
+  return res;
+}
+
 } // end namespace clam

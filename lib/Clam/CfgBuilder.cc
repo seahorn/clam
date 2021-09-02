@@ -3123,7 +3123,10 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
             I, m_params) /* && ShouldCallSiteReturn(I, m_params)*/) {
       crab_lit_ref_t lhs = m_lfac.getLit(I);
       assert(lhs && lhs->isVar());
-      havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
+      std::vector<var_t> inputs_ref{lhs->getVar()};
+      insertCrabIRWithEmitter::havoc_with_ref_input(
+          I, m_propertyEmitters, m_bb, inputs_ref, std::vector<var_t>(),
+          callee->getName());
       if (isReference(I, m_params)) {
 	Region rgn_lhs = getRegion(m_mem, m_func_regions, m_params, I, I);
 	if (m_params.addPointerAssumptions()) {

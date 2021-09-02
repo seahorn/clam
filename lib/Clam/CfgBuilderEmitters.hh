@@ -54,6 +54,11 @@ public:
                                        var_t lhs_region, var_t cond,
                                        CrabSelectRefOps::opt_pair_var_t op1,
                                        CrabSelectRefOps::opt_pair_var_t op2);
+  // Insert havoc with ref inputs statement in bb
+  static const statement_t *
+  havoc_with_ref_input(llvm::CallBase &I, CrabIREmitterVec &propertyEmitters,
+                       basic_block_t &bb, std::vector<var_t> inputs_ref,
+                       std::vector<var_t> inputs_region, std::string func_name);
 };
 
 } // namespace clam

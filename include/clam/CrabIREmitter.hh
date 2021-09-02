@@ -15,6 +15,7 @@ class LoadInst;
 class MemSetInst;
 class MemTransferInst;
 class SelectInst;
+class CallBase;
 } // namespace llvm
 
 namespace clam {
@@ -27,6 +28,7 @@ class CrabLoadRefOps;
 class CrabMemsetOps;
 class CrabMemTransferOps;
 class CrabSelectRefOps;
+class CrabCallSiteOps;
 /*
  * Allow to add extra Crab statements _before_ and _after_ each of
  * these instructions are translated to CrabIR by CfgBuilder.  This is
@@ -78,6 +80,8 @@ public:
                                     CrabSelectRefOps &s) = 0;
   virtual void visitAfterRefSelect(llvm::SelectInst &I,
                                    CrabSelectRefOps &s) = 0;
+  virtual void visitBeforeCallSite(llvm::CallBase &I, CrabCallSiteOps &s) = 0;
+  virtual void visitAfterCallSite(llvm::CallBase &I, CrabCallSiteOps &s) = 0;
 };
 
 using CrabIREmitterPtr = std::unique_ptr<CrabIREmitter>;
@@ -330,6 +334,47 @@ private:
   opt_pair_var_t m_op2;
   var_t m_ref_lhs;
   var_t m_region_lhs;
+  basic_block_t &m_bb;
+};
+
+/**
+ * This is a convenient wrapper for sotring the arguments of CrabIR
+ * %res = f_call(%args...) statement.
+ **/
+class CrabCallSiteOps {
+public:
+  using var_vec_t = std::vector<var_t>;
+
+  CrabCallSiteOps(var_vec_t ref_inputs, var_vec_t region_inputs,
+                  var_vec_t ref_outputs, var_vec_t region_outputs,
+                  std::string func_name, basic_block_t &bb)
+      : m_ref_inputs(ref_inputs), m_region_inputs(region_inputs),
+        m_ref_outputs(ref_outputs), m_region_outputs(region_outputs),
+        m_func_name(func_name), m_bb(bb) {}
+
+  var_vec_t &getRefInputs() { return m_ref_inputs; }
+  const var_vec_t &getRefInputs() const { return m_ref_inputs; }
+
+  var_vec_t &getRegionInputs() { return m_region_inputs; }
+  const var_vec_t &getRegionInputs() const { return m_region_inputs; }
+
+  var_vec_t &getRefOutputs() { return m_ref_outputs; }
+  const var_vec_t &getRefOutputs() const { return m_ref_outputs; }
+
+  var_vec_t &getRegionOutputs() { return m_region_outputs; }
+  const var_vec_t &getRegionOutputs() const { return m_region_outputs; }
+
+  std::string &getFunctionName() { return m_func_name; }
+  const std::string &getFunctionName() const { return m_func_name; }
+
+  basic_block_t &getBasicBlock() { return m_bb; }
+
+private:
+  var_vec_t m_ref_inputs;
+  var_vec_t m_region_inputs;
+  var_vec_t m_ref_outputs;
+  var_vec_t m_region_outputs;
+  std::string m_func_name;
   basic_block_t &m_bb;
 };
 
