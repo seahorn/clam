@@ -5234,6 +5234,8 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       // initially allocated and they cannot be deallocated.
       m_bb.havoc(outParamLit->getVar(), valueToStr(I));
     } else {
+
+      // -- pack inputs and outputs
       var_t rgnVar = m_lfac.mkRegionVar(rgn);
       std::vector<var_or_cst_t> inputs{rgnVar, refParamLit->getVar()};
       
@@ -5251,7 +5253,25 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
 	inputs.push_back(szBytes);
       }
       std::vector<var_t> outputs {outParamLit->getVar()};
-      m_bb.intrinsic(name, outputs, inputs);
+
+      if (is_unfreed_or_null) {
+	m_bb.intrinsic(name, outputs, inputs);	
+      } else {
+	assert(inputs.size() == 3);
+	assert(inputs[0].is_variable());
+	assert(inputs[1].is_variable());		
+	assert(outputs.size() == 1);
+	CrabIsDerefOps s(outputs[0],
+			 inputs[0].get_variable(),inputs[1].get_variable(), inputs[2], 
+			 m_bb);
+	for (unsigned i = 0, sz = m_propertyEmitters.size(); i < sz; ++i) {
+	  m_propertyEmitters[i]->visitBeforeIsDeref(I, s);
+	}
+	m_bb.intrinsic(name, outputs, inputs);
+	for (unsigned i = 0, sz = m_propertyEmitters.size(); i < sz; ++i) {
+	  m_propertyEmitters[i]->visitAfterIsDeref(I, s);
+	}
+      } 
     }
   } else if (name == UNFREED_OR_NULL) {
     if (CS.arg_size() != 1) {

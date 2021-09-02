@@ -15,6 +15,7 @@ class LoadInst;
 class MemSetInst;
 class MemTransferInst;
 class SelectInst;
+class CallBase;
 } // namespace llvm
 
 namespace clam {
@@ -27,6 +28,7 @@ class CrabLoadRefOps;
 class CrabMemsetOps;
 class CrabMemTransferOps;
 class CrabSelectRefOps;
+class CrabIsDerefOps;
 /*
  * Allow to add extra Crab statements _before_ and _after_ each of
  * these instructions are translated to CrabIR by CfgBuilder.  This is
@@ -78,6 +80,9 @@ public:
                                     CrabSelectRefOps &s) = 0;
   virtual void visitAfterRefSelect(llvm::SelectInst &I,
                                    CrabSelectRefOps &s) = 0;
+  /* is_dereferenceable intrinsics */
+  virtual void visitBeforeIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) = 0;
+  virtual void visitAfterIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) = 0;  
 };
 
 using CrabIREmitterPtr = std::unique_ptr<CrabIREmitter>;
@@ -331,6 +336,38 @@ private:
   var_t m_ref_lhs;
   var_t m_region_lhs;
   basic_block_t &m_bb;
+};
+
+/**
+ * This is a convenient wrapper for storing the arguments of CrabIR
+ * intrinsics is_derefenceable.
+ **/
+class CrabIsDerefOps {
+  // b:= crab_intrinsic(is_dereferenceable, region, ref, size)
+  var_t m_lhs;
+  var_t m_region;
+  var_t m_ref;  
+  var_or_cst_t m_size;
+  basic_block_t &m_bb;
+
+public:
+  CrabIsDerefOps(var_t lhs, var_t region, var_t ref, var_or_cst_t size,
+		 basic_block_t &bb)
+    : m_lhs(lhs), m_ref(ref), m_region(region), m_size(size), m_bb(bb) {}
+
+  var_t &getLhs() { return m_lhs; }
+  const var_t &getLhs() const { return m_lhs; }
+
+  var_t &getRegion() { return m_region; }
+  const var_t &getRegion() const { return m_region; }
+
+  var_t &getRef() { return m_ref; }
+  const var_t &getRef() const { return m_ref; }
+  
+  var_or_cst_t &getSize() { return m_size; }
+  const var_or_cst_t &getSize() const { return m_size; }
+
+  basic_block_t &getBasicBlock() { return m_bb; }
 };
 
 } // end namespace clam
