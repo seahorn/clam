@@ -191,32 +191,22 @@ public:
     }
     assert(typ.is_integer());
     unsigned width = typ.get_integer_bitwidth();
-    var_t *obj_sz_ptr;
-    var_t *assign_sz_ptr;
     var_t ref_obj_sz = m_lfac.mkIntVar(getMaxWidthInBits(I));
     if (getMaxWidthInBits(I) != width) {
-      obj_sz_ptr = &ref_obj_sz;
-      *assign_sz_ptr = m_lfac.mkIntVar(width);
-    } else {
-      assign_sz_ptr = &ref_obj_sz;
+      CLAM_ERROR("Unexpected bit width from allocation "
+                 << width << " the ghost variable requires "
+                 << getMaxWidthInBits(I));
     }
     if (size.is_variable())
-      bb.assign(*assign_sz_ptr, size.get_variable());
+      bb.assign(ref_obj_sz, size.get_variable());
     else
-      bb.assign(*assign_sz_ptr, size.get_constant());
-    // convert assigned size to maximum width
-    if (getMaxWidthInBits(I) > width)
-      bb.zext(*assign_sz_ptr, *obj_sz_ptr);
-    else if (getMaxWidthInBits(I) < width)
-      bb.truncate(*assign_sz_ptr, *obj_sz_ptr);
-    else
-      obj_sz_ptr = assign_sz_ptr;
+      bb.assign(ref_obj_sz, size.get_constant());
     // create a var_t for offset and assign it to zero
     var_t ref_offset = m_lfac.mkIntVar(getMaxWidthInBits(I));
     bb.assign(ref_offset, number_t(0));
 
     // add pair to the map by llvm pointer
-    m_ref_bnd_map.insert({&I, {*obj_sz_ptr, ref_offset}});
+    m_ref_bnd_map.insert({&I, {ref_obj_sz, ref_offset}});
   }
 
   // -- get element ptr additional utilities construction
@@ -264,6 +254,13 @@ public:
     }
   }
 
+  // -- instrumentation of select_ref statement
+  // p = select_ref (cond, q, r)
+  // We use the idea from fat pointer like by adding two additional variables:
+  // p.offset := select(cond, q.offset, r.offset)
+  // p.size := select(cond, q.size, r.size)
+  // where p.offset indicates the offset of selected pointer
+  // the p.size means the total size of allcation
   void visitAfterRefSelect(SelectInst &I, CrabSelectRefOps &s) {
     const Value &vtrue = *(I.getTrueValue());
     const Value &vfalse = *(I.getFalseValue());
@@ -312,6 +309,38 @@ public:
     bb.select(lhs_obj_sz, cond, size_op1, size_op2);
     m_ref_bnd_map.insert({&I, {lhs_obj_sz, lhs_offset}});
   }
+
+  // -- instrumentation of is_deref (sea_is_dereferenceable) statement
+  // b = is_deref (ref, offset)
+  // We use the idea from fat pointer like by adding two checks for is_deref:
+  // check1 := ref.offset >= 0
+  // check2 := ref.offset + offset <= ref.size
+  // b := check1 && check2
+  // where ref.offset indicates the offset of argument pointer
+  // the ref.size means the total size of allcation
+  void visitAfterIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) {
+    Value *vRef = I.getArgOperand(0);
+    basic_block_t &bb = s.getBasicBlock();
+    auto it = m_ref_bnd_map.find(vRef);
+    if (it == m_ref_bnd_map.end()) {
+      CLAM_WARNING("Could not find arg of is_deref ptr "
+                   << *vRef << " from reference map" << I);
+    } else {
+      var_t ptr_obj_sz = it->second.first;
+      var_t ptr_offset = it->second.second;
+      var_t first_check = m_lfac.mkBoolVar();
+      var_t second_check = m_lfac.mkBoolVar();
+      var_or_cst_t size_of = s.getSize();
+      bb.bool_assign(first_check, ptr_offset >= number_t(0));
+      if (size_of.is_variable())
+        bb.bool_assign(second_check,
+                       ptr_obj_sz >= ptr_offset + size_of.get_variable());
+      else
+        bb.bool_assign(second_check,
+                       ptr_obj_sz >= ptr_offset + size_of.get_constant());
+      bb.bool_and(s.getLhs(), first_check, second_check);
+    }
+  }
 };
 
 EmitBndChecks::EmitBndChecks(const CrabBuilderParams &params,
@@ -353,6 +382,10 @@ void EmitBndChecks::visitAfterRefSelect(llvm::SelectInst &I,
   m_impl->visitAfterRefSelect(I, s);
 }
 
+void EmitBndChecks::visitAfterIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) {
+  m_impl->visitAfterIsDeref(I, s);
+}
+
 /* Begin empty implementations */
 void EmitBndChecks::visitAfterBasicBlock(llvm::BasicBlock &BB) {}
 void EmitBndChecks::visitBeforeAlloc(llvm::Instruction &I,
@@ -374,6 +407,7 @@ void EmitBndChecks::visitAfterMemTransfer(llvm::MemTransferInst &I,
                                           CrabMemTransferOps &s) {}
 void EmitBndChecks::visitBeforeRefSelect(llvm::SelectInst &I,
                                          CrabSelectRefOps &s) {}
+void EmitBndChecks::visitBeforeIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) {}
 /* End empty implementations */
 
 } // end namespace clam
