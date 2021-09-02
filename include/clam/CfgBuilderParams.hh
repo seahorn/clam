@@ -34,6 +34,10 @@ struct CrabBuilderParams {
   // bool_assume/bool_assert) because Crab is, in general, not very
   // good at boolean reasoning.
   bool avoid_boolean;
+  // Remove llvm.OP.with.overflow.* with the corresponding OP without
+  // overflow checking. Thus, this transformation should be applied
+  // only if the operation is known to not overflow.
+  bool lower_arithmetic_with_overflow_intrinsics;
   /// Add reasonable assumptions about pointers (e.g., allocas and
   /// globals cannot be null, external functions do not return
   /// dangling pointers, etc.)
@@ -56,8 +60,9 @@ struct CrabBuilderParams {
   CrabBuilderParams()
       : precision_level(CrabBuilderPrecision::NUM), simplify(false),
         interprocedural(true), lower_singleton_aliases(false),
-        include_useless_havoc(true), avoid_boolean(true),
-        lower_unsigned_icmp(false), enable_bignums(false),
+        include_useless_havoc(true), enable_bignums(false),
+        lower_unsigned_icmp(false), avoid_boolean(true),
+	lower_arithmetic_with_overflow_intrinsics(false),
         add_pointer_assumptions(true), add_null_checks(false),
         add_uaf_checks(false), add_bounds_checks(false),
         check_only_typed_regions(false), check_only_noncyclic_regions(false),

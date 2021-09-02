@@ -992,7 +992,8 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
                             Region rhs_region);
   void doCallSite(CallInst &CI);
   void doCrabSpecialIntrinsic(CallInst &CI);
-
+  void doArithmeticWithOverflowIntrinsic(WithOverflowInst &I, var_t res);
+  
 public:
   CrabIntraBlockBuilder(crabLitFactory &lfac, tag_manager &as_man,
       HeapAbstraction &mem, const DataLayout *dl,
@@ -1025,6 +1026,7 @@ public:
   void visitLoadInst(LoadInst &I);
   void visitAllocaInst(AllocaInst &I);
   void visitCallInst(CallInst &I);
+  void visitExtractValueInst(ExtractValueInst &I);
   void visitUnreachableInst(UnreachableInst &I);
   /// base case. if all else fails.
   void visitInstruction(Instruction &I);
@@ -3180,6 +3182,76 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   }
 }
 
+// Replace the intrinsics with a standard arithmetic operation
+// assuming that the arithmetic operation does not overflow.
+void CrabIntraBlockBuilder::
+doArithmeticWithOverflowIntrinsic(WithOverflowInst &I, var_t res) {
+  if (!m_params.lower_arithmetic_with_overflow_intrinsics) {
+    return;
+  }
+  
+  crab_lit_ref_t lit1 = m_lfac.getLit(*(I.getOperand(0)));
+  if (!lit1 || !(lit1->isInt())) {
+    CLAM_ERROR("Expected integer operand in " << I);	    
+  }
+  crab_lit_ref_t lit2 = m_lfac.getLit(*(I.getOperand(1)));
+  if (!lit2 || !(lit2->isInt())) {
+    CLAM_ERROR("Expected integer operand in " << I);	    	    
+    return;
+  }
+	
+  lin_exp_t op1 = m_lfac.getExp(lit1);
+  lin_exp_t op2 = m_lfac.getExp(lit2);
+  
+  switch(I.getIntrinsicID()) {
+  case Intrinsic::uadd_with_overflow:
+  case Intrinsic::sadd_with_overflow:
+    doBinOp(BinaryOperator::Add, res, op1, op2);
+    break;
+  case Intrinsic::usub_with_overflow:
+  case Intrinsic::ssub_with_overflow:
+    doBinOp(BinaryOperator::Sub, res, op1, op2);	    
+    break;
+  case Intrinsic::umul_with_overflow:
+  case Intrinsic::smul_with_overflow:
+    doBinOp(BinaryOperator::Mul, res, op1, op2);	    	    
+    break;
+  default:;
+  }
+}
+
+void CrabIntraBlockBuilder::visitExtractValueInst(ExtractValueInst &I) {
+  // We only translate this instruction if it's used to extract the
+  // values returned by an arithmetic with overflow intrinsics.
+  if (!m_params.lower_arithmetic_with_overflow_intrinsics) {
+    visitInstruction(I);
+    return;
+  }
+  
+  if (WithOverflowInst *II = dyn_cast<WithOverflowInst>(I.getAggregateOperand())) {
+    if (I.getNumIndices() != 1) {
+      return;
+    }
+    unsigned idx = I.getIndices()[0];      
+    // %_15 = extractvalue { i64, i1 } %_13, 0
+    if (idx == 0) { // result of the operation
+      crab_lit_ref_t lit0 = m_lfac.getLit(I);
+      if (!lit0 || !lit0->isVar() || !lit0->isInt()) {
+	CLAM_ERROR("Expected integer lhs in " << I);
+      }
+      doArithmeticWithOverflowIntrinsic(*II, lit0->getVar());
+    }
+    // %_16 = extractvalue { i64, i1 } %_13, 1	
+    if (idx == 1) { // assume always 0 (i.e., no overflow)
+      crab_lit_ref_t lit0 = m_lfac.getLit(I);
+      if (!lit0 || !lit0->isVar() || !lit0->isBool()) {
+	CLAM_ERROR("Expected Boolean lhs in " << I);
+      }
+      m_bb.bool_assign(lit0->getVar(), lin_cst_t::get_false());
+    }
+  }
+}
+
 void CrabIntraBlockBuilder::visitUnreachableInst(UnreachableInst &I) {
   m_bb.unreachable();
 }
@@ -4470,8 +4542,11 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tinterproc cfg: " << interprocedural << "\n";
   o << "\tlower singleton aliases into scalars: " << lower_singleton_aliases
     << "\n";
+  o << "\tlower unsigned comparisons: " << lower_unsigned_icmp << "\n";
   o << "\tavoid some boolean CrabIR statements (e.g., bool_assume, bool_assert): "
     << avoid_boolean << "\n";
+  o << "\tlower arithmetic with overflow intrinsics: "
+    << lower_arithmetic_with_overflow_intrinsics << "\n";
   o << "\tadd pointer assumptions: " << addPointerAssumptions() << "\n";
   o << "\tenable big numbers: " << enable_bignums << "\n";
   o << "\tcheck only typed regions: " << check_only_typed_regions << "\n";
