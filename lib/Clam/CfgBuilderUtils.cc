@@ -204,14 +204,31 @@ bool isVerifierCall(const Function &F) {
           isSeaHornFail(F));
 }
 
+static bool isSeaHornIntrinsic(const Function &F) {
+  return (F.getName() == "sea.is_dereferenceable" ||
+	  F.getName() == "sea_is_dereferenceable");
+}
+
 bool isCrabIntrinsic(const Function &F) {
-  return (F.getName().startswith("__CRAB_intrinsic_"));
+  return (F.getName().startswith("__CRAB_intrinsic_") ||
+	  isSeaHornIntrinsic(F));
 }
 
 std::string getCrabIntrinsicName(const Function &F) {
   assert(isCrabIntrinsic(F));
-  StringRef res = F.getName().split("__CRAB_intrinsic_").second;
-  return res.str();
+  
+  if (isSeaHornIntrinsic(F)) {
+    // if the bitcode has been processed already by SeaHorn
+    StringRef res = F.getName().split("sea.").second;
+    if (res == "") {
+      // if the user writes the intrinsic on the C source
+      res = F.getName().split("sea_").second;
+    }
+    return res.str();
+  } else {
+    StringRef res = F.getName().split("__CRAB_intrinsic_").second;
+    return res.str();
+  }
 }
 
 bool isZeroInitializer(const Function &F) {

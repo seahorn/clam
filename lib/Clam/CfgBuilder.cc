@@ -5153,26 +5153,36 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   }
 }
 
+#define IS_DEREFERENCEABLE "is_dereferenceable"
+#define IS_UNFREED_OR_NULL "is_unfreed_or_null"
+#define UNFREED_OR_NULL "unfreed_or_null"
+#define ADD_TAG "add_tag"
+#define CHECK_DOES_NOT_HAVE_TAG "check_does_not_have_tag"
+
 bool CrabIntraBlockBuilder::isSpecialCrabIntrinsic(const Function &calleeF) const {
   if (!isCrabIntrinsic(calleeF)) {
     return false;
   }
   std::string name = getCrabIntrinsicName(calleeF);
-  return (name == "is_unfreed_or_null" ||
-	  name == "unfreed_or_null" ||
-	  name == "add_tag" ||
-	  name == "check_does_not_have_tag");
+  return (name == IS_DEREFERENCEABLE || 
+	  name == IS_UNFREED_OR_NULL ||
+	  name == UNFREED_OR_NULL ||
+	  name == ADD_TAG ||
+	  name == CHECK_DOES_NOT_HAVE_TAG);
 }
   
 void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
+  // clang-format off
   /*
-    %b = is_unfreed_or_null(%ptr) --> b := CRAB_intrinsic(is_unfreed_or_null, rgn, ref)
-    unfreed_or_null(%ptr)         --> CRAB_intrinsic(unfreed_or_null, rgn, ref)              
-    add_tag(%ptr, tag)            --> CRAB_intrinsic(add_tag, rgn, ref, tag)
+    %b = is_unfreed_or_null(%ptr)       --> b := CRAB_intrinsic(is_unfreed_or_null, rgn, ref)
+    %b = is_dereferenceable(%ptr, %sz)  --> b := CRAB_intrinsic(is_dereferenceable, rgn, ref, sz)
+    unfreed_or_null(%ptr)               --> CRAB_intrinsic(unfreed_or_null, rgn, ref)              
+    add_tag(%ptr, tag)                  --> CRAB_intrinsic(add_tag, rgn, ref, tag)
     check_does_not_have_tag(%ptr, tag)  --> b := CRAB_intrinsic(does_not_have_tag, rgn, ref, tag)
                                             bool_assert(b);
    */
-
+  // clang-format on
+  
   CallSite CS(&I);
   const Function *calleeF =
       dyn_cast<Function>(CS.getCalledValue()->stripPointerCastsAndAliases());
@@ -5186,10 +5196,19 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
   // robust translation with bloating
   //Value *Ptr = CS.getArgument(0)->stripPointerCasts();
   Value *Ptr = CS.getArgument(0);
-  if (name == "is_unfreed_or_null") {
-    if (CS.arg_size() != 1) {
-      CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
-    }
+  if (name == IS_UNFREED_OR_NULL || name == IS_DEREFERENCEABLE) {
+    bool is_unfreed_or_null = (name == IS_UNFREED_OR_NULL);
+    
+    if (is_unfreed_or_null) {
+      if  (CS.arg_size() != 1) {
+	CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+      }
+    } else {
+      if  (CS.arg_size() != 2) {
+	CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+      }
+    } 
+    
     if (!I.getType()->isIntegerTy()) {
       CLAM_ERROR("unexpected non-integer output parameter in special intrinsic " << I);
     }
@@ -5217,10 +5236,24 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
     } else {
       var_t rgnVar = m_lfac.mkRegionVar(rgn);
       std::vector<var_or_cst_t> inputs{rgnVar, refParamLit->getVar()};
+      
+      if (!is_unfreed_or_null) {
+	crab_lit_ref_t szBytesLit = m_lfac.getLit(*(CS.getArgument(1)));
+	if (!szBytesLit->isInt()) {
+	  CLAM_ERROR("unexpected non-integer input parameter in special intrinsic " << I);
+	}
+	var_or_cst_t szBytes = (szBytesLit->isVar() ?
+				var_or_cst_t(szBytesLit->getVar()) :
+				var_or_cst_t(m_lfac.getIntCst(szBytesLit),
+					     crab::variable_type(INT_TYPE,
+								 getPointerSizeInBits())));
+	
+	inputs.push_back(szBytes);
+      }
       std::vector<var_t> outputs {outParamLit->getVar()};
       m_bb.intrinsic(name, outputs, inputs);
     }
-  } else if (name == "unfreed_or_null") {
+  } else if (name == UNFREED_OR_NULL) {
     if (CS.arg_size() != 1) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
@@ -5241,7 +5274,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       std::vector<var_t> outputs;
       m_bb.intrinsic(name, outputs, inputs);
     }
-  } else if (name == "add_tag") {
+  } else if (name == ADD_TAG) {
     if (CS.arg_size() != 2) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
@@ -5269,7 +5302,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       std::vector<var_t> outputs;
       m_bb.intrinsic(name, outputs, inputs);
     }
-  } else if (name == "check_does_not_have_tag") {
+  } else if (name == CHECK_DOES_NOT_HAVE_TAG) {
     if (CS.arg_size() != 2) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
