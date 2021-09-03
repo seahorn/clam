@@ -123,32 +123,42 @@ public:
   EmitBndChecksImpl(const CrabBuilderParams &params, crabLitFactory &lfac,
                     uint32_t &assertionId)
       : m_params(params), m_lfac(lfac), m_assertionId(assertionId),
-        m_addedChecks(0), m_dl(nullptr) {}
+        m_addedChecks(0), m_dl(nullptr) {
+    assert(m_params.add_bounds_checks || m_params.add_is_deref);
+  }
 
   ~EmitBndChecksImpl() {
-    llvm::errs() << "-- Inserted " << m_addedChecks;
-    llvm::errs() << " bound checks\n";
-    llvm::errs() << " (skipped " << m_trivialChecks << " trivial checks).\n";
+    if (m_params.add_bounds_checks) {    
+      llvm::errs() << "-- Inserted " << m_addedChecks;
+      llvm::errs() << " bound checks\n";
+      llvm::errs() << " (skipped " << m_trivialChecks << " trivial checks).\n";
+    }
   }
 
   void visitBeforeBasicBlock(llvm::BasicBlock &BB) {
-    // We cache checks only in the same basic block
-    m_seen.clear();
+    if (m_params.add_bounds_checks) {        
+      // We cache checks only in the same basic block
+      m_seen.clear();
+    }
   }
 
   void visitBeforeStore(llvm::StoreInst &I, CrabStoreRefOps &s) {
-    if (!isRelevantCheck(I.getOperand(1))) {
-      m_trivialChecks++;
-    } else {
-      addBndCheckAssertion(I, s.getRegion(), s.getBasicBlock(), false);
+    if (m_params.add_bounds_checks) {
+      if (!isRelevantCheck(I.getOperand(1))) {
+	m_trivialChecks++;
+      } else {
+	addBndCheckAssertion(I, s.getRegion(), s.getBasicBlock(), false);
+      }
     }
   }
 
   void visitBeforeLoad(llvm::LoadInst &I, CrabLoadRefOps &s) {
-    if (!isRelevantCheck(I.getOperand(0))) {
-      m_trivialChecks++;
-    } else {
-      addBndCheckAssertion(I, s.getRegion(), s.getBasicBlock(), true);
+    if (m_params.add_bounds_checks) {    
+      if (!isRelevantCheck(I.getOperand(0))) {
+	m_trivialChecks++;
+      } else {
+	addBndCheckAssertion(I, s.getRegion(), s.getBasicBlock(), true);
+      }
     }
   }
 
@@ -313,6 +323,11 @@ public:
   // where ref.offset indicates the offset of argument pointer
   // the ref.size means the total size of allocation
   void visitAfterIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) {
+
+    if (!m_params.add_is_deref) {
+      return;
+    }
+    
     Value *vRef = I.getArgOperand(0);
     basic_block_t &bb = s.getBasicBlock();
     auto it = m_ref_bnd_map.find(vRef);

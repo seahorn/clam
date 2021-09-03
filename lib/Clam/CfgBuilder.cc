@@ -4564,7 +4564,8 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tcheck only acyclic regions: " << check_only_noncyclic_regions << "\n";
   o << "\tadd null-dereference checks: " << add_null_checks << "\n";
   o << "\tadd use-after-free checks: " << add_uaf_checks << "\n";
-  o << "\tadd buffer bounds checks: " << add_bounds_checks << "\n";    
+  o << "\tadd buffer bounds checks: " << add_bounds_checks << "\n";
+  o << "\tadd CrabIR for sea_is_dereferenceable: " << add_is_deref << "\n";      
 }
 
 /* CFG Builder class */
@@ -4712,7 +4713,7 @@ CrabBuilderManagerImpl::CrabBuilderManagerImpl(
     m_property_emitters.emplace_back(std::make_unique<EmitUafChecks>
 				     (m_params, m_lfac, m_assertion_id));
   }
-  if (params.add_bounds_checks) {
+  if (params.add_bounds_checks || params.add_is_deref) {
     m_property_emitters.emplace_back(
         std::make_unique<EmitBndChecks>(m_params, m_lfac, m_assertion_id));
   }

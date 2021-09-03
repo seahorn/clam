@@ -1197,6 +1197,7 @@ bool ClamPass::runOnModule(Module &M) {
   builder_params.add_null_checks = CrabNullChecks;
   builder_params.add_uaf_checks = CrabUafChecks;
   builder_params.add_bounds_checks = CrabBoundsChecks;
+  builder_params.add_is_deref = CrabIsDeref;  
   builder_params.check_only_typed_regions = CrabCheckOnlyTyped;
   builder_params.check_only_noncyclic_regions = CrabCheckOnlyNonCyclic;
   builder_params.print_cfg = CrabPrintCFG;

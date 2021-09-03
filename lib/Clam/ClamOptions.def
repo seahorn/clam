@@ -22,6 +22,7 @@ bool CrabAddPtrAssumptions;
 bool CrabNullChecks;
 bool CrabUafChecks;
 bool CrabBoundsChecks;
+bool CrabIsDeref;
 bool CrabCheckOnlyTyped;
 bool CrabCheckOnlyNonCyclic;
 bool CrabPrintInvariants;
@@ -156,6 +157,12 @@ llvm::cl::opt<bool, true>
 XCrabBoundsChecks("crab-bounds-check",
      llvm::cl::desc("Insert checks for array bounds errors in CrabIR"),
      llvm::cl::location(clam::CrabBoundsChecks),
+     llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabIsDeref("crab-is-deref",
+     llvm::cl::desc("Insert CrabIR to reason about sea_is_dereferenceable"),
+     llvm::cl::location(clam::CrabIsDeref),
      llvm::cl::init(false));
 
 llvm::cl::opt<bool, true>

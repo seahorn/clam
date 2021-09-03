@@ -48,8 +48,11 @@ struct CrabBuilderParams {
   bool add_null_checks;
   /// Emit crabIR to perform use-after-free checks  
   bool add_uaf_checks;
-  /// Emit crabIR to perform buffer-overflow checks
+  /// Emit crabIR to perform buffer-overflow checks at all memory
+  /// accesses.
   bool add_bounds_checks;
+  /// Emit crabIR to reason about sea_is_dereferenceable
+  bool add_is_deref;
   /// Add above checks only on certain heap shapes
   bool check_only_typed_regions;
   bool check_only_noncyclic_regions;
@@ -67,7 +70,7 @@ struct CrabBuilderParams {
 	lower_arithmetic_with_overflow_intrinsics(false),
 	allocate_global_values(true),
         add_pointer_assumptions(true), add_null_checks(false),
-        add_uaf_checks(false), add_bounds_checks(false),
+        add_uaf_checks(false), add_bounds_checks(false), add_is_deref(false),
         check_only_typed_regions(false), check_only_noncyclic_regions(false),
         print_cfg(false), dot_cfg(false) {}
 
