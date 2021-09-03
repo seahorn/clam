@@ -4081,7 +4081,11 @@ void CfgBuilderImpl::buildCfg() {
 
   initializeGlobalsAtMain();
   basic_block_t *entry_bb = lookup(m_func.getEntryBlock());
-  for (auto &B : m_func) {
+
+  std::vector<const BasicBlock *> bbs;
+  topoSort(m_func, bbs);
+  for (const BasicBlock *BB: bbs) {
+    BasicBlock &B = *(const_cast<BasicBlock*>(BB));
     basic_block_t *bb = lookup(B);
     if (!bb) {
       continue;

@@ -1,6 +1,9 @@
 #include "CfgBuilderUtils.hh"
 
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/Analysis/CFG.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
@@ -10,6 +13,7 @@
 #include "llvm/IR/Value.h"
 
 #include <cstdint>
+#include <algorithm>
 
 namespace clam {
 
@@ -375,6 +379,37 @@ bool AllUsesAreIgnoredInst(llvm::Value &V) {
     return false;
   }
   return true;
+}
+
+} // namespace clam
+
+namespace {
+using BasicBlockPtrSet = llvm::SmallPtrSet<const llvm::BasicBlock *, 32>;
+} // namespace 
+
+namespace llvm {
+template <> class po_iterator_storage<BasicBlockPtrSet, true> {
+  BasicBlockPtrSet &Visited;
+public:
+  po_iterator_storage(BasicBlockPtrSet &VSet) : Visited(VSet) {}
+  po_iterator_storage(const po_iterator_storage &S) : Visited(S.Visited) {}
+  bool insertEdge(Optional<const BasicBlock *> src, const BasicBlock *dst)
+  { return Visited.insert(dst).second; }
+  void finishPostorder(const BasicBlock *bb) {}
+};
+} // namespace llvm
+
+namespace clam {
+void revTopoSort(const llvm::Function &F, std::vector<const BasicBlock *> &out) {
+  if (F.isDeclaration() || F.empty()) return;
+  auto *f = &F;
+  BasicBlockPtrSet Visited;
+  std::copy(po_ext_begin(f, Visited), po_ext_end(f, Visited), std::back_inserter(out));
+}
+
+void topoSort(const llvm::Function &F, std::vector<const BasicBlock*> &out) {
+  revTopoSort(F, out);
+  std::reverse(out.begin(), out.end());
 }
 
 } // namespace clam
