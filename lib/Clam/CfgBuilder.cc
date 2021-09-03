@@ -3575,7 +3575,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
       MI.InitGlobalMemory(gv, *(gv.getInitializer()), 0);
     }
     // Add assumptions about global addresses
-    if (m_params.trackMemory()) {
+    if (m_params.allocateGlobals()) {
       crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
       assert(gv_lit && gv_lit->isVar());
       assert(gv_lit->getVar().get_type().is_reference());
@@ -3606,7 +3606,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 							    m_dl->getPointerSizeInBits())),
 			   m_as_man.mk_tag());
 	  }
-        }
+	}
       }
       if (m_params.addPointerAssumptions()) {
         // global variables are not null
@@ -3639,24 +3639,26 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	}
       }
     }
-    
-    for (auto &F : M) {
-      if (F.hasAddressTaken()) {
-	crab_lit_ref_t funptr = m_lfac.getLit(F);
-	assert(funptr && funptr->isVar() && funptr->isRef());
-	Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
 
-	// Revisit: we do not call insertCrabIRWithEmitter	
-	entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
-		       var_or_cst_t(m_dl->getPointerSizeInBits() / 8,
-				    crab::variable_type(INT_TYPE,
-							m_dl->getPointerSizeInBits())),
-		       m_as_man.mk_tag());
+    if (m_params.allocateGlobals()) {
+      for (auto &F : M) {
+	if (F.hasAddressTaken()) {
+	  crab_lit_ref_t funptr = m_lfac.getLit(F);
+	  assert(funptr && funptr->isVar() && funptr->isRef());
+	  Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
+
+	  // Revisit: we do not call insertCrabIRWithEmitter	
+	  entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
+			 var_or_cst_t(m_dl->getPointerSizeInBits() / 8,
+				      crab::variable_type(INT_TYPE,
+							  m_dl->getPointerSizeInBits())),
+			 m_as_man.mk_tag());
 	
-	if (m_params.addPointerAssumptions()) {
-	  // Add assumptions about function addresses: all function
-	  // addresses are not null
-	  entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
+	  if (m_params.addPointerAssumptions()) {
+	    // Add assumptions about function addresses: all function
+	    // addresses are not null
+	    entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
+	  }
 	}
       }
     }
@@ -4555,6 +4557,7 @@ void CrabBuilderParams::write(raw_ostream &o) const {
     << avoid_boolean << "\n";
   o << "\tlower arithmetic with overflow intrinsics: "
     << lower_arithmetic_with_overflow_intrinsics << "\n";
+  o << "\tallocate global values: " << allocate_global_values << "\n";
   o << "\tadd pointer assumptions: " << addPointerAssumptions() << "\n";
   o << "\tenable big numbers: " << enable_bignums << "\n";
   o << "\tcheck only typed regions: " << check_only_typed_regions << "\n";

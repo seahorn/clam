@@ -38,6 +38,8 @@ struct CrabBuilderParams {
   // overflow checking. Thus, this transformation should be applied
   // only if the operation is known to not overflow.
   bool lower_arithmetic_with_overflow_intrinsics;
+  // Add make_ref for global values (e.g., global variables, functions etc)
+  bool allocate_global_values;
   /// Add reasonable assumptions about pointers (e.g., allocas and
   /// globals cannot be null, external functions do not return
   /// dangling pointers, etc.)
@@ -63,6 +65,7 @@ struct CrabBuilderParams {
         include_useless_havoc(true), enable_bignums(false),
         lower_unsigned_icmp(false), avoid_boolean(true),
 	lower_arithmetic_with_overflow_intrinsics(false),
+	allocate_global_values(true),
         add_pointer_assumptions(true), add_null_checks(false),
         add_uaf_checks(false), add_bounds_checks(false),
         check_only_typed_regions(false), check_only_noncyclic_regions(false),
@@ -80,6 +83,10 @@ struct CrabBuilderParams {
     return trackMemory() && add_pointer_assumptions;
   }
 
+  bool allocateGlobals() const {
+    return trackMemory() && allocate_global_values;
+  }
+  
   /* Set lower unsigned cmp into signed for Crab programs */
   void lowerUnsignedICmpIntoSigned() {
     if (!lower_unsigned_icmp) {

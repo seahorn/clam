@@ -15,6 +15,8 @@ bool CrabDotCFG;
 bool CrabEnableUniqueScalars;
 bool CrabIncludeHavoc;
 bool CrabLowerUnsignedICmp;
+bool CrabLowerWithOverflowIntrinsics;
+bool CrabAllocateGlobals;
 bool CrabEnableBignums;
 bool CrabAddPtrAssumptions;
 bool CrabNullChecks;
@@ -105,6 +107,18 @@ XCrabEnableBignums("crab-enable-bignums",
      llvm::cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."),
      llvm::cl::location(clam::CrabEnableBignums),
      llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabLowerWithOverflowIntrinsics("crab-lower-with-overflow-intrinsics",
+     llvm::cl::desc("Replace llvm.OP.with.overflow.* with the corresponding OP assuming no overflow"),
+     llvm::cl::location(clam::CrabLowerWithOverflowIntrinsics),
+     llvm::cl::init(false));
+
+llvm::cl::opt<bool, true>
+XCrabAllocateGlobals("crab-allocate-globals",
+     llvm::cl::desc("Add CrabIR make_ref for global values"),
+     llvm::cl::location(clam::CrabAllocateGlobals),
+     llvm::cl::init(true));
 
 llvm::cl::opt<bool, true>
 XCrabAddPtrAssumptions("crab-ptr-assumptions",

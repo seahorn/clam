@@ -1187,6 +1187,12 @@ bool ClamPass::runOnModule(Module &M) {
   builder_params.lower_singleton_aliases = CrabEnableUniqueScalars;
   builder_params.include_useless_havoc = CrabIncludeHavoc;
   builder_params.enable_bignums = CrabEnableBignums;
+  if (CrabLowerUnsignedICmp) {
+    builder_params.lowerUnsignedICmpIntoSigned();
+  }
+  builder_params.lower_arithmetic_with_overflow_intrinsics =
+    CrabLowerWithOverflowIntrinsics;
+  builder_params.allocate_global_values = CrabAllocateGlobals;
   builder_params.add_pointer_assumptions = CrabAddPtrAssumptions;
   builder_params.add_null_checks = CrabNullChecks;
   builder_params.add_uaf_checks = CrabUafChecks;
@@ -1195,9 +1201,6 @@ bool ClamPass::runOnModule(Module &M) {
   builder_params.check_only_noncyclic_regions = CrabCheckOnlyNonCyclic;
   builder_params.print_cfg = CrabPrintCFG;
   builder_params.dot_cfg = CrabDotCFG;
-
-  if (CrabLowerUnsignedICmp)
-    builder_params.lowerUnsignedICmpIntoSigned();
 
   auto &tli = getAnalysis<TargetLibraryInfoWrapperPass>();
 
