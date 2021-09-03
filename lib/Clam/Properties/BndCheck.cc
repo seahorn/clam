@@ -236,11 +236,18 @@ public:
       } else {
         var_t ptr_obj_sz = it->second.first;
         var_t ptr_offset = it->second.second;
-        var_t lhs_obj_sz = m_lfac.mkIntVar(width);
-        var_t lhs_offset = m_lfac.mkIntVar(width);
-        bb.assign(lhs_obj_sz, ptr_obj_sz);
-        bb.assign(lhs_offset, offset + ptr_offset);
-        m_ref_bnd_map.insert({&I, {lhs_obj_sz, lhs_offset}});
+	if (offset.is_constant() && (offset.constant() == number_t(0))) {
+	  m_ref_bnd_map.insert({&I, {ptr_obj_sz, ptr_offset}});
+	} else {
+	  var_t lhs_offset = m_lfac.mkIntVar(width);
+	  bb.assign(lhs_offset, offset + ptr_offset);
+	  m_ref_bnd_map.insert({&I, {ptr_obj_sz, lhs_offset}});
+	} 
+        // var_t lhs_obj_sz = m_lfac.mkIntVar(width);
+        // var_t lhs_offset = m_lfac.mkIntVar(width);
+        // bb.assign(lhs_obj_sz, ptr_obj_sz);
+        // bb.assign(lhs_offset, offset + ptr_offset);
+        // m_ref_bnd_map.insert({&I, {lhs_obj_sz, lhs_offset}});
       }
     }
   }
