@@ -392,7 +392,7 @@ def parseArgs(argv):
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
                    help='Check properties (default no check)',
-                   choices=['none', 'assert', 'null', 'uaf', 'bounds', 'null-legacy', 'uaf-legacy'],
+                   choices=['none', 'assert', 'null', 'uaf', 'bounds', 'null-legacy', 'uaf-legacy', 'is-deref'],
                    dest='crab_check', default='none')
     add_bool_argument(p, 'crab-check-only-typed', default=False,
                       help='Add checks only on typed regions (only for null and uaf). False by default',
@@ -895,6 +895,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
             clam_args.append('--crab-uaf-check')
         elif args.crab_check == 'bounds':
             clam_args.append('--crab-bounds-check')
+        elif args.crab_check == 'is-deref':
+            clam_args.append('--crab-is-deref-check')
         if args.crab_check in ['null-legacy', 'uaf-legacy', 'null', 'uaf', 'bounds']:
             if args.crab_check_only_typed:
                 clam_args.append('--crab-check-only-typed-regions=true')

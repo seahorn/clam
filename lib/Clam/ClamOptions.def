@@ -160,7 +160,7 @@ XCrabBoundsChecks("crab-bounds-check",
      llvm::cl::init(false));
 
 llvm::cl::opt<bool, true>
-XCrabIsDeref("crab-is-deref",
+XCrabIsDeref("crab-is-deref-check",
      llvm::cl::desc("Insert CrabIR to reason about sea_is_dereferenceable"),
      llvm::cl::location(clam::CrabIsDeref),
      llvm::cl::init(false));
