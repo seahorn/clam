@@ -23,6 +23,8 @@ int main(void) {
     __CRAB_assume(cap <= max);
 
     int *out = malloc(sizeof(int) * cap);
-    __CRAB_assert(sea_is_dereferenceable(out, min));
+    // clam adds an assertion so no need to add __CRAB_assert.
+    sea_is_dereferenceable(out, min);
+    //__CRAB_assert(sea_is_dereferenceable(out, min));
     return 0;
 }

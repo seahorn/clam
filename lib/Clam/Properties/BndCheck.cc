@@ -1,3 +1,4 @@
+#include "clam/config.h"
 #include "clam/CrabIREmitter.hh"
 #include "clam/Support/Debug.hh"
 
@@ -348,6 +349,12 @@ public:
         bb.bool_assign(second_check,
                        ptr_obj_sz >= ptr_offset + size_of.get_constant());
       bb.bool_and(s.getLhs(), first_check, second_check);
+#ifdef CLAM_IS_TOPLEVEL
+      // If clam is called from SeaHorn then we don't want to add this
+      // assertion. Note that seahorn is the only client that adds
+      // calls to sea.is_dereferenceable.
+      bb.bool_assert(s.getLhs(),getDebugLoc(&I, m_assertionId++));
+#endif       
     }
   }
 };

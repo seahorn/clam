@@ -130,6 +130,11 @@ if (CLAM_INCLUDE_ALL_DOMAINS)
 else()
   set(INCLUDE_ALL_DOMAINS FALSE)
 endif()
+if (TopLevel)
+  set(CLAM_IS_TOPLEVEL TRUE)
+else()
+  set(CLAM_IS_TOPLEVEL FALSE)
+endif()  
 #### end clam options ######
 
 # Add path for custom modules
