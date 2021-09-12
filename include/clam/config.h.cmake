@@ -13,11 +13,18 @@
 /** Include all default abstract domains.**/
 #cmakedefine INCLUDE_ALL_DOMAINS ${INCLUDE_ALL_DOMAINS}
 
-/** whether region domain without ghost variables is available or not **/
-#cmakedefine HAS_FAST_REGION_DOMAIN ${HAS_FAST_REGION_DOMAIN}
-
 /** whether Clam is compiled as a standalone application **/
 #cmakedefine CLAM_IS_TOPLEVEL ${CLAM_IS_TOPLEVEL}
+
+/** whether region domain without ghost variables should be used or
+    not **/
+#cmakedefine HAS_FAST_REGION_DOMAIN ${HAS_FAST_REGION_DOMAIN}
+
+/** whether region domain that suppors is_deferenceable intrisics
+    should be used or not. If HAS_FAST_REGION_DOMAIN is ON then
+    USE_REGION_IS_DEREF_DOMAIN is ignored. **/
+#cmakedefine USE_REGION_IS_DEREF_DOMAIN ${USE_REGION_IS_DEREF_DOMAIN}
+
 
 
 

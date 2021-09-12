@@ -14,6 +14,8 @@
 #include <crab/domains/flat_boolean_domain.hpp>
 #ifdef HAS_FAST_REGION_DOMAIN
 #include <crab/domains/region_without_ghost_domain.hpp>
+#elif defined(USE_REGION_IS_DEREF_DOMAIN)
+#include <crab/domains/region_with_is_deref_domain.hpp>
 #else
 #include <crab/domains/region_domain.hpp>
 #endif 
@@ -41,10 +43,12 @@ using str_varname_t = str_var_allocator::varname_t;
 // Array functor domain where the parameter domain is DOM
 #define ARRAY_FUN(DOM) array_adapt_domain<DOM>
 // Region functor domain -- the root of the hierarchy of domains.
-#ifndef HAS_FAST_REGION_DOMAIN
-#define RGN_FUN(DOM) region_domain<RegionParams<DOM>>
-#else
+#ifdef HAS_FAST_REGION_DOMAIN
 #define RGN_FUN(DOM) region_without_ghost_domain<DOM, FastRegionParams>
+#elif defined(USE_REGION_IS_DEREF_DOMAIN)
+#define RGN_FUN(DOM) region_with_is_deref_domain<RegionParams<DOM>>
+#else
+#define RGN_FUN(DOM) region_domain<RegionParams<DOM>>
 #endif 
 /* ====================================================================== */    
 /* END MACROS to create the hierarchy of domains. Only for internal use   */
@@ -88,7 +92,9 @@ public:
   /* This should be always disabled */
   enum { refine_uninitialized_regions = 0};
   /* Tag analysis */
-  enum { tag_analysis = 1};  
+  enum { tag_analysis = 1};
+  /* Reason about is_dereferenceable intrinsics */
+  enum { is_dereferenceable = 1};
 };
 #else
 using region_dom_varname_t = clam::varname_t;
