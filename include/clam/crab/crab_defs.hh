@@ -95,15 +95,19 @@ public:
   enum { tag_analysis = 1};
   /* Reason about is_dereferenceable intrinsics */
   enum { is_dereferenceable = 1};
+  /* Ignore contents of unknown regions */
+  enum { skip_unknown_regions = 1};  
 };
 #else
 using region_dom_varname_t = clam::varname_t;
 class FastRegionParams {
 public:
-  enum { allocation_sites = 1 };
-  enum { deallocation = 1 };
-  enum { refine_uninitialized_regions = 0 };
-  enum { tag_analysis = 1 };
+  enum { allocation_sites = 1};
+  enum { deallocation = 1};
+  enum { refine_uninitialized_regions = 0};
+  enum { tag_analysis = 1};
+  enum { is_dereferenceable = 1};
+  enum { skip_unknown_regions = 0};  
 };
 #endif 
 /* ====================================================================== */    
