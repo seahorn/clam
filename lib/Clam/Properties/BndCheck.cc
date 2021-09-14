@@ -221,7 +221,7 @@ public:
   // where p_offset indicates the offset of element pointer
   // the p_size means the total size of allcation
   // the element ptr should refere the same size as the original one
-    void visitAfterGep(llvm::Instruction &I, CrabGepRefOps &s) {
+  void visitAfterGep(llvm::Instruction &I, CrabGepRefOps &s) {
     if (!isa<PHINode>(I) && !isa<BitCastInst>(I) &&
         !isa<GetElementPtrInst>(I)) {
       return;
@@ -232,14 +232,26 @@ public:
              llvm::errs() << "Gep: add two extra variable for " << I << "\n");
     Value *vptr = I.getOperand(0);
     unsigned width = getMaxWidthInBits(I);
-    if (isa<ConstantPointerNull>(*vptr)) { // Get a constant null ptr
+    if (isa<ConstantPointerNull>(*vptr) ||
+        isa<GlobalObject>(
+            *vptr)) { // Get a constant null ptr, function or global variable
       var_t lhs_obj_sz = m_lfac.mkIntVar(width);
       var_t lhs_offset = m_lfac.mkIntVar(width);
-      bb.assign(lhs_obj_sz, number_t(0));
+      const DataLayout *dl = getInsDatalayout(I);
+      unsigned obj_sz = 0;
+      if (GlobalVariable *gv = dyn_cast<GlobalVariable>(vptr)) {
+        Type *globVarType =
+            gv->getType()->getPointerElementType(); // LLVM views global
+                                                    // variables as pointers
+        obj_sz = dl->getTypeAllocSize(globVarType);
+      } else if (Function *func = dyn_cast<Function>(vptr)) {
+        Type *funcType = func->getType();
+        obj_sz = dl->getTypeAllocSize(funcType);
+      }
+      bb.assign(lhs_obj_sz, obj_sz);
       bb.assign(lhs_offset, number_t(0));
       m_ref_bnd_map.insert({&I, {lhs_obj_sz, lhs_offset}});
-    }
-    else {
+    } else {
       auto it = m_ref_bnd_map.find(vptr);
       if (it == m_ref_bnd_map.end()) {
         CLAM_WARNING("Could not find gep ptr "
@@ -269,7 +281,7 @@ public:
   // where p.offset indicates the offset of selected pointer
   // the p.size means the total size of allocation
   void visitAfterRefSelect(SelectInst &I, CrabSelectRefOps &s) {
-    const Value &vtrue = *(I.getTrueValue());
+    Value &vtrue = *(I.getTrueValue());
     const Value &vfalse = *(I.getFalseValue());
     basic_block_t &bb = s.getBasicBlock();
     unsigned width = getMaxWidthInBits(I);
