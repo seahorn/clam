@@ -577,6 +577,10 @@ def defOutPPName(name, wd=None):
     return os.path.join(wd, fname)
 
 
+def _bc_or_ll_file (name):
+    ext = os.path.splitext (name)[1]
+    return ext == '.bc' or ext == '.ll'
+
 def _plus_plus_file(name):
     ext = os.path.splitext(name)[1]
     return ext in ('.cpp', '.cc')
@@ -584,7 +588,7 @@ def _plus_plus_file(name):
 # Run Clang
 def clang(in_name, out_name, args, arch=32, extra_args=[]):
 
-    if os.path.splitext(in_name)[1] == '.bc':
+    if _bc_or_ll_file(in_name):
         if verbose:
             print('--- Clang skipped: input file is already bitecode')
         shutil.copy2(in_name, out_name)
