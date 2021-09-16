@@ -26,12 +26,14 @@ public:
   
   // Return the range for the left-hand side of I before the execution
   // of I. The type of I should be either integer or pointer,
-  // otherwise an error will be raised.
+  // otherwise an error will be raised. If the returned range is the
+  // empty constant range then the instruction is unreachable.
   virtual llvm::ConstantRange range(const llvm::Instruction &I) = 0;
 
   // Return the range for V that holds at the entry of B.  The type of
   // V should be either integer or pointer, otherwise an error will be
-  // raised.
+  // raised. If the returned range is the empty constant range then
+  // the basic block is unreachable.
   virtual llvm::ConstantRange range(const llvm::BasicBlock &B, const llvm::Value &V) = 0;
 
   // Return the tags associated to the left-hand side of I before the
