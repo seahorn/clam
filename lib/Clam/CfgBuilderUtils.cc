@@ -176,6 +176,7 @@ bool isIntArray(const Type &T) {
 bool isAssertFn(const Function &F) {
   return (F.getName().equals("verifier.assert") ||
           F.getName().equals("crab.assert") ||
+	  F.getName().equals("__VERIFIER_assert") || 
           F.getName().equals("__CRAB_assert"));
 }
 
@@ -193,6 +194,7 @@ bool isErrorFn(const Function &F) {
 bool isAssumeFn(const Function &F) {
   return (F.getName().equals("verifier.assume") ||
           F.getName().equals("__VERIFIER_assume") ||
+	  F.getName().equals("__SEA_assume") ||
           F.getName().equals("__CRAB_assume") ||
 	  F.getName().equals("llvm.assume"));
 }
