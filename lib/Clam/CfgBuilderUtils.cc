@@ -206,18 +206,21 @@ bool isNotAssumeFn(const Function &F) {
 }
 
 bool isVerifierCall(const Function &F) {
-  return (isAssertFn(F) || isErrorFn(F) || isAssumeFn(F) || isNotAssumeFn(F) ||
-          isSeaHornFail(F));
+  return (F.isDeclaration() && 
+	  (isAssertFn(F) || isErrorFn(F) || isAssumeFn(F) || isNotAssumeFn(F) ||
+	   isSeaHornFail(F)));
 }
 
 static bool isSeaHornIntrinsic(const Function &F) {
-  return (F.getName() == "sea.is_dereferenceable" ||
-	  F.getName() == "sea_is_dereferenceable");
+  return (F.isDeclaration() &&
+	  (F.getName() == "sea.is_dereferenceable" ||
+	   F.getName() == "sea_is_dereferenceable"));
 }
 
 bool isCrabIntrinsic(const Function &F) {
-  return (F.getName().startswith("__CRAB_intrinsic_") ||
-	  isSeaHornIntrinsic(F));
+  return (F.isDeclaration() &&
+	  (F.getName().startswith("__CRAB_intrinsic_") ||
+	   isSeaHornIntrinsic(F)));
 }
 
 std::string getCrabIntrinsicName(const Function &F) {
@@ -334,8 +337,7 @@ bool AllUsesAreVerifierCalls(Value &V, bool goThroughIntegerCasts,
       CallSite CS(CI);
       const Value *calleeV = CS.getCalledValue();
       const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
-      if (callee && (isAssertFn(*callee) || isAssumeFn(*callee) ||
-                     isNotAssumeFn(*callee))) {
+      if (callee && isVerifierCall(*callee)) {
         if (nonBoolCond) {
           FunctionType *FTy = callee->getFunctionType();
           if (!FTy->isVarArg() && FTy->getReturnType()->isVoidTy() &&
