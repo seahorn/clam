@@ -96,7 +96,7 @@ public:
   /* Reason about is_dereferenceable intrinsics */
   enum { is_dereferenceable = 1};
   /* Ignore contents of unknown regions */
-  enum { skip_unknown_regions = 1};  
+  enum { skip_unknown_regions = 0};  
 };
 #else
 using region_dom_varname_t = clam::varname_t;
