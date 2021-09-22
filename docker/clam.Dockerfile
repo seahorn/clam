@@ -48,6 +48,7 @@ RUN cmake --build . --target test-ssh-simplified
 RUN cmake --build . --target test-ntdrivers-simplified
 RUN cmake --build . --target test-array-adapt
 RUN cmake --build . --target test-mem
+RUN cmake --build . --target test-lower-unsigned
 
 WORKDIR /clam
 

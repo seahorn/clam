@@ -59,6 +59,13 @@ add_lit_testsuite(test-readme "Run README.md tests"
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/demo
   DEPENDS clam)
 
+add_lit_testsuite(test-lower-unsigned "Run tests for loswer-unsigned"
+  -v
+  ${CMAKE_CURRENT_SOURCE_DIR}/lower-unsigned  ## where .cfg file is located
+  PARAMS
+  test_dir=${CMAKE_CURRENT_BINARY_DIR}/lower-unsigned
+  DEPENDS clam)
+
 if (CRAB_USE_LDD)
   add_lit_testsuite(test-ssh "Run SVCOMP ssh benchmarks"
     -v 
