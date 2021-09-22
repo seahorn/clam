@@ -50,7 +50,7 @@ bool isReference(const Value &v, const CrabBuilderParams &params) {
 }
 
 z_number toZNumber(const APInt &v, const CrabBuilderParams &params,
-                   bool &is_bignum) {
+                   bool &is_bignum, bool signed_to_unsigned) {
   is_bignum = false;
   if (!params.enable_bignums) {
     is_bignum = isSignedBigNum(v);
@@ -64,13 +64,13 @@ z_number toZNumber(const APInt &v, const CrabBuilderParams &params,
   // Based on:
   // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
   APInt abs;
-  abs = v.isNegative() ? v.abs() : v;
+  abs = v.isNegative() && !signed_to_unsigned ? v.abs() : v;
   const uint64_t *rawdata = abs.getRawData();
   unsigned numWords = abs.getNumWords();
 
   ikos::z_number res;
   mpz_import(res.get_mpz_t(), numWords, -1, sizeof(uint64_t), 0, 0, rawdata);
-  return v.isNegative() ? -res : res;
+  return v.isNegative() && !signed_to_unsigned ? -res : res;
 #endif
 }
 

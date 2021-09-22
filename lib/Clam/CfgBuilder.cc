@@ -149,6 +149,15 @@ static void havoc(var_t v, std::string comment, basic_block_t &bb,
 }
 
 static void
+convertSignedIntoUnsignedAtUnsignedCmpInst(const Value &v, lin_exp_t &op,
+                                           const CrabBuilderParams &params) {
+  if (const ConstantInt *CI = dyn_cast<const ConstantInt>(&v)) {
+    bool is_bignum;
+    op = toZNumber(CI->getValue(), params, is_bignum, true);
+  }
+}
+
+static void
 addUnsignedCmpTranslationIntoSign(var_t &res, lin_exp_t &op0, lin_exp_t &op1,
                                   crabLitFactory &lfac, basic_block_t &bb,
                                   const bool isNegated, const bool isCmpULE) {
@@ -245,7 +254,8 @@ addUnsignedCmpTranslationIntoSign(var_t &res, lin_exp_t &op0, lin_exp_t &op1,
 
 // %x = icmp geq %y, 10  ---> bool_assign(%x, y >= 0)
 static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
-                              basic_block_t &bb, bool removeUnsignedCmp) {
+                              basic_block_t &bb,
+                              const CrabBuilderParams &params) {
   // The type of I is a boolean or vector of booleans
   normalizeCmpInst(I);
 
@@ -300,7 +310,10 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
     break;
   }
   case CmpInst::ICMP_ULT: {
-    if (removeUnsignedCmp) {
+    if (params.lower_unsigned_icmp) {
+      // checking if an operand is a signed constant
+      convertSignedIntoUnsignedAtUnsignedCmpInst(v0, op0, params);
+      convertSignedIntoUnsignedAtUnsignedCmpInst(v1, op1, params);
       addUnsignedCmpTranslationIntoSign(lhs, op0, op1, lfac, bb,
 					false /*isNegated*/, false /* isCmpULE*/);
     } else {
@@ -311,9 +324,12 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
     break;
   }
   case CmpInst::ICMP_ULE: {
-    if (removeUnsignedCmp) {
+    if (params.lower_unsigned_icmp) {
+      // checking if an operand is a signed constant
+      convertSignedIntoUnsignedAtUnsignedCmpInst(v0, op0, params);
+      convertSignedIntoUnsignedAtUnsignedCmpInst(v1, op1, params);
       addUnsignedCmpTranslationIntoSign(lhs, op0, op1, lfac, bb,
-					false /*isNegated*/, true /*isCmpULE*/); 
+                                        false /*isNegated*/, true /*isCmpULE*/);
     } else {
       lin_cst_t cst(op0 <= op1);
       cst.set_unsigned();
@@ -495,6 +511,7 @@ cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
 static Optional<var_t> unsignedCmpInstToCrabInt(CmpInst &I,
                                                 crabLitFactory &lfac,
                                                 basic_block_t &bb,
+                                                const CrabBuilderParams &params,
                                                 const bool isNegated = false) {
   normalizeCmpInst(I);
 
@@ -516,6 +533,9 @@ static Optional<var_t> unsignedCmpInstToCrabInt(CmpInst &I,
   case CmpInst::ICMP_ULE:
   case CmpInst::ICMP_ULT: {
     var_t res = lfac.mkBoolVar();
+    // checking if an operand is a signed constant
+    convertSignedIntoUnsignedAtUnsignedCmpInst(v0, op0, params);
+    convertSignedIntoUnsignedAtUnsignedCmpInst(v1, op1, params);
     addUnsignedCmpTranslationIntoSign(res, op0, op1, lfac, bb, isNegated,
                                       I.getPredicate() == CmpInst::ICMP_ULE);
     return res;
@@ -1589,7 +1609,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
       if (m_params.lower_unsigned_icmp &&
           Cond->isUnsigned()) { // handle unsigned int
         auto var_opt = unsignedCmpInstToCrabInt(*Cond, m_lfac, m_bb,
-                                                isNotAssumeFn(*callee));
+                                                isNotAssumeFn(*callee), m_params);
         if (var_opt.hasValue()) {
           if (isAssertFn(*callee)) {
             m_bb.bool_assert(var_opt.getValue(),
@@ -1772,7 +1792,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
         }
         // do nothing: lowered elsewhere
       } else {
-        cmpInstToCrabBool(I, m_lfac, m_bb, m_params.lower_unsigned_icmp);
+        cmpInstToCrabBool(I, m_lfac, m_bb, m_params);
       }
     }
   }
@@ -2119,11 +2139,12 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
     // -- general case: we don't know whether the condition is true or not
     if (CmpInst *CI = dyn_cast<CmpInst>(&condV)) {
       if (m_params.lower_unsigned_icmp && CI->isUnsigned()) {
-        if (auto var_opt = unsignedCmpInstToCrabInt(*CI, m_lfac, m_bb)) {
-	  // select only take integer variables and *var_opt is a
-	  // boolean variable.
-	  var_t bvar = *var_opt;
-	  // A bitwidth of 8 is enough and it cannot create type
+        if (auto var_opt =
+                unsignedCmpInstToCrabInt(*CI, m_lfac, m_bb, m_params)) {
+          // select only take integer variables and *var_opt is a
+          // boolean variable.
+          var_t bvar = *var_opt;
+          // A bitwidth of 8 is enough and it cannot create type
 	  // inconsistencies since ivar is only used in the condition
 	  // of select.
 	  var_t ivar = m_lfac.mkIntVar(8); 
@@ -3907,8 +3928,8 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
           } else if (isInteger(*(CI->getOperand(0))) &&
                      isInteger(*(CI->getOperand(1)))) {
             if (m_params.lower_unsigned_icmp && CI->isUnsigned()) {
-              auto var_opt =
-                  unsignedCmpInstToCrabInt(*CI, m_lfac, bb, isNegated);
+              auto var_opt = unsignedCmpInstToCrabInt(*CI, m_lfac, bb, m_params,
+                                                      isNegated);
               if (var_opt.hasValue()) {
                 bb.bool_assume(var_opt.getValue());
               }
