@@ -180,7 +180,32 @@ static bool update(abs_dom_map_t &table, const llvm::BasicBlock &block,
   }
   return already;
 }
-  
+
+void AnalysisParams::write(raw_ostream &o) const {
+  o << "Analysis options:\n";
+  o << "\tabstract domain: " <<  dom.desc() << "\n";
+  o << "\trun inter-procedural analysis: " << run_inter << "\n";
+  o << "\t\tmaximum number of calling contexts: " << max_calling_contexts << "\n";
+  o << "\t\tprecise analysis of recursive calls: " << analyze_recursive_functions << "\n";
+  o << "\t\texact summary reuse: " << exact_summary_reuse << "\n";
+  o << "\t\tonly main as entry point: " << inter_entry_main << "\n";
+  o << "\tFixpoint parameters" <<  "\n";
+  o << "\t\twidening delay: " << widening_delay << "\n";
+  o << "\t\tnarrowing iterations: " << narrowing_iters  << "\n";
+  o << "\t\tsize of the widening jumpset: " << widening_jumpset << "\n";
+  o << "\tSwitch to non-relation domain if max number of live variables >= " << relational_threshold << "\n";
+  o << "\tPretty printing options" << "\n";
+  o << "\t\tprint invariants: " << print_invars << "\n";
+  //o << "\t\tprint preconditions: " << print_preconds << "\n";
+  //o << "\t\tprint summaries" << print_summaries << "\n";  
+  o << "\t\tprint unjustified assumptions: " << print_unjustified_assumptions  << "\n";
+  o << "\t\tprint variables-of-influence wrt assertions: " << print_voi << "\n";
+  o << "\tstore invariants for clam clients: " << store_invariants << "\n";
+  o << "\trun checker: " << (check == CheckerKind::ASSERTION ? "1" : "0") << "\n";
+  o << "\trun backward analysis: " << run_backward << "\n";
+  o << "\trun liveness analysis: " << run_liveness << "\n";
+}
+
 /**
  * IntraClamImpl: internal implementation of the intra-procedural
  *                analysis.
@@ -838,6 +863,10 @@ private:
                const lin_csts_map_t &lin_csts_assumptions /*unused*/,
                AnalysisResults &results) {
 
+    CRAB_VERBOSE_IF(1,
+		    params.write(llvm::errs());
+		    crab::outs() << "\n";);
+    
     // If the number of live variables per block is too high we
     // switch to a cheap domain regardless what the user wants.
     CrabDomain::Type absdom = params.dom;
@@ -901,7 +930,7 @@ private:
   
   void analyze(const AnalysisParams &params, clam_abstract_domain init,
                AnalysisResults &results) {
-
+    
     CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                            << "Running top-down inter-procedural analysis "
                            << "with domain:"
@@ -1048,6 +1077,10 @@ const CrabBuilderManager &IntraGlobalClam::getCfgBuilderMan() const {
   
 void IntraGlobalClam::analyze(AnalysisParams &params,
 			      const abs_dom_map_t &abs_dom_assumptions) {
+  CRAB_VERBOSE_IF(1,
+		  params.write(llvm::errs());
+		  crab::outs() << "\n");
+  
   m_impl->analyze(params, abs_dom_assumptions);
 }
 
@@ -1235,20 +1268,7 @@ bool ClamPass::runOnModule(Module &M) {
   }
   m_cfg_builder_man.reset(
       new CrabBuilderManager(builder_params, tli, std::move(mem)));
-
-  unsigned num_analyzed_funcs = 0;
-  CRAB_VERBOSE_IF(
-      1,
-      for (auto &F
-           : M) {
-        if (isTrackable(F)) {
-          num_analyzed_funcs++;
-        }
-      } crab::get_msg_stream()
-          << "Started clam\n";
-      crab::get_msg_stream()
-      << "Total number of analyzed functions:" << num_analyzed_funcs << "\n";);
-
+   
   /// Run the analysis
 
   m_params.dom = ClamDomain;
@@ -1273,6 +1293,19 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.check = (CrabCheck ?
 		    clam::CheckerKind::ASSERTION : clam::CheckerKind::NOCHECKS);
   m_params.check_verbose = CrabCheckVerbose;
+  
+  unsigned num_analyzed_funcs = 0;
+  CRAB_VERBOSE_IF(
+      1,
+      for (auto &F
+           : M) {
+        if (isTrackable(F)) {
+          num_analyzed_funcs++;
+        }
+      } crab::get_msg_stream()
+          << "Started clam\n";
+      crab::get_msg_stream()
+      << "Total number of analyzed functions:" << num_analyzed_funcs << "\n";);
   
   if (m_params.run_inter) {
     m_ga.reset(new InterGlobalClam(M, *m_cfg_builder_man));

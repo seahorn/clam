@@ -4562,10 +4562,10 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tenable big numbers: " << enable_bignums << "\n";
   o << "\tcheck only typed regions: " << check_only_typed_regions << "\n";
   o << "\tcheck only acyclic regions: " << check_only_noncyclic_regions << "\n";
-  o << "\tadd null-dereference checks: " << add_null_checks << "\n";
-  o << "\tadd use-after-free checks: " << add_uaf_checks << "\n";
-  o << "\tadd buffer bounds checks: " << add_bounds_checks << "\n";
-  o << "\tadd CrabIR for sea_is_dereferenceable: " << add_is_deref << "\n";      
+  o << "\tadd CrabIR for checking null-dereference errors: " << add_null_checks << "\n";
+  o << "\tadd CrabIR for checking use-after-free errors: " << add_uaf_checks << "\n";
+  o << "\tadd CrabIR for checking buffer bounds errors: " << add_bounds_checks << "\n";
+  o << "\tadd CrabIR for checking sea_is_dereferenceable intrinsics: " << add_is_deref << "\n";      
 }
 
 /* CFG Builder class */

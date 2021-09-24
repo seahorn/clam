@@ -65,5 +65,7 @@ struct AnalysisParams {
         print_summaries(false), print_voi(false),
 	output_filename(""), store_invariants(true), keep_shadow_vars(false),
         check(CheckerKind::NOCHECKS), check_verbose(0) {}
+
+  void write(llvm::raw_ostream &o) const;  
 };
 } // end namespace clam
