@@ -31,7 +31,7 @@
 using namespace llvm;
 
 /* Begin LLVM pass options */
-llvm::cl::OptionCategory ClamOptCat("clam options");
+extern llvm::cl::OptionCategory ClamOptCat("clam options");
 
 static cl::opt<clam::InvariantsLocation>
 InvLoc("crab-opt-add-invariants",
