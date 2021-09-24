@@ -31,7 +31,7 @@
 using namespace llvm;
 
 /* Begin LLVM pass options */
-extern llvm::cl::OptionCategory ClamOptCat("clam options");
+
 
 static cl::opt<clam::InvariantsLocation>
 InvLoc("crab-opt-add-invariants",
@@ -50,20 +50,17 @@ InvLoc("crab-opt-add-invariants",
 	       clEnumValN(clam::InvariantsLocation::ALL,
 			  "all",
 			  "Add invariants at all locations (very verbose)")),
-       cl::init(clam::InvariantsLocation::NONE),
-       llvm::cl::cat(ClamOptCat));
+       cl::init(clam::InvariantsLocation::NONE));
 
 llvm::cl::opt<bool>
 RemoveDeadCode("crab-opt-dce",
 	 llvm::cl::desc("DCE using Crab invariants"),
-	 llvm::cl::init(true),
-	 llvm::cl::cat(ClamOptCat));
+	 llvm::cl::init(true));
 
 llvm::cl::opt<bool>
 ReplaceWithConstants("crab-opt-replace-with-constants",
 	 llvm::cl::desc("Replace values with constants inferred by Crab"),
-	 llvm::cl::init(false),
-	 llvm::cl::cat(ClamOptCat));
+	 llvm::cl::init(false));
 /* End LLVM pass options */
 
 #define DEBUG_TYPE "crab-opt"
