@@ -52,6 +52,7 @@
 #include "crab/cg/cg_bgl.hpp"
 #include "crab/checkers/assertion.hpp"
 #include "crab/checkers/checker.hpp"
+#include "crab/domains/abstract_domain_params.hpp"
 #include "crab/support/debug.hpp"
 #include "crab/support/stats.hpp"
 
@@ -865,6 +866,8 @@ private:
 
     CRAB_VERBOSE_IF(1,
 		    params.write(llvm::errs());
+		    crab::outs() << "\n";
+		    crab::domains::crab_domain_params_man::get().write(crab::outs());
 		    crab::outs() << "\n";);
     
     // If the number of live variables per block is too high we
@@ -1079,7 +1082,9 @@ void IntraGlobalClam::analyze(AnalysisParams &params,
 			      const abs_dom_map_t &abs_dom_assumptions) {
   CRAB_VERBOSE_IF(1,
 		  params.write(llvm::errs());
-		  crab::outs() << "\n");
+		  crab::outs() << "\n";
+		  crab::domains::crab_domain_params_man::get().write(crab::outs());
+		  crab::outs() << "\n";);
   
   m_impl->analyze(params, abs_dom_assumptions);
 }

@@ -57,17 +57,17 @@ using str_varname_t = str_var_allocator::varname_t;
 /* ====================================================================== */      
 /* BEGIN array adaptive domain                                            */
 /* ====================================================================== */      
-class ArrayAdaptParams {
-public:
- /* options for array smashing */  
-  enum { is_smashable = 1 };
-  enum { smash_at_nonzero_offset = 1};
-  enum { max_smashable_cells = 64};
-  /* options for array expansion */  
-  enum { max_array_size = 64 };
-};
+// class ArrayAdaptParams {
+// public:
+//  /* options for array smashing */  
+//   enum { is_smashable = 1 };
+//   enum { smash_at_nonzero_offset = 1};
+//   enum { max_smashable_cells = 64};
+//   /* options for array expansion */  
+//   enum { max_array_size = 64 };
+// };
 template<class Dom>
-using array_adapt_domain = array_adaptive_domain<Dom, ArrayAdaptParams>;
+using array_adapt_domain = array_adaptive_domain<Dom>;
 /* ====================================================================== */      
 /* END array adaptive domain                                              */
 /* ====================================================================== */      
@@ -85,18 +85,18 @@ public:
   using varname_allocator_t = str_var_allocator;  
   using base_abstract_domain_t = BaseAbsDom;
   using base_varname_t = typename BaseAbsDom::varname_t;
-  /* Enable reasoning about allocation sites*/
-  enum { allocation_sites = 1};
-  /* Enable reasoning about deallocations */
-  enum { deallocation = 1};
-  /* This should be always disabled */
-  enum { refine_uninitialized_regions = 0};
-  /* Tag analysis */
-  enum { tag_analysis = 1};
-  /* Reason about is_dereferenceable intrinsics */
-  enum { is_dereferenceable = 1};
-  /* Ignore contents of unknown regions */
-  enum { skip_unknown_regions = 0};  
+  // /* Enable reasoning about allocation sites*/
+  // enum { allocation_sites = 1};
+  // /* Enable reasoning about deallocations */
+  // enum { deallocation = 1};
+  // /* This should be always disabled */
+  // enum { refine_uninitialized_regions = 0};
+  // /* Tag analysis */
+  // enum { tag_analysis = 1};
+  // /* Reason about is_dereferenceable intrinsics */
+  // enum { is_dereferenceable = 1};
+  // /* Ignore contents of unknown regions */
+  // enum { skip_unknown_regions = 0};  
 };
 #else
 using region_dom_varname_t = clam::varname_t;

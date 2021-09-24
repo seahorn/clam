@@ -406,6 +406,30 @@ XCrabKeepShadows("crab-keep-shadows",
     llvm::cl::Hidden,
     llvm::cl::cat(ClamOptCat));
 
+/* Abstract domain parameters */
+
+struct AbsDomParam {
+  void operator=(const std::string &s) const {
+      std::string delimiter("=");
+      int pos = s.find(delimiter);
+      std::string param = s.substr(0, pos);
+      std::string val = s.substr(pos+delimiter.length());
+      crab::domains::crab_domain_params_man::get().set_param(param, val);
+  } 
+};
+
+AbsDomParam param;
+
+static llvm::cl::opt<AbsDomParam, true, llvm::cl::parser<std::string>> 
+XAbsDomParam("crab-dom-param",
+             llvm::cl::desc("Set abstract domain parameter. string is a pair \"param=value\""),
+             llvm::cl::location(param),
+             llvm::cl::value_desc("string"),
+             llvm::cl::ValueRequired, llvm::cl::ZeroOrMore,
+	     llvm::cl::cat(ClamOptCat));
+
+
+
 /* Debugging/Logging/Sanity Checks options */
 
 struct LogOpt {

@@ -319,6 +319,9 @@ def parseArgs(argv):
                              'zones', 'oct', 'pk', 'rtz',
                              'w-int'],
                     dest='crab_dom', default='zones')
+    p.add_argument('--crab-dom-params', dest='crab_dom_params', default=None,
+                   help="Set abstract domain options STR=\"param1=val1:param2=val2:...\"",
+                   metavar='STR')
     p.add_argument('--crab-widening-delay',
                     type=int, dest='widening_delay',
                     help='Max number of iterations until performing widening', default=1)
@@ -806,8 +809,14 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args = clam_args + extra_opts
 
     if args.log is not None:
-        for l in args.log.split(':'): clam_args.extend(['-crab-log', l])
+        for l in args.log.split(':'):
+            clam_args.extend(['-crab-log', l])
 
+    if args.crab_dom_params is not None:
+        for l in args.crab_dom_params.split(':'):
+            clam_args.extend(['-crab-dom-param', l])
+            
+        
     # disable sinking instructions to end of basic block
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
