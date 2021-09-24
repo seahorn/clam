@@ -34,6 +34,12 @@ struct CrabBuilderParams {
   // bool_assume/bool_assert) because Crab is, in general, not very
   // good at boolean reasoning.
   bool avoid_boolean;
+  // Remove llvm.OP.with.overflow.* with the corresponding OP without
+  // overflow checking. Thus, this transformation should be applied
+  // only if the operation is known to not overflow.
+  bool lower_arithmetic_with_overflow_intrinsics;
+  // Add make_ref for global values (e.g., global variables, functions etc)
+  bool allocate_global_values;
   /// Add reasonable assumptions about pointers (e.g., allocas and
   /// globals cannot be null, external functions do not return
   /// dangling pointers, etc.)
@@ -42,8 +48,11 @@ struct CrabBuilderParams {
   bool add_null_checks;
   /// Emit crabIR to perform use-after-free checks  
   bool add_uaf_checks;
-  /// Emit crabIR to perform buffer-overflow checks
+  /// Emit crabIR to perform buffer-overflow checks at all memory
+  /// accesses.
   bool add_bounds_checks;
+  /// Emit crabIR to reason about sea_is_dereferenceable
+  bool add_is_deref;
   /// Add above checks only on certain heap shapes
   bool check_only_typed_regions;
   bool check_only_noncyclic_regions;
@@ -56,10 +65,12 @@ struct CrabBuilderParams {
   CrabBuilderParams()
       : precision_level(CrabBuilderPrecision::NUM), simplify(false),
         interprocedural(true), lower_singleton_aliases(false),
-        include_useless_havoc(true), avoid_boolean(true),
-        lower_unsigned_icmp(false), enable_bignums(false),
+        include_useless_havoc(true), enable_bignums(false),
+        lower_unsigned_icmp(false), avoid_boolean(true),
+	lower_arithmetic_with_overflow_intrinsics(false),
+	allocate_global_values(true),
         add_pointer_assumptions(true), add_null_checks(false),
-        add_uaf_checks(false), add_bounds_checks(false),
+        add_uaf_checks(false), add_bounds_checks(false), add_is_deref(false),
         check_only_typed_regions(false), check_only_noncyclic_regions(false),
         print_cfg(false), dot_cfg(false) {}
 
@@ -75,6 +86,10 @@ struct CrabBuilderParams {
     return trackMemory() && add_pointer_assumptions;
   }
 
+  bool allocateGlobals() const {
+    return trackMemory() && allocate_global_values;
+  }
+  
   /* Set lower unsigned cmp into signed for Crab programs */
   void lowerUnsignedICmpIntoSigned() {
     if (!lower_unsigned_icmp) {

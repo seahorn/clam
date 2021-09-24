@@ -15,11 +15,14 @@ bool CrabDotCFG;
 bool CrabEnableUniqueScalars;
 bool CrabIncludeHavoc;
 bool CrabLowerUnsignedICmp;
+bool CrabLowerWithOverflowIntrinsics;
+bool CrabAllocateGlobals;
 bool CrabEnableBignums;
 bool CrabAddPtrAssumptions;
 bool CrabNullChecks;
 bool CrabUafChecks;
 bool CrabBoundsChecks;
+bool CrabIsDeref;
 bool CrabCheckOnlyTyped;
 bool CrabCheckOnlyNonCyclic;
 bool CrabPrintInvariants;
@@ -48,6 +51,8 @@ unsigned int CrabCheckVerbose;
 bool CrabKeepShadows;
 } // end namespace clam
 
+llvm::cl::OptionCategory ClamOptCat("clam options");
+
 /*** Translation LLVM to CrabIR Options ***/
 
 llvm::cl::opt<clam::CrabBuilderPrecision, true>
@@ -58,26 +63,30 @@ XCrabTrackLev("crab-track",
      clEnumValN(clam::CrabBuilderPrecision::SINGLETON_MEM, "sing-mem", "num + singleton memory objects"),
      clEnumValN(clam::CrabBuilderPrecision::MEM, "mem", "num + all memory objects")),
    llvm::cl::location(clam::CrabTrackLev),
-   llvm::cl::init(clam::CrabBuilderPrecision::NUM));
+   llvm::cl::init(clam::CrabBuilderPrecision::NUM),
+   llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabCFGSimplify("crab-cfg-simplify",
 	 llvm::cl::desc("Simplify Crab CFG"),
 	 llvm::cl::location(clam::CrabCFGSimplify),		 
 	 llvm::cl::init(false),
-	 llvm::cl::Hidden);
+	 llvm::cl::Hidden,
+	 llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabPrintCFG("crab-print-cfg",
 	 llvm::cl::desc("Print Crab CFG"),
 	 llvm::cl::location(clam::CrabPrintCFG),	 
-	 llvm::cl::init(false));
+	 llvm::cl::init(false),
+	 llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabDotCFG("crab-dot-cfg",
 	 llvm::cl::desc("Print Crab CFG of function to dot file"),
 	 llvm::cl::location(clam::CrabDotCFG),	 	 
-	 llvm::cl::init(false));
+	 llvm::cl::init(false),
+	 llvm::cl::cat(ClamOptCat));
 
 /**
  * Translate singleton alias sets as scalar values.
@@ -87,7 +96,8 @@ llvm::cl::opt<bool, true>
 XCrabEnableUniqueScalars("crab-singleton-aliases",
 	 llvm::cl::desc("Treat singleton alias sets as scalar values"),
 	 llvm::cl::location(clam::CrabEnableUniqueScalars),
-	 llvm::cl::init(false));
+	 llvm::cl::init(false),
+	 llvm::cl::cat(ClamOptCat));
 
 /**
  * Since LLVM IR is in SSA form many of the havoc statements are
@@ -98,57 +108,87 @@ XCrabIncludeHavoc("crab-include-useless-havoc",
 		 llvm::cl::desc("Include all havoc statements."),
 		 llvm::cl::location(clam::CrabIncludeHavoc),		  
 		 llvm::cl::init(true),
-		 llvm::cl::Hidden);
+		 llvm::cl::Hidden,
+		 llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabEnableBignums("crab-enable-bignums",
      llvm::cl::desc("Translate bignums (> 64), otherwise operations with big numbers are havoced."),
      llvm::cl::location(clam::CrabEnableBignums),
-     llvm::cl::init(false));
+     llvm::cl::init(false),
+     llvm::cl::cat(ClamOptCat));
+
+llvm::cl::opt<bool, true>
+XCrabLowerWithOverflowIntrinsics("crab-lower-with-overflow-intrinsics",
+     llvm::cl::desc("Replace llvm.OP.with.overflow.* with the corresponding OP assuming no overflow"),
+     llvm::cl::location(clam::CrabLowerWithOverflowIntrinsics),
+     llvm::cl::init(false),
+     llvm::cl::cat(ClamOptCat));
+
+llvm::cl::opt<bool, true>
+XCrabAllocateGlobals("crab-allocate-globals",
+     llvm::cl::desc("Add CrabIR make_ref for global values"),
+     llvm::cl::location(clam::CrabAllocateGlobals),
+     llvm::cl::init(true),
+     llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabAddPtrAssumptions("crab-ptr-assumptions",
      llvm::cl::desc("Add reasonable assumptions about the memory model"),
      llvm::cl::location(clam::CrabAddPtrAssumptions),
-     llvm::cl::init(true));
+     llvm::cl::init(true),
+     llvm::cl::cat(ClamOptCat));
 
 
 llvm::cl::opt<bool, true>
 XCrabCheckOnlyTyped("crab-check-only-typed-regions",
      llvm::cl::desc("Add check only if abstract memory region is typed"),
      llvm::cl::location(clam::CrabCheckOnlyTyped),
-     llvm::cl::init(false));
+     llvm::cl::init(false),
+     llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabCheckOnlyNonCyclic("crab-check-only-noncyclic-regions",
      llvm::cl::desc("Add check only if abstract memory region is not cyclic"),
      llvm::cl::location(clam::CrabCheckOnlyNonCyclic),
-     llvm::cl::init(false));
+     llvm::cl::init(false),
+     llvm::cl::cat(ClamOptCat));
 
 
 llvm::cl::opt<bool, true>
 XCrabNullChecks("crab-null-check",
-     llvm::cl::desc("Insert checks for null dereference errors in CrabIR"),
+     llvm::cl::desc("Insert CrabIR for checking null dereference errors"),
      llvm::cl::location(clam::CrabNullChecks),
-     llvm::cl::init(false));
+     llvm::cl::init(false),
+     llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabUafChecks("crab-uaf-check",
-     llvm::cl::desc("Insert checks for use-after-free errors in CrabIR"),
+     llvm::cl::desc("Insert CrabIR for checking use-after-free errors"),
      llvm::cl::location(clam::CrabUafChecks),
-     llvm::cl::init(false));
+     llvm::cl::init(false),
+     llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabBoundsChecks("crab-bounds-check",
-     llvm::cl::desc("Insert checks for array bounds errors in CrabIR"),
+     llvm::cl::desc("Insert CrabIR for array bounds errors"),
      llvm::cl::location(clam::CrabBoundsChecks),
-     llvm::cl::init(false));
+     llvm::cl::init(false),
+     llvm::cl::cat(ClamOptCat));
+
+llvm::cl::opt<bool, true>
+XCrabIsDeref("crab-is-deref-check",
+     llvm::cl::desc("Insert CrabIR for checking sea_is_dereferenceable intrinsics"),
+     llvm::cl::location(clam::CrabIsDeref),
+     llvm::cl::init(false),
+     llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabLowerUnsignedICmp("crab-lower-unsigned-icmp",
      llvm::cl::desc("Insert translation from unsigned icmp into signed in CrabIR"),
      llvm::cl::location(clam::CrabLowerUnsignedICmp),
-     llvm::cl::init(false));
+     llvm::cl::init(false),
+     llvm::cl::cat(ClamOptCat));
 
 /*** Crab Analysis Options ***/
 
@@ -156,49 +196,57 @@ llvm::cl::opt<bool, true>
 XCrabPrintInvariants("crab-print-invariants", 
               llvm::cl::desc("Print Crab invariants"),
 	      llvm::cl::location(clam::CrabPrintInvariants),
-              llvm::cl::init(false));
+              llvm::cl::init(false),
+	      llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabStoreInvariants("crab-store-invariants", 
                llvm::cl::desc("Store invariants"),
 	       llvm::cl::location(clam::CrabStoreInvariants),
-               llvm::cl::init(true));
+               llvm::cl::init(true),
+	       llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabBuildOnlyCFG("crab-only-cfg", 
            llvm::cl::desc("Build Crab CFG without running the analysis"),
 	   llvm::cl::location(clam::CrabBuildOnlyCFG),
-           llvm::cl::init(false));
+           llvm::cl::init(false),
+	   llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabPrintUnjustifiedAssumptions("crab-print-unjustified-assumptions", 
 llvm::cl::desc("Print unjustified assumptions done by Crab (experimental: only integer overflow)"),
 llvm::cl::location(clam::CrabPrintUnjustifiedAssumptions),
-llvm::cl::init(false));
+llvm::cl::init(false),
+llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabPrintVoi("crab-print-voi", 
 llvm::cl::desc("Print variables-of-influence of assertions"),
 llvm::cl::location(clam::CrabPrintVoi),
-llvm::cl::init(false));
+llvm::cl::init(false),
+llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<unsigned int, true>
 XCrabWideningDelay("crab-widening-delay", 
    llvm::cl::desc("Max number of fixpoint iterations until widening is applied"),
    llvm::cl::location(clam::CrabWideningDelay),
-   llvm::cl::init(1));
+   llvm::cl::init(1),
+   llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<unsigned int, true>
 XCrabNarrowingIters("crab-narrowing-iterations", 
                    llvm::cl::desc("Max number of narrowing iterations"),
 		   llvm::cl::location(clam::CrabNarrowingIters),
-                   llvm::cl::init(10));
+                   llvm::cl::init(10),
+		   llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<unsigned int, true>
 XCrabWideningJumpSet("crab-widening-jump-set", 
                     llvm::cl::desc("Size of the jump set used for widening"),
 		    llvm::cl::location(clam::CrabWideningJumpSet),
-                    llvm::cl::init(0));
+                    llvm::cl::init(0),
+		    llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<clam::CrabDomain::Type, true, clam::CrabDomainParser>
 XClamDomain("crab-dom",
@@ -227,7 +275,8 @@ XClamDomain("crab-dom",
        clEnumValN(clam::CrabDomain::WRAPPED_INTERVALS, "w-int",
 		  "Wrapped interval domain")),
        llvm::cl::location(clam::ClamDomain),	    
-       llvm::cl::init(clam::CrabDomain::INTERVALS));
+       llvm::cl::init(clam::CrabDomain::INTERVALS),
+       llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabBackward("crab-backward", 
@@ -235,7 +284,8 @@ XCrabBackward("crab-backward",
 		      "It is only useful to prove assertions.\n"
 		      "Only the intra-procedural version has been implemented."),
 	   llvm::cl::location(clam::CrabBackward),
-           llvm::cl::init(false));
+           llvm::cl::init(false),
+	   llvm::cl::cat(ClamOptCat));
 
 // If domain is num
 llvm::cl::opt<unsigned, true>
@@ -244,45 +294,52 @@ XCrabRelationalThreshold("crab-relational-threshold",
 	    "to a non-relational domain"),
    llvm::cl::location(clam::CrabRelationalThreshold),			 
    llvm::cl::init(10000),
-   llvm::cl::Hidden);
+   llvm::cl::Hidden,
+   llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabLive("crab-live", 
 	 llvm::cl::desc("Run Crab with live ranges. "
 		  "It can lose precision if relational domains"),
          llvm::cl::location(clam::CrabLive),
-	 llvm::cl::init(false));
+	 llvm::cl::init(false),
+	 llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabInter("crab-inter",
            llvm::cl::desc("Crab Inter-procedural analysis"),
 	   llvm::cl::location(clam::CrabInter),
-           llvm::cl::init(false));
+           llvm::cl::init(false),
+	   llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<unsigned, true>
 XCrabInterMaxSummaries("crab-inter-max-summaries", 
 	 llvm::cl::desc("Maximum number of summaries per function tracked by "
 		  "the interprocedural analysis"),
 	 llvm::cl::location(clam::CrabInterMaxSummaries),
-	 llvm::cl::init(UINT_MAX));
+	 llvm::cl::init(UINT_MAX),
+	 llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabInterRecursiveFunctions("crab-inter-recursive", 
 	 llvm::cl::desc("Precise analysis of recursive analysis"),
 	 llvm::cl::location(clam::CrabInterRecursiveFunctions),
-	 llvm::cl::init(false));
+	 llvm::cl::init(false),
+	 llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabInterExactSummaryReuse("crab-inter-exact-summary-reuse", 
 	 llvm::cl::desc("Reuse summaries without losing precision (more expensive)"),
 	 llvm::cl::location(clam::CrabInterExactSummaryReuse),
-	 llvm::cl::init(true));
+	 llvm::cl::init(true),
+	 llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabInterStartFromMain("crab-inter-entry-main", 
 	 llvm::cl::desc("Start the analysis only from main (not applicable to libraries)"),
 	 llvm::cl::location(clam::CrabInterStartFromMain),
-	 llvm::cl::init(false));
+	 llvm::cl::init(false),
+	 llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<clam::heap_analysis_t, true>
 XCrabHeapAnalysis("crab-heap-analysis",
@@ -295,7 +352,8 @@ XCrabHeapAnalysis("crab-heap-analysis",
      clEnumValN(clam::heap_analysis_t::CS_SEA_DSA, "cs-sea-dsa",
                 "context-sensitive sea-dsa")),
    llvm::cl::location(clam::CrabHeapAnalysis),
-   llvm::cl::init(clam::heap_analysis_t::CI_SEA_DSA));
+   llvm::cl::init(clam::heap_analysis_t::CI_SEA_DSA),
+   llvm::cl::cat(ClamOptCat));
    
     
 llvm::cl::opt<bool, true>
@@ -303,34 +361,39 @@ XCrabDsaDisambiguateUnknown("crab-dsa-disambiguate-unknown",
     llvm::cl::desc("Disambiguate unknown pointers (unsound)"),
     llvm::cl::location(clam::CrabDsaDisambiguateUnknown),			    
     llvm::cl::init(false),
-    llvm::cl::Hidden);
+    llvm::cl::Hidden,
+    llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabDsaDisambiguatePtrCast("crab-dsa-disambiguate-ptr-cast",
     llvm::cl::desc("Disambiguate pointers that have been casted from/to integers (unsound)"),
     llvm::cl::location(clam::CrabDsaDisambiguatePtrCast),			    
     llvm::cl::init(false),
-    llvm::cl::Hidden);
+    llvm::cl::Hidden,
+    llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<bool, true>
 XCrabDsaDisambiguateExternal("crab-dsa-disambiguate-external",
     llvm::cl::desc("Disambiguate pointers that have been passed to external functions (unsound)"), 
     llvm::cl::location(clam::CrabDsaDisambiguateExternal),
     llvm::cl::init(false),			     
-    llvm::cl::Hidden);
+    llvm::cl::Hidden,
+    llvm::cl::cat(ClamOptCat));
 
 // Prove assertions
 llvm::cl::opt<bool, true>
 XCrabCheck("crab-check", 
 	   llvm::cl::desc("Run Crab Assertion Checker"),
 	   llvm::cl::location(clam::CrabCheck),
-	   llvm::cl::init(false));
+	   llvm::cl::init(false),
+	   llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<unsigned int, true>
 XCrabCheckVerbose("crab-check-verbose", 
                  llvm::cl::desc("Print verbose information about checks"),
 		 llvm::cl::location(clam::CrabCheckVerbose),
-                 llvm::cl::init(0));
+                 llvm::cl::init(0),
+		 llvm::cl::cat(ClamOptCat));
 
 // Important to clam clients (e.g., SeaHorn):
 // Shadow variables are variables that cannot be mapped back to a
@@ -340,7 +403,32 @@ XCrabKeepShadows("crab-keep-shadows",
     llvm::cl::desc("Preserve shadow variables in invariants, summaries, and preconditions"),
     llvm::cl::location(clam::CrabKeepShadows),		 
     llvm::cl::init(false),
-    llvm::cl::Hidden);
+    llvm::cl::Hidden,
+    llvm::cl::cat(ClamOptCat));
+
+/* Abstract domain parameters */
+
+struct AbsDomParam {
+  void operator=(const std::string &s) const {
+      std::string delimiter("=");
+      int pos = s.find(delimiter);
+      std::string param = s.substr(0, pos);
+      std::string val = s.substr(pos+delimiter.length());
+      crab::domains::crab_domain_params_man::get().set_param(param, val);
+  } 
+};
+
+AbsDomParam param;
+
+static llvm::cl::opt<AbsDomParam, true, llvm::cl::parser<std::string>> 
+XAbsDomParam("crab-dom-param",
+             llvm::cl::desc("Set abstract domain parameter. string is a pair \"param=value\""),
+             llvm::cl::location(param),
+             llvm::cl::value_desc("string"),
+             llvm::cl::ValueRequired, llvm::cl::ZeroOrMore,
+	     llvm::cl::cat(ClamOptCat));
+
+
 
 /* Debugging/Logging/Sanity Checks options */
 
@@ -358,7 +446,8 @@ LogClOption("crab-log",
              llvm::cl::desc("Enable specified log level"),
              llvm::cl::location(loc),
              llvm::cl::value_desc("string"),
-             llvm::cl::ValueRequired, llvm::cl::ZeroOrMore);
+             llvm::cl::ValueRequired, llvm::cl::ZeroOrMore,
+	     llvm::cl::cat(ClamOptCat));
 
 struct VerboseOpt {
   void operator=(unsigned level) const 
@@ -371,7 +460,8 @@ static llvm::cl::opt<VerboseOpt, true, llvm::cl::parser<unsigned>>
 CrabVerbose("crab-verbose",
 	    llvm::cl::desc("Enable verbose messages"),
 	    llvm::cl::location(verbose),
-	    llvm::cl::value_desc("uint"));
+	    llvm::cl::value_desc("uint"),
+	    llvm::cl::cat(ClamOptCat));
 
 
 struct WarningOpt {
@@ -385,7 +475,8 @@ static llvm::cl::opt<WarningOpt, true, llvm::cl::parser<bool>>
 CrabEnableWarning("crab-enable-warnings",
 	    llvm::cl::desc("Enable warning messages"),
 	    llvm::cl::location(warning),
-	    llvm::cl::value_desc("bool"));
+	    llvm::cl::value_desc("bool"),
+	    llvm::cl::cat(ClamOptCat));
 
 struct SanityChecksOpt {
   void operator=(bool val) const 
@@ -398,7 +489,8 @@ static llvm::cl::opt<SanityChecksOpt, true, llvm::cl::parser<bool>>
 CrabSanityChecks("crab-sanity-checks",
 	    llvm::cl::desc("Enable sanity checks"),
 	    llvm::cl::location(sanity),
-	    llvm::cl::value_desc("bool"));
+	    llvm::cl::value_desc("bool"),
+	    llvm::cl::cat(ClamOptCat));
 
 struct StatsOpt {
   // operator bool() const
@@ -412,11 +504,13 @@ static llvm::cl::opt<StatsOpt, true, llvm::cl::parser<bool>>
 XCrabStats("crab-stats", 
            llvm::cl::desc("Show Crab statistics and analysis results"),
 	   llvm::cl::location(CrabStats),
-	   llvm::cl::value_desc("bool"));
+	   llvm::cl::value_desc("bool"),
+	   llvm::cl::cat(ClamOptCat));
 
 
 static llvm::cl::opt<std::string>
 CrabOutputFilename("ocrab", 
 llvm::cl::desc("Output CrabIR analyzed with (optionally) annotations. Use preferably \".crabir\" extension"),
 llvm::cl::value_desc("filename"),
-llvm::cl::init(""));
+llvm::cl::init(""),
+llvm::cl::cat(ClamOptCat));

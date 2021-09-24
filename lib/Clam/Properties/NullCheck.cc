@@ -182,6 +182,9 @@ void EmitNullDerefChecks::visitBeforeRefSelect(llvm::SelectInst &I,
                                                CrabSelectRefOps &s) {}
 void EmitNullDerefChecks::visitAfterRefSelect(llvm::SelectInst &I,
                                               CrabSelectRefOps &s) {}
+void EmitNullDerefChecks::visitBeforeIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) {}
+void EmitNullDerefChecks::visitAfterIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) {}
+
 /* End empty implementations */
 
 } // end namespace clam

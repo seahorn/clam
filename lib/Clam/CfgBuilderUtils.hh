@@ -124,4 +124,15 @@ bool AllUsesAreGEP(llvm::Value &V);
 // Return true if all uses are ignored instructions
 bool AllUsesAreIgnoredInst(llvm::Value &V);
 
+
+/* 
+   Reverse topological sort of (possibly cyclic) CFG
+ */
+void revTopoSort(const llvm::Function &F, std::vector<const llvm::BasicBlock*> &out);
+
+/* 
+   Topological sort of (possibly cyclic) CFG
+ */
+void topoSort(const llvm::Function &F, std::vector<const llvm::BasicBlock*> &out);
+
 } // namespace clam

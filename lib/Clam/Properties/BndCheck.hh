@@ -5,16 +5,16 @@
 
 namespace clam {
 
-class EmitUafChecksImpl;
+class EmitBndChecksImpl;
 
-/* Emit CrabIR statements to perform check for use-after-free errors */
-class EmitUafChecks : public CrabIREmitter {
-  std::unique_ptr<EmitUafChecksImpl> m_impl;
+/* Emit CrabIR statements to perform check for null dereferences */
+class EmitBndChecks : public CrabIREmitter {
+  std::unique_ptr<EmitBndChecksImpl> m_impl;
 
 public:
-  EmitUafChecks(const CrabBuilderParams &params, crabLitFactory &lfac,
+  EmitBndChecks(const CrabBuilderParams &params, crabLitFactory &lfac,
                 uint32_t &assertionId);
-  ~EmitUafChecks();
+  ~EmitBndChecks();
 
   virtual void visitBeforeBasicBlock(llvm::BasicBlock &BB) override;
   virtual void visitAfterBasicBlock(llvm::BasicBlock &BB) override;
@@ -48,9 +48,9 @@ public:
                                     CrabSelectRefOps &s) override;
   virtual void visitAfterRefSelect(llvm::SelectInst &I,
                                    CrabSelectRefOps &s) override;
-  virtual void visitBeforeIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) override;
-  virtual void visitAfterIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) override;  
-  
+  virtual void visitBeforeIsDeref(llvm::CallBase &I,
+                                  CrabIsDerefOps &s) override;
+  virtual void visitAfterIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) override;
 };
 
 } // end namespace clam

@@ -177,6 +177,9 @@ void EmitUafChecks::visitBeforeRefSelect(llvm::SelectInst &I,
                                          CrabSelectRefOps &s) {}
 void EmitUafChecks::visitAfterRefSelect(llvm::SelectInst &I,
                                         CrabSelectRefOps &s) {}
+void EmitUafChecks::visitBeforeIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) {}
+void EmitUafChecks::visitAfterIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) {}
+
 /* End empty implementations */
 
 } // end namespace clam

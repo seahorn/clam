@@ -1,6 +1,9 @@
 #include "CfgBuilderUtils.hh"
 
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/Instructions.h" 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
@@ -10,6 +13,7 @@
 #include "llvm/IR/Value.h"
 
 #include <cstdint>
+#include <algorithm>
 
 namespace clam {
 
@@ -172,6 +176,7 @@ bool isIntArray(const Type &T) {
 bool isAssertFn(const Function &F) {
   return (F.getName().equals("verifier.assert") ||
           F.getName().equals("crab.assert") ||
+	  F.getName().equals("__VERIFIER_assert") || 
           F.getName().equals("__CRAB_assert"));
 }
 
@@ -189,6 +194,7 @@ bool isErrorFn(const Function &F) {
 bool isAssumeFn(const Function &F) {
   return (F.getName().equals("verifier.assume") ||
           F.getName().equals("__VERIFIER_assume") ||
+	  F.getName().equals("__SEA_assume") ||
           F.getName().equals("__CRAB_assume") ||
 	  F.getName().equals("llvm.assume"));
 }
@@ -200,18 +206,38 @@ bool isNotAssumeFn(const Function &F) {
 }
 
 bool isVerifierCall(const Function &F) {
-  return (isAssertFn(F) || isErrorFn(F) || isAssumeFn(F) || isNotAssumeFn(F) ||
-          isSeaHornFail(F));
+  return (F.isDeclaration() && 
+	  (isAssertFn(F) || isErrorFn(F) || isAssumeFn(F) || isNotAssumeFn(F) ||
+	   isSeaHornFail(F)));
+}
+
+static bool isSeaHornIntrinsic(const Function &F) {
+  return (F.isDeclaration() &&
+	  (F.getName() == "sea.is_dereferenceable" ||
+	   F.getName() == "sea_is_dereferenceable"));
 }
 
 bool isCrabIntrinsic(const Function &F) {
-  return (F.getName().startswith("__CRAB_intrinsic_"));
+  return (F.isDeclaration() &&
+	  (F.getName().startswith("__CRAB_intrinsic_") ||
+	   isSeaHornIntrinsic(F)));
 }
 
 std::string getCrabIntrinsicName(const Function &F) {
   assert(isCrabIntrinsic(F));
-  StringRef res = F.getName().split("__CRAB_intrinsic_").second;
-  return res.str();
+  
+  if (isSeaHornIntrinsic(F)) {
+    // if the bitcode has been processed already by SeaHorn
+    StringRef res = F.getName().split("sea.").second;
+    if (res == "") {
+      // if the user writes the intrinsic on the C source
+      res = F.getName().split("sea_").second;
+    }
+    return res.str();
+  } else {
+    StringRef res = F.getName().split("__CRAB_intrinsic_").second;
+    return res.str();
+  }
 }
 
 bool isZeroInitializer(const Function &F) {
@@ -311,8 +337,7 @@ bool AllUsesAreVerifierCalls(Value &V, bool goThroughIntegerCasts,
       CallBase &CB = *CI;
       const Value *calleeV = CB.getCalledOperand();
       const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
-      if (callee && (isAssertFn(*callee) || isAssumeFn(*callee) ||
-                     isNotAssumeFn(*callee))) {
+      if (callee && isVerifierCall(*callee)) {
         if (nonBoolCond) {
           FunctionType *FTy = callee->getFunctionType();
           if (!FTy->isVarArg() && FTy->getReturnType()->isVoidTy() &&
@@ -358,6 +383,37 @@ bool AllUsesAreIgnoredInst(llvm::Value &V) {
     return false;
   }
   return true;
+}
+
+} // namespace clam
+
+namespace {
+using BasicBlockPtrSet = llvm::SmallPtrSet<const llvm::BasicBlock *, 32>;
+} // namespace 
+
+namespace llvm {
+template <> class po_iterator_storage<BasicBlockPtrSet, true> {
+  BasicBlockPtrSet &Visited;
+public:
+  po_iterator_storage(BasicBlockPtrSet &VSet) : Visited(VSet) {}
+  po_iterator_storage(const po_iterator_storage &S) : Visited(S.Visited) {}
+  bool insertEdge(Optional<const BasicBlock *> src, const BasicBlock *dst)
+  { return Visited.insert(dst).second; }
+  void finishPostorder(const BasicBlock *bb) {}
+};
+} // namespace llvm
+
+namespace clam {
+void revTopoSort(const llvm::Function &F, std::vector<const BasicBlock *> &out) {
+  if (F.isDeclaration() || F.empty()) return;
+  auto *f = &F;
+  BasicBlockPtrSet Visited;
+  std::copy(po_ext_begin(f, Visited), po_ext_end(f, Visited), std::back_inserter(out));
+}
+
+void topoSort(const llvm::Function &F, std::vector<const BasicBlock*> &out) {
+  revTopoSort(F, out);
+  std::reverse(out.begin(), out.end());
 }
 
 } // namespace clam

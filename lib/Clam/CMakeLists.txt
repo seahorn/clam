@@ -17,7 +17,8 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   Support/CFGPrinter.cc
   Properties/MemoryCheckUtils.cc
   Properties/NullCheck.cc
-  Properties/UafCheck.cc  
+  Properties/UafCheck.cc
+  Properties/BndCheck.cc
   )
 
 llvm_map_components_to_libnames(LLVM_LIBS

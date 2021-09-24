@@ -222,6 +222,9 @@ def parseArgs(argv):
     p.add_argument('--llvm-dot-cfg',
                     help='Print LLVM CFG of function to dot file',
                     dest='dot_cfg', default=False, action='store_true')
+    ##---------------------------------------------------------------------##
+    ##   Optimizations/transformations that take place at LLVM IR level
+    ##---------------------------------------------------------------------##    
     p.add_argument('--llvm-inline-threshold', dest='inline_threshold',
                     type=int, metavar='NUM',
                     help='Inline threshold (default = 255)')
@@ -282,7 +285,11 @@ def parseArgs(argv):
                     dest='debug_pass', default=False,
                     action='store_true')
     p.add_argument('file', metavar='FILE', help='Input file')
+    ##---------------------------------------------------------------------##    
     ### BEGIN CRAB
+    ## Here options that are passed to Crab or transformations that
+    ## take place at CrabIR level
+    ##---------------------------------------------------------------------##
     p.add_argument('--crab-verbose', type=int,
                     help='Enable verbose messages',
                     dest='crab_verbose',
@@ -312,6 +319,9 @@ def parseArgs(argv):
                              'zones', 'oct', 'pk', 'rtz',
                              'w-int'],
                     dest='crab_dom', default='zones')
+    p.add_argument('--crab-dom-params', dest='crab_dom_params', default=None,
+                   help="Set abstract domain options STR=\"param1=val1:param2=val2:...\"",
+                   metavar='STR')
     p.add_argument('--crab-widening-delay',
                     type=int, dest='widening_delay',
                     help='Max number of iterations until performing widening', default=1)
@@ -366,8 +376,12 @@ def parseArgs(argv):
                     help='Delete dead symbols: may lose precision with relational domains.',
                     dest='crab_live', default=False, action='store_true')
     add_bool_argument(p, 'crab-lower-unsigned-icmp', default=False,
-                    help='Lower ULT and ULE instructions in CrabIR',
+                    help='Replace unsigned comparison with signed comparisons in CrabIR',
                     dest='crab_lower_unsigned_icmp')
+    add_bool_argument(p, 'crab-lower-with-overflow-intrinsics', default=False,
+                    help='Replace llvm.OP.with.overflow.* in CrabIR with OP assuming no overflow occurs.\n'
+                         'This option should be only used if the arithmetic operations are known to not overflow',
+                    dest='crab_lower_with_overflow_intrinsics')
     p.add_argument('--crab-opt',
                     help='Optimize LLVM bitcode using invariants',
                     choices=['none',
@@ -392,7 +406,7 @@ def parseArgs(argv):
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
                    help='Check properties (default no check)',
-                   choices=['none', 'assert', 'null', 'uaf', 'bounds', 'null-legacy', 'uaf-legacy'],
+                   choices=['none', 'assert', 'null', 'uaf', 'bounds', 'null-legacy', 'uaf-legacy', 'is-deref'],
                    dest='crab_check', default='none')
     add_bool_argument(p, 'crab-check-only-typed', default=False,
                       help='Add checks only on typed regions (only for null and uaf). False by default',
@@ -435,9 +449,9 @@ def parseArgs(argv):
                     help='Enable clam and crab sanity checks',
                     dest='crab_sanity_checks', default=False, action='store_true')
     ######################################################################
-    # Options that might affect soundness
+    # Hidden options
     ######################################################################
-    ## These might be unsound if enabled
+    ## These three might be unsound if enabled
     p.add_argument('--crab-dsa-disambiguate-unknown',
                     help=a.SUPPRESS,
                     dest='crab_dsa_unknown', default=False, action='store_true')
@@ -447,9 +461,6 @@ def parseArgs(argv):
     p.add_argument('--crab-dsa-disambiguate-external',
                     help=a.SUPPRESS,
                     dest='crab_dsa_external', default=False, action='store_true')
-    ######################################################################
-    # Other hidden options
-    ######################################################################
     # Choose between own crab way of naming values and instnamer
     add_bool_argument(p, 'crab-name-values', default=True,
                       help=a.SUPPRESS, dest='crab_name_values')
@@ -569,6 +580,10 @@ def defOutPPName(name, wd=None):
     return os.path.join(wd, fname)
 
 
+def _bc_or_ll_file (name):
+    ext = os.path.splitext (name)[1]
+    return ext == '.bc' or ext == '.ll'
+
 def _plus_plus_file(name):
     ext = os.path.splitext(name)[1]
     return ext in ('.cpp', '.cc')
@@ -576,7 +591,7 @@ def _plus_plus_file(name):
 # Run Clang
 def clang(in_name, out_name, args, arch=32, extra_args=[]):
 
-    if os.path.splitext(in_name)[1] == '.bc':
+    if _bc_or_ll_file(in_name):
         if verbose:
             print('--- Clang skipped: input file is already bitecode')
         shutil.copy2(in_name, out_name)
@@ -794,8 +809,14 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     clam_args = clam_args + extra_opts
 
     if args.log is not None:
-        for l in args.log.split(':'): clam_args.extend(['-crab-log', l])
+        for l in args.log.split(':'):
+            clam_args.extend(['-crab-log', l])
 
+    if args.crab_dom_params is not None:
+        for l in args.crab_dom_params.split(':'):
+            clam_args.extend(['-crab-dom-param', l])
+            
+        
     # disable sinking instructions to end of basic block
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
@@ -825,7 +846,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
 
     if args.crab_lower_unsigned_icmp:
         clam_args.append('--crab-lower-unsigned-icmp')
-
+    if args.crab_lower_with_overflow_intrinsics:
+        clam_args.append('--crab-lower-with-overflow-intrinsics')
     clam_args.append('--crab-dom={0}'.format(args.crab_dom))
     clam_args.append('--crab-widening-delay={0}'.format(args.widening_delay))
     clam_args.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
@@ -895,6 +917,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
             clam_args.append('--crab-uaf-check')
         elif args.crab_check == 'bounds':
             clam_args.append('--crab-bounds-check')
+        elif args.crab_check == 'is-deref':
+            clam_args.append('--crab-is-deref-check')
         if args.crab_check in ['null-legacy', 'uaf-legacy', 'null', 'uaf', 'bounds']:
             if args.crab_check_only_typed:
                 clam_args.append('--crab-check-only-typed-regions=true')

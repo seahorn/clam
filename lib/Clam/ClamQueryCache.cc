@@ -35,6 +35,10 @@ static ConstantRange getFullRange(unsigned bitwidth) {
   return ConstantRange::getFull(bitwidth);
 }
 
+static ConstantRange getEmptyRange(unsigned bitwidth) {
+  return ConstantRange::getEmpty(bitwidth);
+}
+
 static ConstantRange getConstantRange(int64_t lower, int64_t upper, unsigned bitwidth) {
   const bool isSigned = true;
   if (lower == upper) {
@@ -95,6 +99,12 @@ ClamQueryCache::range(const Instruction &I,
 	crabStmt.accept(&vis); // propagate the invariant one statement forward
 	const clam_abstract_domain &nextInv = vis.get_abs_value();
 	if (match(I, crabStmt)) {
+	  if (nextInv.is_bottom()) {
+	    ConstantRange interval = getEmptyRange(bitwidth);
+	    m_range_inst_cache.insert(std::make_pair(&I, interval));
+	    return interval;
+	  }
+	  
 	  Optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(I);
 	  if (crabVar.hasValue()) {
 	    clam_abstract_domain tmp(nextInv);
@@ -126,6 +136,10 @@ ClamQueryCache::range(const BasicBlock &BB, const Value &V,
 
   unsigned bitwidth = getBitWidth(BB, V);  
   if (invAtEntry.hasValue()) {
+    if (invAtEntry.getValue().is_bottom()) {
+      // we don't cache it
+      return getEmptyRange(bitwidth);
+    }
     const Function &F = *(BB.getParent());
     if (auto crabCfgBuilder = m_crab_builder_man.getCfgBuilder(F)) {
       Optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(V);

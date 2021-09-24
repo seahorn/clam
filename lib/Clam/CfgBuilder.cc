@@ -59,6 +59,7 @@
 #include "CfgBuilderLit.hh"
 #include "CfgBuilderMemRegions.hh"
 #include "CfgBuilderUtils.hh"
+#include "Properties/BndCheck.hh"
 #include "Properties/NullCheck.hh"
 #include "Properties/UafCheck.hh"
 
@@ -991,7 +992,8 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
                             Region rhs_region);
   void doCallInst(CallInst &CI);
   void doCrabSpecialIntrinsic(CallInst &CI);
-
+  void doArithmeticWithOverflowIntrinsic(WithOverflowInst &I, var_t res);
+  
 public:
   CrabIntraBlockBuilder(crabLitFactory &lfac, tag_manager &as_man,
       HeapAbstraction &mem, const DataLayout *dl,
@@ -1024,6 +1026,7 @@ public:
   void visitLoadInst(LoadInst &I);
   void visitAllocaInst(AllocaInst &I);
   void visitCallInst(CallInst &I);
+  void visitExtractValueInst(ExtractValueInst &I);
   void visitUnreachableInst(UnreachableInst &I);
   /// base case. if all else fails.
   void visitInstruction(Instruction &I);
@@ -3177,6 +3180,79 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   }
 }
 
+// Replace the intrinsics with a standard arithmetic operation
+// assuming that the arithmetic operation does not overflow.
+void CrabIntraBlockBuilder::
+doArithmeticWithOverflowIntrinsic(WithOverflowInst &I, var_t res) {
+  if (!m_params.lower_arithmetic_with_overflow_intrinsics) {
+    return;
+  }
+  
+  crab_lit_ref_t lit1 = m_lfac.getLit(*(I.getOperand(0)));
+  if (!lit1 || !(lit1->isInt())) {
+    CLAM_ERROR("Expected integer operand in " << I);	    
+  }
+  crab_lit_ref_t lit2 = m_lfac.getLit(*(I.getOperand(1)));
+  if (!lit2 || !(lit2->isInt())) {
+    CLAM_ERROR("Expected integer operand in " << I);	    	    
+    return;
+  }
+	
+  lin_exp_t op1 = m_lfac.getExp(lit1);
+  lin_exp_t op2 = m_lfac.getExp(lit2);
+  
+  switch(I.getIntrinsicID()) {
+  case Intrinsic::uadd_with_overflow:
+  case Intrinsic::sadd_with_overflow:
+    doBinOp(BinaryOperator::Add, res, op1, op2);
+    break;
+  case Intrinsic::usub_with_overflow:
+  case Intrinsic::ssub_with_overflow:
+    doBinOp(BinaryOperator::Sub, res, op1, op2);	    
+    break;
+  case Intrinsic::umul_with_overflow:
+  case Intrinsic::smul_with_overflow:
+    doBinOp(BinaryOperator::Mul, res, op1, op2);	    	    
+    break;
+  default:;
+  }
+}
+
+void CrabIntraBlockBuilder::visitExtractValueInst(ExtractValueInst &I) {
+  // We only translate this instruction if it's used to extract the
+  // values returned by an arithmetic with overflow intrinsics.
+  if (m_params.lower_arithmetic_with_overflow_intrinsics) {
+    if (WithOverflowInst *II = dyn_cast<WithOverflowInst>(I.getAggregateOperand())) {
+      if (I.getNumIndices() == 1) {
+	unsigned idx = I.getIndices()[0];
+	crab_lit_ref_t lit0 = m_lfac.getLit(I);
+	
+	// %_15 = extractvalue { i64, i1 } %_13, 0
+	if (idx == 0) { // result of the operation
+	  if (lit0 && lit0->isVar() && lit0->isInt()) {
+	    doArithmeticWithOverflowIntrinsic(*II, lit0->getVar());
+	    return;
+	  } else {
+	    CLAM_WARNING("Expected integer lhs in " << I);
+	  }
+	}
+	// %_16 = extractvalue { i64, i1 } %_13, 1	
+	if (idx == 1) { // assume always 0 (i.e., no overflow)
+	  if (lit0 && lit0->isVar() && lit0->isBool()) {
+	    m_bb.bool_assign(lit0->getVar(), lin_cst_t::get_false());
+	    return;
+	  } else {
+	    CLAM_WARNING("Expected Boolean lhs in " << I);
+	  }
+	}
+      }
+    }
+  }
+  
+  // Ignore I
+  visitInstruction(I);
+}
+
 void CrabIntraBlockBuilder::visitUnreachableInst(UnreachableInst &I) {
   m_bb.unreachable();
 }
@@ -3496,7 +3572,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
       MI.InitGlobalMemory(gv, *(gv.getInitializer()), 0);
     }
     // Add assumptions about global addresses
-    if (m_params.trackMemory()) {
+    if (m_params.allocateGlobals()) {
       crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
       assert(gv_lit && gv_lit->isVar());
       assert(gv_lit->getVar().get_type().is_reference());
@@ -3527,7 +3603,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 							    m_dl->getPointerSizeInBits())),
 			   m_as_man.mk_tag());
 	  }
-        }
+	}
       }
       if (m_params.addPointerAssumptions()) {
         // global variables are not null
@@ -3560,24 +3636,26 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	}
       }
     }
-    
-    for (auto &F : M) {
-      if (F.hasAddressTaken()) {
-	crab_lit_ref_t funptr = m_lfac.getLit(F);
-	assert(funptr && funptr->isVar() && funptr->isRef());
-	Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
 
-	// Revisit: we do not call insertCrabIRWithEmitter	
-	entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
-		       var_or_cst_t(m_dl->getPointerSizeInBits() / 8,
-				    crab::variable_type(INT_TYPE,
-							m_dl->getPointerSizeInBits())),
-		       m_as_man.mk_tag());
+    if (m_params.allocateGlobals()) {
+      for (auto &F : M) {
+	if (F.hasAddressTaken()) {
+	  crab_lit_ref_t funptr = m_lfac.getLit(F);
+	  assert(funptr && funptr->isVar() && funptr->isRef());
+	  Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
+
+	  // Revisit: we do not call insertCrabIRWithEmitter	
+	  entry.make_ref(funptr->getVar(), m_lfac.mkRegionVar(rgn),
+			 var_or_cst_t(m_dl->getPointerSizeInBits() / 8,
+				      crab::variable_type(INT_TYPE,
+							  m_dl->getPointerSizeInBits())),
+			 m_as_man.mk_tag());
 	
-	if (m_params.addPointerAssumptions()) {
-	  // Add assumptions about function addresses: all function
-	  // addresses are not null
-	  entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
+	  if (m_params.addPointerAssumptions()) {
+	    // Add assumptions about function addresses: all function
+	    // addresses are not null
+	    entry.assume_ref(ref_cst_t::mk_gt_null(funptr->getVar()));
+	  }
 	}
       }
     }
@@ -4002,7 +4080,11 @@ void CfgBuilderImpl::buildCfg() {
 
   initializeGlobalsAtMain();
   basic_block_t *entry_bb = lookup(m_func.getEntryBlock());
-  for (auto &B : m_func) {
+
+  std::vector<const BasicBlock *> bbs;
+  topoSort(m_func, bbs);
+  for (const BasicBlock *BB: bbs) {
+    BasicBlock &B = *(const_cast<BasicBlock*>(BB));
     basic_block_t *bb = lookup(B);
     if (!bb) {
       continue;
@@ -4467,15 +4549,20 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   o << "\tinterproc cfg: " << interprocedural << "\n";
   o << "\tlower singleton aliases into scalars: " << lower_singleton_aliases
     << "\n";
+  o << "\tlower unsigned comparisons: " << lower_unsigned_icmp << "\n";
   o << "\tavoid some boolean CrabIR statements (e.g., bool_assume, bool_assert): "
     << avoid_boolean << "\n";
+  o << "\tlower arithmetic with overflow intrinsics: "
+    << lower_arithmetic_with_overflow_intrinsics << "\n";
+  o << "\tallocate global values: " << allocate_global_values << "\n";
   o << "\tadd pointer assumptions: " << addPointerAssumptions() << "\n";
   o << "\tenable big numbers: " << enable_bignums << "\n";
   o << "\tcheck only typed regions: " << check_only_typed_regions << "\n";
   o << "\tcheck only acyclic regions: " << check_only_noncyclic_regions << "\n";
-  o << "\tadd null-dereference checks: " << add_null_checks << "\n";
-  o << "\tadd use-after-free checks: " << add_uaf_checks << "\n";
-  o << "\tadd buffer bounds checks: " << add_bounds_checks << "\n";    
+  o << "\tadd CrabIR for checking null-dereference errors: " << add_null_checks << "\n";
+  o << "\tadd CrabIR for checking use-after-free errors: " << add_uaf_checks << "\n";
+  o << "\tadd CrabIR for checking buffer bounds errors: " << add_bounds_checks << "\n";
+  o << "\tadd CrabIR for checking sea_is_dereferenceable intrinsics: " << add_is_deref << "\n";      
 }
 
 /* CFG Builder class */
@@ -4623,8 +4710,9 @@ CrabBuilderManagerImpl::CrabBuilderManagerImpl(
     m_property_emitters.emplace_back(std::make_unique<EmitUafChecks>
 				     (m_params, m_lfac, m_assertion_id));
   }
-  if (params.add_bounds_checks) {
-    // TODO
+  if (params.add_bounds_checks || params.add_is_deref) {
+    m_property_emitters.emplace_back(
+        std::make_unique<EmitBndChecks>(m_params, m_lfac, m_assertion_id));
   }
 }
 
@@ -5072,27 +5160,38 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
   }
 }
 
+#define IS_DEREFERENCEABLE "is_dereferenceable"
+#define IS_UNFREED_OR_NULL "is_unfreed_or_null"
+#define UNFREED_OR_NULL "unfreed_or_null"
+#define ADD_TAG "add_tag"
+#define CHECK_DOES_NOT_HAVE_TAG "check_does_not_have_tag"
+
 bool CrabIntraBlockBuilder::isSpecialCrabIntrinsic(const Function &calleeF) const {
   if (!isCrabIntrinsic(calleeF)) {
     return false;
   }
   std::string name = getCrabIntrinsicName(calleeF);
-  return (name == "is_unfreed_or_null" ||
-	  name == "unfreed_or_null" ||
-	  name == "add_tag" ||
-	  name == "check_does_not_have_tag");
+  return (name == IS_DEREFERENCEABLE || 
+	  name == IS_UNFREED_OR_NULL ||
+	  name == UNFREED_OR_NULL ||
+	  name == ADD_TAG ||
+	  name == CHECK_DOES_NOT_HAVE_TAG);
 }
   
 void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
+  // clang-format off
   /*
-    %b = is_unfreed_or_null(%ptr) --> b := CRAB_intrinsic(is_unfreed_or_null, rgn, ref)
-    unfreed_or_null(%ptr)         --> CRAB_intrinsic(unfreed_or_null, rgn, ref)              
-    add_tag(%ptr, tag)            --> CRAB_intrinsic(add_tag, rgn, ref, tag)
+    %b = is_unfreed_or_null(%ptr)       --> b := CRAB_intrinsic(is_unfreed_or_null, rgn, ref)
+    %b = is_dereferenceable(%ptr, %sz)  --> b := CRAB_intrinsic(is_dereferenceable, rgn, ref, sz)
+    unfreed_or_null(%ptr)               --> CRAB_intrinsic(unfreed_or_null, rgn, ref)              
+    add_tag(%ptr, tag)                  --> CRAB_intrinsic(add_tag, rgn, ref, tag)
     check_does_not_have_tag(%ptr, tag)  --> b := CRAB_intrinsic(does_not_have_tag, rgn, ref, tag)
                                             bool_assert(b);
    */
+  // clang-format on
 
   CallBase &CB(I);
+  
   const Function *calleeF =
       dyn_cast<Function>(CB.getCalledOperand()->stripPointerCastsAndAliases());
   assert(calleeF);
@@ -5105,10 +5204,19 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
   // robust translation with bloating
   //Value *Ptr = CB.getArgOperand(0)->stripPointerCasts();
   Value *Ptr = CB.getArgOperand(0);
-  if (name == "is_unfreed_or_null") {
-    if (CB.arg_size() != 1) {
-      CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
-    }
+  if (name == IS_UNFREED_OR_NULL || name == IS_DEREFERENCEABLE) {
+    bool is_unfreed_or_null = (name == IS_UNFREED_OR_NULL);
+    
+    if (is_unfreed_or_null) {
+      if  (CB.arg_size() != 1) {
+	CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+      }
+    } else {
+      if  (CB.arg_size() != 2) {
+	CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+      }
+    } 
+    
     if (!I.getType()->isIntegerTy()) {
       CLAM_ERROR("unexpected non-integer output parameter in special intrinsic " << I);
     }
@@ -5134,12 +5242,46 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       // initially allocated and they cannot be deallocated.
       m_bb.havoc(outParamLit->getVar(), valueToStr(I));
     } else {
+
+      // -- pack inputs and outputs
       var_t rgnVar = m_lfac.mkRegionVar(rgn);
       std::vector<var_or_cst_t> inputs{rgnVar, refParamLit->getVar()};
+      
+      if (!is_unfreed_or_null) {
+	crab_lit_ref_t szBytesLit = m_lfac.getLit(*(CB.getArgOperand(1)));
+	if (!szBytesLit->isInt()) {
+	  CLAM_ERROR("unexpected non-integer input parameter in special intrinsic " << I);
+	}
+	var_or_cst_t szBytes = (szBytesLit->isVar() ?
+				var_or_cst_t(szBytesLit->getVar()) :
+				var_or_cst_t(m_lfac.getIntCst(szBytesLit),
+					     crab::variable_type(INT_TYPE,
+								 getPointerSizeInBits())));
+	
+	inputs.push_back(szBytes);
+      }
       std::vector<var_t> outputs {outParamLit->getVar()};
-      m_bb.intrinsic(name, outputs, inputs);
+
+      if (is_unfreed_or_null) {
+	m_bb.intrinsic(name, outputs, inputs);	
+      } else {
+	assert(inputs.size() == 3);
+	assert(inputs[0].is_variable());
+	assert(inputs[1].is_variable());		
+	assert(outputs.size() == 1);
+	CrabIsDerefOps s(outputs[0],
+			 inputs[0].get_variable(),inputs[1].get_variable(), inputs[2], 
+			 m_bb);
+	for (unsigned i = 0, sz = m_propertyEmitters.size(); i < sz; ++i) {
+	  m_propertyEmitters[i]->visitBeforeIsDeref(I, s);
+	}
+	m_bb.intrinsic(name, outputs, inputs);
+	for (unsigned i = 0, sz = m_propertyEmitters.size(); i < sz; ++i) {
+	  m_propertyEmitters[i]->visitAfterIsDeref(I, s);
+	}
+      } 
     }
-  } else if (name == "unfreed_or_null") {
+  } else if (name == UNFREED_OR_NULL) {
     if (CB.arg_size() != 1) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
@@ -5159,7 +5301,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       std::vector<var_t> outputs;
       m_bb.intrinsic(name, outputs, inputs);
     }
-  } else if (name == "add_tag") {
+  } else if (name == ADD_TAG) {
     if (CB.arg_size() != 2) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
@@ -5187,7 +5329,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       std::vector<var_t> outputs;
       m_bb.intrinsic(name, outputs, inputs);
     }
-  } else if (name == "check_does_not_have_tag") {
+  } else if (name == CHECK_DOES_NOT_HAVE_TAG) {
     if (CB.arg_size() != 2) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }

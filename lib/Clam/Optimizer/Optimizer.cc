@@ -31,6 +31,8 @@
 using namespace llvm;
 
 /* Begin LLVM pass options */
+
+
 static cl::opt<clam::InvariantsLocation>
 InvLoc("crab-opt-add-invariants",
     cl::desc("Instrument code with (linear) invariants at specific location"),
@@ -48,7 +50,7 @@ InvLoc("crab-opt-add-invariants",
 	       clEnumValN(clam::InvariantsLocation::ALL,
 			  "all",
 			  "Add invariants at all locations (very verbose)")),
-    cl::init(clam::InvariantsLocation::NONE));
+       cl::init(clam::InvariantsLocation::NONE));
 
 llvm::cl::opt<bool>
 RemoveDeadCode("crab-opt-dce",

@@ -48,6 +48,9 @@ public:
                                     CrabSelectRefOps &s) override;
   virtual void visitAfterRefSelect(llvm::SelectInst &I,
                                    CrabSelectRefOps &s) override;
+  virtual void visitBeforeIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) override;
+  virtual void visitAfterIsDeref(llvm::CallBase &I, CrabIsDerefOps &s) override;  
+  
 };
 
 } // end namespace clam

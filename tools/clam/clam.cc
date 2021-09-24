@@ -29,86 +29,105 @@
 #include "seadsa/InitializePasses.hh"
 #include "seadsa/support/RemovePtrToInt.hh"
 
+extern llvm::cl::OptionCategory ClamOptCat;
+
 static llvm::cl::opt<std::string>
     InputFilename(llvm::cl::Positional,
                   llvm::cl::desc("<input LLVM bitcode file>"),
-                  llvm::cl::Required, llvm::cl::value_desc("filename"));
+                  llvm::cl::Required, llvm::cl::value_desc("filename"),
+		  llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<std::string>
     OutputFilename("o", llvm::cl::desc("Override output filename"),
-                   llvm::cl::init(""), llvm::cl::value_desc("filename"));
+                   llvm::cl::init(""), llvm::cl::value_desc("filename"),
+		   llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool>
-    OutputAssembly("S", llvm::cl::desc("Write output as LLVM assembly"));
+OutputAssembly("S", llvm::cl::desc("Write output as LLVM assembly"),
+	       llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<std::string>
     AsmOutputFilename("oll", llvm::cl::desc("Output analyzed bitcode"),
-                      llvm::cl::init(""), llvm::cl::value_desc("filename"));
+                      llvm::cl::init(""), llvm::cl::value_desc("filename"),
+		      llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<std::string> DefaultDataLayout(
     "default-data-layout",
     llvm::cl::desc("data layout string to use if not specified by module"),
-    llvm::cl::init(""), llvm::cl::value_desc("layout-string"));
+    llvm::cl::init(""), llvm::cl::value_desc("layout-string"),
+    llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool> DisableCrab(
     "no-crab",
     llvm::cl::desc("Output preprocessed bitcode but disabling Crab analysis"),
-    llvm::cl::init(false), llvm::cl::Hidden);
+    llvm::cl::init(false), llvm::cl::Hidden,
+    llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool> TurnUndefNondet(
     "clam-turn-undef-nondet",
     llvm::cl::desc("Turn undefined behaviour into non-determinism"),
-    llvm::cl::init(false));
+    llvm::cl::init(false),
+    llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool>
     LowerUnsignedICmp("clam-lower-unsigned-icmp",
                       llvm::cl::desc("Lower ULT and ULE instructions"),
-                      llvm::cl::init(false));
+                      llvm::cl::init(false),
+		      llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool>
     LowerCstExpr("clam-lower-constant-expr",
                  llvm::cl::desc("Lower constant expressions to instructions"),
-                 llvm::cl::init(true));
+                 llvm::cl::init(true),
+		 llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool>
     LowerInvoke("clam-lower-invoke",
                 llvm::cl::desc("Lower invoke instructions"),
-                llvm::cl::init(true));
+                llvm::cl::init(true),
+		llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool>
     LowerSwitch("clam-lower-switch",
                 llvm::cl::desc("Lower switch instructions"),
-                llvm::cl::init(true));
+                llvm::cl::init(true),
+		llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool>
     LowerSelect("clam-lower-select",
                 llvm::cl::desc("Lower all select instructions"),
-                llvm::cl::init(false));
+                llvm::cl::init(false),
+		llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool>
     CrabOpt("crab-opt",
 	    llvm::cl::desc("Optimize LLVM bitcode by using invariants"),
-	    llvm::cl::init(false));
+	    llvm::cl::init(false),
+	    llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool> PromoteAssume(
     "crab-promote-assume",
     llvm::cl::desc("Promote verifier.assume to llvm.assume intrinsics"),
-    llvm::cl::init(false));
+    llvm::cl::init(false),
+    llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool> DotLLVMCFG(
     "clam-llvm-cfg-dot",
     llvm::cl::desc("Write a .dot file the analyzed LLVM CFG of each function"),
-    llvm::cl::init(false));
+    llvm::cl::init(false),
+    llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool>
     NullCheck("clam-null-check-legacy",
               llvm::cl::desc("Insert checks for null dereference errors in LLVM IR"),
-              llvm::cl::init(false));
+              llvm::cl::init(false),
+	      llvm::cl::cat(ClamOptCat));
 
 static llvm::cl::opt<bool>
     UafCheck("clam-uaf-check-legacy",
              llvm::cl::desc("Insert checks for use-after-free errors in LLVM IR"),
-             llvm::cl::init(false));
+             llvm::cl::init(false),
+	     llvm::cl::cat(ClamOptCat));
 
 
 using namespace clam;
@@ -124,6 +143,8 @@ std::string getFileName(const std::string &str) {
 
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown; // calls llvm_shutdown() on exit
+
+  //llvm::cl::HideUnrelatedOptions(ClamOptCat);  
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
       "Clam -- Abstract Interpretation-based Analyzer of LLVM bitcode\n");
