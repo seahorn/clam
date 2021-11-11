@@ -38,6 +38,7 @@
 #include "seadsa/CompleteCallGraph.hh"
 #include "seadsa/DsaLibFuncInfo.hh"
 #include "seadsa/InitializePasses.hh"
+#include "seadsa/Printer.hh"
 #include "seadsa/support/Debug.h"
 
 #include "crab/config.h"
@@ -1249,7 +1250,8 @@ bool ClamPass::runOnModule(Module &M) {
   case heap_analysis_t::CI_SEA_DSA:
   case heap_analysis_t::CS_SEA_DSA: {
     CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Started sea-dsa analysis\n";);
-    CallGraph &cg = getAnalysis<seadsa::CompleteCallGraph>().getCompleteCallGraph();
+    seadsa::CompleteCallGraph &ccg = getAnalysis<seadsa::CompleteCallGraph>();
+    CallGraph &cg = ccg.getCompleteCallGraph();
     seadsa::AllocWrapInfo &allocWrapInfo = getAnalysis<seadsa::AllocWrapInfo>();
     // FIXME: if we pass "this" then allocWrapInfo can be more
     // precise because it can use LoopInfo. However, I get some
@@ -1265,6 +1267,12 @@ bool ClamPass::runOnModule(Module &M) {
         CrabDsaDisambiguateExternal));
     CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                            << "Finished sea-dsa analysis\n";);
+
+    if (CrabDsaDot) {
+      seadsa::DsaPrinter
+	printer(*(static_cast<SeaDsaHeapAbstraction*>(&*mem)->getSeaDsa()), &ccg);
+      printer.runOnModule(M);
+    }
     break;
   }
   case heap_analysis_t::NONE:

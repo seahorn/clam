@@ -347,6 +347,9 @@ def parseArgs(argv):
                    choices=['none', 'ci-sea-dsa', 'cs-sea-dsa', 'ci-sea-dsa-types', 'cs-sea-dsa-types'],
                    dest='crab_heap_analysis',
                    default='ci-sea-dsa-types')
+    p.add_argument('--crab-heap-dot',
+                    help='Print seadsa memory graphs of each function to dot file',
+                    dest='crab_heap_dot', default=False, action='store_true')
     p.add_argument('--crab-singleton-aliases',
                     help='Translate singleton alias sets (mostly globals) as scalar values',
                     dest='crab_singleton_aliases', default=False, action='store_true')
@@ -872,6 +875,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
        args.crab_heap_analysis == 'cs-sea-dsa-types':
         clam_args.append('--sea-dsa-devirt')
 
+    if args.crab_heap_dot: clam_args.append('--crab-dsa-dot')
+        
     if args.crab_singleton_aliases: clam_args.append('--crab-singleton-aliases')
 
     if args.crab_inter:

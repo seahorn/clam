@@ -43,6 +43,7 @@ bool CrabInterRecursiveFunctions;
 bool CrabInterExactSummaryReuse;
 bool CrabInterStartFromMain;
 heap_analysis_t CrabHeapAnalysis;
+bool CrabDsaDot;
 bool CrabDsaDisambiguateUnknown;
 bool CrabDsaDisambiguatePtrCast;
 bool CrabDsaDisambiguateExternal;
@@ -355,7 +356,14 @@ XCrabHeapAnalysis("crab-heap-analysis",
    llvm::cl::init(clam::heap_analysis_t::CI_SEA_DSA),
    llvm::cl::cat(ClamOptCat));
    
-    
+llvm::cl::opt<bool, true>
+XCrabDsaDot("crab-dsa-dot",
+    llvm::cl::desc("Print dsa memory graph of each function in dot format"),
+    llvm::cl::location(clam::CrabDsaDot),			    
+    llvm::cl::init(false),
+    llvm::cl::cat(ClamOptCat));
+
+
 llvm::cl::opt<bool, true>
 XCrabDsaDisambiguateUnknown("crab-dsa-disambiguate-unknown",
     llvm::cl::desc("Disambiguate unknown pointers (unsound)"),
