@@ -639,18 +639,12 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
         clang_args.append('-fno-vectorize') ## disable loop vectorization
         clang_args.append('-fno-slp-vectorize') ## disable store/load vectorization
 
-    ## Hack for OSX Mojave that no longer exposes libc and libstd headers by default
-    osx_sdk_dirs = ['/Applications/Xcode.app/Contents/Developer/Platforms/' + \
-                     'MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk',
-                     '/Applications/Xcode.app/Contents/Developer/Platforms/' + \
-                     'MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk'] + \
-                    ['/Library/Developer/CommandLineTools/SDKs/MacOSX10.15.sdk']
-
-    for osx_sdk_dir in osx_sdk_dirs:
-        if os.path.isdir(osx_sdk_dir):
-            clang_args.append('--sysroot=' + osx_sdk_dir)
-            break
-
+    # Since Mojave, OSX does not longer exposes libc and libstd headers by default.
+    if platform.system() == 'Darwin':
+        osx_sdk_path = sub.run(["xcrun","--show-sdk-path"], text=True, stdout=sub.PIPE)
+        if osx_sdk_path.returncode == 0:
+            clang_args.append('--sysroot=' + osx_sdk_path.stdout.strip())
+    
     if verbose:
         print('Clang command: ' + ' '.join(clang_args))
     returnvalue, timeout, out_of_mem, segfault, unknown = \
