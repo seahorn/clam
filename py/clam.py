@@ -619,6 +619,11 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
 
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
+    # To avoid the error:
+    # "unknown target triple 'unknown-apple-macosx10.17.0', please use -triple or -arch"
+    if arch == 64 and platform.processor() == 'arm' and platform.system() == 'Darwin':
+        # Maybe we should add this line also for other systems.
+        clang_args.extend(['-arch', 'arm64'])
 
     if args.include_dir is not None:
         if ':' in args.include_dir:
@@ -1074,7 +1079,7 @@ def killall():
 
 if __name__ == '__main__':
     # unbuffered output
-    sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), 'wb', 0), write_through=True)    
+    sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), 'wb', 0), write_through=True)
     try:
         signal.signal(signal.SIGTERM, lambda x, y: killall())
         sys.exit(main(sys.argv))
