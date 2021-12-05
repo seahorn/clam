@@ -619,6 +619,11 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
 
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
+    # To avoid the error:
+    # "unknown target triple 'unknown-apple-macosx10.17.0', please use -triple or -arch"
+    if arch == 64 and platform.processor() == 'arm' and platform.system() == 'Darwin':
+        # Maybe we should add this line also for other systems.
+        clang_args.extend(['-arch', 'arm64'])
 
     if args.include_dir is not None:
         if ':' in args.include_dir:
@@ -639,18 +644,12 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
         clang_args.append('-fno-vectorize') ## disable loop vectorization
         clang_args.append('-fno-slp-vectorize') ## disable store/load vectorization
 
-    ## Hack for OSX Mojave that no longer exposes libc and libstd headers by default
-    osx_sdk_dirs = ['/Applications/Xcode.app/Contents/Developer/Platforms/' + \
-                     'MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk',
-                     '/Applications/Xcode.app/Contents/Developer/Platforms/' + \
-                     'MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk'] + \
-                    ['/Library/Developer/CommandLineTools/SDKs/MacOSX10.15.sdk']
-
-    for osx_sdk_dir in osx_sdk_dirs:
-        if os.path.isdir(osx_sdk_dir):
-            clang_args.append('--sysroot=' + osx_sdk_dir)
-            break
-
+    # Since Mojave, OSX does not longer exposes libc and libstd headers by default.
+    if platform.system() == 'Darwin':
+        osx_sdk_path = sub.run(["xcrun","--show-sdk-path"], text=True, stdout=sub.PIPE)
+        if osx_sdk_path.returncode == 0:
+            clang_args.append('--sysroot=' + osx_sdk_path.stdout.strip())
+    
     if verbose:
         print('Clang command: ' + ' '.join(clang_args))
     returnvalue, timeout, out_of_mem, segfault, unknown = \
@@ -1080,7 +1079,7 @@ def killall():
 
 if __name__ == '__main__':
     # unbuffered output
-    sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), 'wb', 0), write_through=True)    
+    sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), 'wb', 0), write_through=True)
     try:
         signal.signal(signal.SIGTERM, lambda x, y: killall())
         sys.exit(main(sys.argv))

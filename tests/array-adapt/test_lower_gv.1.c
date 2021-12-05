@@ -3,7 +3,7 @@
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
  
-//#include <stdio.h>
+#include <stdio.h>
 
 extern int int_nd(void);
 extern void __CRAB_assume(int);
