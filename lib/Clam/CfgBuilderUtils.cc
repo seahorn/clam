@@ -67,9 +67,7 @@ z_number toZNumber(const APInt &v, const CrabBuilderParams &params,
   abs = v.isNegative() ? v.abs() : v;
   const uint64_t *rawdata = abs.getRawData();
   unsigned numWords = abs.getNumWords();
-
-  ikos::z_number res;
-  mpz_import(res.get_mpz_t(), numWords, -1, sizeof(uint64_t), 0, 0, rawdata);
+  z_number res(z_number::from_raw_data(rawdata, numWords));
   return v.isNegative() ? -res : res;
 #endif
 }
