@@ -63,7 +63,7 @@ z_number toZNumber(const APInt &v, const CrabBuilderParams &params,
 #else
   // Based on:
   // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp  
-  if (false /*!interpretAsSigned*/) {
+  if (!interpretAsSigned) {
     return z_number::from_raw_data(v.getRawData(), v.getNumWords());
   } else {    
     APInt abs;
