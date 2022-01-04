@@ -36,11 +36,13 @@ bool isReference(const llvm::Value &v, const CrabBuilderParams &params);
 
 // Converts v to z_number. Assumes that v is signed
 ikos::z_number toZNumber(const llvm::APInt &v, const CrabBuilderParams &params,
-                         bool &is_bignum);
+			 bool interpretAsSigned, bool &isTooBig);                         
 
 // The return value should be z_number and not number_t
 ikos::z_number getIntConstant(const llvm::ConstantInt *CI,
-                              const CrabBuilderParams &params, bool &is_bignum);
+                              const CrabBuilderParams &params,
+			      bool interpretAsSigned,
+			      bool &isTooBig);
 
 bool isTrackedType(const llvm::Type &ty, const CrabBuilderParams &params);
 

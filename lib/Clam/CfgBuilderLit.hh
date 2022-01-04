@@ -214,8 +214,9 @@ public:
 
   const CrabBuilderParams &getCfgBuilderParams() const;
 
-  /** convert a Value to a crabLit **/
-  crab_lit_ref_t getLit(const llvm::Value &v);
+  /** convert a Value to a crabLit. By default all integer constants
+      are interpreted as signed unless stated otherwise. **/
+  crab_lit_ref_t getLit(const llvm::Value &v, bool IntCstAsSigned = true);
 
   /** make fresh typed variables.
    ** Each call returns a new fresh variable
