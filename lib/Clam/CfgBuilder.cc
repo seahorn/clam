@@ -4398,7 +4398,7 @@ void CfgBuilderImpl::addFunctionDeclaration() {
     RegionVec inRegions = getInputRegions(m_mem, m_params, m_func);
     RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, m_func);
     RegionVec outRegions = getOutputRegions(m_mem, m_params, m_func);
-
+       
     CRAB_LOG("cfg-mem", llvm::errs()
                             << "Function " << m_func.getName()
                             << "\n\tInput regions " << inRegions.size() << ": "
@@ -4406,7 +4406,7 @@ void CfgBuilderImpl::addFunctionDeclaration() {
                             << inOutRegions.size() << ": " << inOutRegions
                             << "\n\tOutput regions " << outRegions.size()
                             << ": " << outRegions << "\n");
-
+     
     // -- add only read regions as input parameters
     for (auto rgn : inRegions) {
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
@@ -4482,6 +4482,27 @@ void CfgBuilderImpl::addFunctionDeclaration() {
     }
   }
 
+  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    /* Experimental intrinsics to indicate which regions are
+       originated from the same seadsa node.  Note that we locate this
+       intrinsics after all region_copy/assignments/gep_ref used to
+       copy input parameters. I think it should be fine as long as
+       they are added before any region load or store.
+    */
+    auto equivClassRegions = m_mem.getEquivClassRegions(m_func);      
+    for(auto eqC: equivClassRegions) {
+      std::vector<var_or_cst_t> intrinsicIns;
+      for (auto rgn: eqC) {
+	if (!getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+	  intrinsicIns.push_back(m_lfac.mkRegionVar(rgn));
+	}
+      }
+      if (intrinsicIns.size() > 1) {
+	tmp_bb3->intrinsic("regions_from_memory_object", {}, intrinsicIns);
+      }
+    }      
+  }
+  
   if (m_params.addPointerAssumptions()) {
     for (unsigned i = 0, num_args = m_func.arg_size(); i < num_args; ++i) {
       if (m_func.getArg(i)->getType()->isPointerTy() &&

@@ -62,6 +62,8 @@ private:
                                           callsite_map_t &mods,
                                           callsite_map_t &news);
 
+  void computeEquivClasses(const llvm::Function &f);
+  
   const llvm::Value *getSingleton(RegionId region) const;
 
 public:
@@ -113,10 +115,12 @@ public:
 
   virtual RegionVec getNewRegions(const llvm::CallInst &I) const override;
 
+  virtual std::vector<RegionVec> getEquivClassRegions(const llvm::Function &F) const override;
+        
   virtual llvm::StringRef getName() const override {
     return "SeaDsaHeapAbstraction";
   }
-
+ 
 private:
   seadsa::GlobalAnalysis *m_dsa;
   std::unique_ptr<SetFactory> m_fac;
@@ -139,6 +143,10 @@ private:
   llvm::DenseMap<const llvm::CallInst *, RegionVec> m_callsite_accessed;
   llvm::DenseMap<const llvm::CallInst *, RegionVec> m_callsite_mods;
   llvm::DenseMap<const llvm::CallInst *, RegionVec> m_callsite_news;
+
+  // Group together all the regions originated from the same node
+  llvm::DenseMap<const llvm::Function*, std::vector<RegionVec>> 
+  m_func_equiv_class_regions;
 };
 
 } // end namespace clam

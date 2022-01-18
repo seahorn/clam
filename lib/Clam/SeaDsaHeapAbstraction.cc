@@ -87,7 +87,7 @@ static std::vector<unsigned> extractFields(const Node *n,
   std::sort(fields.begin(), fields.end());  
   return fields;
 }
-
+   
 // compute and cache the set of read, mod and new reachable nodes from
 // globals and function's parameters and returns such that mod nodes
 // are a subset of the read nodes and the new nodes are disjoint from
@@ -101,25 +101,24 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(const llvm::Function &f) {
   Graph &G = m_dsa->getGraph(f);
   // hook: skip shadow mem functions created by SeaHorn
   // We treat them as readnone functions
-  if (f.getName().startswith("shadow.mem"))
+  if (f.getName().startswith("shadow.mem")) {
     return;
+  }
 
   seadsa_heap_abs_impl::NodeSet reach, retReach;
   seadsa_heap_abs_impl::argReachableNodes(f, G, reach, retReach);
 
   RegionVec reads, mods, news;
+  std::vector<RegionVec> equivClasses;
   for (const Node *n : reach) {
     bool isRetReach = retReach.count(n) > 0;
 
-#if 1    
     if (!isRetReach && !n->isRead() && !n->isModified()) {
       continue;
     }
-#endif    
 
     // Extract all fields from the node
     std::vector<unsigned> fields = extractFields(n);
-
     // Create a region for each node's field
     for (auto field : fields) {
       Cell c(const_cast<Node *>(n), field);
@@ -127,7 +126,6 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(const llvm::Function &f) {
           SeaDsaToRegion(c, m_dl, m_disambiguate_unknown,
                          m_disambiguate_ptr_cast, m_disambiguate_external);
       Region rgn = mkRegion(c, r_info);
-
       if (!isRetReach) {
         // reachable from function arguments or globals
         reads.push_back(rgn);
@@ -141,12 +139,8 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(const llvm::Function &f) {
         news.push_back(rgn);
         //}
       }
-    }
-  }
-  m_func_accessed[&f] = reads;
-  m_func_mods[&f] = mods;
-  m_func_news[&f] = news;
-
+    } // end for each field
+  } // end for each node
   CRAB_LOG(
       "heap-abs-regions", llvm::errs()
                               << "### HEAP_ABS: " << f.getName() << " ###\n";
@@ -163,8 +157,62 @@ void SeaDsaHeapAbstraction::computeReadModNewNodes(const llvm::Function &f) {
       for (auto &r
            : news) { llvm::errs() << r << ";"; } llvm::errs()
       << "}\n";);
+  
+  m_func_accessed[&f] = std::move(reads);
+  m_func_mods[&f] = std::move(mods);
+  m_func_news[&f] = std::move(news);  
 }
 
+/* 
+ * Remember regions originated from the same seadsa node.
+ * 
+ * This method iterates *again* over inputs and outputs. Part of the
+ * work can be done in computeReadModNewNode but I prefer to redo the
+ * work and keep it clean and simple.
+ */
+void SeaDsaHeapAbstraction::computeEquivClasses(const llvm::Function &f) {
+  if (!m_dsa || !(m_dsa->hasGraph(f))) {
+    return;
+  }
+  
+  Graph &G = m_dsa->getGraph(f);
+  if (f.getName().startswith("shadow.mem")) {
+    return;
+  }
+
+  // to store the equivalence classes
+  std::vector<RegionVec> equivClasses;
+  
+  // reachable from inputs and outputs
+  seadsa_heap_abs_impl::NodeSet reach, retReach;
+  seadsa_heap_abs_impl::argReachableNodes(f, G, reach, retReach);
+  // and also reachable from locals
+  for(auto &kv: G.scalars()) {
+    if (const Node *n = kv.second->getNode()) {
+      markReachableNodes(n, reach);
+    }    
+  }
+  
+  for (const Node *n : reach) {
+    bool isRetReach = retReach.count(n) > 0;
+    if (!isRetReach && !n->isRead() && !n->isModified()) {
+      continue;
+    }
+    RegionVec nodeRgns;    
+    std::vector<unsigned> fields = extractFields(n);
+    for (auto field : fields) {
+      Cell c(const_cast<Node *>(n), field);
+      RegionInfo r_info =
+	SeaDsaToRegion(c, m_dl, m_disambiguate_unknown,
+		       m_disambiguate_ptr_cast, m_disambiguate_external);
+      nodeRgns.emplace_back(std::move(mkRegion(c, r_info)));
+    } 
+    equivClasses.emplace_back(std::move(nodeRgns));
+  }
+  
+  m_func_equiv_class_regions[&f] = std::move(equivClasses);  
+}
+  
 // Compute and cache the set of read, mod and new nodes of a
 // callsite such that mod nodes are a subset of the read nodes and
 // the new nodes are disjoint from mod nodes.
@@ -217,11 +265,9 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   for (const Node *n : reach) {
     bool isRetReach = retReach.count(n) > 0;
 
-#if 1
     if (!isRetReach && !n->isRead() && !n->isModified()) {
       continue;
     }
-#endif     
 
     // Extract all fields from the node
     std::vector<unsigned> fields = extractFields(n);
@@ -324,6 +370,7 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
   for (const Function *FF: functions) {
     auto &F = *FF;
     computeReadModNewNodes(F);
+    computeEquivClasses(F);
     auto InstIt = inst_begin(F), InstItEnd = inst_end(F);
     for (; InstIt != InstItEnd; ++InstIt) {
       if (const CallInst *CI = dyn_cast<llvm::CallInst>(&*InstIt)) {
@@ -674,4 +721,14 @@ SeaDsaHeapAbstraction::getNewRegions(const llvm::CallInst &I) const {
   return lookup(m_callsite_news, &I);
 }
 
+std::vector<SeaDsaHeapAbstraction::RegionVec>
+SeaDsaHeapAbstraction::getEquivClassRegions(const llvm::Function &fn) const {
+  auto it = m_func_equiv_class_regions.find(&fn);
+  if (it != m_func_equiv_class_regions.end()) {
+    return it->second;    
+  } else {
+    return std::vector<SeaDsaHeapAbstraction::RegionVec>();
+  }
+}
+  
 } // namespace clam
