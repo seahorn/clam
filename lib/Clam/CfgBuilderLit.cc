@@ -14,10 +14,10 @@ using namespace crab;
 /* Implementation of a factory to create literals */
 class crabLitFactoryImpl {
 public:
-  crabLitFactoryImpl(llvm_variable_factory &vfac,
+  crabLitFactoryImpl(variable_factory_t &vfac,
                      const CrabBuilderParams &params);
 
-  llvm_variable_factory &getVFac() { return m_vfac; }
+  variable_factory_t &getVFac() { return m_vfac; }
 
   const CrabBuilderParams &getCfgBuilderParams() const { return m_params; }
 
@@ -84,7 +84,7 @@ private:
   };
   using rgn_cache_t = std::map<Region, var_t, RegionCompare>;
 
-  llvm_variable_factory &m_vfac;
+  variable_factory_t &m_vfac;
   const CrabBuilderParams &m_params;
   lit_cache_t m_lit_cache;
   rgn_cache_t m_rgn_cache;
@@ -96,7 +96,7 @@ private:
   crab::variable_type regionTypeToCrabType(RegionInfo rgnInfo);
 };
 
-crabLitFactoryImpl::crabLitFactoryImpl(llvm_variable_factory &vfac,
+crabLitFactoryImpl::crabLitFactoryImpl(variable_factory_t &vfac,
                                        const CrabBuilderParams &params)
     : m_vfac(vfac), m_params(params) {}
 
@@ -430,13 +430,13 @@ Optional<crabIntLit> crabLitFactoryImpl::getIntLit(const Value &v, bool IntCstAs
   return None;
 }
 
-crabLitFactory::crabLitFactory(llvm_variable_factory &vfac,
+crabLitFactory::crabLitFactory(variable_factory_t &vfac,
                                const CrabBuilderParams &params)
     : m_impl(new crabLitFactoryImpl(vfac, params)) {}
 
 crabLitFactory::~crabLitFactory() { delete m_impl; }
 
-llvm_variable_factory &crabLitFactory::getVFac() { return m_impl->getVFac(); }
+variable_factory_t &crabLitFactory::getVFac() { return m_impl->getVFac(); }
 
 CrabBuilderPrecision crabLitFactory::getTrack() const {
   return getCfgBuilderParams().precision_level;

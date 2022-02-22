@@ -204,11 +204,11 @@ class crabLitFactoryImpl;
  **/
 class crabLitFactory {
 public:
-  crabLitFactory(llvm_variable_factory &vfac, const CrabBuilderParams &params);
+  crabLitFactory(variable_factory_t &vfac, const CrabBuilderParams &params);
 
   ~crabLitFactory();
 
-  llvm_variable_factory &getVFac();
+  variable_factory_t &getVFac();
 
   CrabBuilderPrecision getTrack() const;
 
