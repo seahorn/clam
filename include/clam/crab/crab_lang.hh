@@ -113,21 +113,8 @@ template <> struct hash<clam::llvm_basic_block_wrapper> {
 } // namespace std
 
 namespace clam {
-/** Variable factory from llvm::Value's **/
-class llvm_variable_factory
-    : public crab::var_factory_impl::variable_factory<const llvm::Value *> {
-  using variable_factory_t =
-      crab::var_factory_impl::variable_factory<const llvm::Value *>;
-
-public:
-  typedef variable_factory_t::varname_t varname_t;
-  typedef variable_factory_t::const_var_range const_var_range;
-
-  llvm_variable_factory() : variable_factory_t() {}
-};
-
 /** Define a Crab CFG and call graph over integers **/
-using variable_factory_t = llvm_variable_factory;
+using variable_factory_t = crab::var_factory_impl::variable_factory<const llvm::Value*>; 
 using varname_t = typename variable_factory_t::varname_t;
 using number_t = ikos::z_number;
 using var_t = crab::variable<number_t, varname_t>;

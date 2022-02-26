@@ -147,10 +147,9 @@ static void havoc(var_t v, std::string comment, basic_block_t &bb,
   }
 }
 
-static void
-addUnsignedCmpTranslationIntoSign(var_t &res, lin_exp_t &op0, lin_exp_t &op1,
-                                  crabLitFactory &lfac, basic_block_t &bb,
-                                  const bool isNegated, const bool isCmpULE) {
+static void unsignedCmpIntoSignOnes(var_t &res, lin_exp_t &op0, lin_exp_t &op1,
+				    crabLitFactory &lfac, basic_block_t &bb,
+				    const bool isNegated, const bool isCmpULE) {
   // translating unsigned comparisons by using select operators
   // x cmp y, where cmp will be either <= or <
   // will be translated into:
@@ -259,14 +258,18 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
   }
   var_t lhs = ref->getVar();
 
-  crab_lit_ref_t ref0 = lfac.getLit(v0);
+  const bool interpretAsSigned =
+    (I.getPredicate() != CmpInst::ICMP_ULT &&
+     I.getPredicate() != CmpInst::ICMP_ULE);
+    
+  crab_lit_ref_t ref0 = lfac.getLit(v0, interpretAsSigned);
   if (!ref0 || !(ref0->isInt())) {
     havoc(lhs, valueToStr(I), bb,
           lfac.getCfgBuilderParams().include_useless_havoc);
     return;
   }
 
-  crab_lit_ref_t ref1 = lfac.getLit(v1);
+  crab_lit_ref_t ref1 = lfac.getLit(v1, interpretAsSigned);
   if (!ref1 || !(ref1->isInt())) {
     havoc(lhs, valueToStr(I), bb,
           lfac.getCfgBuilderParams().include_useless_havoc);
@@ -300,8 +303,8 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
   }
   case CmpInst::ICMP_ULT: {
     if (removeUnsignedCmp) {
-      addUnsignedCmpTranslationIntoSign(lhs, op0, op1, lfac, bb,
-					false /*isNegated*/, false /* isCmpULE*/);
+      unsignedCmpIntoSignOnes(lhs, op0, op1, lfac, bb,
+			      false /*isNegated*/, false /* isCmpULE*/);
     } else {
       lin_cst_t cst(op0 <= op1 - number_t(1));
       cst.set_unsigned();
@@ -311,8 +314,8 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
   }
   case CmpInst::ICMP_ULE: {
     if (removeUnsignedCmp) {
-      addUnsignedCmpTranslationIntoSign(lhs, op0, op1, lfac, bb,
-					false /*isNegated*/, true /*isCmpULE*/); 
+      unsignedCmpIntoSignOnes(lhs, op0, op1, lfac, bb,
+			      false /*isNegated*/, true /*isCmpULE*/); 
     } else {
       lin_cst_t cst(op0 <= op1);
       cst.set_unsigned();
@@ -500,11 +503,11 @@ static Optional<var_t> unsignedCmpInstToCrabInt(CmpInst &I,
   const Value &v0 = *I.getOperand(0);
   const Value &v1 = *I.getOperand(1);
 
-  crab_lit_ref_t ref0 = lfac.getLit(v0);
+  crab_lit_ref_t ref0 = lfac.getLit(v0, false /*interpretedAsSigned*/);
   if (!ref0 || !(ref0->isInt()))
     return llvm::None;
 
-  crab_lit_ref_t ref1 = lfac.getLit(v1);
+  crab_lit_ref_t ref1 = lfac.getLit(v1, false /*interpreterAsSigned*/);
   if (!ref1 || !(ref1->isInt()))
     return llvm::None;
 
@@ -515,13 +518,13 @@ static Optional<var_t> unsignedCmpInstToCrabInt(CmpInst &I,
   case CmpInst::ICMP_ULE:
   case CmpInst::ICMP_ULT: {
     var_t res = lfac.mkBoolVar();
-    addUnsignedCmpTranslationIntoSign(res, op0, op1, lfac, bb, isNegated,
-                                      I.getPredicate() == CmpInst::ICMP_ULE);
+    unsignedCmpIntoSignOnes(res, op0, op1, lfac, bb, isNegated,
+			    I.getPredicate() == CmpInst::ICMP_ULE);
     return res;
     break;
   }
   default:
-    CLAM_ERROR("non unsigned comparisons should be handled by cmpInstToCrabInt");
+    CLAM_ERROR("non unsigned comparisons should be handled by unsignedCmpInstToCrabInt");
   }
   return llvm::None;
 }
@@ -1546,9 +1549,9 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
     
   if (ConstantInt *CI = dyn_cast<ConstantInt>(cond)) {
     // -- cond is a constant
-    bool is_bignum;
-    z_number cond_val = getIntConstant(CI, m_params, is_bignum);
-    if (!is_bignum) {
+    bool isTooLarge;
+    z_number cond_val = getIntConstant(CI, m_params, true /*interpretAsSigned*/, isTooLarge);
+    if (!isTooLarge) {
       if (cond_val > 0) {
         if (isAssertFn(*callee) || isAssumeFn(*callee)) {
           // do nothing
@@ -2385,9 +2388,9 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I, var_t lhs, llvm::Optiona
   // -- translation if the GEP offset is constant
   APInt offset(getPointerSizeInBits(), 0);
   if (I.accumulateConstantOffset(*m_dl, offset)) {
-    bool is_bignum = false;
-    z_number o(toZNumber(offset, m_params, is_bignum));
-    if (is_bignum) {
+    bool isTooBig = false;
+    z_number o(toZNumber(offset, m_params, true /*interpretAsSigned*/, isTooBig));
+    if (isTooBig) {
       m_bb.havoc(lhs, valueToStr(I));
     } else {
       if (lhs.get_type().is_reference()) {
@@ -4392,7 +4395,7 @@ void CfgBuilderImpl::addFunctionDeclaration() {
     RegionVec inRegions = getInputRegions(m_mem, m_params, m_func);
     RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, m_func);
     RegionVec outRegions = getOutputRegions(m_mem, m_params, m_func);
-
+       
     CRAB_LOG("cfg-mem", llvm::errs()
                             << "Function " << m_func.getName()
                             << "\n\tInput regions " << inRegions.size() << ": "
@@ -4400,7 +4403,7 @@ void CfgBuilderImpl::addFunctionDeclaration() {
                             << inOutRegions.size() << ": " << inOutRegions
                             << "\n\tOutput regions " << outRegions.size()
                             << ": " << outRegions << "\n");
-
+     
     // -- add only read regions as input parameters
     for (auto rgn : inRegions) {
       if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
@@ -4476,6 +4479,27 @@ void CfgBuilderImpl::addFunctionDeclaration() {
     }
   }
 
+  if (m_params.precision_level == CrabBuilderPrecision::MEM) {
+    /* Experimental intrinsics to indicate which regions are
+       originated from the same seadsa node.  Note that we locate this
+       intrinsics after all region_copy/assignments/gep_ref used to
+       copy input parameters. I think it should be fine as long as
+       they are added before any region load or store.
+    */
+    auto equivClassRegions = m_mem.getEquivClassRegions(m_func);      
+    for(auto eqC: equivClassRegions) {
+      std::vector<var_or_cst_t> intrinsicIns;
+      for (auto rgn: eqC) {
+	if (!getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+	  intrinsicIns.push_back(m_lfac.mkRegionVar(rgn));
+	}
+      }
+      if (intrinsicIns.size() > 1) {
+	tmp_bb3->intrinsic("regions_from_memory_object", {}, intrinsicIns);
+      }
+    }      
+  }
+  
   if (m_params.addPointerAssumptions()) {
     for (unsigned i = 0, num_args = m_func.arg_size(); i < num_args; ++i) {
       if (m_func.getArg(i)->getType()->isPointerTy() &&

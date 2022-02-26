@@ -22,19 +22,37 @@ struct DummyHeapAbstraction : public HeapAbstraction {
     return Region();
   }
 
-  RegionVec getOnlyReadRegions(const llvm::Function &) const { return RegionVec(); }
+  virtual RegionVec getOnlyReadRegions(const llvm::Function &) const override {
+    return RegionVec();
+  }
+  
+  virtual RegionVec getModifiedRegions(const llvm::Function &) const override {
+    return RegionVec();
+  }
+  
+  virtual RegionVec getNewRegions(const llvm::Function &) const override {
+    return RegionVec();
+  }
 
-  RegionVec getModifiedRegions(const llvm::Function &) const { return RegionVec(); }
+  virtual RegionVec getOnlyReadRegions(const llvm::CallInst &) const override {
+    return RegionVec();
+  }
 
-  RegionVec getNewRegions(const llvm::Function &) const { return RegionVec(); }
+  virtual RegionVec getModifiedRegions(const llvm::CallInst &) const override {
+    return RegionVec();
+  }
 
-  RegionVec getOnlyReadRegions(const llvm::CallInst &) const { return RegionVec(); }
+  virtual RegionVec getNewRegions(const llvm::CallInst &) const override {
+    return RegionVec();
+  }
 
-  RegionVec getModifiedRegions(const llvm::CallInst &) const { return RegionVec(); }
+  virtual std::vector<RegionVec> getEquivClassRegions(const llvm::Function &) const override {
+    return std::vector<RegionVec>();
+  }
 
-  RegionVec getNewRegions(const llvm::CallInst &) const { return RegionVec(); }
-
-  llvm::StringRef getName() const { return "DummyHeapAbstraction"; }
+  virtual llvm::StringRef getName() const override {
+    return "DummyHeapAbstraction";
+  }
 };
 
 } // namespace clam

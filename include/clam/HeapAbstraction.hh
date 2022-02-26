@@ -241,8 +241,6 @@ public:
 
   virtual llvm::StringRef getName() const = 0;
 
-  // TODO: mark all these methods as const.
-
   // fun is used to know in which function ptr lives.
   // If not null, i is the instruction that uses ptr.
   virtual Region getRegion(const llvm::Function &fun,
@@ -272,6 +270,10 @@ public:
   // Regions at the caller that are mapped to those that are only
   // reachable from callee's returns.
   virtual RegionVec getNewRegions(const llvm::CallInst &) const = 0;
+
+  // Two regions are in the same equivalence class if they are
+  // originated from the same memory object. 
+  virtual std::vector<RegionVec> getEquivClassRegions(const llvm::Function &) const = 0;
 };
 
 } // namespace clam

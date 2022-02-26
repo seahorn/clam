@@ -14,15 +14,15 @@ using namespace crab;
 /* Implementation of a factory to create literals */
 class crabLitFactoryImpl {
 public:
-  crabLitFactoryImpl(llvm_variable_factory &vfac,
+  crabLitFactoryImpl(variable_factory_t &vfac,
                      const CrabBuilderParams &params);
 
-  llvm_variable_factory &getVFac() { return m_vfac; }
+  variable_factory_t &getVFac() { return m_vfac; }
 
   const CrabBuilderParams &getCfgBuilderParams() const { return m_params; }
 
   // Translate v into a crab literal based on v's type
-  crab_lit_ref_t getLit(const llvm::Value &v);
+  crab_lit_ref_t getLit(const llvm::Value &v, bool IntCstAsSigned);
 
   // Create a fresh integer variable of bitwidth bits
   var_t mkIntVar(unsigned bitwidth);
@@ -84,23 +84,23 @@ private:
   };
   using rgn_cache_t = std::map<Region, var_t, RegionCompare>;
 
-  llvm_variable_factory &m_vfac;
+  variable_factory_t &m_vfac;
   const CrabBuilderParams &m_params;
   lit_cache_t m_lit_cache;
   rgn_cache_t m_rgn_cache;
 
   llvm::Optional<crabBoolLit> getBoolLit(const llvm::Value &v);
-  llvm::Optional<crabIntLit> getIntLit(const llvm::Value &v);
+  llvm::Optional<crabIntLit> getIntLit(const llvm::Value &v, bool IntCstAsSigned);
   llvm::Optional<crabRefLit> getRefLit(const llvm::Value &v);
 
   crab::variable_type regionTypeToCrabType(RegionInfo rgnInfo);
 };
 
-crabLitFactoryImpl::crabLitFactoryImpl(llvm_variable_factory &vfac,
+crabLitFactoryImpl::crabLitFactoryImpl(variable_factory_t &vfac,
                                        const CrabBuilderParams &params)
     : m_vfac(vfac), m_params(params) {}
 
-crab_lit_ref_t crabLitFactoryImpl::getLit(const Value &v) {
+crab_lit_ref_t crabLitFactoryImpl::getLit(const Value &v, bool IntCstAsSigned) {
   auto it = m_lit_cache.find(&v);
   if (it != m_lit_cache.end()) {
     return it->second;
@@ -118,7 +118,7 @@ crab_lit_ref_t crabLitFactoryImpl::getLit(const Value &v) {
       return ref;
     }
   } else if (isInteger(&t)) {
-    Optional<crabIntLit> lit = getIntLit(v);
+    Optional<crabIntLit> lit = getIntLit(v, IntCstAsSigned);
     if (lit.hasValue()) {
       crab_lit_ref_t ref = std::static_pointer_cast<crabLit>(
           std::make_shared<crabIntLit>(lit.getValue()));
@@ -369,9 +369,9 @@ Optional<crabBoolLit> crabLitFactoryImpl::getBoolLit(const Value &v) {
   if (isBool(v)) {
     if (const ConstantInt *c = dyn_cast<const ConstantInt>(&v)) {
       // -- constant boolean
-      bool is_bignum;
-      ikos::z_number n = getIntConstant(c, m_params, is_bignum);
-      if (!is_bignum) {
+      bool isTooBig;
+      ikos::z_number n = getIntConstant(c, m_params, true/*IntCstAsSigned*/, isTooBig);
+      if (!isTooBig) {
         return crabBoolLit(n > 0 ? true : false);
       }
     } else if (!isa<ConstantExpr>(v)) {
@@ -405,14 +405,14 @@ Optional<crabRefLit> crabLitFactoryImpl::getRefLit(const Value &v) {
   return None;
 }
 
-Optional<crabIntLit> crabLitFactoryImpl::getIntLit(const Value &v) {
+Optional<crabIntLit> crabLitFactoryImpl::getIntLit(const Value &v, bool IntCstAsSigned) {
   if (isInteger(v)) {
     if (const ConstantInt *c = dyn_cast<const ConstantInt>(&v)) {
       // -- constant integer
       unsigned bitwidth = c->getType()->getIntegerBitWidth();
-      bool is_bignum;
-      ikos::z_number n = getIntConstant(c, m_params, is_bignum);
-      if (!is_bignum) {
+      bool isTooBig;
+      ikos::z_number n = getIntConstant(c, m_params, IntCstAsSigned, isTooBig);
+      if (!isTooBig) {
         return crabIntLit(n, bitwidth);
       }
     } else if (!isa<ConstantExpr>(v)) {
@@ -430,13 +430,13 @@ Optional<crabIntLit> crabLitFactoryImpl::getIntLit(const Value &v) {
   return None;
 }
 
-crabLitFactory::crabLitFactory(llvm_variable_factory &vfac,
+crabLitFactory::crabLitFactory(variable_factory_t &vfac,
                                const CrabBuilderParams &params)
     : m_impl(new crabLitFactoryImpl(vfac, params)) {}
 
 crabLitFactory::~crabLitFactory() { delete m_impl; }
 
-llvm_variable_factory &crabLitFactory::getVFac() { return m_impl->getVFac(); }
+variable_factory_t &crabLitFactory::getVFac() { return m_impl->getVFac(); }
 
 CrabBuilderPrecision crabLitFactory::getTrack() const {
   return getCfgBuilderParams().precision_level;
@@ -446,8 +446,8 @@ const CrabBuilderParams &crabLitFactory::getCfgBuilderParams() const {
   return m_impl->getCfgBuilderParams();
 }
 
-crab_lit_ref_t crabLitFactory::getLit(const Value &v) {
-  return m_impl->getLit(v);
+crab_lit_ref_t crabLitFactory::getLit(const Value &v, bool IntCstAsSigned) {
+  return m_impl->getLit(v, IntCstAsSigned);
 }
 
 var_t crabLitFactory::mkIntVar(unsigned bitwidth) {

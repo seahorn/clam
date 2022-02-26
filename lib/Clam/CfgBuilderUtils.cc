@@ -50,37 +50,40 @@ bool isReference(const Value &v, const CrabBuilderParams &params) {
 }
 
 z_number toZNumber(const APInt &v, const CrabBuilderParams &params,
-                   bool &is_bignum) {
-  is_bignum = false;
+		   bool interpretAsSigned, bool &isTooBig) {                   
+  isTooBig = false;
   if (!params.enable_bignums) {
-    is_bignum = isSignedBigNum(v);
+    isTooBig = isSignedBigNum(v);
   }
 #if 0
   // Convert to strings is not ideal but it shouldn't be a big
   // bottleneck.
-  std::string val = v.toString(10,true /*is signed*/);
+  std::string val = v.toString(10, interpretAsSigned);
   return z_number(val);
 #else
   // Based on:
-  // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp
-  APInt abs;
-  abs = v.isNegative() ? v.abs() : v;
-  const uint64_t *rawdata = abs.getRawData();
-  unsigned numWords = abs.getNumWords();
-
-  ikos::z_number res;
-  mpz_import(res.get_mpz_t(), numWords, -1, sizeof(uint64_t), 0, 0, rawdata);
-  return v.isNegative() ? -res : res;
+  // https://llvm.org/svn/llvm-project/polly/trunk/lib/Support/GICHelper.cpp  
+  if (!interpretAsSigned) {
+    return z_number::from_raw_data(v.getRawData(), v.getNumWords());
+  } else {    
+    APInt abs;
+    abs = v.isNegative() ? v.abs() : v;
+    const uint64_t *rawdata = abs.getRawData();
+    unsigned numWords = abs.getNumWords();
+    z_number res(z_number::from_raw_data(rawdata, numWords));
+    return v.isNegative() ? -res : res;
+  }
 #endif
 }
 
 z_number getIntConstant(const ConstantInt *CI, const CrabBuilderParams &params,
-                        bool &is_bignum) {
-  is_bignum = false;
+			bool interpretAsSigned, bool &isTooBig) {
+                        
+  isTooBig = false;
   if (CI->getType()->isIntegerTy(1)) {
     return z_number((int64_t)CI->getZExtValue());
   } else {
-    return toZNumber(CI->getValue(), params, is_bignum);
+    return toZNumber(CI->getValue(), params, interpretAsSigned, isTooBig);
   }
 }
 

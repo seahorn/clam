@@ -432,8 +432,7 @@ private:
       
       if (params.print_invars) {
         if (!params.keep_shadow_vars) {
-          shadow_varnames = std::vector<varname_t>(
-	     m_vfac.get_shadow_vars().begin(), m_vfac.get_shadow_vars().end());
+	  shadow_varnames = m_vfac.get_shadow_vars();
         }
         annotations.emplace_back(std::make_unique<invariant_annotation_t>(
             results.premap, results.postmap, shadow_varnames, &lookup));
@@ -581,9 +580,9 @@ llvm::Optional<clam_abstract_domain>
 IntraClam::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {
   std::vector<varname_t> shadows;
   auto &vfac = m_impl->m_cfg_builder_man.getVarFactory();
-  if (!keep_shadows)
-    shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
-                                     vfac.get_shadow_vars().end());
+  if (!keep_shadows) {
+    shadows = vfac.get_shadow_vars();
+  }
   return lookup(m_impl->m_pre_map, *block, shadows);
 }
 
@@ -591,9 +590,9 @@ llvm::Optional<clam_abstract_domain>
 IntraClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
   std::vector<varname_t> shadows;
   auto &vfac = m_impl->m_cfg_builder_man.getVarFactory();
-  if (!keep_shadows)
-    shadows = std::vector<varname_t>(vfac.get_shadow_vars().begin(),
-                                     vfac.get_shadow_vars().end());
+  if (!keep_shadows) {
+    shadows = vfac.get_shadow_vars();
+  }
   return lookup(m_impl->m_post_map, *block, shadows);
 }
 
@@ -668,20 +667,18 @@ public:
   Optional<clam_abstract_domain> getPre(const BasicBlock *bb,
 					bool keep_shadows) const {
     std::vector<varname_t> shadows;
-    if (!keep_shadows)
-      shadows = std::vector<varname_t>(
-        m_builder_man.getVarFactory().get_shadow_vars().begin(),
-        m_builder_man.getVarFactory().get_shadow_vars().end());
+    if (!keep_shadows) {
+      shadows = m_builder_man.getVarFactory().get_shadow_vars();
+    }
     return lookup(m_pre_map, *bb, shadows);
   }
   
   Optional<clam_abstract_domain> getPost(const BasicBlock *bb,
 					 bool keep_shadows) const {
     std::vector<varname_t> shadows;
-    if (!keep_shadows)
-      shadows = std::vector<varname_t>(
-        m_builder_man.getVarFactory().get_shadow_vars().begin(),
-        m_builder_man.getVarFactory().get_shadow_vars().end());
+    if (!keep_shadows) {
+      shadows = m_builder_man.getVarFactory().get_shadow_vars();
+    }
     return lookup(m_post_map, *bb, shadows);
   }
 
@@ -785,20 +782,18 @@ public:
   Optional<clam_abstract_domain>
   getPre(const BasicBlock *block, bool keep_shadows) const {
     std::vector<varname_t> shadows;
-    if (!keep_shadows)
-      shadows = std::vector<varname_t>(
-	m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
-        m_crab_builder_man.getVarFactory().get_shadow_vars().end());
+    if (!keep_shadows) {
+      shadows = m_crab_builder_man.getVarFactory().get_shadow_vars();
+    }
     return lookup(m_pre_map, *block, shadows);
   }
 
   Optional<clam_abstract_domain>
   getPost(const BasicBlock *block, bool keep_shadows) const {
     std::vector<varname_t> shadows;
-    if (!keep_shadows)
-      shadows = std::vector<varname_t>(
-        m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
-        m_crab_builder_man.getVarFactory().get_shadow_vars().end());
+    if (!keep_shadows) {
+      shadows = m_crab_builder_man.getVarFactory().get_shadow_vars();
+    }
     return lookup(m_post_map, *block, shadows);
   }
   
@@ -1030,9 +1025,7 @@ private:
 	  // --- print invariants 
 	  if (params.print_invars) {
 	    if (!params.keep_shadow_vars) {
-	      shadow_varnames = std::vector<varname_t>(
-		       m_crab_builder_man.getVarFactory().get_shadow_vars().begin(),
-		       m_crab_builder_man.getVarFactory().get_shadow_vars().end());
+	      shadow_varnames = m_crab_builder_man.getVarFactory().get_shadow_vars();
 	    }
 	    annotations.emplace_back(std::make_unique<invariant_annotation_t>(
 		       results.premap, results.postmap, shadow_varnames, &lookup));
