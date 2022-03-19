@@ -326,8 +326,6 @@ Instruction* getLoadInst(const statement_t &s) {
     array_load_stmt<basic_block_label_t, number_t, varname_t>;
   using load_from_ref_t =
     load_from_ref_stmt<basic_block_label_t, number_t, varname_t>;
-  using load_from_arr_ref_t =
-    load_from_arr_ref_stmt<basic_block_label_t, number_t, varname_t>;
 
   if (s.is_arr_read()) {
     const array_load_t *load_stmt = static_cast<const array_load_t *>(&s);
@@ -344,15 +342,7 @@ Instruction* getLoadInst(const statement_t &s) {
 	return const_cast<LoadInst*>(LI);
       } 
     }
-  } else if (s.is_ref_arr_load()) {
-    const load_from_arr_ref_t *load_stmt =
-      static_cast<const load_from_arr_ref_t *>(&s);
-    if (auto v = load_stmt->lhs().name().get()) {
-      if (auto LI = dyn_cast<const LoadInst>(*v)) {
-	return const_cast<LoadInst*>(LI);
-      }
-    }
-  }
+  } 
   return nullptr;
 }
   
