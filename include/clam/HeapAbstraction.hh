@@ -226,8 +226,8 @@ class HeapAbstraction {
   friend class Region;
 
 public:
-  typedef std::vector<Region> RegionVec;
-  typedef typename Region::RegionId RegionId;
+  using RegionVec = std::vector<Region>;
+  using RegionId = typename Region::RegionId;
 
   // Add a new value if a new HeapAbstraction subclass is created
   // This is used to use static_cast.
@@ -246,6 +246,11 @@ public:
   virtual Region getRegion(const llvm::Function &fun,
                            const llvm::Value &ptr) = 0;
 
+ // Use F and V to get the sea-dsa node associated to V and extracts
+  // the region associated to nodes's field offset if any.
+  virtual Region getRegion(const llvm::Function &F, const llvm::Value &V,
+			   unsigned offset, const llvm::Type &AccessedType) = 0;
+  
   /**========  These functions allow to purify functions ========**/
 
   // Read-Only regions reachable by function parameters and globals

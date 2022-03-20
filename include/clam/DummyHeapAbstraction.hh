@@ -14,14 +14,19 @@ struct DummyHeapAbstraction : public HeapAbstraction {
 
   DummyHeapAbstraction() : HeapAbstraction() {}
 
-  HeapAbstraction::ClassId getClassId() const {
+  virtual HeapAbstraction::ClassId getClassId() const override {
     return HeapAbstraction::ClassId::DUMMY;
   }
 
-  Region getRegion(const llvm::Function &, const llvm::Value &) {
+  virtual Region getRegion(const llvm::Function &, const llvm::Value &) override {
     return Region();
   }
 
+  virtual Region getRegion(const llvm::Function &F, const llvm::Value &V,
+			   unsigned offset, const llvm::Type &AccessedType) override {
+    return Region();
+  }
+  
   virtual RegionVec getOnlyReadRegions(const llvm::Function &) const override {
     return RegionVec();
   }
