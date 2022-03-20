@@ -2720,7 +2720,7 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
   /**
    * The LLVM store instruction will be translated to *either*:
    * (a) crab array store if SINGLETON_MEM, or
-   * (b) crab store_to_ref/store_to_arr_ref if MEM
+   * (b) crab store_to_ref if MEM
    *
    * If SINGLETON_MEM then we only consider the cases where the stored
    * value is an integer or boolean.
@@ -2800,17 +2800,6 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
     // -- value is an integer/bool -> add array statement
     StoreIntoSingletonMem(I, m_lfac.mkArrayVar(rgn), val, rgn);
   } else if (m_params.trackMemory()) {
-    // if (rgn.getRegionInfo().isSequence()) {
-    /// TODO(TRANSLATION): translate to store_to_arr_ref. This might increase precision.
-    ///
-    /// The translation needs to add an ref_to_int statement if the
-    /// stored value is a pointer.
-    ///
-    /// uint64_t elem_size = clam::storageSize(I.getValueOperand()->getType(),
-    /// *m_dl); assert(elem_size > 0);
-    ///
-    // }
-
     if (rgn.isUnknown()) {
       /* untyped region */
       const statement_t *crab_stmt = nullptr;
@@ -2991,15 +2980,6 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
     LoadFromSingletonMem(I, lhs->getVar(), m_lfac.mkArrayVar(rgn), rgn);
     return;
   } else if (m_params.trackMemory()) {
-    // if (rgn.getRegionInfo().isSequence()) {
-    /// TODO(TRANSLATION): translate to load_from_arr_ref. This might increase precision.
-    ///
-    /// The translation needs to add an int_to_ref statement if the
-    /// loaded value is a pointer.
-    /// uint64_t elem_size = clam::storageSize(I.getPointerOperand()->getType(),
-    /// *m_dl); assert(elem_size > 0);
-    // }
-
     if (rgn.isUnknown()) {
       /* untyped region */
       auto crab_stmt = insertCrabIRWithEmitter::
@@ -3755,12 +3735,6 @@ void CfgBuilderImpl::initializeRegions() {
 	auto s = static_cast<typename basic_block_t::gep_ref_t*>(&*it);
 	mayInitVars.insert(s->lhs_region());
 	mayInitVars.insert(s->rhs_region());            
-      } else if ((*it).is_ref_arr_load()) {
-	auto s = static_cast<typename basic_block_t::load_from_arr_ref_t*>(&*it);
-	mayInitVars.insert(s->region());            
-      } else if ((*it).is_ref_arr_store()) {
-	auto s = static_cast<typename basic_block_t::store_to_arr_ref_t*>(&*it);
-	mayInitVars.insert(s->region());            
       } else if ((*it).is_ref_select()) {
 	auto s = static_cast<typename basic_block_t::ref_select_t*>(&*it);
 	mayInitVars.insert(s->lhs_rgn());
