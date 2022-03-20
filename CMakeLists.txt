@@ -367,15 +367,6 @@ else()
   return ()
 endif()
 
-if (EXISTS ${CRAB_ROOT}/include/crab/domains/region_without_ghost_domain.hpp)
-  set(HAS_FAST_REGION_DOMAIN TRUE)
-  message(STATUS "Crab: fast region domain (without ghost variables)")
-  message(STATUS "Crab: region domain does not support is_dereferenceable intrinsics")  
-else()
-  set(HAS_FAST_REGION_DOMAIN FALSE)
-  message(STATUS "Crab: slow region domain (switch to branch \"fast-region\" in crab for fast region domain)")
-endif()  
-
 if (TopLevel)
   if (IS_DIRECTORY "${SEADSA_ROOT}" AND EXISTS ${SEADSA_ROOT}/CMakeLists.txt)
     ## sea-dsa source code already exists out-of-the tree     

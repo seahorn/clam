@@ -16,10 +16,6 @@
 /** whether Clam is compiled as a standalone application **/
 #cmakedefine CLAM_IS_TOPLEVEL ${CLAM_IS_TOPLEVEL}
 
-/** whether region domain without ghost variables should be used or
-    not **/
-#cmakedefine HAS_FAST_REGION_DOMAIN ${HAS_FAST_REGION_DOMAIN}
-
 
 
 
