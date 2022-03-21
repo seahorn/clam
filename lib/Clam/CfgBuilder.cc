@@ -845,13 +845,8 @@ public:
   }
 
   void InitInteger(Value &Base, ConstantInt &Val, unsigned offset) {
-    Region rgn;
-    if (m_mem.getClassId() == HeapAbstraction::ClassId::SEA_DSA) {
-      SeaDsaHeapAbstraction *seaDsaHeapAbs =
-          static_cast<SeaDsaHeapAbstraction *>(&m_mem);
-      rgn = seaDsaHeapAbs->getRegion(m_fun, Base, offset, *(Val.getType()));
-      m_func_regions.insert(rgn);
-    }
+    Region rgn = m_mem.getRegion(m_fun, Base, offset, *(Val.getType()));
+    m_func_regions.insert(rgn);
 
     if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
       // Promote the global to an integer/boolean scalar
@@ -886,15 +881,35 @@ public:
       }
       m_bb.array_store(m_lfac.mkArrayVar(rgn), lin_exp_t(offset), val,
                        elem_size, first /*strong update*/);
-    } else if (m_params.trackMemory()) {
-      
-      CLAM_WARNING(
-          "TODO(TRANSLATION) implement global initializer if CrabBuilderPrecision::MEM");
-      // m_bb.havoc(m_lfac.mkRegionVar(rgn),
-      // 		 "Missing initialization of " + valueToStr(Base) +
-      // 		 " at offset=" + std::to_string(offset) +
-      // 		 " with value=" + valueToStr(Val));
-    }
+    } else if (m_params.trackMemory() && m_params.allocateGlobals()) {
+      // If we don't allocate globals then we cannot add store_to_ref
+      // statements.      
+      if (!rgn.isUnknown()) {
+	Region baseRgn = m_mem.getRegion(m_fun, Base);       
+	crab_lit_ref_t baseRef = m_lfac.getLit(Base);
+	assert(ref);	
+	crab_lit_ref_t val = m_lfac.getLit(Val);
+	assert(val);
+	uint64_t elem_size = clam::storageSize(Val.getType(), m_dl);
+	assert(elem_size > 0);
+
+	if (!baseRef || !baseRef->isRef() || m_lfac.isRefNull(baseRef)) {
+	  CLAM_ERROR("unexpected global during global initialization");
+	}
+
+	// Revisit: we do not call insertCrabIRWithEmitter.
+	var_t ref = m_lfac.mkRefVar();	
+	m_bb.gep_ref(ref, m_lfac.mkRegionVar(rgn),
+		     baseRef->getVar(), m_lfac.mkRegionVar(baseRgn),
+		     offset);	
+	if (val->isVar()) {
+	  m_bb.store_to_ref(ref, m_lfac.mkRegionVar(rgn), val->getVar());
+	} else {
+	  auto constant = m_lfac.getTypedConst(val);
+	  m_bb.store_to_ref(ref, m_lfac.mkRegionVar(rgn), constant);
+	}
+      }
+    }      
   }
 };
 
@@ -2250,7 +2265,8 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
       // pointers allocated in the stack cannot be null
       m_bb.assume_ref(ref_cst_t::mk_gt_null(lhs->getVar()));
     }
-  } else if (m_params.trackOnlySingletonMemory() && !rgn.isUnknown() && 
+  } else if (m_params.zero_initialize_stack_arrays &&
+	     m_params.trackOnlySingletonMemory() && !rgn.isUnknown() && 
              rgn.getRegionInfo().containScalar()) {
     // Memory allocated in the stack is uninitialized.
     //
@@ -3550,14 +3566,8 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
   basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
   Module &M = *(m_func.getParent());
 
-  for (GlobalVariable &gv : M.globals()) {
-    // Lower global initializers into main
-    if (gv.hasInitializer()) {
-      MemoryInitializer MI(m_lfac, m_mem, m_func_regions, *m_dl, m_params,
-                           m_func, entry);
-      MI.InitGlobalMemory(gv, *(gv.getInitializer()), 0);
-    }
-    // Add assumptions about global addresses
+  for (GlobalVariable &gv : M.globals()) {    
+    // Allocate and add reasonable assumptions about global addresses
     if (m_params.allocateGlobals()) {
       crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
       assert(gv_lit && gv_lit->isVar());
@@ -3605,9 +3615,19 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
         }
       }
     }
-  }
+    
+    // Finally, lower the initializers into main after we have
+    // allocated the global.
+    if (gv.hasInitializer()) {
+      MemoryInitializer MI(m_lfac, m_mem, m_func_regions, *m_dl, m_params,
+                           m_func, entry);
+      MI.InitGlobalMemory(gv, *(gv.getInitializer()), 0);
+    }    
+  } // end for each global
 
-  if (m_params.trackMemory()) {  
+  
+  if (m_params.trackMemory()) {
+    /// Assumptions for main's parameters
     if (m_params.addPointerAssumptions()) {
       // Add assumption argv != NULL.
       // But we are missing the assumption:
@@ -3623,6 +3643,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
       }
     }
 
+    /// Assumptions for function addresses
     if (m_params.allocateGlobals()) {
       for (auto &F : M) {
 	if (F.hasAddressTaken()) {
@@ -3644,7 +3665,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	  }
 	}
       }
-    }
+    }    
   }
 }
 
@@ -4721,11 +4742,6 @@ CfgBuilder& CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
   static bool initialization_done = false;
 
   auto extractGlobals = [this](const Module &M) {
-    if (m_mem->getClassId() != HeapAbstraction::ClassId::SEA_DSA) {
-      CLAM_WARNING("Memory analysis does not support extraction of globals "
-                   "used by a function");
-      return;
-    }
     // FIXME: sea-dsa does not capture all the globals used by a
     //        function.  It will miss cases where the global is
     //        only used for comparison purposes.
