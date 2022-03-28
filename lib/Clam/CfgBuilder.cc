@@ -887,7 +887,7 @@ public:
       if (!rgn.isUnknown()) {
 	Region baseRgn = m_mem.getRegion(m_fun, Base);       
 	crab_lit_ref_t baseRef = m_lfac.getLit(Base);
-	assert(ref);	
+	assert(baseRef);	
 	crab_lit_ref_t val = m_lfac.getLit(Val);
 	assert(val);
 	uint64_t elem_size = clam::storageSize(Val.getType(), m_dl);
