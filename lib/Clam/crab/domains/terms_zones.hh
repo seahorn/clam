@@ -1,7 +1,7 @@
 #pragma once
 
-#include <clam/crab/domains/split_dbm.hh>
 #include <crab/domains/dis_intervals.hpp>
+#include "split_dbm.hh"
 
 namespace clam {
 /// -- Reduced product of term(dis_intervals) and zones

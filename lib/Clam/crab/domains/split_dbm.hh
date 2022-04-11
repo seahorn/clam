@@ -1,8 +1,7 @@
 #pragma once
 
-#include <clam/crab/crab_defs.hh>
-#include <crab/config.h>
 #include <crab/domains/split_dbm.hpp>
+#include "crab_defs.hh"
 
 namespace clam {
 /// To choose DBM parameters

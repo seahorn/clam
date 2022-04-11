@@ -1,8 +1,7 @@
 #pragma once
 
-#include <clam/crab/crab_defs.hh>
-#include <crab/config.h>
 #include <crab/domains/dis_intervals.hpp>
+#include "crab_defs.hh"
 
 namespace clam {
 using str_dis_interval_domain_t =
