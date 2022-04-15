@@ -100,8 +100,8 @@ public:
 
   // Use F and V to get the sea-dsa node associated to V and extracts
   // the region associated to nodes's field offset if any.
-  Region getRegion(const llvm::Function &F, const llvm::Value &V,
-                   unsigned offset, const llvm::Type &AccessedType);
+  virtual Region getRegion(const llvm::Function &F, const llvm::Value &V,
+			   unsigned offset, const llvm::Type &AccessedType) override;
 
   virtual RegionVec getOnlyReadRegions(const llvm::Function &F) const override;
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <clam/crab/domains/intervals.hh>
 #include <crab/domains/combined_congruences.hpp>
+#include "intervals.hh"
 
 namespace clam {
 using BASE(ric_domain_t) =

@@ -44,6 +44,9 @@ struct CrabBuilderParams {
   /// globals cannot be null, external functions do not return
   /// dangling pointers, etc.)
   bool add_pointer_assumptions;
+  /// Zero-initialization of stack arrays.
+  /// Note that this is not C semantics.
+  bool zero_initialize_stack_arrays;
   /// Emit crabIR to perform null-dereference checks
   bool add_null_checks;
   /// Emit crabIR to perform use-after-free checks  
@@ -69,7 +72,9 @@ struct CrabBuilderParams {
         lower_unsigned_icmp(false), avoid_boolean(true),
 	lower_arithmetic_with_overflow_intrinsics(false),
 	allocate_global_values(true),
-        add_pointer_assumptions(true), add_null_checks(false),
+        add_pointer_assumptions(true),
+	zero_initialize_stack_arrays(false),
+	add_null_checks(false),
         add_uaf_checks(false), add_bounds_checks(false), add_is_deref(false),
         check_only_typed_regions(false), check_only_noncyclic_regions(false),
         print_cfg(false), dot_cfg(false) {}

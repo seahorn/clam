@@ -29,7 +29,6 @@
 #include "clam/SeaDsaHeapAbstraction.hh"
 #include "clam/Support/Debug.hh"
 #include "clam/Support/NameValues.hh"
-#include "clam/crab/crab_domains.hh"
 #include "ClamQueryCache.hh"
 #include "crab/path_analyzer.hpp"
 #include "crab/printer.hpp"
@@ -499,6 +498,7 @@ private:
  **/
 IntraClam::IntraClam(const Function &fun, CrabBuilderManager &man)
     : m_impl(nullptr) {
+  DomainRegistry::registerAllDomains();  
   m_impl = std::make_unique<IntraClamImpl>(fun, man);
 }
 
@@ -1055,6 +1055,7 @@ private:
 /*****************************************************************/ 
 IntraGlobalClam::IntraGlobalClam(const Module &module, CrabBuilderManager &man)
   : m_impl(nullptr) {
+  DomainRegistry::registerAllDomains();
   m_impl = std::make_unique<IntraGlobalClamImpl>(module, man);
 }
 
@@ -1128,6 +1129,7 @@ Optional<ClamQueryAPI::TagVector> IntraGlobalClam::tags(const BasicBlock &B, con
 /*****************************************************************/ 
 InterGlobalClam::InterGlobalClam(const Module &module, CrabBuilderManager &man)
   : m_impl(nullptr) {
+  DomainRegistry::registerAllDomains();  
   m_impl = std::make_unique<InterGlobalClamImpl>(module, man);
 }
 
@@ -1484,25 +1486,6 @@ void ClamPass::printChecks(raw_ostream &o) const {
     << std::string((int)MaxValLen - std::to_string(warning).size(), ' ')
     << warning << std::string(2, ' ') << "Number of total warning checks\n";
 }
-
-#ifdef INCLUDE_ALL_DOMAINS
-REGISTER_DOMAIN(CrabDomain::INTERVALS, interval_domain_t)
-REGISTER_DOMAIN(CrabDomain::ZONES_SPLIT_DBM, split_dbm_domain_t)
-REGISTER_DOMAIN(CrabDomain::DIS_INTERVALS, dis_interval_domain_t)
-#if defined(HAVE_APRON) || defined(HAVE_ELINA)
-REGISTER_DOMAIN(CrabDomain::OCT, oct_domain_t)
-REGISTER_DOMAIN(CrabDomain::PK, pk_domain_t)
-#endif
-REGISTER_DOMAIN(CrabDomain::INTERVALS_CONGRUENCES, ric_domain_t)
-REGISTER_DOMAIN(CrabDomain::TERMS_INTERVALS, term_int_domain_t)
-REGISTER_DOMAIN(CrabDomain::TERMS_DIS_INTERVALS, term_dis_int_domain_t)
-REGISTER_DOMAIN(CrabDomain::TERMS_ZONES, num_domain_t)
-REGISTER_DOMAIN(CrabDomain::SIGN_CONSTANTS, sign_constant_domain_t)
-#ifdef HAVE_LDD
-REGISTER_DOMAIN(CrabDomain::BOXES, boxes_domain_t)
-#endif
-REGISTER_DOMAIN(CrabDomain::WRAPPED_INTERVALS, wrapped_interval_domain_t)
-#endif
 
 char clam::ClamPass::ID = 0;
 } // namespace clam

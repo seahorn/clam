@@ -6,13 +6,26 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CfgBuilderUtils.cc
   Clam.cc
   ClamQueryCache.cc
-  NameValues.cc  
+  NameValues.cc
+  RegisterAnalysis.cc
   SeaDsaHeapAbstraction.cc
   SeaDsaHeapAbstractionUtils.cc
   SeaDsaToRegion.cc
   CrabDomainParser.cc
   crab/path_analyzer.cc
   crab/printer.cc
+  crab/domains/intervals.cc
+  crab/domains/boxes.cc
+  crab/domains/dis_intervals.cc
+  crab/domains/oct.cc
+  crab/domains/pk.cc
+  crab/domains/ric.cc
+  crab/domains/sign_constant.cc
+  crab/domains/split_dbm.cc
+  crab/domains/terms_dis_intervals.cc
+  crab/domains/terms_intervals.cc
+  crab/domains/terms_zones.cc
+  crab/domains/wrapped_intervals.cc
   Support/BoostException.cc
   Support/CFGPrinter.cc
   Properties/MemoryCheckUtils.cc

@@ -1,10 +1,8 @@
 #pragma once
 
-#include <clam/crab/crab_defs.hh>
-
-#include <crab/config.h>
 #include <crab/domains/array_smashing.hpp>
 #include <crab/domains/boxes.hpp>
+#include "crab_defs.hh"
 
 namespace clam {
 using BASE(boxes_domain_t) = crab::domains::boxes_domain<number_t, varname_t>;

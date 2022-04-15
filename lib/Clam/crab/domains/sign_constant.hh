@@ -1,8 +1,7 @@
 #pragma once
 
-#include <clam/crab/crab_defs.hh>
-#include <crab/config.h>
 #include <crab/domains/sign_constant_domain.hpp>
+#include "crab_defs.hh"
 
 namespace clam {
 using BASE(sign_constant_domain_t) =

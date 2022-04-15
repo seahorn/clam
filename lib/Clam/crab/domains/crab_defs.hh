@@ -80,6 +80,22 @@ public:
 
 /* ====================================================================== */    
 /* END region domain                                                      */
-/* ====================================================================== */    
+/* ====================================================================== */
+
+#define REGISTER_DOMAIN(domain_type, name)			\
+  bool register_ ## name() {					\
+    using namespace clam;					\
+    using namespace crab;					\
+    auto &map = DomainRegistry::getFactoryMap();		\
+    clam_abstract_domain val(std::move(name ## _t()));		\
+    bool res = map.insert({domain_type, val}).second;		\
+    CrabStats::reset();						\
+    return res;							\
+  }
+#define UNREGISTER_DOMAIN(name)					\
+  bool register_ ## name() {					\
+    return false;						\
+  }
+  
 } // end namespace clam
 // clang-format on

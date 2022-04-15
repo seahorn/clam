@@ -1,8 +1,7 @@
 #pragma once
 
-#include <clam/crab/crab_defs.hh>
-#include <crab/config.h>
 #include <crab/domains/intervals.hpp>
+#include "crab_defs.hh"
 
 namespace clam {
 using str_interval_domain_t = interval_domain<number_t, str_varname_t>;
