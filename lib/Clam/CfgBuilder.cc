@@ -135,10 +135,17 @@ static bool checkAllDefinitionsHaveNames(const Function &F) {
 }
 
 static std::string valueToStr(const Value &V) {
+  if (const CallInst *CI = dyn_cast<CallInst>(&V)) {
+    if (const Function *callee = CI->getCalledFunction()) {
+      return callee->getName().str() + "(...)";;
+    }
+  }
+  /// This code is really expensive. The assumption is that most of
+  /// the values passed to this function are CallInst.
   std::string res;
   raw_string_ostream os(res);
   os << V;
-  return res;
+  return res;    
 }
 
 static void havoc(var_t v, std::string comment, basic_block_t &bb,
@@ -609,6 +616,7 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
 	m_propertyEmitters(propertyEmitters) {}
 
   void visitBasicBlock(BasicBlock &BB) {
+    crab::ScopedCrabStats __st__("CFG.Builder.visitPHI");      
     if (!isa<PHINode>(BB.begin())) {
       return;
     }
@@ -1521,6 +1529,8 @@ bool skipAssertionIfUntypedOrCyclic(CallInst &I, Value *cond, HeapAbstraction &m
 
 /* Special functions for verification */
 void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.SpecialVerifierFn");      
+  
   CallSite CS(&I);
 
   const Value *calleeV = CS.getCalledValue();
@@ -1715,6 +1725,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
 }
 
 void CrabIntraBlockBuilder::visitReturnInst(ReturnInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitReturn");  
   if (m_ret_insts) {
     m_bb.copy_back(*m_ret_insts);
     delete m_ret_insts;
@@ -1725,7 +1736,7 @@ void CrabIntraBlockBuilder::visitReturnInst(ReturnInst &I) {
 /// a select's condition.  Here we cover cases where I is an
 /// operand of other instructions.
 void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
-
+  crab::ScopedCrabStats __st__("CFG.Builder.visitCmp");  
   if (!isTracked(I, m_params))
     return;
 
@@ -1797,6 +1808,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
 }
 
 void CrabIntraBlockBuilder::visitBinaryOperator(BinaryOperator &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitBinaryOperator");  
   if (!isTracked(I, m_params))
     return;
 
@@ -1832,6 +1844,7 @@ void CrabIntraBlockBuilder::visitBinaryOperator(BinaryOperator &I) {
 }
 
 void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitCast");  
   if (!isTracked(I, m_params))
     return;
 
@@ -1956,6 +1969,7 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
 // undesirable then we try to deal with the select instruction
 // here.
 void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitSelect");  
   if (!isTracked(I, m_params))
     return;
 
@@ -2173,6 +2187,7 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 
 /* malloc-like functions */
 void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.AllocFn");      
   auto addMakeRefFromVal = [this, &I]
     (crab_lit_ref_t retRef, Region rgn, const Value &size) {
        crab_lit_ref_t litS = m_lfac.getLit(size);
@@ -2232,6 +2247,7 @@ void CrabIntraBlockBuilder::doAllocFn(Instruction &I) {
 }
 
 void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitAlloca");  
 
   // note that it has side-effects (it might add a multiplication in the basic block)
   auto getAllocaSize = [this](AllocaInst &I) -> var_or_cst_t {
@@ -2288,6 +2304,7 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
 
 /* free-like functions */
 void CrabIntraBlockBuilder::doFreeFn(Instruction &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.FreeFn");      
   if (m_params.trackMemory()) {
     CallSite CS(&I);
     crab_lit_ref_t Ptr = m_lfac.getLit(*(CS.getArgument(0)));
@@ -2593,6 +2610,7 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I, var_t lhs, llvm::Optiona
  overflow. We try to avoid that.
 */
 void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitGep");  
   if (m_params.precision_level == CrabBuilderPrecision::NUM) {
     return;
   }
@@ -2736,6 +2754,7 @@ void CrabIntraBlockBuilder::StoreIntoSingletonMem(StoreInst &I, var_t v,
 }
 
 void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitStore");  
   /**
    * The LLVM store instruction will be translated to *either*:
    * (a) crab array store if SINGLETON_MEM, or
@@ -2940,6 +2959,7 @@ void CrabIntraBlockBuilder::LoadFromSingletonMem(LoadInst &I, var_t lhs_v,
 }
 
 void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitLoad");  
   /*
     This case is symmetric to StoreInst.
    */
@@ -3050,6 +3070,7 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
 }
 
 void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitCall");  
   CallSite CS(&I);
   const Value *calleeV = CS.getCalledValue();
   const Function *callee =
@@ -3135,7 +3156,7 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
 	}
       }
     }
-
+    
     // -- havoc all regions that can be modified by the callee.
     // 
     // Note that even if the code is not available for the callee, the
@@ -3221,6 +3242,7 @@ doArithmeticWithOverflowIntrinsic(WithOverflowInst &I, var_t res) {
 }
 
 void CrabIntraBlockBuilder::visitExtractValueInst(ExtractValueInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitExtractValue");  
   // We only translate this instruction if it's used to extract the
   // values returned by an arithmetic with overflow intrinsics.
   if (m_params.lower_arithmetic_with_overflow_intrinsics) {
@@ -4045,7 +4067,6 @@ void CfgBuilderImpl::setExitBlock() {
 }
 
 void CfgBuilderImpl::buildCfg() {
-  crab::ScopedCrabStats __st__("CFG Construction");
 
   if (m_is_cfg_built) {
     return;
@@ -4053,8 +4074,12 @@ void CfgBuilderImpl::buildCfg() {
     m_is_cfg_built = true;
   }
 
-  CRAB_LOG("cfg", llvm::errs()
-                      << "buildCfg with " << m_func.getName() << "\n";);
+  crab::ScopedCrabStats __st__("CFG.Builder");  
+  CRAB_VERBOSE_IF(1,
+		  crab::get_msg_stream() 
+		  << "Starting CFG construction for "
+		  << m_func.getName() << "\n";);
+		  
 
   // HACK: search for seahorn.fail
   bool has_seahorn_fail = false;
@@ -4080,6 +4105,7 @@ void CfgBuilderImpl::buildCfg() {
   }
 
   initializeGlobalsAtMain();
+  
   basic_block_t *entry_bb = lookup(m_func.getEntryBlock());
 
   std::vector<const BasicBlock *> bbs;
@@ -4173,13 +4199,19 @@ void CfgBuilderImpl::buildCfg() {
       }
     }
   }
-  
+
   ////
   // Add region initialization.
   ///
   // This must be called after the CFG has been already constructed.
   initializeRegions();
 
+  CRAB_VERBOSE_IF(1,
+		  crab::get_msg_stream() 
+		  << "Finished CFG construction for "
+		  << m_func.getName() << "\n";);
+
+  
   if (m_params.simplify) {
     // -- Remove dead statements generated by our translation
     CRAB_VERBOSE_IF(1, crab::get_msg_stream()
@@ -4227,7 +4259,7 @@ void CfgBuilderImpl::buildCfg() {
  *
  **/
 void CfgBuilderImpl::addFunctionDeclaration() {
-  crab::ScopedCrabStats __st__("CFG Construction");
+  crab::ScopedCrabStats __st__("CFG.Builder");
 
   if (!m_params.interprocedural || m_func.isVarArg() || m_func.empty()) {
     return;
@@ -4797,6 +4829,7 @@ CfgBuilder& CrabBuilderManagerImpl::mkCfgBuilder(const Function &f) {
   } else {
     CLAM_ERROR("Not found cfg builder for " << f.getName());
   }
+
 }
 
 bool CrabBuilderManagerImpl::hasCfg(const Function &f) const {
@@ -4861,6 +4894,8 @@ CrabIREmitterVec &CrabBuilderManagerImpl::getPropertyEmitters() {
  *    - a_o1,...,a_om are modified and new regions created inside foo.
  **/
 void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
+  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.doCallSite");  
+  
   CallSite CS(&I);
   const Function *calleeF =
       dyn_cast<Function>(CS.getCalledValue()->stripPointerCastsAndAliases());
@@ -4991,7 +5026,7 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
     }
   }
 
-  // -- Sanity checks if function declaration of the callee is available
+  // -- Get function declaration of the callee is available
   const typename cfg_t::fdecl_t *calleeF_decl = nullptr;
   if (m_man.hasCfg(*calleeF)) {
     auto &callee_cfg = m_man.getCfg(*calleeF);
@@ -5000,92 +5035,96 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
     }
   }
 
-  auto hasCompatibleTypes = [](const typename var_t::type_t &t1,
-			       const typename var_t::type_t &t2) {
-       return ((t1 == t2) ||
-	       (t1.is_unknown_region() && (t2.is_region() && !t2.is_unknown_region())) ||
-	       (t2.is_unknown_region() && (t1.is_region() && !t1.is_unknown_region())));
+
+  if (true /*crab::CrabSanityCheckFlag*/) {
+    // -- Sanity checks: callsites and function declarations are
+    // -- consistent
+    auto hasCompatibleTypes = [](const typename var_t::type_t &t1,
+				 const typename var_t::type_t &t2) {
+      return ((t1 == t2) ||
+	      (t1.is_unknown_region() && (t2.is_region() && !t2.is_unknown_region())) ||
+	      (t2.is_unknown_region() && (t1.is_region() && !t1.is_unknown_region())));
     };
-  
-  // -- Sanity checks: callsites and function declarations are consistent
-  if (calleeF_decl) {
-    if (calleeF_decl->get_inputs().size() != inputs.size()) {
-      crab::outs() << *calleeF_decl << "\n";
-      crab::outs() << "num of inputs at callsite=" << inputs.size() << "\n";
-      crab::outs() << "num of inputs at function="
-                   << calleeF_decl->get_inputs().size() << "\n";
-      CLAM_ERROR("Mismatch of number of inputs between callsite and function "
-                 "declaration");
-    }
-    if (calleeF_decl->get_outputs().size() != outputs.size()) {
-      crab::outs() << *calleeF_decl << "\n";
-      crab::outs() << "num of outputs at callsite=" << outputs.size() << "\n";
-      crab::outs() << "num of outputs at function="
-                   << calleeF_decl->get_outputs().size() << "\n";
-      CLAM_ERROR("Mismatch of number of outputs between callsite and function "
-                 "declaration");
-    }
     
-    for (unsigned i = 0, num_args = inputs.size(); i < num_args; ++i) {
-      if (!hasCompatibleTypes(calleeF_decl->get_input_type(i), inputs[i].get_type())) {
-	llvm::errs() << "Callsite:" << I << "\n";
-	llvm::errs() << "Caller  :" << I.getParent()->getParent()->getName() << "\n";
-	auto const &finputs = calleeF_decl->get_inputs();
-	crab::outs() << "Function inputs={";
-	for (unsigned i=0, nargs=finputs.size(); i<nargs;) {
-	  crab::outs() << finputs[i] << ":" << finputs[i].get_type();
-	  ++i;
-	  if (i < nargs) {
-	    crab::outs() << ",";
-	  }
-	}
-	crab::outs() << "}\n";
-	crab::outs() << "Callsite inputs={";
-	for (unsigned i=0, nargs=inputs.size(); i<nargs;) {
-	  crab::outs() << inputs[i] << ":" << inputs[i].get_type();
-	  ++i;
-	  if (i < nargs) {
-	    crab::outs() << ",";
-	  }
-	}
-	crab::outs() << "}\n";
-	crab::outs() << "Function typeof(" << calleeF_decl->get_input_name(i)
-		     << ")=" << calleeF_decl->get_input_type(i) 
-		     << "\nCallsite typeof(" << inputs[i] << ")="
-		     << inputs[i].get_type() << "\n";
-	CLAM_ERROR("Mismatch between callsite and function declaration " 
-		   << "due to type of " <<  i <<  "-th input parameter.");
+    if (calleeF_decl) {
+      if (calleeF_decl->get_inputs().size() != inputs.size()) {
+	crab::outs() << *calleeF_decl << "\n";
+	crab::outs() << "num of inputs at callsite=" << inputs.size() << "\n";
+	crab::outs() << "num of inputs at function="
+		     << calleeF_decl->get_inputs().size() << "\n";
+	CLAM_ERROR("Mismatch of number of inputs between callsite and function "
+		   "declaration");
       }
-    }
-    for (unsigned i = 0, num_args = outputs.size(); i < num_args; ++i) {
-      if (!hasCompatibleTypes(calleeF_decl->get_output_type(i), outputs[i].get_type())) {
-	llvm::errs() << "Callsite:" << I << "\n";
-	llvm::errs() << "Caller  :" << I.getParent()->getParent()->getName() << "\n";	
-	auto const &foutputs = calleeF_decl->get_outputs();
-	crab::outs() << "Function outputs={";
-	for (unsigned i=0, nargs=foutputs.size(); i<nargs;) {
-	  crab::outs() << foutputs[i] << ":" << foutputs[i].get_type();
-	  ++i;
+      if (calleeF_decl->get_outputs().size() != outputs.size()) {
+	crab::outs() << *calleeF_decl << "\n";
+	crab::outs() << "num of outputs at callsite=" << outputs.size() << "\n";
+	crab::outs() << "num of outputs at function="
+		     << calleeF_decl->get_outputs().size() << "\n";
+	CLAM_ERROR("Mismatch of number of outputs between callsite and function "
+		   "declaration");
+      }
+      
+      for (unsigned i = 0, num_args = inputs.size(); i < num_args; ++i) {
+	if (!hasCompatibleTypes(calleeF_decl->get_input_type(i), inputs[i].get_type())) {
+	  llvm::errs() << "Callsite:" << I << "\n";
+	  llvm::errs() << "Caller  :" << I.getParent()->getParent()->getName() << "\n";
+	  auto const &finputs = calleeF_decl->get_inputs();
+	  crab::outs() << "Function inputs={";
+	  for (unsigned i=0, nargs=finputs.size(); i<nargs;) {
+	    crab::outs() << finputs[i] << ":" << finputs[i].get_type();
+	    ++i;
+	    if (i < nargs) {
+	      crab::outs() << ",";
+	    }
+	  }
+	  crab::outs() << "}\n";
+	  crab::outs() << "Callsite inputs={";
+	  for (unsigned i=0, nargs=inputs.size(); i<nargs;) {
+	    crab::outs() << inputs[i] << ":" << inputs[i].get_type();
+	    ++i;
+	    if (i < nargs) {
+	      crab::outs() << ",";
+	    }
+	  }
+	  crab::outs() << "}\n";
+	  crab::outs() << "Function typeof(" << calleeF_decl->get_input_name(i)
+		     << ")=" << calleeF_decl->get_input_type(i) 
+		       << "\nCallsite typeof(" << inputs[i] << ")="
+		       << inputs[i].get_type() << "\n";
+	  CLAM_ERROR("Mismatch between callsite and function declaration " 
+		     << "due to type of " <<  i <<  "-th input parameter.");
+	}
+      }
+      for (unsigned i = 0, num_args = outputs.size(); i < num_args; ++i) {
+	if (!hasCompatibleTypes(calleeF_decl->get_output_type(i), outputs[i].get_type())) {
+	  llvm::errs() << "Callsite:" << I << "\n";
+	  llvm::errs() << "Caller  :" << I.getParent()->getParent()->getName() << "\n";	
+	  auto const &foutputs = calleeF_decl->get_outputs();
+	  crab::outs() << "Function outputs={";
+	  for (unsigned i=0, nargs=foutputs.size(); i<nargs;) {
+	    crab::outs() << foutputs[i] << ":" << foutputs[i].get_type();
+	    ++i;
+	    if (i < nargs) {
+	      crab::outs() << ",";
+	    }
+	  }
+	  crab::outs() << "}\n";
+	  crab::outs() << "Callsite outputs={";
+	  for (unsigned i=0, nargs=outputs.size(); i<nargs;) {
+	    crab::outs() << outputs[i] << ":" << outputs[i].get_type();
+	    ++i;
 	  if (i < nargs) {
 	    crab::outs() << ",";
 	  }
-	}
-	crab::outs() << "}\n";
-	crab::outs() << "Callsite outputs={";
-	for (unsigned i=0, nargs=outputs.size(); i<nargs;) {
-	  crab::outs() << outputs[i] << ":" << outputs[i].get_type();
-	  ++i;
-	  if (i < nargs) {
-	    crab::outs() << ",";
 	  }
+	  crab::outs() << "}\n";
+	  crab::outs() << "Function typeof(" << calleeF_decl->get_output_name(i)
+		       << ")=" << calleeF_decl->get_output_type(i) 
+		       << "\nCallsite typeof(" << outputs[i] << ")="
+		       << outputs[i].get_type() << "\n";
+	  CLAM_ERROR("Mismatch between callsite and function declaration " 
+		     << "due to type of " <<  i <<  "-th output parameter.");
 	}
-	crab::outs() << "}\n";
-	crab::outs() << "Function typeof(" << calleeF_decl->get_output_name(i)
-		     << ")=" << calleeF_decl->get_output_type(i) 
-		     << "\nCallsite typeof(" << outputs[i] << ")="
-		     << outputs[i].get_type() << "\n";
-	CLAM_ERROR("Mismatch between callsite and function declaration " 
-		   << "due to type of " <<  i <<  "-th output parameter.");
       }
     }
   }
@@ -5206,7 +5245,8 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
                                             bool_assert(b);
    */
   // clang-format on
-  
+
+  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.doCrabSpecialIntrinsic");    
   CallSite CS(&I);
   const Function *calleeF =
       dyn_cast<Function>(CS.getCalledValue()->stripPointerCastsAndAliases());
