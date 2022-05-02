@@ -5319,7 +5319,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       std::vector<var_t> outputs {outParamLit->getVar()};
 
       if (is_unfreed_or_null) {
-	m_bb.intrinsic(name, outputs, inputs);	
+	m_bb.intrinsic(name, outputs, inputs, getDebugLoc(&I, 0 /*no id*/));	
       } else {
 	assert(inputs.size() == 3);
 	assert(inputs[0].is_variable());
@@ -5331,7 +5331,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
 	for (unsigned i = 0, sz = m_propertyEmitters.size(); i < sz; ++i) {
 	  m_propertyEmitters[i]->visitBeforeIsDeref(I, s);
 	}
-	m_bb.intrinsic(name, outputs, inputs);
+	m_bb.intrinsic(name, outputs, inputs, getDebugLoc(&I, 0 /*no id*/));
 	for (unsigned i = 0, sz = m_propertyEmitters.size(); i < sz; ++i) {
 	  m_propertyEmitters[i]->visitAfterIsDeref(I, s);
 	}
@@ -5420,7 +5420,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
 				       var_or_cst_t(m_lfac.getIntCst(tagParamLit),
 						    crab::variable_type(INT_TYPE, 32))};
       std::vector<var_t> outputs{outParam};
-      m_bb.intrinsic("does_not_have_tag", outputs, inputs);
+      m_bb.intrinsic("does_not_have_tag", outputs, inputs, getDebugLoc(&I, 0 /*no id*/));
     }
     m_bb.bool_assert(outParam, getDebugLoc(&I, m_assertion_id++));
   } else {
