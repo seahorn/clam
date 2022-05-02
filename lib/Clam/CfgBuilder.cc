@@ -964,8 +964,8 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   // translated to CrabIR yet but it will be translated when CallInst
   // is processed.	  
   DenseMap<CallInst *, CmpInst *> &m_pending_cmp_insts;
-  // To assign unique identifiers to assertions (if any)
-  uint32_t &m_assertion_id;
+  // To assign unique identifiers to debug info.
+  uint32_t &m_dbg_id;
   // Property instrumentation
   CrabIREmitterVec &m_propertyEmitters;
   
@@ -1079,7 +1079,7 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
       m_man(man), m_has_seahorn_fail(has_seahorn_fail),
       m_func_regions(func_regions), m_gep_map(gep_map), m_rev_map(rev_map),
       m_regions_with_store(regions_with_store), m_pending_cmp_insts(pending_cmp_insts),
-      m_assertion_id(assertion_id), m_propertyEmitters(propertyEmitters) {}
+      m_dbg_id(assertion_id), m_propertyEmitters(propertyEmitters) {}
 
 Optional<z_number> CrabIntraBlockBuilder::evalOffset(Value &v,
                                                      LLVMContext &ctx) {
@@ -1540,7 +1540,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
   }
 
   if (isErrorFn(*callee)) {
-    m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I, m_assertion_id++));
+    m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I, m_dbg_id++));
     return;
   }
 
@@ -1594,7 +1594,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
           m_bb.assume(lin_cst_t::get_false());
         } else {
           assert(isAssertFn(*callee));
-          m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I, m_assertion_id++));
+          m_bb.assertion(lin_cst_t::get_false(), getDebugLoc(&I, m_dbg_id++));
         }
       }
     }
@@ -1621,7 +1621,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
         if (var_opt.hasValue()) {
           if (isAssertFn(*callee)) {
             m_bb.bool_assert(var_opt.getValue(),
-                             getDebugLoc(&I, m_assertion_id++));
+                             getDebugLoc(&I, m_dbg_id++));
           } else {
             m_bb.bool_assume(var_opt.getValue());
           }
@@ -1654,7 +1654,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
           cmpInstToCrabInt(*Cond, m_lfac, isNotAssumeFn(*callee));
       if (cst_opt.hasValue()) {
         if (isAssertFn(*callee)) {
-          m_bb.assertion(cst_opt.getValue(), getDebugLoc(&I, m_assertion_id++));
+          m_bb.assertion(cst_opt.getValue(), getDebugLoc(&I, m_dbg_id++));
         } else {
           m_bb.assume(cst_opt.getValue());
         }
@@ -1663,7 +1663,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
             cmpInstToCrabRef(*Cond, m_lfac, isNotAssumeFn(*callee));
         if (cst_ref_opt.hasValue()) {
           if (isAssertFn(*callee)) {
-            m_bb.assert_ref(cst_ref_opt.getValue(), getDebugLoc(&I, m_assertion_id++));
+            m_bb.assert_ref(cst_ref_opt.getValue(), getDebugLoc(&I, m_dbg_id++));
           } else {
             m_bb.assume_ref(cst_ref_opt.getValue());
           }
@@ -1685,7 +1685,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
           m_bb.bool_assume(v);
         else {
           assert(isAssertFn(*callee));
-          m_bb.bool_assert(v, getDebugLoc(&I, m_assertion_id++));
+          m_bb.bool_assert(v, getDebugLoc(&I, m_dbg_id++));
         }
       } else if (cond_lit->isInt()) {
 
@@ -1707,7 +1707,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
             m_bb.bool_assume(v);
           } else {
             assert(isAssertFn(*callee));
-            m_bb.bool_assert(v, getDebugLoc(&I, m_assertion_id++));
+            m_bb.bool_assert(v, getDebugLoc(&I, m_dbg_id++));
           }
         } else {
           if (isNotAssumeFn(*callee)) {
@@ -1716,7 +1716,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
             m_bb.assume(v >= number_t(1));
           } else {
             assert(isAssertFn(*callee));
-            m_bb.assertion(v >= number_t(1), getDebugLoc(&I, m_assertion_id++));
+            m_bb.assertion(v >= number_t(1), getDebugLoc(&I, m_dbg_id++));
           }
         }
       }
@@ -3378,7 +3378,7 @@ private:
   // literal factory
   crabLitFactory &m_lfac;
   tag_manager &m_as_man;
-  uint32_t &m_assertion_id;
+  uint32_t &m_dbg_id;
   // heap analysis for memory translation
   HeapAbstraction &m_mem;
   // the crab CFG
@@ -4126,7 +4126,7 @@ void CfgBuilderImpl::buildCfg() {
 			    *bb, *entry_bb, m_params, m_globals,
                             m_ret_insts, m_man, has_seahorn_fail,
                             m_func_regions, m_rev_map, regions_with_store,
-                            gep_map, pending_cmp_insts, m_assertion_id, m_propertyEmitters);
+                            gep_map, pending_cmp_insts, m_dbg_id, m_propertyEmitters);
 
     v.visit(B);
 
@@ -4731,7 +4731,7 @@ private:
   // variable factory and the same allocation site manager.
   variable_factory_t m_vfac;
   crabLitFactory m_lfac;
-  uint32_t m_assertion_id;
+  uint32_t m_dbg_id;
   tag_manager m_as_man;
   // Whole-program heap analysis
   std::unique_ptr<HeapAbstraction> m_mem;
@@ -4747,7 +4747,7 @@ CrabBuilderManagerImpl::CrabBuilderManagerImpl(
     CrabIREmitterVec &&propertyEmitters)
     : m_params(params), m_tli(tli),
       m_lfac(m_vfac, m_params),
-      m_assertion_id(1) /* reserve id=0*/, m_mem(std::move(mem)) {
+      m_dbg_id(1) /* reserve id=0*/, m_mem(std::move(mem)) {
       
   CRAB_VERBOSE_IF(1, m_params.write(llvm::errs()));
 
@@ -4758,15 +4758,15 @@ CrabBuilderManagerImpl::CrabBuilderManagerImpl(
   // Populate the emitters for properties
   if (params.add_null_checks) {
     m_property_emitters.emplace_back(std::make_unique<EmitNullDerefChecks>
-				     (m_params, m_lfac, m_assertion_id));
+				     (m_params, m_lfac, m_dbg_id));
   }
   if (params.add_uaf_checks) {
     m_property_emitters.emplace_back(std::make_unique<EmitUafChecks>
-				     (m_params, m_lfac, m_assertion_id));
+				     (m_params, m_lfac, m_dbg_id));
   }
   if (params.add_bounds_checks || params.add_is_deref) {
     m_property_emitters.emplace_back(
-        std::make_unique<EmitBndChecks>(m_params, m_lfac, m_assertion_id));
+        std::make_unique<EmitBndChecks>(m_params, m_lfac, m_dbg_id));
   }
 }
 
@@ -5187,7 +5187,7 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
     std::string name = getCrabIntrinsicName(*calleeF);    
     std::vector<var_or_cst_t> new_inputs;
     std::copy(inputs.begin(), inputs.end(), std::back_inserter(new_inputs)); 
-    m_bb.intrinsic(name, outputs, new_inputs);
+    m_bb.intrinsic(name, outputs, new_inputs, getDebugLoc(&I, m_dbg_id++));
   } else {
     if (m_params.trackMemory()) {
       for (unsigned i = 0, sz = pendingInRgnCasts.size(); i < sz; ++i) {
@@ -5422,7 +5422,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       std::vector<var_t> outputs{outParam};
       m_bb.intrinsic("does_not_have_tag", outputs, inputs, getDebugLoc(&I, 0 /*no id*/));
     }
-    m_bb.bool_assert(outParam, getDebugLoc(&I, m_assertion_id++));
+    m_bb.bool_assert(outParam, getDebugLoc(&I, m_dbg_id++));
   } else {
     CLAM_ERROR("unsupported intrinsic " << I);
   }
@@ -5435,7 +5435,7 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func,
       // Builder never modifies the bitcode.
       m_func(const_cast<Function &>(func)),
       m_lfac(man.getCrabLitFactory()),
-      m_assertion_id(man.m_assertion_id),
+      m_dbg_id(man.m_dbg_id),
       m_as_man(man.getAllocSiteMan()),
       m_mem(man.getHeapAbstraction()), m_cfg(nullptr), m_id(0),
       m_dl(&(func.getParent()->getDataLayout())), m_tli(&(man.getTLIWrapper())),
