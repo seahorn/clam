@@ -282,6 +282,21 @@ std::string getAssertKindFromMetadata(MDNode *MDN) {
   return "";
 }
 
+// Return true if any use is a verifier call  
+bool AnyUseIsVerifierCall(Value &V) {
+  for (auto &U : V.uses()) {
+    Value *User = U.getUser();
+    if (CallInst *CI = dyn_cast<CallInst>(User)) {
+      CallSite CS(CI);
+      const Function *callee = dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts());
+      if (callee && isVerifierCall(*callee)) {
+	return true;
+      }
+    }
+  }
+  return false;
+}
+  
 // Return true if all uses are BranchInst's
 bool AllUsesAreBrInst(Value &V) {
   // XXX: do not strip pointers here
@@ -291,17 +306,23 @@ bool AllUsesAreBrInst(Value &V) {
   return true;
 }
 
-// Return true if all uses are BranchInst's or Select's
+// Return true if all uses are either BranchInst's or Select's if
+// satisfies selectFilter.
 bool AllUsesAreBrOrIntSelectCondInst(Value &V,
-                                     const CrabBuilderParams &params) {
+                                     const CrabBuilderParams &params,
+				     std::function<bool(SelectInst*)> selectFilter) {
   // XXX: do not strip pointers here
   for (auto &U : V.uses()) {
-    if ((!isa<BranchInst>(U.getUser())) && (!isa<SelectInst>(U.getUser())))
+    if ((!isa<BranchInst>(U.getUser())) && (!isa<SelectInst>(U.getUser()))) {
       return false;
+    }
     if (SelectInst *SI = dyn_cast<SelectInst>(U.getUser())) {
       if (isBool(*SI) || SI->getCondition() != &V || isReference(*SI, params)) {
         // if the operands are bool or V is not the condition
         return false;
+      }
+      if (!selectFilter(SI)) {
+	return false;
       }
     }
   }
@@ -322,17 +343,27 @@ bool AllUsesAreIndirectCalls(Value &V) {
   }
   return true;
 }
-
+  
 // Return true if all uses are verifier calls (assume/assert)
 bool AllUsesAreVerifierCalls(Value &V, bool goThroughIntegerCasts,
                              bool nonBoolCond,
-                             SmallVector<CallInst *, 4> &verifierCalls) {
+                             SmallVector<CallInst *, 4> &verifierCalls,
+			     bool onlyAssume) {
+
+  auto isVeriCall = [&onlyAssume](const Function &F) {
+    if (!onlyAssume) {
+      return isVerifierCall(F);
+    } else {
+      return (isAssumeFn(F) || isNotAssumeFn(F));
+    }
+  };
+    
   for (auto &U : V.uses()) {
     Value *User = U.getUser();
     if (goThroughIntegerCasts) {
       if (isa<ZExtInst>(User) || isa<SExtInst>(User)) {
         return AllUsesAreVerifierCalls(*User, goThroughIntegerCasts,
-                                       nonBoolCond, verifierCalls);
+                                       nonBoolCond, verifierCalls, onlyAssume);
       }
     }
 
@@ -340,7 +371,7 @@ bool AllUsesAreVerifierCalls(Value &V, bool goThroughIntegerCasts,
       CallSite CS(CI);
       const Value *calleeV = CS.getCalledValue();
       const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
-      if (callee && isVerifierCall(*callee)) {
+      if (callee && isVeriCall(*callee)) {
         if (nonBoolCond) {
           FunctionType *FTy = callee->getFunctionType();
           if (!FTy->isVarArg() && FTy->getReturnType()->isVoidTy() &&

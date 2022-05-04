@@ -47,6 +47,7 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/IR/CallSite.h"
@@ -921,6 +922,195 @@ public:
   }
 };
 
+// Generate an optimized translation of verifier calls (assume/assert)
+// that can help Crab abstract domains to be more precise.
+class VerifierCallOptimizer {
+  const CrabBuilderParams &m_params;
+  crabLitFactory &m_lfac;
+  uint32_t &m_dbg_id;
+  // Skip the translation. Sometimes several instructions are
+  // translated into one so we need to remember which instructions
+  // should be skipped.
+  SmallSet<const Instruction*, 8> m_skipped;
+  // Add a verifier call from a integer comparison instruction
+  DenseMap<const CallInst *, CmpInst *> m_pending_int_vericall;
+  // Add verifier call from a Boolean value
+  DenseMap<const CallInst *, Value *> m_pending_bool_vericall;
+  // Add extra assume/assume_not call from a Boolean value 
+  DenseMap<const CallInst *, std::pair<Value *, bool>> m_pending_bool_assume;
+
+public:
+  
+  VerifierCallOptimizer(const CrabBuilderParams &params, crabLitFactory &lfac, uint32_t &dbg_id)
+    : m_params(params), m_lfac(lfac), m_dbg_id(dbg_id) {}
+  VerifierCallOptimizer(const VerifierCallOptimizer&other) = delete;
+  VerifierCallOptimizer &operator=(const VerifierCallOptimizer&other) = delete;
+  
+  bool skipTranslation(Instruction &I) {
+    if (m_skipped.count(&I) > 0) {
+      return true;
+    }
+    
+    if (ZExtInst *ZEInst = dyn_cast<ZExtInst>(&I)) {
+      SmallVector<CallInst *, 4> verifierCalls;
+      if (ZEInst->getSrcTy()->isIntegerTy(1)) {
+	/* Avoid zero-extensions CrabIR statements */
+	if (AllUsesAreVerifierCalls(I,
+				    false /*goThroughIntegerCasts*/,
+				    false /*nonBoolCond*/, verifierCalls)) {
+	  /* Optimization #1
+	   *   Given LLVM code: 
+	   *     y:i32 = zext x:i1 to i32  
+	   *     ...  
+	   *     assume/assert(y>=1);
+	   *   we translate to:
+	   *     bool_assume/bool_assert(x) 
+	   */
+	  for (CallInst *veriCall : verifierCalls) {
+	    m_pending_bool_vericall.insert({veriCall, I.getOperand(0)});
+	  }
+	  return true;
+	}
+
+	if (ZEInst->hasOneUse()) {
+	  /* Optimization #2
+	   *   Given LLVM code:
+	   *     y = zext i1 x to i32
+	   *     z = select i1 c, i32 y, i32 0
+	   *     call void @__CRAB_assume(i32 z) #2
+	   *   we translate to: 
+	   *     bool_assume(c)
+	   *     bool_assume(x)
+	   *
+	   *   Given LLVM code:
+	   *     y = zext i1 x to i32
+	   *     z = select i1 c, i32 0, i32 y
+	   *     call void @__CRAB_assume(i32 z) #2
+	   *   we translate to: 
+	   *     bool_assume_not(c)
+	   *     bool_assume(x)
+	   */
+	  
+	  if (SelectInst *SI = dyn_cast<SelectInst>(ZEInst->use_begin()->getUser())) {
+	    Value * selectCond = SI->getCondition();
+	    if (isBool(*selectCond)) {
+	      bool canSkipSelect = false;
+	      bool negatedSelectCond = false;
+	      if (ConstantInt *CI = dyn_cast<ConstantInt>(SI->getTrueValue())) {
+		if (CI->isZero()) {
+		  canSkipSelect = true;
+		  negatedSelectCond = true;
+		}
+	      }
+	      if (!canSkipSelect) {
+		if (ConstantInt *CI = dyn_cast<ConstantInt>(SI->getFalseValue())) {
+		  if (CI->isZero()) {
+		    canSkipSelect = true;
+		  }
+		}
+	      }	      
+	      if (canSkipSelect) {
+		if (AllUsesAreVerifierCalls(*SI,
+					    false /*goThroughIntegerCasts*/,
+					    false /*nonBoolCond*/,
+					    verifierCalls,
+					    true /*onlyAssume*/)) {
+		  m_skipped.insert(SI);
+		  for (CallInst *veriCall : verifierCalls) {
+		    m_pending_bool_vericall.insert({veriCall, I.getOperand(0)});
+		    m_pending_bool_assume.insert({veriCall, {selectCond, negatedSelectCond}});
+		  }
+		  return true;
+		}
+	      }
+	    }
+	  }
+	}
+      }
+    } else if (CmpInst *CI = dyn_cast<CmpInst>(&I)) {
+      /* Optimization #3
+       * Avoid boolean CrabIR statements: use numerical ones instead.
+       * 
+       *   Given LLVM code:
+       *      %b = icmp %x, %y
+       *      ....
+       *      assert(%b)
+       *   we translate to: 
+       *      assert(x rel_op y);
+       */      
+      SmallVector<CallInst *, 4> verifierCalls;
+      if (m_params.avoid_boolean &&
+	  AllUsesAreVerifierCalls(I,
+				  true /*goThroughIntegerCasts*/,
+                                  true /*nonBoolCond*/,
+				  verifierCalls)) {
+        for (CallInst *veriCall : verifierCalls) {
+	  m_pending_int_vericall.insert({veriCall, CI});
+        }
+	return true;
+      }
+    }
+      
+    return false;
+  }
+
+  bool doTranslation(const CallInst &I, const Function &callee, basic_block_t &bb) {
+    if (CmpInst *cond = m_pending_int_vericall[&I]) {
+      auto cst_opt = cmpInstToCrabInt(*cond, m_lfac, isNotAssumeFn(callee));
+      if (cst_opt.hasValue()) {
+        if (isAssertFn(callee)) {
+          bb.assertion(cst_opt.getValue(), getDebugLoc(&I, m_dbg_id++));
+        } else {
+          bb.assume(cst_opt.getValue());
+        }
+      } else {
+        auto cst_ref_opt = cmpInstToCrabRef(*cond, m_lfac, isNotAssumeFn(callee));
+        if (cst_ref_opt.hasValue()) {
+          if (isAssertFn(callee)) {
+            bb.assert_ref(cst_ref_opt.getValue(), getDebugLoc(&I, m_dbg_id++));
+          } else {
+            bb.assume_ref(cst_ref_opt.getValue());
+          }
+        } else {
+          // This shouldn't happen
+          CLAM_WARNING("Could not translate unexpectedly " << I);
+        }
+      }
+      return true;
+    }
+
+    if (Value* boolVal = m_pending_bool_vericall[&I]) {
+      auto condLit = m_lfac.getLit(*boolVal);
+      assert(condLit->isVar());
+      assert(condLit->isBool());
+      var_t v = condLit->getVar();
+      if (isNotAssumeFn(callee)) {
+	bb.bool_not_assume(v);
+      } else if (isAssumeFn(callee)) {
+	bb.bool_assume(v);
+      } else {
+	assert(isAssertFn(callee));
+	bb.bool_assert(v, getDebugLoc(&I, m_dbg_id++));
+      }
+      // Boolean verification calls can have extra assumptions
+      auto it = m_pending_bool_assume.find(&I);
+      if (it != m_pending_bool_assume.end()) {
+	bool isNegated = it->second.second;
+	crab_lit_ref_t boolValLit = m_lfac.getLit(*(it->second.first));
+	assert(boolValLit->isVar());
+	if (isNegated) {
+	  bb.bool_not_assume(boolValLit->getVar());
+	} else {
+	  bb.bool_assume(boolValLit->getVar());
+	}
+      }
+      return true;
+    }
+    
+    return false;
+  }
+};
+  
 //! Translate the rest of instructions
 class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   crabLitFactory &m_lfac;
@@ -956,14 +1146,8 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   DenseMap<const statement_t *, const Instruction *> &m_rev_map;
   // HACK: to translate to strong updates with SINGLETON_MEMORY
   RegionSet &m_regions_with_store;
-  // Replace boolean CrabIR statements with numerical ones.
-  // 
-  // The map key is a verifier call (assert or assume) and the map
-  // value is its parameter. The operands of map value are guaranteed
-  // to be integers.  The map states that CmpInst hasn't been
-  // translated to CrabIR yet but it will be translated when CallInst
-  // is processed.	  
-  DenseMap<CallInst *, CmpInst *> &m_pending_cmp_insts;
+  // Optimized translation of verifier calls
+  VerifierCallOptimizer &m_vericall_opt;
   // To assign unique identifiers to debug info.
   uint32_t &m_dbg_id;
   // Property instrumentation
@@ -1033,7 +1217,7 @@ public:
       llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
       RegionSet &regions_with_store,
       DenseMap<const GetElementPtrInst *, var_t> &gep_map,
-      DenseMap<CallInst *, CmpInst *> &pending_cmp_insts,
+      VerifierCallOptimizer &vericall_opt,
       uint32_t &assertion_id,
       CrabIREmitterVec &propertyEmitters);
 
@@ -1070,7 +1254,7 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
     llvm::DenseMap<const statement_t *, const llvm::Instruction *> &rev_map,
     RegionSet &regions_with_store,
     DenseMap<const GetElementPtrInst *, var_t> &gep_map,
-    DenseMap<CallInst *, CmpInst *> &pending_cmp_insts,
+    VerifierCallOptimizer &vericall_opt,    
     uint32_t &assertion_id,
     CrabIREmitterVec &propertyEmitters)
     : m_lfac(lfac), m_as_man(as_man), m_mem(mem), m_dl(dl), m_tli(tli),
@@ -1078,7 +1262,7 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
       m_params(params), m_func_globals(func_globals), m_ret_insts(ret_insts),
       m_man(man), m_has_seahorn_fail(has_seahorn_fail),
       m_func_regions(func_regions), m_gep_map(gep_map), m_rev_map(rev_map),
-      m_regions_with_store(regions_with_store), m_pending_cmp_insts(pending_cmp_insts),
+      m_regions_with_store(regions_with_store), m_vericall_opt(vericall_opt),
       m_dbg_id(assertion_id), m_propertyEmitters(propertyEmitters) {}
 
 Optional<z_number> CrabIntraBlockBuilder::evalOffset(Value &v,
@@ -1565,6 +1749,33 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
     return;
   }
 
+  auto translateToBoolVerifierCall = [this, &I](crab_lit_ref_t cond, const Function *callee) {
+    assert(cond->isVar());
+    assert(cond->isBool());
+    var_t v = cond->getVar();
+    if (isNotAssumeFn(*callee)) {
+      m_bb.bool_not_assume(v);
+    } else if (isAssumeFn(*callee)) {
+      m_bb.bool_assume(v);
+    } else {
+      assert(isAssertFn(*callee));
+      m_bb.bool_assert(v, getDebugLoc(&I, m_dbg_id++));
+    }
+  };
+
+  auto translateToIntVerifierCall = [this, &I](crab_lit_ref_t cond, const Function *callee) {
+    assert(cond->isVar());
+    assert(cond->isInt());
+    var_t v = cond->getVar();
+    if (isNotAssumeFn(*callee)) {
+      m_bb.assume(v <= number_t(0));
+    } else if (isAssumeFn(*callee)) {
+      m_bb.assume(v >= number_t(1));
+    } else {
+      assert(isAssertFn(*callee));
+      m_bb.assertion(v >= number_t(1), getDebugLoc(&I, m_dbg_id++));
+    }
+  };
 
   // -- Deprecated: skip adding the assertion if the corresponding
   // -- region is untyped or cyclic. It only considers assertions
@@ -1600,9 +1811,9 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
     }
   } else {
 
-    #if 0
-    // JN: I think this code is adding a duplicate statement. This
-    // code tries to handle this case:
+    /*
+    // REVISIT(JN): I think this code is adding a duplicate
+    // statement. This code tries to handle this case:
     //
     //  b:= x <=_u y;
     //  assert(b) or assume(b);
@@ -1626,99 +1837,19 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
             m_bb.bool_assume(var_opt.getValue());
           }
         } else {
-          // Unreachable
           CLAM_WARNING("Could not translate unsigned comparisons: " << I);
         }
       }
     }
-    #endif
-    
-    if (CmpInst *Cond = m_pending_cmp_insts[&I]) {      
-      /*
-       * Avoid boolean CrabIR statements: use numerical ones instead
-       * if possible.
-       * 
-       * Given LLVM code:
-       *    %b = icmp %x, %y
-       *    ....
-       *    assert(%b)
-       * 
-       * If m_params.avoid_boolean = false then 
-       *    %b := (x rel_op y);
-       *    bool_assert(b);
-       * 
-       * If m_params.avoid_boolean = true then 
-       *    assert(x rel_op y);
-       */
-      auto cst_opt =
-          cmpInstToCrabInt(*Cond, m_lfac, isNotAssumeFn(*callee));
-      if (cst_opt.hasValue()) {
-        if (isAssertFn(*callee)) {
-          m_bb.assertion(cst_opt.getValue(), getDebugLoc(&I, m_dbg_id++));
-        } else {
-          m_bb.assume(cst_opt.getValue());
-        }
-      } else {
-        auto cst_ref_opt =
-            cmpInstToCrabRef(*Cond, m_lfac, isNotAssumeFn(*callee));
-        if (cst_ref_opt.hasValue()) {
-          if (isAssertFn(*callee)) {
-            m_bb.assert_ref(cst_ref_opt.getValue(), getDebugLoc(&I, m_dbg_id++));
-          } else {
-            m_bb.assume_ref(cst_ref_opt.getValue());
-          }
-        } else {
-          // This shouldn't happen
-          CLAM_WARNING("Could not translate unexpectedly " << I);
-        }
-      }
-    } else {
+    */
 
+    if (!m_vericall_opt.doTranslation(I, *callee, m_bb)) {
       crab_lit_ref_t cond_lit = m_lfac.getLit(*cond);
-      assert(cond_lit->isVar());
-      var_t v = cond_lit->getVar();
-      // -- cond is variable
+      assert(cond_lit->isVar());      
       if (cond_lit->isBool()) {
-        if (isNotAssumeFn(*callee))
-          m_bb.bool_not_assume(v);
-        else if (isAssumeFn(*callee))
-          m_bb.bool_assume(v);
-        else {
-          assert(isAssertFn(*callee));
-          m_bb.bool_assert(v, getDebugLoc(&I, m_dbg_id++));
-        }
+	translateToBoolVerifierCall(cond_lit, callee);
       } else if (cond_lit->isInt()) {
-
-        ZExtInst *ZEI = dyn_cast<ZExtInst>(cond);
-        if (ZEI && ZEI->getSrcTy()->isIntegerTy(1)) {
-          /* Special case to replace this pattern:
-                y:i32 = zext x:i1 to i32
-                assume (y>=1);
-             with
-                bool_assume(x);
-             This can help boolean/numerical propagation in the crab domains.
-          */
-          cond_lit = m_lfac.getLit(*(ZEI->getOperand(0)));
-          assert(cond_lit->isVar()); // boolean variable
-          v = cond_lit->getVar();
-          if (isNotAssumeFn(*callee)) {
-            m_bb.bool_not_assume(v);
-          } else if (isAssumeFn(*callee)) {
-            m_bb.bool_assume(v);
-          } else {
-            assert(isAssertFn(*callee));
-            m_bb.bool_assert(v, getDebugLoc(&I, m_dbg_id++));
-          }
-        } else {
-          if (isNotAssumeFn(*callee)) {
-            m_bb.assume(v <= number_t(0));
-          } else if (isAssumeFn(*callee)) {
-            m_bb.assume(v >= number_t(1));
-          } else {
-            assert(isAssertFn(*callee));
-            m_bb.assertion(v >= number_t(1), getDebugLoc(&I, m_dbg_id++));
-          }
-        }
+	translateToIntVerifierCall(cond_lit, callee);
       }
     }
   }
@@ -1749,16 +1880,9 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
   if (isReference(v0, m_params) && isReference(v1, m_params)) {
     if (AllUsesAreBrInst(I)) {
       // already lowered elsewhere
+    } else if (m_vericall_opt.skipTranslation(I)) {
+      // already lowered elsewhere
     } else {
-      SmallVector<CallInst *, 4> verifierCalls;
-      if (m_params.avoid_boolean &&
-	  AllUsesAreVerifierCalls(I, true /*goThroughIntegerCasts*/,
-                                  true /*nonBoolCond*/, verifierCalls)) {
-        for (CallInst *CI : verifierCalls) {
-          m_pending_cmp_insts.insert({CI, &I});
-        }
-        // do nothing: lowered elsewhere
-      } else {
         Optional<ref_cst_t> ref_cst =
             cmpInstToCrabRef(I, m_lfac, false /*not negated*/);
         if (ref_cst.hasValue()) {
@@ -1766,7 +1890,6 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
         } else {
           havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
         }
-      }
     }
     return;
   }
@@ -1789,20 +1912,15 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
     }
   } else {
     assert(isInteger(v0) && isInteger(v1));
-    if (AllUsesAreBrOrIntSelectCondInst(I, m_params)) {
-      // do nothing: already lowered elsewhere
+    if (AllUsesAreBrOrIntSelectCondInst(I, m_params,
+					[](SelectInst *I){
+					  return !AnyUseIsVerifierCall(*I);
+					})) {
+      // already lowered elsewhere
+    } else if (m_vericall_opt.skipTranslation(I)) {
+      // already lowered elsewhere
     } else {
-      SmallVector<CallInst *, 4> verifierCalls;
-      if (m_params.avoid_boolean &&
-	  AllUsesAreVerifierCalls(I, true /*goThroughIntegerCasts*/,
-                                  true /*nonBoolCond*/, verifierCalls)) {
-        for (CallInst *CI : verifierCalls) {
-          m_pending_cmp_insts.insert({CI, &I});
-        }
-        // do nothing: lowered elsewhere
-      } else {
-        cmpInstToCrabBool(I, m_lfac, m_bb, m_params.lower_unsigned_icmp);
-      }
+      cmpInstToCrabBool(I, m_lfac, m_bb, m_params.lower_unsigned_icmp);
     }
   }
 }
@@ -1842,11 +1960,12 @@ void CrabIntraBlockBuilder::visitBinaryOperator(BinaryOperator &I) {
     havoc(lit->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
   }
 }
-
+  
 void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
   crab::ScopedCrabStats __st__("CFG.Builder.visitCast");  
-  if (!isTracked(I, m_params))
+  if (!isTracked(I, m_params)) {
     return;
+  }
 
   if (AllUsesAreNonTrackMem(&I) || AllUsesAreIndirectCalls(I)) {
     return;
@@ -1856,12 +1975,7 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
     return;
   }
 
-  if (isa<ZExtInst>(I) && I.getSrcTy()->isIntegerTy(1) &&
-      AllUsesAreVerifierCalls(I)) {
-    /*
-       y:i32 = zext x:i1 to i32
-       assume (y>=1);
-    */
+  if (m_vericall_opt.skipTranslation(I)) {
     return;
   }
 
@@ -1970,8 +2084,14 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
 // here.
 void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
   crab::ScopedCrabStats __st__("CFG.Builder.visitSelect");  
-  if (!isTracked(I, m_params))
+  if (!isTracked(I, m_params)) {
     return;
+  }
+
+  if (m_vericall_opt.skipTranslation(I)) {
+    // the translation can skip the select instruction
+    return;
+  }
 
   crab_lit_ref_t lhs = m_lfac.getLit(I);
   assert(lhs && lhs->isVar());
@@ -3946,9 +4066,14 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
             }
           }
           if (!lower_cond_as_bool) {
-            // Here we check the same condition we checked in visitCmpInt
+            // Here we check the same condition we checked in
+	    // visitCmpInt to decide whether we still need to
+	    // translate the CmpInst as a boolean CrabIR statement.
             lower_cond_as_bool =
-                !AllUsesAreBrOrIntSelectCondInst(*CI, m_params);
+	      !AllUsesAreBrOrIntSelectCondInst(*CI, m_params,
+					       [](SelectInst *I){
+						 return !AnyUseIsVerifierCall(*I);
+					       });
           }
         } else {
           // If the boolean condition is passed directly (e.g.,
@@ -4087,11 +4212,8 @@ void CfgBuilderImpl::buildCfg() {
   RegionSet regions_with_store;
   // Map GEP instruction to a Crab variable
   DenseMap<const GetElementPtrInst *, var_t> gep_map;
-  // Assert or assume instruction together with its parameter.  Used
-  // to delay the translation of CmpInst so that adding boolean CrabIR
-  // statements can be avoided.
-  DenseMap<CallInst *, CmpInst *> pending_cmp_insts;
-
+  // For better translation of assume/assert
+  VerifierCallOptimizer vericall_opt(m_params, m_lfac, m_dbg_id);
   const TargetLibraryInfo *tli = (m_tli ? &m_tli->getTLI(m_func) : nullptr);
 
   // Sanity check: pass NameValues must have been executed before
@@ -4126,7 +4248,7 @@ void CfgBuilderImpl::buildCfg() {
 			    *bb, *entry_bb, m_params, m_globals,
                             m_ret_insts, m_man, has_seahorn_fail,
                             m_func_regions, m_rev_map, regions_with_store,
-                            gep_map, pending_cmp_insts, m_dbg_id, m_propertyEmitters);
+                            gep_map, vericall_opt, m_dbg_id, m_propertyEmitters);
 
     v.visit(B);
 

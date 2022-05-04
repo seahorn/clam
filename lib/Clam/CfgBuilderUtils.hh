@@ -9,6 +9,7 @@ class Value;
 class Function;
 class Instruction;
 class CallInst;
+class SelectInst;
 class APInt;
 class ConstantInt;
 class DataLayout;
@@ -104,20 +105,26 @@ bool isIntInitializer(const llvm::CallInst &CI);
 // deprecated
 std::string getAssertKindFromMetadata(llvm::MDNode *MDN);
 
+// Return true if any use is a verifier call  
+bool AnyUseIsVerifierCall(llvm::Value &V);
+  
 // Return true if all uses are BranchInst's
 bool AllUsesAreBrInst(llvm::Value &V);
 
-// Return true if all uses are BranchInst's or Select's
+// Return true if all uses are either BranchInst's or Select's that
+// satisfy selectFilter.
 bool AllUsesAreBrOrIntSelectCondInst(llvm::Value &V,
-                                     const CrabBuilderParams &params);
-
+                                     const CrabBuilderParams &params,
+				     std::function<bool(llvm::SelectInst*)> selectFilter);
+				    
 // Return true if all uses are the callee at callsites
 bool AllUsesAreIndirectCalls(llvm::Value &V);
 
 // Return true if all uses are verifier calls (assume/assert)
 bool AllUsesAreVerifierCalls(llvm::Value &V, bool goThroughIntegerCasts,
                              bool nonBoolCond,
-                             llvm::SmallVector<llvm::CallInst *, 4> &);
+                             llvm::SmallVector<llvm::CallInst *, 4> &,
+			     bool onlyAssume = false);
 bool AllUsesAreVerifierCalls(llvm::Value &V);
 
 // Return true if all uses are GEPs
