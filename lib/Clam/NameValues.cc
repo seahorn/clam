@@ -12,7 +12,7 @@
 using namespace llvm;
 
 cl::opt<bool> UseCrabNameValues(
-    "crab-name-values",
+    "use-crab-name-values",
     cl::desc("Use own crab way of naming values, otherwise LLVM instnamer"),
     cl::init(true));
 
