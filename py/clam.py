@@ -967,9 +967,9 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_dsa_external: clam_args.append('--crab-dsa-disambiguate-external')
     if args.crab_keep_shadows: clam_args.append('--crab-keep-shadows')
     if args.crab_name_values:
-        clam_args.append('--crab-name-values=true')
+        clam_args.append('--use-crab-name-values=true')
     else:
-        clam_args.append('--crab-name-values=false')
+        clam_args.append('--use-crab-name-values=false')
     if args.crab_enable_bignums:
         clam_args.append('--crab-enable-bignums=true')
     else:
