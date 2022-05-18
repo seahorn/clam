@@ -269,6 +269,8 @@ def parseArgs(argv):
                     dest='devirt',
                     choices=['none','types','sea-dsa'],
                     default='none')
+    p.add_argument ('--entry', dest='entry', help='Make entry point if main does not exist',
+                    default=None, metavar='str')
     p.add_argument ('--externalize-functions',
                     help='Externalize these functions',
                     dest='extern_funcs', type=str, metavar='str,...')    
@@ -747,6 +749,9 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     # for now, there is no option to undo this switch
     crabpp_args.append('--simplifycfg-sink-common=false')
 
+    if args.entry is not None:
+        crabpp_args.append('--entry-point={0}'.format(args.entry))
+    
     if args.promote_malloc:
         crabpp_args.append('--clam-promote-malloc=true')
     else:

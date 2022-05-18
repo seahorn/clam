@@ -223,6 +223,10 @@ int main(int argc, char **argv) {
 
   assert(dl && "Could not find Data Layout for the module");
 
+
+  // -- Create an entry point if main doesn't exist
+  pass_manager.add(clam::createInsertEntryPointPass());
+
   if (PromoteMalloc) {
     // -- promote top-level mallocs to alloca
     pass_manager.add(clam::createPromoteMallocPass());
