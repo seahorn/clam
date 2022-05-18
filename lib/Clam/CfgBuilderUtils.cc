@@ -172,6 +172,10 @@ bool isIntArray(const Type &T) {
           !(T.getArrayElementType()->isIntegerTy(1)));
 }
 
+bool isLogicAnd(const BinaryOperator &I) {
+  return (I.getOpcode() == Instruction::And && I.getType()->isIntegerTy(1));
+}
+
 // bool isPointerArray(const Type &T) {
 //   return (T.isArrayTy() && T.getArrayElementType()->isPointerTy());
 // }

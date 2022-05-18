@@ -538,6 +538,31 @@ static Optional<var_t> unsignedCmpInstToCrabInt(CmpInst &I,
   return llvm::None;
 }
 
+// %z = and i1 %x, %y
+// assume(%z) ---> assume(%x); assume(%y)
+static void splitConjAssume(BinaryOperator &I, crabLitFactory &lfac,
+                            basic_block_t &bb, const bool isNegated = false) {
+  crab_lit_ref_t rhs_ref = lfac.getLit(I);
+  if (isLogicAnd(I) && rhs_ref->isBool()) {
+    const Value &v0 = *I.getOperand(0);
+    const Value &v1 = *I.getOperand(1);
+    crab_lit_ref_t op0_ref = lfac.getLit(v0);
+    if (!op0_ref || !(op0_ref->isBool()))
+      return;
+
+    crab_lit_ref_t op1_ref = lfac.getLit(v1);
+    if (!op1_ref || !(op1_ref->isBool()))
+      return;
+    if (isNegated) {
+      bb.bool_not_assume(op0_ref->getVar());
+      bb.bool_not_assume(op1_ref->getVar());
+    } else {
+      bb.bool_assume(op0_ref->getVar());
+      bb.bool_assume(op1_ref->getVar());
+    }
+  }
+}
+
 // This function makes sure that all actual parameters and function
 // return values are variables. This is required by crab.
 // precondition: v is tracked.
@@ -1049,8 +1074,31 @@ public:
         }
 	return true;
       }
+    } else if (BinaryOperator *BinOp = dyn_cast<BinaryOperator>(&I)) {
+      /* Optimization #4
+       * Add additional boolean assume if .
+       *
+       *   Given LLVM code:
+       *      %b = and i1 %x, %y
+       *      ....
+       *      assume(%b)
+       *   we translate to:
+       *      assume(%x);
+       *      assume(%y);
+       *      assume(%z);
+       */
+      SmallVector<CallInst *, 4> verifierCalls;
+      if (isLogicAnd(*BinOp) &&
+          AllUsesAreVerifierCalls(I, false /*goThroughIntegerCasts*/,
+                                  false /*nonBoolCond*/, verifierCalls,
+                                  true /*onlyAssume*/)) {
+        for (CallInst *veriCall : verifierCalls) {
+          m_pending_bool_vericall.insert({veriCall, BinOp});
+        }
+        return true;
+      }
     }
-      
+
     return false;
   }
 
@@ -1084,6 +1132,11 @@ public:
       assert(condLit->isVar());
       assert(condLit->isBool());
       var_t v = condLit->getVar();
+      if (!isAssertFn(callee)) {
+        if (BinaryOperator *BinOp = dyn_cast<BinaryOperator>(boolVal)) {
+          splitConjAssume(*BinOp, m_lfac, bb, isNotAssumeFn(callee));
+        }
+      }
       if (isNotAssumeFn(callee)) {
 	bb.bool_not_assume(v);
       } else if (isAssumeFn(callee)) {
@@ -1933,6 +1986,10 @@ void CrabIntraBlockBuilder::visitBinaryOperator(BinaryOperator &I) {
   crab_lit_ref_t lit = m_lfac.getLit(I);
   if (!lit || !(lit->isVar())) {
     CLAM_ERROR("unexpected lhs of binary operator");
+  }
+
+  if (m_vericall_opt.skipTranslation(I)) {
+    return;
   }
 
   switch (I.getOpcode()) {

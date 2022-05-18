@@ -16,6 +16,7 @@ class DataLayout;
 class CastInt;
 class CmpInst;
 class MDNode;
+class BinaryOperator;
 } // namespace llvm
 
 namespace clam {
@@ -77,6 +78,8 @@ bool isBoolToInt(const llvm::CastInt &I);
 bool isBoolArray(const llvm::Type &T);
 
 bool isIntArray(const llvm::Type &T);
+
+bool isLogicAnd(const llvm::BinaryOperator &I);
 
 bool isAssertFn(const llvm::Function &F);
 
