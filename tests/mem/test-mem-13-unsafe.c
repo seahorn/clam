@@ -1,17 +1,11 @@
 #include <stdio.h>
+#include "clam/clam.h"
 
 // RUN: %clam  -O0 --crab-inter --crab-inter-recursive-functions --crab-dom=int --crab-track=mem --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total safe checks$
 // CHECK: ^1  Number of total warning checks$
   
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-extern int int_nd(void);
-
-extern int nd();
-
 typedef void (*funcPtr)(int);
-
 extern funcPtr int_func_ptr(void);
 
 void fun1(int a) {
@@ -28,7 +22,7 @@ void (*fun_ptr)(int) = fun3;
 
 int main() {
 
-   int x = nd();
+   int x = nd_int();
    __CRAB_assume (x >= 0);
    if (x > 0)
      fun_ptr = fun1;

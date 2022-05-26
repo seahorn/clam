@@ -1,3 +1,5 @@
+#include "clam/clam.h"
+
 int foo(int* p, const int* A, const int* B, int n) {
   int numNonZero = n - 1;
   while (numNonZero--) {

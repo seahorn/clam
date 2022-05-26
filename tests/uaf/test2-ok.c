@@ -3,11 +3,7 @@
 // CHECK: ^0  Number of total warning checks$
 
 #include <stdlib.h>
-
-extern int int_nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-
+#include "clam/clam.h"
 
 struct s {
   int f1;
@@ -19,13 +15,13 @@ struct s {
 void init(struct s* p) {
   // x is allocated here but it doesn't escape
   int *x = (int*) malloc(sizeof(int));
-  if (int_nd()) {
+  if (nd_int()) {
     *x = 5;
   } else {
     *x = 7;
   }
   p->f1 = *x;
-  p->f2 = int_nd();
+  p->f2 = nd_int();
   p->f3 = *x;
   free(x);
 }

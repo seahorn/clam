@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "clam/clam.h"
 
 typedef struct {
   //SolPubkey *key;      /** Public key of the account */
@@ -33,10 +34,8 @@ typedef struct {
 } SolParameters;
 
 
-extern void __CRAB_assume(int);
-extern void __CRAB_assert(int);
-extern uint64_t __CVT_nondet_uint64(void);
-extern int64_t __CVT_nondet_int64(void);  
+extern NONDET_FN_ATTR uint64_t __CVT_nondet_uint64(void);
+extern NONDET_FN_ATTR int64_t __CVT_nondet_int64(void);  
 extern bool __CVT_deserialize(const uint8_t *input, SolParameters *output, uint64_t ka_num);  
 
 #define DESERIALIZE __CVT_deserialize

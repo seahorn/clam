@@ -1,6 +1,6 @@
 // RUN: %clam -O0 --crab-track=mem --crab-inter --crab-print-invariants=false --crab-disable-warnings  "%s" 2>&1 | OutputCheck %s
 // XFAIL: *
-
+#include "clam/clam.h"
 
 // Crab intrinsics to print invariants projected onto specific
 // variables

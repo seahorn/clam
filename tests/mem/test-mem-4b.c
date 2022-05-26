@@ -1,10 +1,9 @@
 #include <stdlib.h>
+#include "clam/clam.h"
 
 // RUN: %clam -O0  --crab-inter --crab-dom=zones --crab-track=mem --llvm-peel-loops=1 --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^6  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
-extern void __CRAB_assert(int);
-extern int int_nd(void);
 
 typedef struct node{
   int f;
@@ -24,7 +23,7 @@ int main() {
   for (i=0; i<N;i++) {
     List tmp = (List) malloc(sizeof(struct node));
     tmp->f = i;
-    if (int_nd()) {
+    if (nd_int()) {
       tmp->s = N*2;
     } else {
       tmp->s = N*3;

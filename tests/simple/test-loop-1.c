@@ -3,8 +3,9 @@
 // CHECK: ^0  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
+#include "clam/clam.h"
 
-extern void __VERIFIER_error(void); __attribute__ ((__noreturn__));
+
 void __VERIFIER_assert(int cond) {
   if (!(cond)) {
     ERROR: __VERIFIER_error();

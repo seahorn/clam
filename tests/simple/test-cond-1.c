@@ -1,4 +1,4 @@
-extern int nd ();
+#include "clam/clam.h"
 
 int foo (int x, int flag) {
 
@@ -11,6 +11,6 @@ int foo (int x, int flag) {
 int main (){
 
   int x = 5;
-  int res = foo (x, nd ());
+  int res = foo (x, nd_int());
   return res;
 }

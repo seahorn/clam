@@ -3,17 +3,14 @@
 // CHECK: ^0  Number of total warning checks$
 
 #include <stdint.h>
-
-extern int nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
+#include "clam/clam.h"
 
 int x;
 int a[10];
 
 int32_t compute1(int32_t *t) {
   int64_t res = t[0] + t[2]; // exact res = 4 but we get res =[2,40]
-  int idx = nd();
+  int idx = nd_int();
   __CRAB_assume(idx >= 0);
   __CRAB_assume(idx <= 3);
   // A symbolic index makes the pointer analysis to classify t as a
@@ -41,10 +38,10 @@ int main () {
   
   int i;
   for (i=0;i<10;i++) {
-    a[i] = (nd() ? 3: 5);
+    a[i] = (nd_int() ? 3: 5);
   }  
   
-  int y = nd();
+  int y = nd_int();
   __CRAB_assume(y >= 0);
   __CRAB_assume(y < 10);
   int res = a[y];    

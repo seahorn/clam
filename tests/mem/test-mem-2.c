@@ -1,11 +1,9 @@
 #include <stdlib.h>
+#include "clam/clam.h"
 
 // RUN: %clam -O0  --crab-inter --crab-dom=int --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
-
-extern void __CRAB_assert(int);
-extern int nd_int(void);
 
 int* foo(int *p) {
   if (nd_int()) {

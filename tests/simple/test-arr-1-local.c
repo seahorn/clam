@@ -6,6 +6,8 @@
 // CHECK: ^0  Number of total warning checks$
 // XFAIL: *
 
+#include "clam/clam.h"
+
 /*
   Even with loop peeling the array_adaptive domain (used by option
   sing-mem) cannot be precise here. Let's assume that we have peeled
@@ -18,15 +20,13 @@
   remembers that the cell a[4..7] was created. Since there is no
   information about it, after we smash we lose everything.
  */
-extern int nd ();
-extern void __CRAB_assert(int);
 
 int main () {
   // local array
   int a[10];
   int i;
   for (i=0;i<10;i++) {
-    if (nd ())
+    if (nd_int())
       a[i] =0;
     else 
       a[i] =5;

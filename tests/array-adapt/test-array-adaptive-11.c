@@ -1,11 +1,7 @@
 // RUN: %clam -m32 --crab-inter --crab-track=sing-mem --crab-dom=int --crab-check=assert --crab-sanity-checks --crab-heap-analysis=cs-sea-dsa-types "%s" 2>&1 | OutputCheck %s
 // CHECK: ^8  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
-extern int int_nd(void);
-extern char* name_nd(void);
-
-extern void __CRAB_assume(int);
-extern void __CRAB_assert(int);
+#include "clam/clam.h"
 
 typedef struct {
   int x;
@@ -36,54 +32,54 @@ int main(){
 
   int i;
   for(i=0;i<N;++i) {
-    if (int_nd()) {
+    if (nd_int()) {
       a[i].x = 1;
     }
   }
   
-  if (int_nd()) 
+  if (nd_int()) 
     a[0].y = 1;
-  if (int_nd())
+  if (nd_int())
     a[1].y = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[2].y = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[3].y = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[4].y = 1;
-  if (int_nd())
+  if (nd_int())
     a[5].y = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[6].y = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[7].y = 1;
-  if (int_nd())
+  if (nd_int())
     a[8].y = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[9].y = 1;  
 
-  if (int_nd()) 
+  if (nd_int()) 
     b[0] = 1;
-  if (int_nd())
+  if (nd_int())
     b[1] = 1;
-  if (int_nd())  
+  if (nd_int())  
     b[2] = 1;
-  if (int_nd())  
+  if (nd_int())  
     b[3] = 1;
-  if (int_nd())  
+  if (nd_int())  
     b[4] = 1;
-  if (int_nd())
+  if (nd_int())
     b[5] = 1;
-  if (int_nd())  
+  if (nd_int())  
     b[6] = 1;
-  if (int_nd())  
+  if (nd_int())  
     b[7] = 1;
-  if (int_nd())
+  if (nd_int())
     b[8] = 1;
-  if (int_nd())  
+  if (nd_int())  
     b[9] = 1;  
   
-  check(&a[0], &b[0], int_nd());
+  check(&a[0], &b[0], nd_int());
   
   return 0;
 }

@@ -4,8 +4,7 @@
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
-extern int nd ();
-extern void __CRAB_assert(int);
+#include "clam/clam.h"
 
 int a[10];
 int b[10];
@@ -15,7 +14,7 @@ int main ()
   int i;
   for (i=0;i<10;i++)
   {
-    if (nd ())
+    if (nd_int())
       a[i] =0;
     else 
       a[i] =5;
@@ -23,7 +22,7 @@ int main ()
 
   for (i=0;i<10;i++)
   {
-    if (nd ())
+    if (nd_int())
       b[i] =20;
     else 
       b[i] =25;

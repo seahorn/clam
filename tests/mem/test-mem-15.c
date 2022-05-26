@@ -3,19 +3,15 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include "clam/clam.h"
 
 // RUN: %clam -O0 --crab-inter --crab-dom=pk --promote-malloc=false --crab-track=mem --crab-check=bounds "%s" 2>&1 | OutputCheck %s
 // CHECK: ^4  Number of total safe checks$
 // CHECK: ^1  Number of total warning checks$
 
-/* Externalize Helper Function */
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-extern int int_nd(void);
-
 // Domain: polka
 int main(void) {
-    int cap = int_nd();
+    int cap = nd_int();
     int max = 10;
     __CRAB_assume(cap > 0);
     __CRAB_assume(cap <= max);

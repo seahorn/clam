@@ -1,4 +1,4 @@
-# Clam: Crab for Llvm Abstraction Manager #
+# Clam: Llvm front-end for Crab #
 
 <a href="https://github.com/seahorn/crab-llvm/actions"><img src="https://github.com/seahorn/crab-llvm/workflows/CI/badge.svg" title="Ubuntu 18.04 LTS 64bit, g++-6"/></a>
 

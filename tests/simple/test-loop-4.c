@@ -2,18 +2,16 @@
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
+#include "clam/clam.h"
 
 /** Example where polyhedra is more precise than octagons or zones **/
 
-extern void __VERIFIER_error(void);
-extern void __VERIFIER_assume(int);
 void __VERIFIER_assert(int cond) {
   if (!(cond)) {
       ERROR: __VERIFIER_error();
   }
   return;
 }
-int __VERIFIER_nondet_int();
 int main() {
     int i,j;
     i = 1;

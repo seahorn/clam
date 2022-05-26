@@ -2,7 +2,6 @@
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
 
-
 // Note that we need to delay widening two iterations to prove the
 // assertion.
 
@@ -11,14 +10,10 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
-
-extern int int_nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-extern bool sea_is_dereferenceable(const void *ptr, intptr_t offset);
+#include "clam/clam.h"
 
 int main() {
-  int sz = int_nd();
+  int sz = nd_int();
   __CRAB_assume(sz > 0);
   __CRAB_assume(sz < 10);
   uint8_t *start = malloc(sizeof(uint8_t) * sz);

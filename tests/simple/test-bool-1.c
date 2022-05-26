@@ -9,12 +9,10 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include "clam/clam.h"
 
-extern uint8_t uint8_t_nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
 int main(void) {
-  uint8_t x = uint8_t_nd();
+  uint8_t x = nd_uint8_t();
   __CRAB_assume(x > 5);
   uint8_t mmax = 10;
   __CRAB_assume(x < mmax);

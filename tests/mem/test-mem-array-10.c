@@ -1,14 +1,10 @@
 // RUN: %clam -m32 --crab-inter --crab-track=mem --crab-dom=int --crab-check=assert --crab-sanity-checks --crab-heap-analysis=cs-sea-dsa-types "%s" 2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total safe checks$
 // CHECK: ^4  Number of total warning checks$
-extern int int_nd(void);
-extern char* name_nd(void);
 
-extern void __CRAB_assume(int);
-extern void __CRAB_assert(int);
+#include "clam/clam.h"
 
 #define sassert(X) __CRAB_assert(X)
-
 
 void check(int* s, int flag) {
   if (flag > 0) {
@@ -25,28 +21,28 @@ int main(){
 
   int a[10];
   
-  if (int_nd()) 
+  if (nd_int()) 
     a[0] = 1;
-  if (int_nd())
+  if (nd_int())
     a[1] = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[2] = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[3] = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[4] = 1;
-  if (int_nd())
+  if (nd_int())
     a[5] = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[6] = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[7] = 1;
-  if (int_nd())
+  if (nd_int())
     a[8] = 1;
-  if (int_nd())  
+  if (nd_int())  
     a[9] = 1;  
 
-  check(&a[0], int_nd());
+  check(&a[0], nd_int());
   
   return 0;
 }

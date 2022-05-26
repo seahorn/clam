@@ -1,7 +1,5 @@
 #include <stdio.h>
-
-extern void __CRAB_assume(int);
-extern int int_nd(void);
+#include "clam/clam.h"
 
 void fun1(int a) {
   printf("Value of a is %d\n", a);
@@ -17,7 +15,7 @@ void (*fun_ptr)(int) = fun3;
 
 int main() {
 
-   int x = int_nd();
+   int x = nd_int();
    __CRAB_assume (x >= 0);
    if (x > 0)
      fun_ptr = fun1;

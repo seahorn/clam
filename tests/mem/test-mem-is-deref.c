@@ -4,15 +4,12 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "clam/clam.h"
 
 // Check that sea_is_dereferenceable is translated propertly as a Crab
 // intrinsics.
 
-extern void __CRAB_assert(int);
-extern void __SEAHORN_error(int);
 extern int __CRAB_intrinsic_foo(int, int);
-// Clam should understand both
-extern bool sea_is_dereferenceable(const void *ptr, intptr_t offset);
 extern bool __CRAB_intrinsic_is_dereferenceable(const void *ptr, intptr_t offset);
 
 int main (){

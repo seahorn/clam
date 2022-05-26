@@ -1,9 +1,7 @@
 // RUN: %clam -O0 --crab-inter --crab-inter-recursive-functions --crab-dom=zones --crab-track=mem --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^3  Number of total safe checks$
 
-extern int int_nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
+#include "clam/clam.h"
 
 int foo(int);
 int bar(int);
@@ -26,7 +24,7 @@ int bar(int x) {
 
 int main () {
 
-  int x1 = int_nd();
+  int x1 = nd_int();
   int y1 = foo(x1);
   __CRAB_assert(y1 == x1);
 

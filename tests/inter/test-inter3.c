@@ -1,10 +1,8 @@
 // RUN: %clam -O0 --crab-inter --crab-inter-recursive-functions --crab-dom=zones --crab-track=mem --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^2  Number of total safe checks$
 // XFAIL: *
-extern int int_nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
 
+#include "clam/clam.h"
 
 // Example of simple recursive function
 int foo(int i, int n) {
@@ -16,7 +14,7 @@ int foo(int i, int n) {
 
 int main () {
 
-  int n1 = int_nd();
+  int n1 = nd_int();
   __CRAB_assume(n1 > 0);
   int y1 = foo(0, n1);
   __CRAB_assert(y1 <= n1);

@@ -618,7 +618,8 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
     # Otherwise, seaopt cannot optimize.
     clang_args.append('-Xclang')
     clang_args.append('-disable-O0-optnone')
-
+    # To allow syntax such as __declspec(noalias) in C programs
+    clang_args.append('-fdeclspec')
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
     # To avoid the error:

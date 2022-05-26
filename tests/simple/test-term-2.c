@@ -1,4 +1,4 @@
-extern int nd ();
+#include "clam/clam.h"
 
 int main()
 {
@@ -6,20 +6,20 @@ int main()
   x=0;
   y=0;
   z=0;
-  while (nd ())
+  while (nd_int ())
   {
     x ++;
     y++;
     z = z -2;
   }
-  while (nd ())
+  while (nd_int ())
   {
     x = x - 1;
     y = y - 3;
     z = z + 2;
   }
 
-  if (nd ())
+  if (nd_int ())
     return x+y+z;
   else 
     return 42;

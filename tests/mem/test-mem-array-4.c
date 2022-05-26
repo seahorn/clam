@@ -3,10 +3,7 @@
 // CHECK: ^1  Number of total warning checks$
 
 #include <stdint.h>
-
-extern int nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
+#include "clam/clam.h"
 
 int32_t table1[16] = {
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
@@ -20,9 +17,9 @@ int x;
 int a[10];
 
 int32_t compute1(int32_t *t) {
-  int i1 = nd();
+  int i1 = nd_int();
   int y;
-  switch (nd()) {
+  switch (nd_int()) {
   case 1:
     y = 2;
     break;
@@ -41,24 +38,24 @@ int32_t compute1(int32_t *t) {
 }
 
 int32_t compute2(const uint32_t t[6][2]) {
-  int i2 = nd();
+  int i2 = nd_int();
   return t[0][1] + t[1][1] + t[5][1];
 }
 
 int main () {
   int i;
   for (i=0;i<10;i++) {
-    a[i] = (nd() ? 3: 5);
+    a[i] = (nd_int() ? 3: 5);
   }  
   
-  int y = nd();
+  int y = nd_int();
   __CRAB_assume(y >= 0);
   __CRAB_assume(y < 10);
   int res = a[y];
   __CRAB_assert(res >= 0);
   __CRAB_assert(res <= 5);
 
-  table2[5][1] = nd();  // *
+  table2[5][1] = nd_int();  // *
   
   int z = compute1(table1);
   __CRAB_assert(z  <= 400);

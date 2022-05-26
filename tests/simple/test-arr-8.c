@@ -1,5 +1,5 @@
 #include <stdlib.h>
-extern int nd ();
+#include "clam/clam.h"
 
 int* mymalloc (int *a) {
   //return (int*) calloc (10, sizeof(int));

@@ -8,26 +8,19 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
-
-extern uint8_t uint8_t_nd(void);
-extern bool bool_nd(void);
-extern int int_nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-
-extern void no_op(size_t, size_t);
+#include "clam/clam.h"
 
 size_t size_t_nd(void) {
-    int res = int_nd();
+    int res = nd_int();
     __CRAB_assume(res >= 0);
     return res;
 }
 
 int main() {
 
-  bool a = bool_nd();
-  bool b = bool_nd();
-  bool c = bool_nd();
+  bool a = nd_bool();
+  bool b = nd_bool();
+  bool c = nd_bool();
 
   __CRAB_assume(a && b); // translate into single assume
 

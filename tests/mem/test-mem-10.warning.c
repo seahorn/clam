@@ -2,10 +2,9 @@
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^1  Number of total warning checks$
 
-/** Same as test-arr-4.warning.c but with --crab-track=mem **/
+#include "clam/clam.h"
 
-extern int nd ();
-extern void __CRAB_assert(int);
+/** Same as test-arr-4.warning.c but with --crab-track=mem **/
 
 int x = 5;
 int y = 3;
@@ -28,7 +27,7 @@ int main ()
   foo ();
   for (i=0;i<10;i++)
   {
-    if (nd ())
+    if (nd_int())
       a[i] =y;
     else 
       a[i] =x;

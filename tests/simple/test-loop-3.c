@@ -9,20 +9,17 @@
    After the switch we lose whether err is 0 or 1 so we will
    keep incrementing x and y. 
 */
-extern int nd(void);
-extern void __VERIFIER_error(void) __attribute__((noreturn));
-#define assert(X) if(!(X)){__VERIFIER_error();}
-extern void __VERIFIER_assume (int v);
-#define assume(X) __VERIFIER_assume(X)
+#include "clam/clam.h"
 
+#define assert(X) if(!(X)){__VERIFIER_error();}
 
 int main(){
     // Constructor
     int x = 0;
     int y = 1;
 
-    while (nd()) {
-        int fid = nd();
+    while (nd_int()) {
+        int fid = nd_int();
         // We create snapshots for all state variables.
         int nx = x;
         int ny = y;

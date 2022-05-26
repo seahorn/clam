@@ -1,7 +1,6 @@
 
 #include <stdlib.h>
-
-extern int nd ();
+#include "clam/clam.h"
 
 int* foo (int *x)
 {
