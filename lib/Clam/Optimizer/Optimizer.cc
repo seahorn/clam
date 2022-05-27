@@ -596,8 +596,12 @@ bool Optimizer::runOnModule(Module &M) {
   
   LLVMContext &ctx = M.getContext();
   AttrBuilder B;
-  // Function does not access memory.
-  B.addAttribute(Attribute::ReadNone);  
+  B.addAttribute(Attribute::NoUnwind);
+  B.addAttribute(Attribute::NoRecurse);
+  B.addAttribute(Attribute::OptimizeNone);  
+  // LLVM removed all calls to verifier.assume if marked as ReadNone
+  // or ReadOnly even if we mark it as OptimizeNone.
+  B.addAttribute(Attribute::InaccessibleMemOnly);  
   AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
   m_assumeFn = dyn_cast<Function>(M.getOrInsertFunction("verifier.assume", as,
                                                         Type::getVoidTy(ctx),
