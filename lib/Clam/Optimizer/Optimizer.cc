@@ -596,6 +596,8 @@ bool Optimizer::runOnModule(Module &M) {
   
   LLVMContext &ctx = M.getContext();
   AttrBuilder B;
+  // Function does not access memory.
+  B.addAttribute(Attribute::ReadNone);  
   AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
   m_assumeFn = dyn_cast<Function>(M.getOrInsertFunction("verifier.assume", as,
                                                         Type::getVoidTy(ctx),
