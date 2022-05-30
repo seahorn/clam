@@ -2,9 +2,6 @@
 // XFAIL: *
 #include "clam/clam.h"
 
-// Crab intrinsics to print invariants projected onto specific
-// variables
-extern void __CRAB_intrinsic_print_invariants(int,...);
 
 int* mk_int_ptr_and_init(int val) {
   int* res= (int*)malloc(sizeof(int));
@@ -23,13 +20,13 @@ int main (){
     y++;
     *w = *w+1;
   }
-  __CRAB_intrinsic_print_invariants(x);
+  CRAB_PRINT_INVARIANTS(x);
   /* it should print something like 
      crab_intrinsic(print_invariants,.01:int32)  // loc(file=none line=-1 col=-1) id=1
           ({}, {.01 -> [10, 10]})
   */
   
-  __CRAB_intrinsic_print_invariants(y,*w);
+  CRAB_PRINT_INVARIANTS(y,*w);
 
   /* it should print something like 
      crab_intrinsic(print_invariants,.02:int32,_call3:int32) // loc(file=none line=-1 col=-1) id=2 

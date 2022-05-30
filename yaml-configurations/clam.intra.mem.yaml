@@ -11,7 +11,7 @@ clam_options:
 # PREPROCESSING
 #
 # convert unsigned icmp instructions into signed icmp instructions
-  lower-unsigned-icmp : ''
+  crab-lower-unsigned-icmp : ''
 # peel loops to improve precision of the region and array domains
   llvm-peel-loops: '0'
 # weak support for function pointers. sea-dsa is better but less stable
