@@ -311,14 +311,15 @@ def parseArgs(argv):
                           "- dis-int: disjunctive intervals based on Clousot's DisInt domain\n"
                           "- term-dis-int: dis-int with uninterpreted functions\n"
                           "- boxes: disjunctive intervals based on LDDs\n"
-                          "- zones: zones domain using sparse DBM in Split Normal Form\n"
-                          "- oct: octagons domain\n"
-                          "- pk: polyhedra domain\n"
+                          "- zones: zones domain using DBMs in Split Normal Form\n"
+                          "- soct: octagons domain using DBMs in Split Normal Form\n"
+                          "- oct: octagons domain from Apron or Elina\n"
+                          "- pk: polyhedra domain from Apron or Elina\n"
                           "- rtz: reduced product of term-dis-int with zones\n"
                           "- w-int: wrapped intervals\n",
                     choices=['int', 'sign-const', 'ric', 'term-int',
                              'dis-int', 'term-dis-int', 'boxes',
-                             'zones', 'oct', 'pk', 'rtz',
+                             'zones', 'soct', 'oct', 'pk', 'rtz',
                              'w-int'],
                     dest='crab_dom', default='zones')
     p.add_argument('--crab-dom-params', dest='crab_dom_params', default=None,

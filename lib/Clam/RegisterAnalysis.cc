@@ -12,6 +12,7 @@ void DomainRegistry::registerAllDomains() {
   register_dis_interval_domain();
   register_boxes_domain();
   register_split_dbm_domain();
+  register_split_oct_domain();  
   register_term_int_domain();
   register_term_dis_int_domain();
   register_num_domain();

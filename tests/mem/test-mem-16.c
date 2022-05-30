@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "clam/clam.h"
 
-// RUN: %clam -O0 --crab-inter --crab-dom=oct --promote-malloc=false --crab-track=mem --crab-check=is-deref "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --crab-inter --crab-dom=soct --promote-malloc=false --crab-track=mem --crab-check=is-deref "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
 
