@@ -1,23 +1,22 @@
 add_definitions(-D__STDC_CONSTANT_MACROS)
 add_definitions(-D__STDC_LIMIT_MACROS)
 
-set(LLVM_LINK_COMPONENTS 
-  irreader 
-  bitwriter 
-  ipo 
-  scalaropts 
-  instrumentation
-  transformutils
-  core 
-  codegen 
-  objcarcopts)
+if (NOT CLAM_BUILD_LIBS_SHARED)  
+  llvm_map_components_to_libnames(LLVM_LIBS 
+    irreader  bitwriter ipo scalaropts instrumentation transformutils core codegen objcarcopts)
+endif()
 
-add_llvm_executable(clam-pp DISABLE_LLVM_LINK_LLVM_DYLIB clam-pp.cc)
+add_llvm_executable(clam-pp 
+  #DISABLE_LLVM_LINK_LLVM_DYLIB
+  clam-pp.cc)
+
 target_link_libraries(clam-pp PRIVATE
   LlvmPasses
+
+  ${LLVM_LIBS}
   ${LLVM_SEAHORN_LIBS}
- )
-llvm_config(clam-pp ${LLVM_LINK_COMPONENTS})
+  ${SEA_DSA_LIBS})
+
 install(TARGETS clam-pp RUNTIME DESTINATION bin)
 
 if (CLAM_STATIC_EXE)

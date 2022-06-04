@@ -147,17 +147,16 @@ if (NOT CLAM_BUILD_LIBS_SHARED)
 endif ()   
 
 if (CLAM_BUILD_LIBS_SHARED)
-  message (STATUS "Clam: library built dynamically except its external components "
-                   "sea-dsa and llvm-seahorn")
+  message (STATUS "Clam: library built dynamically")
+  # llvm-seahorn will be build statically
   set(CLAM_LIBS_TYPE SHARED)
   set(CRAB_BUILD_LIBS_SHARED ON)
-  # sea-dsa provides this flag but it doesn't use it 
-  # set(BUILD_SEA_DSA_LIBS_SHARED ON)
+  set(BUILD_SEA_DSA_LIBS_SHARED ON)
 else()
   message (STATUS "Clam: libraries are built statically")
   set(CLAM_LIBS_TYPE STATIC)
   set(CRAB_BUILD_LIBS_SHARED OFF)
-  #set(BUILD_SEA_DSA_LIBS_SHARED OFF)
+  set(BUILD_SEA_DSA_LIBS_SHARED OFF)
 endif ()
 
 # so that executables outside the build tree can find later shared

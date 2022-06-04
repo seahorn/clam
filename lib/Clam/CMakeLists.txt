@@ -1,4 +1,5 @@
-add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
+add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE}
+  #DISABLE_LLVM_LINK_LLVM_DYLIB
   CfgBuilder.cc
   CfgBuilderEmitters.cc  
   CfgBuilderLit.cc
@@ -35,15 +36,18 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   Properties/BndCheck.cc
   )
 
-llvm_map_components_to_libnames(LLVM_LIBS
-  support core irreader bitwriter instrumentation ipo scalaropts codegen objcarcopts)
+if (NOT CLAM_BUILD_LIBS_SHARED)  
+  llvm_map_components_to_libnames(LLVM_LIBS
+    support core irreader bitwriter instrumentation ipo scalaropts codegen objcarcopts)
+endif()  
 
-target_link_libraries (ClamAnalysis
-  PRIVATE
+target_link_libraries (ClamAnalysis PRIVATE
   ${CRAB_LIBS}
+  
   ## Needed if dynamic linking
   ${LLVM_LIBS}
-  ${SEA_DSA_LIBS})
+  ${SEA_DSA_LIBS}
+  )
 
 if (USE_COTIRE)
   cotire(ClamAnalysis)
@@ -54,13 +58,14 @@ install(TARGETS ClamAnalysis
   LIBRARY DESTINATION lib)
 
 if (CLAM_INCLUDE_POST_TRANSFORMS)
-  add_llvm_library (ClamOptimizer ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
+  add_llvm_library (ClamOptimizer ${CLAM_LIBS_TYPE}
+    #DISABLE_LLVM_LINK_LLVM_DYLIB
     Optimizer/Optimizer.cc
     )
   
-  target_link_libraries(ClamOptimizer
-    PRIVATE 
+  target_link_libraries(ClamOptimizer PRIVATE 
     ${CRAB_LIBS}
+    
     ## Needed if dynamic linking
     ClamAnalysis
     ${LLVM_LIBS})

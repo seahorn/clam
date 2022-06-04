@@ -1,4 +1,5 @@
-add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
+add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE}
+  #DISABLE_LLVM_LINK_LLVM_DYLIB
   InsertEntryPoint.cc
   LowerCstExpr.cc
   LowerSelect.cc
@@ -18,10 +19,12 @@ add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   PropertyInstrumentation/UseAfterFreeCheck.cc  
   )
 
-llvm_map_components_to_libnames(LLVM_LIBS
-  support core irreader bitwriter instrumentation ipo scalaropts codegen objcarcopts)
+if (NOT CLAM_BUILD_LIBS_SHARED)  
+  llvm_map_components_to_libnames(LLVM_LIBS
+    support core irreader bitwriter instrumentation ipo scalaropts codegen objcarcopts)
+endif()  
 
-target_link_libraries(LlvmPasses
+target_link_libraries(LlvmPasses PRIVATE
   ${SEA_DSA_LIBS}
   ## Needed if dynamic linking
   ${LLVM_LIBS})
