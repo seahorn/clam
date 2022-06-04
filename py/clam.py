@@ -418,7 +418,7 @@ def parseArgs(argv):
                    "- uaf-legacy: insert __CRAB_assert calls in LLVM IR for use-after-free errors\n"                   
                    "- uaf: insert CrabIR assertions for use-after-free errors\n"
                    "- bounds: insert CrabIR assertions and ghost code for buffer overflow errors\n"
-                   "  (the instrumentation is complete only if all functions are inlined)\n"
+                   "  (instrumentation is not complete: lack of modeling pointers stored in memory)\n"
                    "- is-deref: insert CrabIR assertions for proving that calls to LLVM function sea.is_dereferenceable cannot fail\n"
                    "  (this option is used mostly by SeaHorn which adds the calls to sea.is_dereferenceable)\n",
                    choices=['none','assert','null-legacy','null','uaf-legacy','uaf','bounds','is-deref'],
