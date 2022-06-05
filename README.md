@@ -13,7 +13,7 @@ the [Crab](https://github.com/seahorn/crab) library. This branch
 supports LLVM 10.
 
 The available documentation can be found in
-our [wiki](https://github.com/seahorn/crab-llvm/wiki/Home).
+our [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
 
 # Docker #
 
@@ -32,17 +32,13 @@ main requirements are:
 - Boost >= 1.65
 - GMP 
 - MPFR (if `-DCRAB_USE_APRON=ON` or `-DCRAB_USE_ELINA=ON`)
+- Python >= 3.6
 
 In linux, you can install requirements typing the commands:
 
      sudo apt-get install libboost-all-dev libboost-program-options-dev
      sudo apt-get install libgmp-dev
      sudo apt-get install libmpfr-dev	
-
-
-Clam provides a Python script called `clam.py` to interact with
-users. The simpler command is `clam.py test.c`. Type `clam.py --help`
-for all options. This script requires Python >= 3.6.
 
 ## Tests ##
 
@@ -114,15 +110,23 @@ For instance, to install Clam with Boxes and Apron:
      cmake --build . --target apron && cmake ..
      cmake --build . --target llvm && cmake ..                
      cmake --build . --target install 
+     
+## Compiling Clam as a shared library ##
+
+1. Compile LLVM with cmake flags `-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_BUILD_LLVM_DYLIB=ON`
+2. Compile Clam with cmake flags `-DCLAM_BUILD_LIBS_SHARED=ON -DCRAB_USE_APRON=OFF -DCRAB_USE_ELINA=OFF`
 
 ## Checking installation ## 
 
 To run some regression tests:
 
      cmake --build . --target test-simple
-
-	 
-
+     
+# Usage #
+	
+Clam provides a Python script called `clam.py` to interact with
+users. The simpler command is `clam.py test.c`. Type `clam.py --help`
+for all options and read our [wiki](https://github.com/seahorn/clam/wiki/ClamUsage) 
 
   
   
