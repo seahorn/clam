@@ -63,9 +63,10 @@ public:
   
 class OptimizerPass : public llvm::ModulePass {
   std::unique_ptr<Optimizer> m_impl;
+  clam::ClamGlobalAnalysis *m_clam;
 public:
   static char ID;
-  OptimizerPass();
+  OptimizerPass(ClamGlobalAnalysis *clam = nullptr);
   virtual bool runOnModule(llvm::Module &M) override ;
   virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
   virtual llvm::StringRef getPassName() const override{
