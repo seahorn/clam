@@ -205,7 +205,7 @@ void SeaDsaHeapAbstraction::computeEquivClasses(const llvm::Function &f) {
       RegionInfo r_info =
 	SeaDsaToRegion(c, m_dl, m_disambiguate_unknown,
 		       m_disambiguate_ptr_cast, m_disambiguate_external);
-      nodeRgns.emplace_back(std::move(mkRegion(c, r_info)));
+      nodeRgns.emplace_back(mkRegion(c, r_info));
     } 
     equivClasses.emplace_back(std::move(nodeRgns));
   }

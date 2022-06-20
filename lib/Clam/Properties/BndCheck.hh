@@ -14,7 +14,7 @@ class EmitBndChecks : public CrabIREmitter {
 public:
   EmitBndChecks(const CrabBuilderParams &params, crabLitFactory &lfac,
                 uint32_t &assertionId);
-  ~EmitBndChecks();
+  virtual ~EmitBndChecks() override;
 
   virtual void visitBeforeBasicBlock(llvm::BasicBlock &BB) override;
   virtual void visitAfterBasicBlock(llvm::BasicBlock &BB) override;

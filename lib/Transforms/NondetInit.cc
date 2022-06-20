@@ -59,7 +59,7 @@ public:
   static char ID;
   NondetInit() : ModulePass(ID), m(NULL) {}
 
-  virtual bool runOnModule(Module &M) {
+  virtual bool runOnModule(Module &M) override {
 
     m = &M;
     bool Changed = false;
@@ -71,7 +71,7 @@ public:
     return Changed;
   }
 
-  virtual void releaseMemory() { m_ndfn.clear(); }
+  virtual void releaseMemory() override { m_ndfn.clear(); }
 
   bool runOnFunction(Function &F) {
     bool Changed = false;
@@ -111,7 +111,7 @@ public:
     return Changed;
   }
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesAll();
   }
 };

@@ -775,17 +775,15 @@ class MemoryInitializer {
   basic_block_t &m_bb;
   // Used to mark the first array store as strong update.
   RegionSet m_initialized_arrays;
-  // Maximum number of array stores
-  unsigned m_max_stores;
 
 public:
   MemoryInitializer(crabLitFactory &lfac, HeapAbstraction &mem,
                     RegionSet &func_regions, const DataLayout &dl,
                     const CrabBuilderParams &params, Function &fun,
-                    basic_block_t &bb, unsigned max_stores = -1)
+                    basic_block_t &bb)
 
       : m_lfac(lfac), m_mem(mem), m_func_regions(func_regions), m_dl(dl),
-        m_params(params), m_fun(fun), m_bb(bb), m_max_stores(max_stores) {}
+        m_params(params), m_fun(fun), m_bb(bb) {}
 
   void InitGlobalMemory(Value &Base, Constant &C, unsigned offset) {
     if (isa<ConstantPointerNull>(C) || isa<ConstantFP>(C) ||
@@ -1119,9 +1117,6 @@ class CrabIntraBlockBuilder : public InstVisitor<CrabIntraBlockBuilder> {
   const TargetLibraryInfo *m_tli;
   // Current block
   basic_block_t &m_bb;
-  // Entry block of the function
-  basic_block_t &m_entry_bb;  
-  unsigned int m_object_id;
   const CrabBuilderParams &m_params;
   // global variables accessed by a function and its callees
   // a pointer in case no globals found for some unexpected reason
@@ -1245,7 +1240,7 @@ public:
 CrabIntraBlockBuilder::CrabIntraBlockBuilder(
     crabLitFactory &lfac, tag_manager &as_man,
     HeapAbstraction &mem, const DataLayout *dl,
-    const TargetLibraryInfo *tli, basic_block_t &bb, basic_block_t &entry_bb,
+    const TargetLibraryInfo *tli, basic_block_t &bb, basic_block_t &entry_bb/*unused*/,
     const CrabBuilderParams &params,
     const DenseMap<const Function *, std::vector<const Value *>> &func_globals,
     basic_block_t *ret_insts, CrabBuilderManagerImpl &man,
@@ -1257,8 +1252,8 @@ CrabIntraBlockBuilder::CrabIntraBlockBuilder(
     uint32_t &assertion_id,
     CrabIREmitterVec &propertyEmitters)
     : m_lfac(lfac), m_as_man(as_man), m_mem(mem), m_dl(dl), m_tli(tli),
-      m_bb(bb), m_entry_bb(entry_bb), m_object_id(0),
-      m_params(params), m_func_globals(func_globals), m_ret_insts(ret_insts),
+      m_bb(bb), m_params(params), 
+      m_func_globals(func_globals), m_ret_insts(ret_insts),
       m_man(man), m_has_seahorn_fail(has_seahorn_fail),
       m_func_regions(func_regions), m_gep_map(gep_map), m_rev_map(rev_map),
       m_regions_with_store(regions_with_store), m_vericall_opt(vericall_opt),
@@ -3868,7 +3863,6 @@ void CfgBuilderImpl::initializeRegions() {
 	mayInitVars.insert(inputs.begin(), inputs.end());
       } else if ((*it).is_intrinsic()) {
 	auto s = static_cast<typename basic_block_t::intrinsic_t*>(&*it);
-	using var_or_cst_t = typename basic_block_t::variable_or_constant_t;
 	std::set<var_t> inputs, outputs;
 	for (const typename basic_block_t::variable_or_constant_t &v: s->get_args()) {
 	  if (v.is_variable() && v.get_variable().get_type().is_region()) {
@@ -4261,7 +4255,7 @@ void CfgBuilderImpl::buildCfg() {
       //    between bb and dst
       basic_block_t *mid_bb = execEdge(B, *dst);
       std::unique_ptr<basic_block_t> tmp_mid_bb = (mid_bb ?
-						   std::move(makeTempBlock()):
+						   makeTempBlock():
 						   nullptr);
       // -- phi nodes in dst are translated into assignments in
       //    the predecessor
@@ -5550,8 +5544,8 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func,
       // Builder never modifies the bitcode.
       m_func(const_cast<Function &>(func)),
       m_lfac(man.getCrabLitFactory()),
-      m_dbg_id(man.m_dbg_id),
       m_as_man(man.getAllocSiteMan()),
+      m_dbg_id(man.m_dbg_id),      
       m_mem(man.getHeapAbstraction()), m_cfg(nullptr), m_id(0),
       m_dl(&(func.getParent()->getDataLayout())), m_tli(&(man.getTLIWrapper())),
       m_params(man.getCfgBuilderParams()), m_globals(man.m_globals),
@@ -5567,7 +5561,7 @@ CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,
                                        std::unique_ptr<HeapAbstraction> mem)
     : m_impl(std::make_unique<CrabBuilderManagerImpl>(params, tli,
                                                       std::move(mem),
-						      std::move(CrabIREmitterVec()))) {
+						      CrabIREmitterVec())) {
 }
 
 CrabBuilderManager::CrabBuilderManager(CrabBuilderParams params,

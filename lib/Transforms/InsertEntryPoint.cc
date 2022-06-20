@@ -49,7 +49,7 @@ public:
 
   InsertEntryPoint() : ModulePass(ID) {}
 
-  bool runOnModule(Module &M) {
+  virtual bool runOnModule(Module &M) override {
 
     if (M.getFunction("main")) {
       return false;
@@ -83,7 +83,7 @@ public:
       FunctionCallee ndf = getNondetFn(A.getType(), M);
       Args.push_back(B.CreateCall(ndf));
     }
-    CallInst *CI = B.CreateCall(Entry, Args);
+    B.CreateCall(Entry, Args);
 
     // -- return of main
     // our favourite exit code
@@ -91,11 +91,11 @@ public:
     return true;
   }
 
-  void getAnalysisUsage(AnalysisUsage &AU) {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     // AU.setPreservesAll ();
   }
 
-  virtual StringRef getPassName() const {
+  virtual StringRef getPassName() const override {
     return "Clam: insert an entry point if main does not exist";
   }
 };

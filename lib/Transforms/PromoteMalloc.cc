@@ -16,7 +16,7 @@ public:
 
   PromoteMalloc() : FunctionPass(ID) {}
 
-  bool runOnFunction(Function &F) {
+  virtual bool runOnFunction(Function &F) override {
     if (F.empty())
       return false;
 
@@ -57,7 +57,7 @@ public:
     return changed;
   }
 
-  void getAnalysisUsage(AnalysisUsage &AU) const {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     // AU.setPreservesAll ();
   }
 

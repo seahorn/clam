@@ -14,7 +14,7 @@ class EmitNullDerefChecks : public CrabIREmitter {
 public:
   EmitNullDerefChecks(const CrabBuilderParams &params, crabLitFactory &lfac,
                       uint32_t &assertionId);
-  ~EmitNullDerefChecks();
+  virtual ~EmitNullDerefChecks() override;
 
   virtual void visitBeforeBasicBlock(llvm::BasicBlock &BB) override;
   virtual void visitAfterBasicBlock(llvm::BasicBlock &BB) override;

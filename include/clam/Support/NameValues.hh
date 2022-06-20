@@ -12,12 +12,12 @@ public:
 
   NameValues() : llvm::ModulePass(ID) {}
 
-  virtual bool runOnModule(llvm::Module &M);
+  virtual bool runOnModule(llvm::Module &M) override;
 
   bool runOnFunction(llvm::Function &F);
 
-  virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const;
+  virtual void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 
-  virtual llvm::StringRef getPassName() const { return "Clam: Name values"; }
+  virtual llvm::StringRef getPassName() const override { return "Clam: Name values"; }
 };
 } // namespace clam

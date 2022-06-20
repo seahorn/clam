@@ -54,7 +54,7 @@ public:
 
   DevirtualizeFunctionsPass() : ModulePass(ID) {}
 
-  virtual bool runOnModule(Module &M) {
+  virtual bool runOnModule(Module &M) override {
     // -- Get the call graph: unused for now
     // CallGraph* CG = &(getAnalysis<CallGraphWrapperPass> ().getCallGraph ());
 
@@ -77,7 +77,7 @@ public:
     return res;
   }
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     if (DevirtResolver == RESOLVER_SEA_DSA) {
       AU.addRequired<seadsa::RemovePtrToInt>();
       AU.addRequired<seadsa::CompleteCallGraph>();
@@ -90,7 +90,9 @@ public:
     // AU.addPreserved<CallGraphWrapperPass> ();
   }
 
-  StringRef getPassName() const { return "Clam: Devirtualize indirect calls"; }
+  virtual StringRef getPassName() const override {
+    return "Clam: Devirtualize indirect calls";
+  }
 };
 
 char DevirtualizeFunctionsPass::ID = 0;
