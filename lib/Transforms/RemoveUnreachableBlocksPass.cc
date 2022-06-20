@@ -14,15 +14,17 @@ struct RemoveUnreachableBlocksPass : public FunctionPass {
   static char ID;
   RemoveUnreachableBlocksPass() : FunctionPass(ID) {}
 
-  bool runOnFunction(Function &F) { return removeUnreachableBlocks(F); }
+  virtual bool runOnFunction(Function &F) override {
+    return removeUnreachableBlocks(F);
+  }
 
-  void getAnalysisUsage(AnalysisUsage &AU) const {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     // Preserve Sea-DSA passes
     AU.addPreservedID(seadsa::DsaAnalysis::ID);
     AU.addPreservedID(seadsa::ShadowMemPass::ID);
   }
 
-  virtual StringRef getPassName() const {
+  virtual StringRef getPassName() const override {
     return "Clam: Remove unreachable blocks";
   }
 };

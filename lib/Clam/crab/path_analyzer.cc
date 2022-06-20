@@ -486,8 +486,8 @@ bool path_analyzer<CFG, AbsDom>::minimize_path(
         CRAB_ERROR("Abstract core is not unsat!");
       }
     }
-    return true;
   }
+  return true;
 }
 } // namespace analyzer
 } // namespace crab

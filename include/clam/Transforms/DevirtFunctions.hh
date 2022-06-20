@@ -97,7 +97,7 @@ public:
 
   virtual ~CallSiteResolverByTypes();
 
-  const AliasSet *getTargets(llvm::CallSite &CS);
+  virtual const AliasSet *getTargets(llvm::CallSite &CS) override;
 
 #ifdef USE_BOUNCE_FUNCTIONS
   llvm::Function *getBounceFunction(llvm::CallSite &CS);

@@ -205,7 +205,7 @@ private:
     ClamFunction FW(F, LI, Clam);
     if (!EC) {
       errs() << "Writing '" << Filename << "'...";
-      raw_ostream &fd = llvm::WriteGraph(File, (const ClamFunction *)&FW);
+      llvm::WriteGraph(File, (const ClamFunction *)&FW);
       errs() << "\n";
       return true;
     }

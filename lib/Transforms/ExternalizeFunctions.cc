@@ -55,7 +55,7 @@ public:
 
   ExternalizeFunctions() : ModulePass(ID) {}
 
-  virtual bool runOnModule(Module &M) {
+  virtual bool runOnModule(Module &M) override {
     if (ExternalizeFunctionNames.begin() == ExternalizeFunctionNames.end())
       return false;
 
@@ -145,9 +145,11 @@ public:
     return Change;
   }
 
-  void getAnalysisUsage(AnalysisUsage &AU) { AU.setPreservesAll(); }
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.setPreservesAll();
+  }
 
-  virtual StringRef getPassName() const {
+  virtual StringRef getPassName() const override {
     return "Externalize all selected functions";
   }
 };

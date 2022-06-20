@@ -231,7 +231,7 @@ void dfs_rec(cfg_ref_t cfg, basic_block_label_t curId, visited_t &visited,
   visited.insert(curId);
   const basic_block_t &cur = cfg.get_node(curId);
   f(curId);
-  for (auto const n : llvm::make_range(cur.next_blocks())) {
+  for (auto const &n : llvm::make_range(cur.next_blocks())) {
     dfs_rec(cfg, n, visited, f);
   }
 }

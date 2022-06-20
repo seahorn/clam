@@ -1,5 +1,3 @@
-#pragma once
-
 #include "llvm/ADT/Optional.h"
 #include "ClamQueryCache.hh"
 #include "clam/CfgBuilder.hh"

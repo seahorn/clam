@@ -37,6 +37,8 @@ class CrabIsDerefOps;
  */
 class CrabIREmitter {
 public:
+  virtual ~CrabIREmitter() {}
+  
   virtual void visitBeforeBasicBlock(llvm::BasicBlock &BB) = 0;
   virtual void visitAfterBasicBlock(llvm::BasicBlock &BB) = 0;
 
@@ -131,7 +133,7 @@ class CrabRemoveRefOps {
 
 public:
   CrabRemoveRefOps(var_t region, var_t ref, basic_block_t &bb)
-      : m_ref(ref), m_region(region), m_bb(bb) {}
+    : m_region(region), m_ref(ref), m_bb(bb) {}
 
   var_t &getRef() { return m_ref; }
   const var_t &getRef() const { return m_ref; }
@@ -309,8 +311,8 @@ public:
 
   CrabSelectRefOps(var_t ref_lhs, var_t region_lhs, var_t cond,
                    opt_pair_var_t op1, opt_pair_var_t op2, basic_block_t &bb)
-      : m_ref_lhs(ref_lhs), m_region_lhs(region_lhs), m_cond(cond), m_op1(op1),
-        m_op2(op2), m_bb(bb) {}
+      : m_cond(cond), m_op1(op1), m_op2(op2), 
+        m_ref_lhs(ref_lhs), m_region_lhs(region_lhs),  m_bb(bb) {}
 
   var_t &getRefCond() { return m_cond; }
   const var_t &getRefCond() const { return m_cond; }
@@ -353,7 +355,7 @@ class CrabIsDerefOps {
 public:
   CrabIsDerefOps(var_t lhs, var_t region, var_t ref, var_or_cst_t size,
 		 basic_block_t &bb)
-    : m_lhs(lhs), m_ref(ref), m_region(region), m_size(size), m_bb(bb) {}
+    : m_lhs(lhs), m_region(region), m_ref(ref), m_size(size), m_bb(bb) {}
 
   var_t &getLhs() { return m_lhs; }
   const var_t &getLhs() const { return m_lhs; }

@@ -35,7 +35,7 @@ static CmpInst *mkNonNegative(Value *V, BasicBlock *insertPt) {
 
 static bool isNonNegIntCst(Value *V) {
   if (ConstantInt *K = dyn_cast<ConstantInt>(V))
-    return (K->getValue().isNonNegative() >= 0);
+    return (K->getValue().isNonNegative());
   return false;
 }
 
@@ -214,7 +214,7 @@ public:
 
   LowerUnsignedICmp() : FunctionPass(ID) {}
 
-  virtual bool runOnFunction(Function &F) {
+  virtual bool runOnFunction(Function &F) override {
 
     std::vector<ICmpInst *> worklist;
     for (inst_iterator It = inst_begin(F), E = inst_end(F); It != E; ++It) {
@@ -248,11 +248,11 @@ public:
     return change;
   }
 
-  virtual StringRef getPassName() const {
+  virtual StringRef getPassName() const override {
     return "Clam: Lower ULT and ULE instructions";
   }
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     // AU.setPreservesAll ();
   }
 };

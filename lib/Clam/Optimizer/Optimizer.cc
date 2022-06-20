@@ -113,7 +113,8 @@ private:
       return B.CreateSub(LHS, RHS, Name);
     case MUL:
       return B.CreateMul(LHS, RHS, Name);
-    default:;
+    default:
+      return nullptr;
     }
   }
 
@@ -215,6 +216,7 @@ private:
         ee = mkBinOp(ADD, B, ee,
 		     mkBinOp(MUL, B, mkNum(n, ty, ctx), vv, Name), Name);
       }
+      assert(ee);
     }
 
     number_t c = -cst.expression().constant();

@@ -12,7 +12,7 @@ struct MarkInternalInline : public ModulePass {
 
   void getAnalysisUsage(AnalysisUsage &AU) const { AU.setPreservesAll(); }
 
-  bool runOnModule(Module &M) {
+  virtual bool runOnModule(Module &M) override {
     for (Function &F : M)
       if (!F.isDeclaration() && F.hasLocalLinkage()) {
         F.setLinkage(GlobalValue::PrivateLinkage);
@@ -23,7 +23,7 @@ struct MarkInternalInline : public ModulePass {
     return true;
   }
 
-  virtual StringRef getPassName() const {
+  virtual StringRef getPassName() const override {
     return "Clam: Mark internal functions with AlwaysInline attribute";
   }
 };

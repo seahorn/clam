@@ -18,6 +18,8 @@ class ClamQueryAPI {
 public:  
   /* a tag is just an unsigned integer */
   using TagVector = std::vector<uint64_t>;
+
+  virtual ~ClamQueryAPI() {}
   
   virtual llvm::AliasResult alias(const llvm::MemoryLocation &Loc1,
 				  const llvm::MemoryLocation &Loc2,

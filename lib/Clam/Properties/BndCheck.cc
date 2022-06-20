@@ -63,7 +63,7 @@ class EmitBndChecksImpl {
   }
 
   // Get maximum width in bits through datalayout
-  const unsigned getMaxWidthInBits(Instruction &I) {
+  unsigned getMaxWidthInBits(Instruction &I) {
     if (!m_dl) {
       m_dl = getInsDatalayout(I);
     }

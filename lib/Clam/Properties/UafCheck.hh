@@ -14,7 +14,7 @@ class EmitUafChecks : public CrabIREmitter {
 public:
   EmitUafChecks(const CrabBuilderParams &params, crabLitFactory &lfac,
                 uint32_t &assertionId);
-  ~EmitUafChecks();
+  virtual ~EmitUafChecks() override;
 
   virtual void visitBeforeBasicBlock(llvm::BasicBlock &BB) override;
   virtual void visitAfterBasicBlock(llvm::BasicBlock &BB) override;

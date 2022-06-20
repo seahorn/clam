@@ -75,7 +75,7 @@ public:
 
   LowerSelect() : FunctionPass(ID) {}
 
-  virtual bool runOnFunction(Function &F) {
+  virtual bool runOnFunction(Function &F) override {
     bool modified = false;
 
     std::vector<SelectInst *> worklist;
@@ -101,11 +101,11 @@ public:
     return modified;
   }
 
-  virtual StringRef getPassName() const {
+  virtual StringRef getPassName() const override  {
     return "Clam: Lower select instructions";
   }
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override  {
     // AU.setPreservesAll ();
   }
 };
