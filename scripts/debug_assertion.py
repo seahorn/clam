@@ -21,6 +21,7 @@ import shutil
 # Usage:
 #   clam.py -g prog.c --crab-track=mem --crab-inter --crab-check=assert \
 #                     --crab-print-invariants=true --crab-print-voi=true \
+#                     --log=region-print-debug \
 #                     --ocrab=prog.crabir MORE_OPTS
 #   debug_assertion.py --assertion=NUM prog.crabir
 #
@@ -74,6 +75,12 @@ def processEnvironmentDomain(variables, envInvariant):
 # product of two domains ({...},{...}) or a product of three domains
 # ({...},({...},{...})).
 def processRegionBaseDomain(variables, regionInvariant):
+    # HACK: top can be printed by {} or "top"
+    if regionInvariant == "{}":
+        return "{}"
+    if regionInvariant == "top":
+        return "top"
+    
     pattern = re.compile(r"\(\{(.*)\},\s\{(.*)\}\)")
     m = re.search(pattern, regionInvariant)
     if m is not None:
