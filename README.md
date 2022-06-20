@@ -10,7 +10,7 @@
 Clam is a static analyzer that computes inductive invariants for
 LLVM-based languages based on
 the [Crab](https://github.com/seahorn/crab) library. This branch
-supports LLVM 11.
+supports LLVM 12.
 
 The available documentation can be found in
 our [wiki](https://github.com/seahorn/crab-llvm/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).

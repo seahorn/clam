@@ -776,7 +776,7 @@ void OptimizerPass::getAnalysisUsage(AnalysisUsage &AU) const {
   if (!m_clam) {
     AU.addRequired<clam::ClamPass>();
   }
-  AU.addRequired<UnifyFunctionExitNodes>();
+  AU.addRequired<UnifyFunctionExitNodesLegacyPass>();
   AU.addRequired<CallGraphWrapperPass>();
   AU.addPreserved<CallGraphWrapperPass>();
   if (requireDominatorTree(InvLoc)) {

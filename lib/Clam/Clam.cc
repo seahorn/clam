@@ -1399,7 +1399,7 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.addRequired<seadsa::CompleteCallGraph>();
   }
 
-  AU.addRequired<UnifyFunctionExitNodes>();
+  AU.addRequired<UnifyFunctionExitNodesLegacyPass>();
   AU.addRequired<clam::NameValues>();
 }
 

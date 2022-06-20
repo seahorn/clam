@@ -309,7 +309,9 @@ int main(int argc, char **argv) {
   }
 
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());
-  pass_manager.add(llvm::createDeadInstEliminationPass());
+  pass_manager.add(llvm::createDeadCodeEliminationPass());
+  // Superseded by DCE
+  //pass_manager.add(llvm::createDeadInstEliminationPass());
 
   if (OptimizeLoops || PeelLoops > 0) {
     // canonical form for loops
