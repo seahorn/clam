@@ -9,15 +9,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include "clam/clam.h"
 
-
-extern uint8_t uint8_t_nd(void);
-extern bool bool_nd(void);
-extern int int_nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-extern void memhavoc(void *, size_t);
-extern bool sea_is_dereferenceable(const void *ptr, intptr_t offset);
 
 #define MAX_ARRAY_LENGTH 10
 #define MAX_ARRAY_ITEM_SIZE 2
@@ -30,7 +23,7 @@ struct aws_array_list {
 };
 
 size_t size_t_nd(void) {
-    int res = int_nd();
+    int res = nd_int();
     __CRAB_assume(res >= 0);
     return res;
 }

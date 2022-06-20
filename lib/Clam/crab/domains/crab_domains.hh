@@ -7,6 +7,7 @@
 #include "pk.hh"
 #include "ric.hh"
 #include "split_dbm.hh"
+#include "split_oct.hh"
 #include "sign_constant.hh"
 #include "terms_dis_intervals.hh"
 #include "terms_intervals.hh"

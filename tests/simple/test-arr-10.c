@@ -1,3 +1,5 @@
+#include "clam/clam.h"
+
 int a[10];
 
 int main (){

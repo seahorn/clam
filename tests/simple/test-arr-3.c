@@ -4,13 +4,11 @@
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
-extern int nd ();
-extern void __CRAB_assert(int);
+#include "clam/clam.h"
 
 int x = 5;
 
 int a[10];
-
 int main ()
 {
   int i;

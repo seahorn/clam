@@ -1,12 +1,9 @@
 #include <stdlib.h>
+#include "clam/clam.h"
 
 // RUN: %clam --crab-track=mem --crab-check=assert --crab-dom=zones --crab-heap-analysis=cs-sea-dsa --crab-inter    --llvm-peel-loops=1  "%s" 2>&1 | OutputCheck %s
 // CHECK: ^10  Number of total safe checks$
 // CHECK: ^ 0  Number of total warning checks$
-
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-extern int int_nd(void);
 
 #define CRAB_assert_forall(A, LEN, VAL)		\
   {						\
@@ -51,7 +48,7 @@ List mk_list(int n, SIZET data_sz) {
     List tmp = (List) malloc_not_fail(sizeof(struct node));
     tmp->data= data;
     tmp->cap = data_sz;
-    int used = int_nd();
+    int used = nd_int();
     // Produce horrible CrabIR due to boolean &&.
     // Better split into two assumes
     //__CRAB_assume(used >= 0 && used < data_sz);    
@@ -75,17 +72,17 @@ int main() {
   SIZET data_sz = N;
 #else
   // Non-deterministic values
-  int x = int_nd();
+  int x = nd_int();
   __CRAB_assume(x > 0);  
   SIZET list_sz = x;
-  int y = int_nd();
+  int y = nd_int();
   __CRAB_assume(y > 0);
   SIZET data_sz = y;
 
   // Produces horrible CrabIR  due to unsigned integers
-  //size_t list_sz = int_nd();
+  //size_t list_sz = nd_int();
   //__CRAB_assume(list_sz > 0);
-  //size_t data_sz = int_nd();
+  //size_t data_sz = nd_int();
   //__CRAB_assume(data_sz > 0);
   
 #endif

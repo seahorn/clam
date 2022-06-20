@@ -5,11 +5,9 @@
  
 //#include <stdio.h>
 
-extern int int_nd(void);
-extern char* name_nd(void);
+#include "clam/clam.h"
 
-extern void __CRAB_assume(int);
-extern void __CRAB_assert(int);
+extern char* name_nd(void);
 
 typedef struct {
   char *name;
@@ -18,7 +16,7 @@ typedef struct {
 
 
 void foo(S1 *devices, int len) {
-  int i = int_nd();
+  int i = nd_int();
   __CRAB_assume(i >= 0);
   __CRAB_assume(i < len);
   devices[i].id = 8; // unsafe
@@ -37,7 +35,7 @@ int main(){
   foo(&devices[0], 4);
   
    
-  int x = int_nd();
+  int x = nd_int();
   __CRAB_assume(x >= 0);
   __CRAB_assume(x < 4);
   __CRAB_assert(devices[x].id >= 0);

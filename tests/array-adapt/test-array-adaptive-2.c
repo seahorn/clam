@@ -3,10 +3,7 @@
 // CHECK: ^2  Number of total warning checks$
 
 #include <stdint.h>
-
-extern int nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
+#include "clam/clam.h"
 
 int32_t table1[16] = {
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
@@ -20,7 +17,7 @@ int x;
 int a[10];
 
 int32_t compute1(int32_t *t) {
-  int i1 = nd();
+  int i1 = nd_int();
   __CRAB_assume(i1 >= 0 && i1 < 16);
   __CRAB_assert(t[i1] >= 0);
   // The pointer analysis cannot tell that the accesses are wrt to the
@@ -33,7 +30,7 @@ int32_t compute1(int32_t *t) {
 }
 
 int32_t compute2(uint32_t t[6][2]) {
-  int i2 = nd();
+  int i2 = nd_int();
   __CRAB_assume(i2 >= 0 && i2 < 6);
   __CRAB_assert(t[i2][1] <= 100);
   // Same than above.
@@ -45,10 +42,10 @@ int32_t compute2(uint32_t t[6][2]) {
 int main () {
   int i;
   for (i=0;i<10;i++) {
-    a[i] = (nd() ? 0: 5);
+    a[i] = (nd_int() ? 0: 5);
   }  
   
-  int y = nd();
+  int y = nd_int();
   __CRAB_assume(y >= 0);
   __CRAB_assume(y < 10);
   int res = a[y];

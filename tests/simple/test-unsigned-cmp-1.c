@@ -1,20 +1,13 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
+#include "clam/clam.h"
 
 // RUN: %clam -O0 --inline --crab-lower-unsigned-icmp  --crab-check=assert "%s" 2>&1 | OutputCheck %s
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
 
-/* Externalize Helper Function */
-extern uint8_t uint8_t_nd(void);
-extern int8_t int8_t_nd(void);
-extern bool bool_nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
+extern int8_t nd_int8_t(void);
 
 uint8_t uint8_t_nd(void) {
-    int8_t res = int8_t_nd();
+    int8_t res = nd_int8_t();
     __CRAB_assume(res > 0);
     return res;
 }

@@ -22,6 +22,7 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   crab/domains/ric.cc
   crab/domains/sign_constant.cc
   crab/domains/split_dbm.cc
+  crab/domains/split_oct.cc
   crab/domains/terms_dis_intervals.cc
   crab/domains/terms_intervals.cc
   crab/domains/terms_zones.cc

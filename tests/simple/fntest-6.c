@@ -6,7 +6,7 @@
 // If devirt-functions=types uses bounce functions then we cannot
 // prove the two checks.
 
-extern void __CRAB_assert(int);
+#include "clam/clam.h"
 
 int a (void);
 int b (void);

@@ -46,5 +46,5 @@ using DBMParams = FastDBMParams;
 using BASE(split_dbm_domain_t) =
   crab::domains::split_dbm_domain<number_t, region_subdom_varname_t, DBMParams>;
 using split_dbm_domain_t =
-    RGN_FUN(ARRAY_FUN(BOOL_NUM(BASE(split_dbm_domain_t))));
+  RGN_FUN(ARRAY_FUN(BOOL_NUM(BASE(split_dbm_domain_t))));
 } // end namespace clam

@@ -4,7 +4,12 @@
 #include "llvm/Pass.h"
 
 namespace clam {
+class ClamGlobalAnalysis;
+} // end namespace
+
+namespace clam {
 // Preprocessor passes
+llvm::Pass *createInsertEntryPointPass();  
 llvm::Pass *createLowerCstExprPass();
 llvm::Pass *createLowerSelectPass();
 llvm::Pass *createLowerUnsignedICmpPass();
@@ -26,7 +31,7 @@ llvm::Pass *createAnnotatedCFGPrinterPass();
 llvm::Pass *createNullCheckPass();
 llvm::Pass *createUseAfterFreeCheckPass();
 // Postprocessing passes
-llvm::Pass *createOptimizerPass();  
+llvm::Pass *createOptimizerPass(ClamGlobalAnalysis *clam = nullptr);  
 } // namespace clam
 
 #ifdef HAVE_LLVM_SEAHORN

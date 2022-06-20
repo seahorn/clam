@@ -2,8 +2,7 @@
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^1  Number of total warning checks$
 
-extern void __CRAB_assert(int);
-extern void __SEAHORN_error(int);
+#include "clam/clam.h"
 
 int main (){
 

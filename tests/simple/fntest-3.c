@@ -1,4 +1,4 @@
-extern int nd ();
+#include "clam/clam.h"
 
 int addOne(int x, int y) {
   return x + 1;
@@ -16,10 +16,10 @@ int main() {
   //int (*fPtr_array[2])(int);
   int (*f) (int, int);
   int x = 8;
-  if (nd ()) {
+  if (nd_int()) {
     //fPtr_array[0] = &addOne;
     f = &addOne;
-  } else if (nd ()) {
+  } else if (nd_int()) {
     //fPtr_array[1] = &addTwo;
     f = &addTwo;
   } else {

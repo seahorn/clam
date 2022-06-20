@@ -596,6 +596,12 @@ bool Optimizer::runOnModule(Module &M) {
   
   LLVMContext &ctx = M.getContext();
   AttrBuilder B;
+  B.addAttribute(Attribute::NoUnwind);
+  B.addAttribute(Attribute::NoRecurse);
+  B.addAttribute(Attribute::OptimizeNone);  
+  // LLVM removed all calls to verifier.assume if marked as ReadNone
+  // or ReadOnly even if we mark it as OptimizeNone.
+  B.addAttribute(Attribute::InaccessibleMemOnly);  
   AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
   m_assumeFn = dyn_cast<Function>(M.getOrInsertFunction("verifier.assume", as,
                                                         Type::getVoidTy(ctx),
@@ -718,8 +724,8 @@ bool Optimizer::runOnFunction(Function &F) {
   
 /* Pass code starts here */
   
-OptimizerPass::OptimizerPass():
-  ModulePass(ID), m_impl(nullptr) {}
+OptimizerPass::OptimizerPass(ClamGlobalAnalysis *clam):
+  ModulePass(ID), m_impl(nullptr), m_clam(clam) {}
   
 bool OptimizerPass::runOnModule(Module &M) {
   if (InvLoc == InvariantsLocation::NONE &&
@@ -735,8 +741,11 @@ bool OptimizerPass::runOnModule(Module &M) {
   }
 
   // Get clam
-  ClamPass &clam = getAnalysis<ClamPass>();
-
+  //ClamPass &clam = getAnalysis<ClamPass>();
+  if (!m_clam) {
+    m_clam = &(getAnalysis<ClamPass>().getClamGlobalAnalysis());
+  }
+  
   // Collect all the dominator tree and loop info in maps
   DenseMap<Function*, DominatorTree*> dt_map;
   DenseMap<Function*, LoopInfo*> li_map;
@@ -748,7 +757,7 @@ bool OptimizerPass::runOnModule(Module &M) {
       li_map[&F] = &(getAnalysis<LoopInfoWrapperPass>(F).getLoopInfo());
   }
 
-  m_impl.reset(new Optimizer(clam.getClamGlobalAnalysis(), cg,
+  m_impl.reset(new Optimizer(*m_clam, cg,
 			     [&dt_map](Function *F) {
 			       auto it = dt_map.find(F);
 			       return (it != dt_map.end() ? it->second : nullptr);
@@ -762,7 +771,9 @@ bool OptimizerPass::runOnModule(Module &M) {
 }
 
 void OptimizerPass::getAnalysisUsage(AnalysisUsage &AU) const {
-  AU.addRequired<clam::ClamPass>();
+  if (!m_clam) {
+    AU.addRequired<clam::ClamPass>();
+  }
   AU.addRequired<UnifyFunctionExitNodes>();
   AU.addRequired<CallGraphWrapperPass>();
   AU.addPreserved<CallGraphWrapperPass>();
@@ -775,8 +786,8 @@ void OptimizerPass::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 char clam::OptimizerPass::ID = 0;
-llvm::Pass *createOptimizerPass() {
-  return new OptimizerPass();
+llvm::Pass *createOptimizerPass(ClamGlobalAnalysis *clam) {
+  return new OptimizerPass(clam);
 }
  
 } // namespace clam

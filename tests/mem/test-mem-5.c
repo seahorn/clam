@@ -1,11 +1,9 @@
 #include <stdlib.h>
+#include "clam/clam.h"
 
 // RUN: %clam -O0  --crab-inter --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^3  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
-
-extern void __CRAB_assert(int);
-extern int int_nd(void);
 
 typedef struct node{
   int f;
@@ -21,7 +19,7 @@ List mk_list(int n) {
   /* first loop unrolling */
   List tmp = (List) malloc(sizeof(struct node));
   tmp->f = 0;
-  if (int_nd()) {
+  if (nd_int()) {
     tmp->s = n*2;
   } else {
     tmp->s = n*3;
@@ -34,7 +32,7 @@ List mk_list(int n) {
   for (i=1; i<n;i++) {
     List tmp = (List) malloc(sizeof(struct node));
     tmp->f = i;
-    if (int_nd()) {
+    if (nd_int()) {
       tmp->s = n*2;
     } else {
       tmp->s = n*3;

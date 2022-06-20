@@ -2,10 +2,7 @@
 // RUN: %clam -O0 --crab-lower-unsigned-icmp --crab-dom=int --crab-widening-delay=3 --crab-check=assert --inline --crab-sanity-checks --crab-track=sing-mem --crab-singleton-aliases "%s"  2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
-
-extern int __VERIFIER_NONDET();
-extern void __VERIFIER_error() __attribute__((noreturn));
-extern void __CRAB_assert(int);
+#include "clam/clam.h"
 
 int e=0;
 int s=2;  
@@ -14,7 +11,7 @@ int s=2;
 
 void foo() {
 
-  while (__VERIFIER_NONDET()) {
+  while (nd_int()) {
     if (s == 2){
       if (e ==0) e=1;
       s = 3;

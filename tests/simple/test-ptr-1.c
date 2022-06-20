@@ -1,4 +1,4 @@
-extern int nd();
+#include "clam/clam.h"
 
 int a[10];
 
@@ -9,7 +9,7 @@ int a[10];
 int main() {
   int* p;
   
-  if (nd()) {
+  if (nd_int()) {
     p = &a[0] + 2;
   }
   else {

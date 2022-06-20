@@ -2,8 +2,7 @@
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
-
-extern void __CRAB_assert(int);
+#include "clam/clam.h"
 
 // program nested2 from Scozzari SAS'13
 int main(void) {

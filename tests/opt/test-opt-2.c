@@ -1,7 +1,5 @@
 #include <stdio.h>
-
-extern void __CRAB_assume(int);
-extern int int_nd(void);
+#include "clam/clam.h"
 
 int x = 0;
 
@@ -29,13 +27,13 @@ int main(int argc, char**argv) {
   decr_x();
 
   int i;
-  int n = int_nd();
+  int n = nd_int();
   __CRAB_assume(n == 10);
   
   for (i=0;i<n;i++) {
     a[i] = x;
   }
-  int j = int_nd();
+  int j = nd_int();
   __CRAB_assume(j >= 0);
   __CRAB_assume(j < 10);
   int k = bar(a[j]);

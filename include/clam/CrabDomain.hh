@@ -41,7 +41,7 @@ public:
  * To add a new domain value:
  *
  * namespace CrabDomain {
- *   constexpr Type NEW_DOMAIN(13, ...);
+ *   constexpr Type NEW_DOMAIN(14, ...);
  * }
  **/
 
@@ -53,22 +53,26 @@ constexpr Type BOXES(4, "boxes", "boxes based on LDDs", false, true);
 constexpr Type DIS_INTERVALS(5, "dis-int", "cheap, non-overlapping intervals",
                              false, true);
 constexpr Type ZONES_SPLIT_DBM(6, "zones",
-                               "zones base on split normal form DBMs", true,
+                               "zones using DBMs in Split Normal Form", true,
                                false);
-constexpr Type TERMS_INTERVALS(7, "term-int", "terms+intervals", true, false);
-constexpr Type TERMS_DIS_INTERVALS(8, "term-dis-int",
+constexpr Type OCT_SPLIT_DBM(7, "soct",
+			     "octagons using DBMs in Split Normal Form", true,
+			     false);
+constexpr Type TERMS_INTERVALS(8, "term-int", "terms+intervals", true, false);
+constexpr Type TERMS_DIS_INTERVALS(9, "term-dis-int",
                                    "terms+non-overlapping intervals", true,
                                    true);
-constexpr Type TERMS_ZONES(9, "rtz", "terms+zones", true, false);
-constexpr Type OCT(10, "oct", "octagons", true, false);
-constexpr Type PK(11, "pk", "polyhedra", true, false);
-constexpr Type SIGN_CONSTANTS(12, "sign-const", "sign+constants", false, false);  
-constexpr std::array<Type, 12> List = {INTERVALS,
+constexpr Type TERMS_ZONES(10, "rtz", "terms+zones", true, false);
+constexpr Type OCT(11, "oct", "octagons from Apron or Elina", true, false);
+constexpr Type PK(12, "pk", "polyhedra from Apron or Elina", true, false);
+constexpr Type SIGN_CONSTANTS(13, "sign-const", "sign+constants", false, false);  
+constexpr std::array<Type, 13> List = {INTERVALS,
                                        INTERVALS_CONGRUENCES,
                                        WRAPPED_INTERVALS,
                                        BOXES,
                                        DIS_INTERVALS,
                                        ZONES_SPLIT_DBM,
+				       OCT_SPLIT_DBM,
                                        TERMS_INTERVALS,
                                        TERMS_DIS_INTERVALS,
                                        TERMS_ZONES,

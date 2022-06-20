@@ -1,4 +1,4 @@
-extern int nd_int ();
+#include "clam/clam.h"
 
 int a[10];
 

@@ -1,8 +1,7 @@
 // RUN: %clam -O0 --crab-only-cfg --crab-print-cfg=true "%s" 2>&1 | OutputCheck %s
 // CHECK: crab_intrinsic
+#include "clam/clam.h"
 
-extern void __CRAB_assert(int);
-extern void __SEAHORN_error(int);
 extern int __CRAB_intrinsic_foo(int, int);
 int main (){
 

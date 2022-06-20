@@ -2,16 +2,13 @@
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
-
-extern int nd(void);
-extern void process(char);
-extern void __CRAB_assert(int);
+#include "clam/clam.h"
 
 int main() {
   char x,y;
   
   y=-10;
-  if(nd()) x=0;
+  if(nd_int()) x=0;
   else  x=100;
   while (x >= y){   
     x = x-y;        

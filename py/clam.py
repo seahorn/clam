@@ -269,6 +269,8 @@ def parseArgs(argv):
                     dest='devirt',
                     choices=['none','types','sea-dsa'],
                     default='none')
+    p.add_argument ('--entry', dest='entry', help='Make entry point if main does not exist',
+                    default=None, metavar='str')
     p.add_argument ('--externalize-functions',
                     help='Externalize these functions',
                     dest='extern_funcs', type=str, metavar='str,...')    
@@ -309,14 +311,15 @@ def parseArgs(argv):
                           "- dis-int: disjunctive intervals based on Clousot's DisInt domain\n"
                           "- term-dis-int: dis-int with uninterpreted functions\n"
                           "- boxes: disjunctive intervals based on LDDs\n"
-                          "- zones: zones domain using sparse DBM in Split Normal Form\n"
-                          "- oct: octagons domain\n"
-                          "- pk: polyhedra domain\n"
+                          "- zones: zones domain using DBMs in Split Normal Form\n"
+                          "- soct: octagons domain using DBMs in Split Normal Form\n"
+                          "- oct: octagons domain from Apron or Elina\n"
+                          "- pk: polyhedra domain from Apron or Elina\n"
                           "- rtz: reduced product of term-dis-int with zones\n"
                           "- w-int: wrapped intervals\n",
                     choices=['int', 'sign-const', 'ric', 'term-int',
                              'dis-int', 'term-dis-int', 'boxes',
-                             'zones', 'oct', 'pk', 'rtz',
+                             'zones', 'soct', 'oct', 'pk', 'rtz',
                              'w-int'],
                     dest='crab_dom', default='zones')
     p.add_argument('--crab-dom-params', dest='crab_dom_params', default=None,
@@ -408,8 +411,17 @@ def parseArgs(argv):
                     help='Promote verifier.assume calls to llvm.assume intrinsics',
                     dest='crab_promote_assume', default=False, action='store_true')
     p.add_argument('--crab-check',
-                   help='Check properties (default no check)',
-                   choices=['none', 'assert', 'null', 'uaf', 'bounds', 'null-legacy', 'uaf-legacy', 'is-deref'],
+                   help="Check properties (default none):\n"
+                   "- assert: user-defined assertions via __CRAB_assert\n"
+                   "- null-legacy: insert __CRAB_assert calls in LLVM IR for null dereference errors\n"                   
+                   "- null: insert CrabIR assertions for null dereference errors\n"
+                   "- uaf-legacy: insert __CRAB_assert calls in LLVM IR for use-after-free errors\n"                   
+                   "- uaf: insert CrabIR assertions for use-after-free errors\n"
+                   "- bounds: insert CrabIR assertions and ghost code for buffer overflow errors\n"
+                   "  (instrumentation is not complete: lack of modeling pointers stored in memory)\n"
+                   "- is-deref: insert CrabIR assertions for proving that calls to LLVM function sea.is_dereferenceable cannot fail\n"
+                   "  (this option is used mostly by SeaHorn which adds the calls to sea.is_dereferenceable)\n",
+                   choices=['none','assert','null-legacy','null','uaf-legacy','uaf','bounds','is-deref'],
                    dest='crab_check', default='none')
     add_bool_argument(p, 'crab-check-only-typed', default=False,
                       help='Add checks only on typed regions (only for null and uaf). False by default',
@@ -616,7 +628,8 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
     # Otherwise, seaopt cannot optimize.
     clang_args.append('-Xclang')
     clang_args.append('-disable-O0-optnone')
-
+    # To allow syntax such as __declspec(noalias) in C programs
+    clang_args.append('-fdeclspec')
     clang_args.extend (extra_args)
     clang_args.append ('-m{0}'.format (arch))
     # To avoid the error:
@@ -747,6 +760,9 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     # for now, there is no option to undo this switch
     crabpp_args.append('--simplifycfg-sink-common=false')
 
+    if args.entry is not None:
+        crabpp_args.append('--entry-point={0}'.format(args.entry))
+    
     if args.promote_malloc:
         crabpp_args.append('--clam-promote-malloc=true')
     else:
@@ -908,21 +924,27 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
 
     if args.crab_promote_assume:
         clam_args.append('--crab-promote-assume')
-        
+
     if args.crab_check != 'none':
         clam_args.append('--crab-check')
         if args.crab_check == 'null-legacy':
             clam_args.append('--clam-null-check-legacy')
+        elif args.crab_check == 'null':
+            clam_args.append('--crab-null-check')            
         elif args.crab_check == 'uaf-legacy':
             clam_args.append('--clam-uaf-check-legacy')
-        elif args.crab_check == 'null':
-            clam_args.append('--crab-null-check')
+            ## special option for the region domain
+            clam_args.extend(['-crab-dom-param', 'region.deallocation=true'])
         elif args.crab_check == 'uaf':
             clam_args.append('--crab-uaf-check')
+            ## special option for the region domain
+            clam_args.extend(['-crab-dom-param', 'region.deallocation=true'])
         elif args.crab_check == 'bounds':
             clam_args.append('--crab-bounds-check')
         elif args.crab_check == 'is-deref':
             clam_args.append('--crab-is-deref-check')
+            ## special option for the region domain
+            clam_args.extend(['-crab-dom-param', 'region.is_dereferenceable=true'])            
         if args.crab_check in ['null-legacy', 'uaf-legacy', 'null', 'uaf', 'bounds']:
             if args.crab_check_only_typed:
                 clam_args.append('--crab-check-only-typed-regions=true')
@@ -932,6 +954,7 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
                 clam_args.append('--crab-check-only-noncyclic-regions=true')
             else:
                 clam_args.append('--crab-check-only-noncyclic-regions=false')
+                         
     if args.check_verbose:
         clam_args.append('--crab-check-verbose={0}'.format(args.check_verbose))
     if args.print_summs: clam_args.append('--crab-print-summaries')

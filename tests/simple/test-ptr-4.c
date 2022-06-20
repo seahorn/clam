@@ -1,5 +1,4 @@
-extern short nd_short ();
-extern int nd_int ();
+#include "clam/clam.h"
 
 short a[10];
 

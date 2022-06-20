@@ -1,12 +1,9 @@
 #include <stdlib.h>
+#include "clam/clam.h"
 
 // RUN: %clam -O0 --crab-inter --crab-dom=sign-const --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^1  Number of total warning checks$
-
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-extern int int_nd(void);
 
 typedef struct node{
   int f;
@@ -24,7 +21,7 @@ List mk_list(int n, int*p, int*q) {
   __CRAB_assume(tmp > 0);
   
   tmp->f = 0;
-  if (int_nd()) {
+  if (nd_int()) {
     tmp->s = p;
   } else {
     tmp->s = q;
@@ -39,7 +36,7 @@ List mk_list(int n, int*p, int*q) {
     __CRAB_assume(tmp > 0);    
     
     tmp->f = i;
-    if (int_nd()) {
+    if (nd_int()) {
       tmp->s = p;
     } else {
       tmp->s = q;

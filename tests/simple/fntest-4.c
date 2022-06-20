@@ -1,4 +1,4 @@
-extern int nd ();
+#include "clam/clam.h"
 
 int x =2;
 int y =5;
@@ -12,7 +12,7 @@ int addTwo(int a) {
 int addOne(int a) {
   x++;
   int b=0;
-  if (nd ())
+  if (nd_int())
     b = addTwo (a);
   return a+b+1; // return value is lost from the summary
 }

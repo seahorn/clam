@@ -1,12 +1,9 @@
-#include <stdlib.h>
-
 // RUN: %clam -O0 --crab-inter --crab-dom=int --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^3  Number of total safe checks$
 // CHECK: ^1  Number of total warning checks$
 
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-extern int int_nd(void);
+#include <stdlib.h>
+#include "clam/clam.h"
 
 /* seadsa */
 extern void sea_dsa_set_read(const void *p);
@@ -44,7 +41,7 @@ int main(int argc, char**argv) {
   int y = 1;
   int i = 0;
   init(&x,&y,&i);
-  int n = int_nd();
+  int n = nd_int();
   __CRAB_assume(n > 0);
   while (i < n) {
     loop_body(&x, &y, &i);

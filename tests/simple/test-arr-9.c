@@ -3,19 +3,13 @@
 // RUN: %clam -O0 --crab-lower-unsigned-icmp --crab-inter --crab-dom=zones --crab-track=sing-mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total safe checks
 // CHECK: ^1  Number of total warning checks$
-
+#include "clam/clam.h"
 
 /** 
     Current array domain cannot handle this case but we at least check
     that all sanity checks pass.
 **/
 
-//#include <stdlib.h>
-
-extern int nd (void);
-extern void __CRAB_assert(int);
-extern void __VERIFIER_assume (int);
-extern void __VERIFIER_error (void);
 
 int* foo(int sz, int val) {
   int* res = (int*) malloc (sz* sizeof(int));
@@ -37,7 +31,7 @@ int main ()
     b[i] = a[i];
   }
 
-  int j = nd();
+  int j = nd_int();
   __VERIFIER_assume(j >= 0 && j < N);
   int x = b[j];
 

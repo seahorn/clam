@@ -1,0 +1,56 @@
+clam_options:
+# CLANG
+#
+  '-g' : ''
+  '-m64': ''
+# Optimization level for seaopt  
+  '-O3': ''
+#   
+# PREPROCESSING
+#
+# SVCOMP19 has a weird memory model different from standard C memory
+# model. Programs can have uninitialized variables and reading from
+# them it is okay and treated as reading from a non-deterministic value.
+  turn-undef-nondet : ''
+# convert unsigned icmp instructions into signed icmp instructions
+  crab-lower-unsigned-icmp : ''
+# weak support for function pointers. sea-dsa is better but less stable  
+  devirt-functions: 'types'
+# Inline aggressively  
+  inline: ''
+  externalize-addr-taken-functions: ''
+  crab-name-values: false
+#  
+# ANALYSIS
+#
+# Reason about all memory contents
+  crab-track : 'mem'
+# Optimization to convert treat memory contents as scalars
+  crab-singleton-aliases : ''
+# Pointer analysis to disambiguate memory: context-sensitive with types
+  crab-heap-analysis : 'cs-sea-dsa-types'
+# Perform two iterations of narrowing
+  crab-narrowing-iterations: '2'
+# Delay widening three fixpoint iterations  
+  crab-widening-delay: '3'
+# Do not use widening jump set
+  crab-widening-jump-set: '0'
+# Option to free invariants as soon as possible
+  crab-preserve-invariants: false
+#
+# CHECKER
+#
+  crab-check: 'assert'
+#
+# OUTPUT
+#
+# crab-sanity-checks : ''
+  crab-disable-warnings: ''
+  crab-print-invariants: false
+#
+# RESOURCE LIMITS 
+#
+# Timeout of 3 minutes
+  cpu: '180'
+# Limit memory to 4GB
+# mem: '4096'

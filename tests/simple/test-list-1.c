@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include "clam/clam.h"
 
 typedef struct node{
   int f;

@@ -3,11 +3,7 @@
 // CHECK: ^1  Number of total warning checks$
 
 #include <stdlib.h>
-
-extern int int_nd(void);
-extern void __CRAB_assert(int);
-extern void __CRAB_assume(int);
-
+#include "clam/clam.h"
 
 struct s {
   int f1;
@@ -26,9 +22,9 @@ void free_x(void*p) {
 }
 
 void init(struct s* p) {
-  p->f1 = int_nd();
-  p->f2 = int_nd();
-  p->f3 = int_nd();
+  p->f1 = nd_int();
+  p->f2 = nd_int();
+  p->f3 = nd_int();
 }
 
 int main () {

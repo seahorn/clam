@@ -1,10 +1,7 @@
 #include <stdio.h>
-
-extern int nd ();
+#include "clam/clam.h"
 
 #define N 10
-
-
 // To test loops that decrements a counter
 int main(int argc, char** argv) {
   int i;

@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-
-extern int nd ();
+#include "clam/clam.h"
 
 int main ()
 {
@@ -11,7 +10,7 @@ int main ()
 
   for (i=0;i<5;i++)
   {
-    if (nd ())
+    if (nd_int())
       b[i] =a[i];
     else 
       b[i] =a[i]+1;

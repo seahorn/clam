@@ -1,9 +1,10 @@
-extern int __CRAB_nd(void);
+#include "clam/clam.h"
+
 int a[10];
 int main (){
   int i;
   for (i=0;i<10;i++) {
-    if (__CRAB_nd ())
+    if (nd_int ())
       a[i]=0;
     else 
       a[i]=5;

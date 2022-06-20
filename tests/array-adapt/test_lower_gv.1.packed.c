@@ -4,10 +4,7 @@
 // CHECK: ^0  Number of total warning checks$
 
 #include <stdio.h>
-
-extern int int_nd(void);
-extern void __CRAB_assume(int);
-extern void __CRAB_assert(int);
+#include "clam/clam.h"
 
 typedef struct __attribute__((packed)) {
   char *name;
@@ -25,7 +22,7 @@ int main(){
     printf("id=%d\n", devices[i].id);
   }
   
-  int x = int_nd();
+  int x = nd_int();
   __CRAB_assume(x >= 0);
   __CRAB_assume(x < 4);
   __CRAB_assert(devices[x].id >= 0);

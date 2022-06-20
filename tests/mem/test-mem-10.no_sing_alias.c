@@ -1,10 +1,9 @@
 // RUN: %clam -O0 --lower-unsigned-icmp --crab-inter --crab-dom=int --crab-track=mem  --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 
-/** Same as test-arr-4.c but with --crab-track=mem **/
+#include "clam/clam.h"
 
-extern int nd ();
-extern void __CRAB_assert(int);
+/** Same as test-arr-4.c but with --crab-track=mem **/
 
 int x = 5;
 int y = 3;
@@ -27,7 +26,7 @@ int main ()
   foo ();
   for (i=0;i<10;i++)
   {
-    if (nd ())
+    if (nd_int())
       a[i] =y;
     else 
       a[i] =x;
