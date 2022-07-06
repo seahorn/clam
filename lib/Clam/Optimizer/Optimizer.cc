@@ -21,8 +21,9 @@
 #include "clam/CfgBuilder.hh"
 #include "clam/Clam.hh"
 #include "clam/Transforms/Optimizer.hh"
-#include "crab/analysis/abs_transformer.hpp"
 
+#include "crab/analysis/abs_transformer.hpp"
+#include "crab/numbers/wrapint.hpp"
 #include "crab/config.h"
 #include "crab/support/debug.hpp"
 
@@ -30,9 +31,22 @@
 
 using namespace llvm;
 
+/**
+ * Optimize LLVM bitcode by using invariants produced by Clam.
+ * 
+ * This module translates Crab linear constraints into LLVM bitcode.
+ * There are two issues that makes the code a bit more
+ * complicated. First, Clam only keeps invariants at the entry or exit
+ * of each basic block. Therefore, depending on user options we need
+ * to re-run the abstract interpreter (only up to the end of a block)
+ * to produce invariants at each location. Second, most Clam numerical
+ * abstract domains use signed mathematical integers. However, LLVM
+ * uses machine arithmetic. Therefore, there is a filtering process to
+ * make sure we only generate LLVM bitcode for linear constraints
+ * whose validity still holds on machine arithmetic.
+ **/
+
 /* Begin LLVM pass options */
-
-
 static cl::opt<clam::InvariantsLocation>
 InvLoc("crab-opt-add-invariants",
     cl::desc("Instrument code with (linear) invariants at specific location"),
@@ -75,36 +89,37 @@ namespace {
 using namespace clam;  
 using namespace crab::cfg;
 
-bool readMemory(const llvm::BasicBlock &B) {
+static bool readMemory(const llvm::BasicBlock &B) {
   return std::any_of(B.begin(), B.end(),
 		     [](const Instruction &I) {
 		       return isa<LoadInst>(I);
 		     });
 }
-bool hasUnreachable(const llvm::BasicBlock &B) {
+static bool hasUnreachable(const llvm::BasicBlock &B) {
   return std::any_of(B.begin(), B.end(),
 		     [](const Instruction &I) {
 		       return isa<UnreachableInst>(I);
 		     });
 }
   
-bool requireDominatorTree(InvariantsLocation val) {
+static bool requireDominatorTree(InvariantsLocation val) {
   return (val == InvariantsLocation::BLOCK ||
 	  val == InvariantsLocation::LOOP_HEADER ||
 	  val == InvariantsLocation::ALL);
 }
 
-bool requireLoopInfo(InvariantsLocation val) {
+static bool requireLoopInfo(InvariantsLocation val) {
   return val == InvariantsLocation::LOOP_HEADER;
 }
-  
+
+
 // Convert a Crab expression into LLVM bitcode
 class CodeExpander {
 private:  
   enum bin_op_t { ADD, SUB, MUL };
 
-  Value *mkBinOp(bin_op_t Op, IRBuilder<> B, Value *LHS, Value *RHS,
-		 const Twine &Name) {
+  static Value *mkBinOp(bin_op_t Op, IRBuilder<> B, Value *LHS, Value *RHS,
+			const Twine &Name) {
     assert(LHS->getType()->isIntegerTy() && RHS->getType()->isIntegerTy());
     switch (Op) {
     case ADD:
@@ -118,19 +133,19 @@ private:
     }
   }
 
-  Value *mkNum(number_t n, IntegerType *ty, LLVMContext &ctx) {
+  static Value *mkNum(number_t n, IntegerType *ty, LLVMContext &ctx) {
     return ConstantInt::get(ty, n.get_str(), 10);
   }
 
-  Value *mkVar(varname_t v) {
+  static Value *mkVar(varname_t v) {
     return (v.get() ? const_cast<Value *>(*(v.get())) : nullptr);
   }
 
-  Value *mkBool(LLVMContext &ctx, bool val) {
+  static Value *mkBool(LLVMContext &ctx, bool val) {
     return ConstantInt::get(Type::getInt1Ty(ctx), (val) ? 1U : 0U);
   }
 
-  IntegerType *getIntType(varname_t var) {
+  static IntegerType *getIntType(varname_t var) {
     if (!var.get()) {
       return nullptr;
     } else {
@@ -141,11 +156,40 @@ private:
     }
     return nullptr;
   }
+
+  // static Value* normalizeCst(Value *Cst) {
+  //   Value *ICmpLHS;
+  //   ConstantInt *ICmpRHS;
+  //   Value *X;
+  //   ICmpInst::Predicate Pred;
+  //   if (match(Cst, m_ICmp(Pred, m_Value(ICmpLHS), m_ConstantInt(ICmpRHS)))) {
+  //     if (Pred == ICmpInst::ICMP_SLE) {
+  // 	if (ICmpRHS->isNegative() && match(ICmpLHS, m_Neg(m_Value(X)))) {
+  // 	  // Rewrite sub 0, %x <= -k into x >= k
+  // 	  Value *normCst = new ICmpInst(cast<Instruction>(Cst),
+  // 					ICmpInst::ICMP_SGE, X,
+  // 					ConstantInt::get(X->getType(),
+  // 							 ICmpRHS->getValue().abs()),
+  // 					Cst->getName());
+  // 	  cast<Instruction>(Cst)->replaceAllUsesWith(normCst);
+  // 	  return normCst;
+  // 	}
+  //     }
+  //   }
+  //   return Cst;
+  // }
   
+  static bool mayOverflow (const number_t &n, crab::wrapint::bitwidth_t b) {
+    auto max = crab::wrapint::get_signed_max(b).get_signed_bignum();
+    auto min = crab::wrapint::get_signed_min(b).get_signed_bignum();
+    return (n < min || n > max);
+  };
+
   // post: return a value of bool type(Int1Ty) that contains the
   // computation of cst
-  Value *genCode(lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx,
-		 DominatorTree *DT, const Twine &Name) {
+  static Value *genCode(lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx,
+			DominatorTree *DT, const Twine &Name) {
+    
     if (cst.is_tautology()) {
       return nullptr; // mkBool(ctx, true);
     }
@@ -202,8 +246,15 @@ private:
     Value *ee = mkNum(number_t("0"), ty, ctx);
     for (auto t : e) {
       number_t n = t.first;
-      if (n == 0)
+      if (n == 0) {
         continue;
+      }
+
+      // HACK: skip constraints with coefficients that do not fit into ty
+      if (mayOverflow(n, ty->getBitWidth())) {
+	return nullptr;
+      }
+      
       varname_t v = t.second.name();
       Value *vv = mkVar(v);
       assert(vv);
@@ -220,6 +271,11 @@ private:
     }
 
     number_t c = -cst.expression().constant();
+    // HACK: skip constraints whose rhs that do not fit into ty
+    if (mayOverflow(c, ty->getBitWidth())) {
+      return nullptr;
+    }
+    
     Value *cc = mkNum(c, ty, ctx);
     if (cst.is_inequality()) {
       return B.CreateICmpSLE(ee, cc, Name);
@@ -241,7 +297,7 @@ public:
    **/
   bool genCode(lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
 	       Function *assumeFn, CallGraph *cg, DominatorTree *DT,
-	       const Function *insertFun, const Twine &Name = "") {
+	       const Function *insertFun, const Twine &Name = "") const {
     bool change = false;
     for (auto cst : csts) {
       if (Value *cst_code = genCode(cst, B, ctx, DT, Name)) {
