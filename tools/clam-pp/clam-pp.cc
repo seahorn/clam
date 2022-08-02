@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
 
   if (!AsmOutputFilename.empty())
     asmOutput = std::make_unique<llvm::ToolOutputFile>(
-        AsmOutputFilename.c_str(), error_code, llvm::sys::fs::F_Text);
+        AsmOutputFilename.c_str(), error_code, llvm::sys::fs::OF_Text);
 
   if (error_code) {
     if (llvm::errs().has_colors())
@@ -178,7 +178,7 @@ int main(int argc, char **argv) {
 
   if (!OutputFilename.empty())
     output = std::make_unique<llvm::ToolOutputFile>(
-        OutputFilename.c_str(), error_code, llvm::sys::fs::F_None);
+        OutputFilename.c_str(), error_code, llvm::sys::fs::OF_None);
 
   if (error_code) {
     if (llvm::errs().has_colors())

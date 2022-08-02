@@ -201,7 +201,7 @@ private:
   static bool writeGraph(Function &F, const LoopInfo &LI, const ClamPass &Clam,
                          std::string Filename) {
     std::error_code EC;
-    raw_fd_ostream File(Filename, EC, sys::fs::F_Text);
+    raw_fd_ostream File(Filename, EC, sys::fs::OF_Text);
     ClamFunction FW(F, LI, Clam);
     if (!EC) {
       errs() << "Writing '" << Filename << "'...";

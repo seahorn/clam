@@ -14,6 +14,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -127,7 +128,7 @@ static bool isTrackable(const Function &fun) {
 static std::unique_ptr<llvm::ToolOutputFile> openOutputFile(StringRef filename) {
   std::error_code error_code;
   auto output = std::make_unique<llvm::ToolOutputFile>
-    (filename, error_code, llvm::sys::fs::F_None); 
+    (filename, error_code, llvm::sys::fs::OF_None); 
   if (error_code) {
     if (llvm::errs().has_colors()) {
       llvm::errs().changeColor(llvm::raw_ostream::RED);
