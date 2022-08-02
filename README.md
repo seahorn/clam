@@ -7,7 +7,7 @@ the [Crab](https://github.com/seahorn/crab) library.
 Clam is a static analyzer that computes inductive invariants for
 LLVM-based languages based on
 the [Crab](https://github.com/seahorn/crab) library. This branch
-supports LLVM 12.
+supports LLVM 14.
 
 The available documentation can be found in
 our [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
@@ -58,9 +58,9 @@ The basic compilation steps are:
     4. cmake --build . --target extra && cmake ..                  
     5. cmake --build . --target install 
 
-The command at line 2 will try to find LLVM 12 from standard paths.
-If you installed LLVM 12 in a non-standard path, then add option
-`-DLLVM_DIR=$LLVM-12_INSTALL_DIR/lib/cmake/llvm` to line 2.  The
+The command at line 2 will try to find LLVM 14 from standard paths.
+If you installed LLVM 14 in a non-standard path, then add option
+`-DLLVM_DIR=$LLVM-14_INSTALL_DIR/lib/cmake/llvm` to line 2.  The
 command at line 3 will download Crab and compile it from sources.
 Clam uses two external components that are installed via the `extra`
 target at line 4. These components are:

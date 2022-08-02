@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.3)
 
 project(Clam)
-set (Clam_VERSION_MAJOR 12)
+set (Clam_VERSION_MAJOR 14)
 set (Clam_VERSION_MINOR 0)
 set (Clam_VERSION_PATCH 0)
 set (Clam_VERSION_TWEAK "rc0")
@@ -11,7 +11,7 @@ cmake_policy(SET CMP0074 NEW)
 cmake_policy(SET CMP0077 NEW)
 endif()
 
-## LLVM 12 requires c++14
+## LLVM 14 requires c++14
 set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
@@ -226,13 +226,13 @@ endif ()
 
 
 if (TopLevel)
-  find_package(LLVM 12 CONFIG)
+  find_package(LLVM 14 CONFIG)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})
     set (LLVM_DIR ${LLVM_ROOT}/lib/cmake/llvm CACHE PATH
       "Forced location of LLVM cmake config" FORCE)
-    message (WARNING "No llvm found. Install LLVM 12.")
+    message (WARNING "No llvm found. Install LLVM 14.")
     return()
   else()
     message(STATUS "Clam: found LLVM ${LLVM_PACKAGE_VERSION}")
