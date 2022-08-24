@@ -1,19 +1,15 @@
-# Clam: Llvm front-end for Crab #
+# Clam: LLVM front-end for Crab #
 
-<a href="https://github.com/seahorn/crab-llvm/actions"><img src="https://github.com/seahorn/crab-llvm/workflows/CI/badge.svg" title="Ubuntu 18.04 LTS 64bit, g++-6"/></a>
+Clam is an [Abstract Interpretation](https://en.wikipedia.org/wiki/Abstract_interpretation)-based static analyzer that computes inductive invariants for
+LLVM bitcode based on
+the [Crab](https://github.com/seahorn/crab) library. 
 
-
-<img src="https://llvm.org/img/LLVMWyvernSmall.png" alt="llvm logo" width=280 height=200 /><img src="http://i.imgur.com/IDKhq5h.png" alt="crab logo" width=280 height=200 /> 
-
-# Description # 
-
-Clam is a static analyzer that computes inductive invariants for
-LLVM-based languages based on
-the [Crab](https://github.com/seahorn/crab) library. This branch
-supports LLVM 10.
+This branch supports LLVM 10 but there are other branches that support newer LLVM versions.
 
 The available documentation can be found in
-our [wiki](https://github.com/seahorn/crab-llvm/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
+our [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
+
+<a href="https://github.com/seahorn/crab-llvm/actions"><img src="https://github.com/seahorn/crab-llvm/workflows/CI/badge.svg" title="Ubuntu 18.04 LTS 64bit, g++-6"/></a>
 
 # Docker #
 
@@ -23,7 +19,7 @@ command:
 
      docker pull seahorn/clam-llvm10:nightly
 
-# Requirements for compiling from sources #
+# Requirements #
 
 Clam is written in C++ and uses heavily the Boost library. The
 main requirements are:
@@ -49,16 +45,19 @@ To run tests you need to install `lit` and `OutputCheck`:
      pip3 install lit
      pip3 install OutputCheck
 
-# Compiling from sources and installation # 
+# Compilation and installation # 
 
 The basic compilation steps are:
 
-     mkdir build && cd build
-     cmake -DCMAKE_INSTALL_PREFIX=_DIR_ ../
-     cmake --build . --target crab && cmake ..
-     cmake --build . --target llvm && cmake ..      
-     cmake --build . --target install 
+    1. mkdir build && cd build
+    2. cmake -DCMAKE_INSTALL_PREFIX=$DIR ../
+    3. cmake --build . --target llvm && cmake ..  
+    4. cmake --build . --target crab && cmake ..   
+    5. cmake --build . --target install 
 
+The command at line 3 will download LLVM 10 and build it from sources. Thus, it might take several minutes depending on your machine.
+If you have already installed LLVM 10 in your machine, then add option `-DLLVM_DIR=$LLVM-10_INSTALL_DIR/lib/cmake/llvm` to line 2. 
+The command at line 4 will download Crab and compile it from sources. 
 
 Clam provides two components that are installed via the `extra`
 target. These components can be used by other projects outside of
@@ -79,12 +78,12 @@ Clam.
 The component `sea-dsa` is mandatory and `llvm-seahorn` is optional but highly
 recommended. To include these external components, type instead:
 
-     mkdir build && cd build
-     cmake -DCMAKE_INSTALL_PREFIX=_DIR_ ../
-     cmake --build . --target extra            
-     cmake --build . --target crab && cmake ..
-     cmake --build . --target llvm && cmake ..           
-     cmake --build . --target install 
+    1. mkdir build && cd build
+    2. cmake -DCMAKE_INSTALL_PREFIX=$DIR ../
+    3. cmake --build . --target llvm && cmake .. 
+    4. cmake --build . --target crab && cmake .. 
+    5. cmake --build . --target extra && cmake ..                  
+    6. cmake --build . --target install 
 
 The Boxes/Apron/Elina domains require third-party libraries. To avoid
 the burden to users who are not interested in those domains, the
@@ -103,14 +102,21 @@ cannot enable `-DCRAB_USE_APRON=ON` and `-DCRAB_USE_ELINA=ON` at the same time.
 
 For instance, to install Clam with Boxes and Apron:
 
-     mkdir build && cd build
-     cmake -DCMAKE_INSTALL_PREFIX=_DIR_ -DCRAB_USE_LDD=ON -DCRAB_USE_APRON=ON ../
-     cmake --build . --target extra                 
-     cmake --build . --target crab && cmake ..
-     cmake --build . --target ldd && cmake ..
-     cmake --build . --target apron && cmake ..
-     cmake --build . --target llvm && cmake ..                
-     cmake --build . --target install 
+    1. mkdir build && cd build
+    2. cmake -DCMAKE_INSTALL_PREFIX=$DIR -DCRAB_USE_LDD=ON -DCRAB_USE_APRON=ON ../
+    3. cmake --build . --target llvm && cmake ..  
+    4. cmake --build . --target crab && cmake ..
+    5. cmake --build . --target extra && cmake ..                
+    6. cmake --build . --target ldd && cmake ..
+    7. cmake --build . --target apron && cmake ..             
+    8. cmake --build . --target install 
+
+For instance, lines 6 and 7 will download, compile and install the Boxes and Apron domains, respectively.
+If you have already compiled and installed these libraries in your machine then skip commands at line 6 and 7 and add the following options at line 2.
+
+- For Apron: `-DAPRON_ROOT=$APRON_INSTALL_DIR`
+- For Elina: `-DELINA_ROOT=$ELINA_INSTALL_DIR`
+- For Boxes: `-DCUDD_ROOT=$CUDD_INSTALL_DIR -DLDD_ROOT=$LDD_INSTALL_DIR`
 
 ## Checking installation ## 
 
@@ -120,7 +126,7 @@ To run some regression tests:
 
 # Usage #
 
-Clam provides a Python script called `clam.py` to interact with
+Clam provides a Python script called `clam.py` (located at `$DIR/bin` where `$DIR` is the directory where Clam was installed) to interact with
 users. The simplest command is `clam.py test.c`. Type `clam.py --help`
 for all options and read
 our [wiki](https://github.com/seahorn/clam/wiki/ClamUsage).
