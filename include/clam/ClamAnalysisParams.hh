@@ -1,7 +1,7 @@
 #pragma once
 
 #include "clam/CrabDomain.hh"
-
+#include <llvm/Support/raw_ostream.h>
 #include <climits>
 #include <string>
 

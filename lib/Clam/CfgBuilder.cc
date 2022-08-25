@@ -2337,13 +2337,17 @@ void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
 		    retRef->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
   };
   
+  #if 0
+  // TODO(PORT LLVM14): MemoryBuiltins changed in LLVM14 and isMallocLikeFn,
+  // isCallocLikeFn, and isStrdupLikeFn are not available anymore.
   
   if (!I.getType()->isVoidTy()) {
     crab_lit_ref_t retRef = m_lfac.getLit(I);
     assert(retRef->isVar());
     if (isReference(I, m_params)) {
       Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
-      if (isMallocLikeFn(&I, m_tli) || isOpNewLikeFn(&I, m_tli)) {
+      if (isMallocLikeFn(&I, m_tli)) {
+	// In LLVM14, it includes also new
 	// ptr  := malloc(size) or new(size) allocates size bytes
 	addMakeRefFromVal(retRef, rgn, *(I.getOperand(0)));
       } else if (isCallocLikeFn(&I, m_tli)) {
@@ -2368,6 +2372,7 @@ void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
       havoc(retRef->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     }
   }
+  #endif
 }
 
 void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
@@ -5341,12 +5346,17 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
   }
 
   if (m_params.addPointerAssumptions()) {
-    if (I.getType()->isPointerTy() && calleeF->getDereferenceableBytes(0) > 0) {
+    /*
+      REVISIT: With LLVM14, I don't know how to know if the return
+      value is dereferenceable.
+       
+    if (I.getType()->isPointerTy() && calleeF->getParamDereferenceableBytes(0) > 0) {
       crab_lit_ref_t ret = m_lfac.getLit(I);
       error_if_null(ret, I);
       assert(ret->isVar() && ret->isRef());
       m_bb.assume_ref(ref_cst_t::mk_gt_null(ret->getVar()));
     }
+    */
   }
 }
 

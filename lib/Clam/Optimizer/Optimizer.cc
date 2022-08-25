@@ -651,7 +651,7 @@ bool Optimizer::runOnModule(Module &M) {
 		  << "Starting clam optimizer based on invariants.\n";);
   
   LLVMContext &ctx = M.getContext();
-  AttrBuilder B;
+  AttrBuilder B(ctx);
   B.addAttribute(Attribute::NoUnwind);
   B.addAttribute(Attribute::NoRecurse);
   B.addAttribute(Attribute::OptimizeNone);

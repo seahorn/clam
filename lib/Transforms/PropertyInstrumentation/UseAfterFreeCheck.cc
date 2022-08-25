@@ -172,7 +172,7 @@ bool UseAfterFreeCheck::runOnModule(llvm::Module &M) {
   LLVMContext &ctx = M.getContext();
 
   {
-    AttrBuilder B;
+    AttrBuilder B(ctx);
     // Function does not access memory
     B.addAttribute(Attribute::ReadNone);
     AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
@@ -183,7 +183,7 @@ bool UseAfterFreeCheck::runOnModule(llvm::Module &M) {
   }
 
   {
-    AttrBuilder B;
+    AttrBuilder B(ctx);
     // Function does not access memory
     B.addAttribute(Attribute::ReadNone);
     B.addAttribute(Attribute::NoReturn);
@@ -196,7 +196,7 @@ bool UseAfterFreeCheck::runOnModule(llvm::Module &M) {
   }
 
   {
-    AttrBuilder B;
+    AttrBuilder B(ctx);
     // Function does not access memory
     B.addAttribute(Attribute::ReadNone);
     AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
