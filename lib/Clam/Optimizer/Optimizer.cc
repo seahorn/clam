@@ -656,7 +656,8 @@ bool Optimizer::runOnModule(Module &M) {
   AttrBuilder B;
   B.addAttribute(Attribute::NoUnwind);
   B.addAttribute(Attribute::NoRecurse);
-  B.addAttribute(Attribute::OptimizeNone);  
+  B.addAttribute(Attribute::OptimizeNone);
+  B.addAttribute(Attribute::NoInline);
   // LLVM removed all calls to verifier.assume if marked as ReadNone
   // or ReadOnly even if we mark it as OptimizeNone.
   B.addAttribute(Attribute::InaccessibleMemOnly);  
