@@ -908,8 +908,7 @@ public:
 	error_if_null(baseRef, Base);	
 	crab_lit_ref_t val = m_lfac.getLit(Val);
 	error_if_null(val, Val);
-	uint64_t elem_size = clam::storageSize(Val.getType(), m_dl);
-	assert(elem_size > 0);
+	clam::storageSize(Val.getType(), m_dl);
 
 	if (!baseRef || !baseRef->isRef() || m_lfac.isRefNull(baseRef)) {
 	  CLAM_ERROR("unexpected global during global initialization");
@@ -2840,7 +2839,7 @@ void CrabIntraBlockBuilder::StoreIntoSingletonMem(StoreInst &I, var_t v,
        is_uninit_region);
 
   Type *ty = I.getOperand(0)->getType();
-  const statement_t *crab_stmt;
+  const statement_t *crab_stmt = nullptr;
   if (val->isVar()) {
     // we know that val is either an integer or boolean literal
     unsigned val_bitwidth =
@@ -4202,7 +4201,7 @@ void CfgBuilderImpl::setExitBlock() {
     }
 
     if (!m_cfg->has_exit()) {
-      CLAM_WARNING("Could not identify exit block for ", m_func.getName());
+      CLAM_WARNING("Could not identify exit block for " << m_func.getName());
     }
   }
 }
@@ -5291,15 +5290,15 @@ void CrabIntraBlockBuilder::doCallSite(CallInst &I) {
   std::vector<std::pair<var_t, var_t>> pendingInRgnCasts, pendingOutRgnCasts;
   if (m_params.trackMemory() && calleeF_decl) {
     auto unifyRgnType =
-      [this, &I](var_t &cparam, const var_t &fparam,
-                 std::vector<std::pair<var_t, var_t>> &pendingRgnCasts) {
+      [this](var_t &cparam, const var_t &fparam,
+	     std::vector<std::pair<var_t, var_t>> &pendingRgnCasts) {
 	auto is_typed_region = [](const var_t &v) {
         return v.get_type().is_region() && !v.get_type().is_unknown_region();};
 	
 	if (cparam.get_type() == fparam.get_type()) {
 	  return; // do nothing
 	} else if ((cparam.get_type().is_unknown_region() && is_typed_region(fparam)) ||
-		    fparam.get_type().is_unknown_region() && is_typed_region(cparam)) {
+		   (fparam.get_type().is_unknown_region() && is_typed_region(cparam))) {
 	  var_t aux_rgn(m_lfac.getVFac().get(), fparam.get_type());
 	  var_t old_cparam(cparam);
 	  pendingRgnCasts.push_back({old_cparam, aux_rgn});
@@ -5579,10 +5578,12 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func,
       m_lfac(man.getCrabLitFactory()),
       m_as_man(man.getAllocSiteMan()),
       m_dbg_id(man.m_dbg_id),      
-      m_mem(man.getHeapAbstraction()), m_cfg(nullptr), m_id(0),
+      m_mem(man.getHeapAbstraction()),
+      m_cfg(nullptr), m_id(0),
+      m_ret_insts(nullptr), 
       m_dl(&(func.getParent()->getDataLayout())), m_tli(&(man.getTLIWrapper())),
       m_params(man.getCfgBuilderParams()), m_globals(man.m_globals),
-      m_ret_insts(nullptr), m_man(man), m_propertyEmitters(m_man.getPropertyEmitters()) {
+      m_man(man), m_propertyEmitters(m_man.getPropertyEmitters()) {
   m_cfg =
       std::make_unique<cfg_t>(makeCrabBasicBlockLabel(&m_func.getEntryBlock()));
   setExitBlock();

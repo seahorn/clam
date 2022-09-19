@@ -407,9 +407,6 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
     /// callee agree on it.
     std::vector<const CallInst *> FCalls;
     for (DsaCallSite CS : FunctionCallsMap[&F]) {
-      const Function *calleeF = CS.getCallee();
-      assert(calleeF);
-      assert(!calleeF->empty());
       const CallInst *CI = cast<CallInst>(CS.getInstruction());
       FCalls.push_back(CI);
 
