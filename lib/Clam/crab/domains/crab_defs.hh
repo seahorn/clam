@@ -87,7 +87,8 @@ public:
     using namespace clam;					\
     using namespace crab;					\
     auto &map = DomainRegistry::getFactoryMap();		\
-    clam_abstract_domain val(std::move(name ## _t()));		\
+    name ## _t obj{};						\
+    clam_abstract_domain val(std::move(obj));		        \
     bool res = map.insert({domain_type, val}).second;		\
     CrabStats::reset();						\
     return res;							\

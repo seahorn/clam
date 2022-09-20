@@ -31,7 +31,7 @@ class EmitNullDerefChecksImpl {
   SmallSet<Value *, 16> m_seen;
 
   // Decide if the check is relevant
-  bool isRelevantCheck(Value *Ptr) {
+  bool isRelevantCheck(Value *Ptr) {    
     auto BasePair = memory_check_utils::getBasePtr(Ptr);
     if (Value *BasePtr = BasePair.getPointer()) {
       if (BasePair.getInt() == 1) {
@@ -69,7 +69,9 @@ public:
   EmitNullDerefChecksImpl(const CrabBuilderParams &params, crabLitFactory &lfac,
                           uint32_t &assertionId)
       : m_params(params), m_lfac(lfac), m_assertionId(assertionId),
-        m_addedChecks(0), m_trivialChecks(0) {}
+        m_addedChecks(0), m_trivialChecks(0) {
+    (void) m_lfac; // to silent compiler warning
+  }
 
   ~EmitNullDerefChecksImpl() {
     llvm::errs() << "-- Inserted " << m_addedChecks;
