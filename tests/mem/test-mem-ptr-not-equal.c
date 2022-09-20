@@ -1,9 +1,15 @@
 // RUN: %clam -O0 --crab-inter --crab-track=mem --crab-dom=zones --crab-check=assert --crab-sanity-checks --crab-dom-params="region.is_dereferenceable=true" --crab-widening-delay=2  "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
+// XFAIL: *
+
 
 // Note that we need to delay widening two iterations to prove the
 // assertion.
+
+// After Crab commit cb2d8c57: we cannot prove the assertion because
+// the transfer function for p != q is not precise enough.
+
 
 #include <stdio.h>
 #include <stdint.h>

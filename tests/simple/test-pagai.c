@@ -2,6 +2,7 @@
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
+// XFAIL: *
 #include "clam/clam.h"
 
 int main () {

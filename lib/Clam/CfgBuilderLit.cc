@@ -157,7 +157,7 @@ var_t crabLitFactoryImpl::mkArrayVar(Region rgn) {
     type = crab::variable_type(ARR_BOOL_TYPE);
     break;
   default:
-    CLAM_ERROR("unsupported region type ", rgn);
+    CLAM_ERROR("unsupported region type " << rgn);
   }
 
   var_t res(m_vfac.get(), type);
@@ -182,7 +182,7 @@ crabLitFactoryImpl::regionTypeToCrabType(RegionInfo rgnInfo) {
     type = crab::variable_type(REG_UNKNOWN_TYPE);
     break;
   default:
-    CLAM_ERROR("unsupported region type ", rgnInfo);
+    CLAM_ERROR("unsupported region type " <<  rgnInfo);
   }
   return type;
 }
@@ -234,7 +234,7 @@ var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
     type = crab::variable_type(BOOL_TYPE, 1);
     break;
   default:
-    CLAM_ERROR("unsupported region type", rgn);
+    CLAM_ERROR("unsupported region type" << rgn);
   }
 
   var_t res(m_vfac.get(), type);

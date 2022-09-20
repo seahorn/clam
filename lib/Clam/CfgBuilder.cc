@@ -148,6 +148,17 @@ static std::string valueToStr(const Value &V) {
   return res;    
 }
 
+static void error_if_null(crab_lit_ref_t lit, const llvm::Value &v) {
+  if (lit == nullptr) {
+    if (isa<ConstantExpr>(v)) {
+      CLAM_ERROR("Clam does not support ConstantExpr: "
+		 << v << ". Run createLowerCstExprPass");
+    } else {
+      CLAM_ERROR("Clam could not translate " << v);
+    }
+  }
+}
+
 static void havoc(var_t v, std::string comment, basic_block_t &bb,
                   bool include_useless_havoc) {
   if (include_useless_havoc) {
@@ -857,7 +868,7 @@ public:
     if (getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
       // Promote the global to an integer/boolean scalar
       crab_lit_ref_t val_lit = m_lfac.getLit(Val);
-      assert(val_lit);
+      error_if_null(val_lit, Val);
       var_t a = m_lfac.mkScalarVar(rgn);
       if (isInteger(Val.getType())) {
         assert(!val_lit->isVar() && val_lit->isInt());
@@ -875,7 +886,7 @@ public:
     if (m_params.trackOnlySingletonMemory() && !rgn.isUnknown() && 
         rgn.getRegionInfo().containScalar()) {
       crab_lit_ref_t val_lit = m_lfac.getLit(Val);
-      assert(val_lit);
+      error_if_null(val_lit, Val);
       uint64_t elem_size = clam::storageSize(Val.getType(), m_dl);
       assert(elem_size > 0);
       bool first = m_initialized_arrays.insert(rgn).second;
@@ -893,11 +904,10 @@ public:
       if (!rgn.isUnknown()) {
 	Region baseRgn = m_mem.getRegion(m_fun, Base);       
 	crab_lit_ref_t baseRef = m_lfac.getLit(Base);
-	assert(baseRef);	
+	error_if_null(baseRef, Base);	
 	crab_lit_ref_t val = m_lfac.getLit(Val);
-	assert(val);
-	uint64_t elem_size = clam::storageSize(Val.getType(), m_dl);
-	assert(elem_size > 0);
+	error_if_null(val, Val);
+	clam::storageSize(Val.getType(), m_dl);
 
 	if (!baseRef || !baseRef->isRef() || m_lfac.isRefNull(baseRef)) {
 	  CLAM_ERROR("unexpected global during global initialization");
@@ -1582,7 +1592,8 @@ var_t CrabIntraBlockBuilder::doBoolLogicOp(Instruction::BinaryOps op,
 
 void CrabIntraBlockBuilder::doIntLogicOp(crab_lit_ref_t lit,
                                          BinaryOperator &i) {
-  assert(lit && lit->isVar());
+  assert(lit);
+  assert(lit->isVar());
 
   if (!(lit->isInt())) {
     CLAM_ERROR("lhs of bitwise operation must be an integer");
@@ -1971,7 +1982,8 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
   }
 
   crab_lit_ref_t dst = m_lfac.getLit(I);
-  assert(dst && dst->isVar());
+  error_if_null(dst, I);
+  assert(dst->isVar());
   crab_lit_ref_t src = m_lfac.getLit(*(I.getOperand(0)));
   if (!src) {
     havoc(dst->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
@@ -2085,14 +2097,15 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
   }
 
   crab_lit_ref_t lhs = m_lfac.getLit(I);
-  assert(lhs && lhs->isVar());
+  error_if_null(lhs, I);
+  assert(lhs->isVar());
   Value &condV = *I.getCondition();
   crab_lit_ref_t c = m_lfac.getLit(condV);
-  assert(c);
+  error_if_null(c, condV);
   crab_lit_ref_t op1 = m_lfac.getLit(*I.getTrueValue());
-  assert(op1);
+  error_if_null(op1, *I.getTrueValue());
   crab_lit_ref_t op2 = m_lfac.getLit(*I.getFalseValue());
-  assert(op2);
+  error_if_null(op2, *I.getFalseValue());
 
   if (isReference(I, m_params)) {
     // --- All operands are pointers
@@ -2382,7 +2395,8 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
   Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
   if (isReference(I, m_params)) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
-    assert(lhs && lhs->isVar());
+    error_if_null(lhs, I);
+    assert(lhs->isVar());
     var_or_cst_t size = getAllocaSize(I);
     insertCrabIRWithEmitter::
 	   make_ref(I, m_propertyEmitters, m_bb, *m_tli,
@@ -2752,7 +2766,8 @@ void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
 
   if (m_params.trackMemory()) {
     crab_lit_ref_t lhs = m_lfac.getLit(I);
-    assert(lhs && lhs->isVar());
+    error_if_null(lhs, I);
+    assert(lhs->isVar());
     crab_lit_ref_t ptr = m_lfac.getLit(*I.getPointerOperand());
     if (!ptr) {
       havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
@@ -2820,7 +2835,7 @@ void CrabIntraBlockBuilder::StoreIntoSingletonMem(StoreInst &I, var_t v,
        is_uninit_region);
 
   Type *ty = I.getOperand(0)->getType();
-  const statement_t *crab_stmt;
+  const statement_t *crab_stmt = nullptr;
   if (val->isVar()) {
     // we know that val is either an integer or boolean literal
     unsigned val_bitwidth =
@@ -3200,7 +3215,8 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
 					    ShouldCallSiteReturn(I, m_params)*/) {
         // havoc return value
         crab_lit_ref_t lhs = m_lfac.getLit(I);
-        assert(lhs && lhs->isVar());
+	error_if_null(lhs, I);
+        assert(lhs->isVar());
         havoc(lhs->getVar(), "Unresolved indirect call: " + valueToStr(I), m_bb,
               m_params.include_useless_havoc);
       }
@@ -3237,7 +3253,8 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
 					    ShouldCallSiteReturn(I, m_params)*/) {
         // -- havoc return value of the intrinsics
         crab_lit_ref_t lhs = m_lfac.getLit(I);
-        assert(lhs && lhs->isVar());
+	error_if_null(lhs, I);
+        assert(lhs->isVar());
         havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       }
     }
@@ -3256,7 +3273,8 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
     if (DoesCallSiteReturn(
             I, m_params) /* && ShouldCallSiteReturn(I, m_params)*/) {
       crab_lit_ref_t lhs = m_lfac.getLit(I);
-      assert(lhs && lhs->isVar());
+      error_if_null(lhs, I);
+      assert(lhs->isVar());
       havoc(lhs->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
       if (isReference(I, m_params)) {
 	Region rgn_lhs = getRegion(m_mem, m_func_regions, m_params, I, I);
@@ -3703,7 +3721,8 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
     // Allocate and add reasonable assumptions about global addresses
     if (m_params.allocateGlobals()) {
       crab_lit_ref_t gv_lit = m_lfac.getLit(gv);
-      assert(gv_lit && gv_lit->isVar());
+      error_if_null(gv_lit, gv);
+      assert(gv_lit->isVar());
       assert(gv_lit->getVar().get_type().is_reference());
 
       Region rgn = getRegion(m_mem, m_func_regions, m_params, m_func, gv);
@@ -3781,7 +3800,8 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
       for (auto &F : M) {
 	if (F.hasAddressTaken()) {
 	  crab_lit_ref_t funptr = m_lfac.getLit(F);
-	  assert(funptr && funptr->isVar() && funptr->isRef());
+	  error_if_null(funptr, F);
+	  assert(funptr->isVar() && funptr->isRef());
 	  Region rgn = getRegion(m_mem, m_func_regions, m_params, F, F);
 
 	  // Revisit: we do not call insertCrabIRWithEmitter	
@@ -4073,7 +4093,8 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
 
         if (lower_cond_as_bool) {
           crab_lit_ref_t lhs = m_lfac.getLit(c);
-          assert(lhs && lhs->isVar() && lhs->isBool());
+	  error_if_null(lhs, c);
+          assert(lhs->isVar() && lhs->isBool());
           if (isNegated) {
             bb.bool_not_assume(lhs->getVar());
           } else {
@@ -4176,7 +4197,7 @@ void CfgBuilderImpl::setExitBlock() {
     }
 
     if (!m_cfg->has_exit()) {
-      CLAM_WARNING("Could not identify exit block for ", m_func.getName());
+      CLAM_WARNING("Could not identify exit block for " << m_func.getName());
     }
   }
 }
@@ -4394,7 +4415,8 @@ void CfgBuilderImpl::addFunctionDeclaration() {
   // 
   auto translateInputValueAsScalar = [this, &inputs](const Value &inputVal, basic_block_t &bb) {
      crab_lit_ref_t inputLit = m_lfac.getLit(inputVal);
-     assert(inputLit && inputLit->isVar());
+     error_if_null(inputLit, inputVal);
+     assert(inputLit->isVar());
      var_t inputVar = inputLit->getVar();
      if (inputVar.get_type().is_bool()) {
        var_t inputPrime = m_lfac.mkBoolVar();
@@ -4647,7 +4669,8 @@ void CfgBuilderImpl::addFunctionDeclaration() {
       if (m_func.getArg(i)->getType()->isPointerTy() &&
           m_func.getParamDereferenceableBytes(i) > 0) {
         crab_lit_ref_t arg_lit = m_lfac.getLit(*(m_func.getArg(i)));
-        assert(arg_lit && arg_lit->isVar() && arg_lit->isRef());
+	error_if_null(arg_lit, *(m_func.getArg(i)));
+        assert(arg_lit->isVar() && arg_lit->isRef());
         tmp_bb3->assume_ref(ref_cst_t::mk_gt_null(arg_lit->getVar()));
       }
     }
@@ -5049,7 +5072,8 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
   if (ShouldCallSiteReturn(I, m_params)) {
     if (DoesCallSiteReturn(I, m_params)) {
       crab_lit_ref_t ret = m_lfac.getLit(I);
-      assert(ret && ret->isVar());
+      error_if_null(ret, I);
+      assert(ret->isVar());
       outputs.push_back(ret->getVar());
     } else {
       // The callsite should return something to match with the
@@ -5261,15 +5285,15 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
   std::vector<std::pair<var_t, var_t>> pendingInRgnCasts, pendingOutRgnCasts;
   if (m_params.trackMemory() && calleeF_decl) {
     auto unifyRgnType =
-      [this, &I](var_t &cparam, const var_t &fparam,
-                 std::vector<std::pair<var_t, var_t>> &pendingRgnCasts) {
+      [this](var_t &cparam, const var_t &fparam,
+	     std::vector<std::pair<var_t, var_t>> &pendingRgnCasts) {
 	auto is_typed_region = [](const var_t &v) {
         return v.get_type().is_region() && !v.get_type().is_unknown_region();};
 	
 	if (cparam.get_type() == fparam.get_type()) {
 	  return; // do nothing
 	} else if ((cparam.get_type().is_unknown_region() && is_typed_region(fparam)) ||
-		    fparam.get_type().is_unknown_region() && is_typed_region(cparam)) {
+		   (fparam.get_type().is_unknown_region() && is_typed_region(cparam))) {
 	  var_t aux_rgn(m_lfac.getVFac().get(), fparam.get_type());
 	  var_t old_cparam(cparam);
 	  pendingRgnCasts.push_back({old_cparam, aux_rgn});
@@ -5321,7 +5345,8 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
   if (m_params.addPointerAssumptions()) {
     if (I.getType()->isPointerTy() && calleeF->getDereferenceableBytes(0) > 0) {
       crab_lit_ref_t ret = m_lfac.getLit(I);
-      assert(ret && ret->isVar() && ret->isRef());
+      error_if_null(ret, I);
+      assert(ret->isVar() && ret->isRef());
       m_bb.assume_ref(ref_cst_t::mk_gt_null(ret->getVar()));
     }
   }
@@ -5546,10 +5571,12 @@ CfgBuilderImpl::CfgBuilderImpl(const Function &func,
       m_lfac(man.getCrabLitFactory()),
       m_as_man(man.getAllocSiteMan()),
       m_dbg_id(man.m_dbg_id),      
-      m_mem(man.getHeapAbstraction()), m_cfg(nullptr), m_id(0),
+      m_mem(man.getHeapAbstraction()),
+      m_cfg(nullptr), m_id(0),
+      m_ret_insts(nullptr), 
       m_dl(&(func.getParent()->getDataLayout())), m_tli(&(man.getTLIWrapper())),
       m_params(man.getCfgBuilderParams()), m_globals(man.m_globals),
-      m_ret_insts(nullptr), m_man(man), m_propertyEmitters(m_man.getPropertyEmitters()) {
+      m_man(man), m_propertyEmitters(m_man.getPropertyEmitters()) {
   m_cfg =
       std::make_unique<cfg_t>(makeCrabBasicBlockLabel(&m_func.getEntryBlock()));
   setExitBlock();
