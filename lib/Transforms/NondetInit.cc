@@ -126,7 +126,7 @@ public:
   static char ID;
   KillUnusedNondet() : FunctionPass(ID) {}
 
-  bool runOnFunction(Function &F) {
+  bool runOnFunction(Function &F) override {
     std::forward_list<CallInst *> toerase;
 
     for (Function::iterator b = F.begin(), be = F.end(); b != be; ++b)
@@ -154,7 +154,7 @@ public:
     return !toerase.empty();
   }
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesAll();
   }
 };

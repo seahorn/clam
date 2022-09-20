@@ -61,7 +61,7 @@ public:
     // AU.setPreservesAll ();
   }
 
-  virtual StringRef getPassName() const {
+  virtual StringRef getPassName() const override {
     return "Clam: Promote malloc to alloca instructions";
   }
 };

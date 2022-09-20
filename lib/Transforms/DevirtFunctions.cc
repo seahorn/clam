@@ -31,6 +31,7 @@ static bool isIndirectCall(CallBase &CB) {
   return !isa<Function>(v);
 }
 
+#ifdef USE_BOUNCE_FUNCTIONS  
 static PointerType *getVoidPtrType(LLVMContext &C) {
   Type *Int8Type = IntegerType::getInt8Ty(C);
   return PointerType::getUnqual(Int8Type);
@@ -51,7 +52,8 @@ static Value *castTo(Value *V, Type *Ty, std::string Name,
   // Otherwise, insert a cast instruction.
   return CastInst::CreateZExtOrBitCast(V, Ty, Name, InsertPt);
 }
-
+#endif
+  
 static void removeBlock(BasicBlock *BB, LLVMContext &ctx) {
   auto *BBTerm = BB->getTerminator();
   // Loop through all of our successors and make sure they know that one

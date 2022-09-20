@@ -145,7 +145,7 @@ public:
 
   ~CallSiteResolverByDsa();
 
-  const AliasSet *getTargets(llvm::CallBase &CB);
+  const AliasSet *getTargets(llvm::CallBase &CB) override;
 
 #ifdef USE_BOUNCE_FUNCTIONS
   llvm::Function *getBounceFunction(llvm::CallBase &CB);
