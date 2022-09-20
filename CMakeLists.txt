@@ -211,9 +211,7 @@ if (GIT_FOUND)
   
   if (TopLevel)
     if (CLAM_INCLUDE_SEAOPT)
-      ## seahorn-llvm hasn't been ported to LLVM12 yet
-      #add_custom_target (extra DEPENDS sea-dsa-git seahorn-llvm-git)
-      add_custom_target (extra DEPENDS sea-dsa-git)
+      add_custom_target (extra DEPENDS sea-dsa-git seahorn-llvm-git)
     else()
       add_custom_target (extra DEPENDS sea-dsa-git)
     endif()
