@@ -68,7 +68,6 @@ public:
       break;
     }
     case RESOLVER_TYPES:
-    default:
       CSR.reset(new CallSiteResolverByTypes(M, DF.getStats()));
       break;
     }

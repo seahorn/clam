@@ -128,8 +128,6 @@ private:
       return B.CreateSub(LHS, RHS, Name);
     case MUL:
       return B.CreateMul(LHS, RHS, Name);
-    default:
-      return nullptr;
     }
   }
 

@@ -1271,7 +1271,6 @@ bool ClamPass::runOnModule(Module &M) {
     break;
   }
   case heap_analysis_t::NONE:
-  default:
     CLAM_WARNING("running clam without heap analysis");
   }
   m_cfg_builder_man.reset(

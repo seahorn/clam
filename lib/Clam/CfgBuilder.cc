@@ -4731,8 +4731,6 @@ void CrabBuilderParams::write(raw_ostream &o) const {
   case CrabBuilderPrecision::MEM:
     o << "integers and all memory objects\n";
     break;
-  default:;
-    ;
   }
   o << "\tsimplify cfg: " << simplify << "\n";
   o << "\tinterproc cfg: " << interprocedural << "\n";
