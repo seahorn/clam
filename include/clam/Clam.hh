@@ -1,8 +1,19 @@
 #pragma once
 
-/*
+/**
  * Infer invariants using Crab.
- */
+ *
+ * The analyzers of llvm Module or Function assume that the following
+ * LLVM passes have been executed before:
+ *
+ * 1. llvm::createLowerInvokePass
+ * 2. llvm::createLowerSwitchPass
+ * 3. clam::createLowerCstExprPass
+ * 4. llvm::createUnifyFunctionExitNodesPass
+ *
+ * Without passes 1-2, invoke and switch instructions will be ignored.
+ * Without passes 3-4, the analyzer might produce an error.
+ **/
 
 #include "clam/ClamAnalysisParams.hh"
 #include "clam/ClamQueryAPI.hh"

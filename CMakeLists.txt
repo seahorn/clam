@@ -366,6 +366,8 @@ if (CLAM_INCLUDE_PYTHON)
   add_subdirectory(scripts)
 endif()
 if (CLAM_INCLUDE_TESTS)
+  configure_file(${Clam_SOURCE_DIR}/tests/clam_config.py.cmake
+                 ${Clam_SOURCE_DIR}/tests/clam_config.py) 
   add_subdirectory(tests)
 endif()
 
