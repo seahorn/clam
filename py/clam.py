@@ -689,10 +689,12 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     # for now, there is no option to undo this switch
     opt_args.append('--simplifycfg-sink-common=false')
 
-    # disable always vectorization
-    ## With LLVM 10: loop vectorization must be enabled
+    ## Unavailable after porting to LLVM12    
+    ### REVISIT: these flags are gone. See here some discussion
+    ### https://reviews.llvm.org/D77989.
+    ### It seems they were not having much effect anyway.
     # opt_args.append('--disable-loop-vectorization')
-    opt_args.append('--disable-slp-vectorization')
+    # opt_args.append('--disable-slp-vectorization')
 
     ## Unavailable after porting to LLVM10
     # if is_seaopt:
