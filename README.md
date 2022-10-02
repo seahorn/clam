@@ -63,23 +63,14 @@ If you installed LLVM 12 in a non-standard path, then add option
 `-DLLVM_DIR=$LLVM-12_INSTALL_DIR/lib/cmake/llvm` to line 2.  The
 command at line 3 will download Crab and compile it from sources.
 Clam uses two external components that are installed via the `extra`
-target (line 4). These components are:
+target at line 4. These components are:
   
-* [sea-dsa](https://github.com/seahorn/sea-dsa): 
-
-  `sea-dsa` is the heap analysis used to translate LLVM memory
+* [sea-dsa](https://github.com/seahorn/sea-dsa) is the heap analysis used to translate LLVM memory
   instructions. Details can be
   found [here](https://jorgenavas.github.io/papers/sea-dsa-SAS17.pdf)
   and [here](https://jorgenavas.github.io/papers/tea-dsa-fmcad19.pdf).
   
-* [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): 
-
-   `llvm-seahorn` provides specialized versions of `InstCombine` and
-   `IndVarSimplify` LLVM passes as well as a LLVM pass to convert
-   undefined values into nondeterministic calls.
-
-The component `sea-dsa` is mandatory and `llvm-seahorn` is optional
-but highly recommended.
+* [llvm-seahorn](https://github.com/seahorn/llvm-seahorn) provides specialized versions of LLVM components to make them more amenable for verification. `llvm-seahorn` is optional but hightly recommended.  
 
 The Boxes/Apron/Elina domains require third-party libraries. To avoid
 the burden to users who are not interested in those domains, the
