@@ -54,39 +54,32 @@ The basic compilation steps are:
 
     1. mkdir build && cd build
     2. cmake -DCMAKE_INSTALL_PREFIX=$DIR ../
-    3. cmake --build . --target llvm && cmake ..  
-    4. cmake --build . --target crab && cmake ..   
+    3. cmake --build . --target crab && cmake ..   
+    4. cmake --build . --target extra && cmake ..                  
     5. cmake --build . --target install 
 
-The command at line 3 will download LLVM 11 and build it from sources. Thus, it might take several minutes depending on your machine.
-If you have already installed LLVM 11 in your machine, then add option `-DLLVM_DIR=$LLVM-11_INSTALL_DIR/lib/cmake/llvm` to line 2. 
-The command at line 4 will download Crab and compile it from sources. 
-
-Clam provides two components that are installed via the `extra`
-target. These components can be used by other projects outside of
-Clam. 
+The command at line 2 will try to find LLVM 12 from standard paths.
+If you installed LLVM 12 in a non-standard path, then add option
+`-DLLVM_DIR=$LLVM-12_INSTALL_DIR/lib/cmake/llvm` to line 2.  The
+command at line 3 will download Crab and compile it from sources.
+Clam uses two external components that are installed via the `extra`
+target (line 4). These components are:
   
-* [sea-dsa](https://github.com/seahorn/sea-dsa): ```git clone https://github.com/seahorn/sea-dsa.git```
+* [sea-dsa](https://github.com/seahorn/sea-dsa): 
 
   `sea-dsa` is the heap analysis used to translate LLVM memory
   instructions. Details can be
   found [here](https://jorgenavas.github.io/papers/sea-dsa-SAS17.pdf)
   and [here](https://jorgenavas.github.io/papers/tea-dsa-fmcad19.pdf).
   
-* [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): ``` git clone https://github.com/seahorn/llvm-seahorn.git```
+* [llvm-seahorn](https://github.com/seahorn/llvm-seahorn): 
 
    `llvm-seahorn` provides specialized versions of `InstCombine` and
-   `IndVarSimplify` LLVM passes as well as a LLVM pass to convert undefined values into nondeterministic calls.
+   `IndVarSimplify` LLVM passes as well as a LLVM pass to convert
+   undefined values into nondeterministic calls.
 
-The component `sea-dsa` is mandatory and `llvm-seahorn` is optional but highly
-recommended. To include these external components, type instead:
-
-    1. mkdir build && cd build
-    2. cmake -DCMAKE_INSTALL_PREFIX=$DIR ../
-    3. cmake --build . --target llvm && cmake .. 
-    4. cmake --build . --target crab && cmake .. 
-    5. cmake --build . --target extra && cmake ..                  
-    6. cmake --build . --target install 
+The component `sea-dsa` is mandatory and `llvm-seahorn` is optional
+but highly recommended.
 
 The Boxes/Apron/Elina domains require third-party libraries. To avoid
 the burden to users who are not interested in those domains, the
@@ -107,15 +100,16 @@ For instance, to install Clam with Boxes and Apron:
 
     1. mkdir build && cd build
     2. cmake -DCMAKE_INSTALL_PREFIX=$DIR -DCRAB_USE_LDD=ON -DCRAB_USE_APRON=ON ../
-    3. cmake --build . --target llvm && cmake ..  
-    4. cmake --build . --target crab && cmake ..
-    5. cmake --build . --target extra && cmake ..                
-    6. cmake --build . --target ldd && cmake ..
-    7. cmake --build . --target apron && cmake ..             
-    8. cmake --build . --target install 
+    3. cmake --build . --target crab && cmake ..
+    4. cmake --build . --target extra && cmake ..                
+    5. cmake --build . --target ldd && cmake ..
+    6. cmake --build . --target apron && cmake ..             
+    7. cmake --build . --target install 
 
-For instance, lines 6 and 7 will download, compile and install the Boxes and Apron domains, respectively.
-If you have already compiled and installed these libraries in your machine then skip commands at line 6 and 7 and add the following options at line 2.
+For instance, lines 5 and 6 will download, compile and install the
+Boxes and Apron libraries, respectively.  If you have already compiled
+and installed these libraries in your machine then skip commands at
+line 5 and 6 and add the following options at line 2.
 
 - For Apron: `-DAPRON_ROOT=$APRON_INSTALL_DIR`
 - For Elina: `-DELINA_ROOT=$ELINA_INSTALL_DIR`
@@ -133,7 +127,3 @@ Clam provides a Python script called `clam.py` (located at `$DIR/bin` where `$DI
 users. The simplest command is `clam.py test.c`. Type `clam.py --help`
 for all options and read
 our [wiki](https://github.com/seahorn/clam/wiki/ClamUsage).
-
-
-  
-  
