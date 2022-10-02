@@ -696,6 +696,12 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     # opt_args.append('--disable-loop-vectorization')
     # opt_args.append('--disable-slp-vectorization')
 
+
+    # LLVM 12 onwards we need to disable slp vectorization (vec instr not handled by sea-dsa and opsem)
+    # vectorization for loops is split into multiple options so not adding any here.
+    # See https://sourcegraph.com/github.com/llvm/llvm-project@release/12.x/-/blob/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+    opt_args.extend (['--vectorize-slp=false'])    
+    
     ## Unavailable after porting to LLVM10
     # if is_seaopt:
     #     # disable always loop rotation. Loop rotation converts to loops
