@@ -333,7 +333,8 @@ int main(int argc, char **argv) {
       pass_manager.add(clam::createLoopPeelerPass(PeelLoops));
 #ifdef HAVE_LLVM_SEAHORN
     // induction variable requires loop-closed SSA
-    pass_manager.add(llvm::createLCSSAPass());
+    // Preserved by LoopPeelerPass
+    // pass_manager.add(llvm::createLCSSAPass());
     // induction variable
     pass_manager.add(llvm_seahorn::createIndVarSimplifyPass());
 #endif
