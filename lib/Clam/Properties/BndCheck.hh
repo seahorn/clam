@@ -7,7 +7,7 @@ namespace clam {
 
 class EmitBndChecksImpl;
 
-/* Emit CrabIR statements to perform check for null dereferences */
+/* Emit CrabIR statements to perform check for array bounds */
 class EmitBndChecks : public CrabIREmitter {
   std::unique_ptr<EmitBndChecksImpl> m_impl;
 
