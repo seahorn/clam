@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include "clam/clam.h"
 
-// RUN: %clam -O0  --llvm-peel-loops=1 --crab-inter --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --crab-lower-unsigned-icmp --llvm-peel-loops=1 --crab-inter --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks "%s" 2>&1 | OutputCheck %s
 // CHECK: ^6  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
 
