@@ -2311,8 +2311,37 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 
 /* malloc-like functions */
 void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.AllocFn");      
-  auto addMakeRefFromVal = [this, &I]
+  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.AllocFn");
+
+  auto isMallocLikeFn = [] (const Value *V, const TargetLibraryInfo *TLI) {
+    if (!isMallocOrCallocLikeFn(V, TLI)) {
+      return false;
+    }
+    // Starting in LLVM14, we cannot distinghish between malloc and
+    // calloc-like functions
+    if (const CallBase *CB = dyn_cast<CallBase>(V)) {
+      if (const Function *Callee = CB->getCalledFunction()) {
+	return (Callee->getName() != "calloc" && Callee->getName() != "vec_calloc");
+      }
+    }
+    return false;
+  };
+
+  auto isCallocLikeFn = [] (const Value *V, const TargetLibraryInfo *TLI) {
+    if (!isMallocOrCallocLikeFn(V, TLI)) {
+      return false;
+    }
+    // Starting in LLVM14, we cannot distinghish between malloc and
+    // calloc-like functions    
+    if (const CallBase *CB = dyn_cast<CallBase>(V)) {
+      if (const Function *Callee = CB->getCalledFunction()) {
+	return (Callee->getName() == "calloc");
+      }
+    }
+    return false;
+  };
+  
+  auto addMakeRefFromMalloc = [this, &I]
     (crab_lit_ref_t retRef, Region rgn, const Value &size) {
        crab_lit_ref_t litS = m_lfac.getLit(size);
        if (litS->isInt()) {
@@ -2328,51 +2357,82 @@ void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
 	 CLAM_ERROR("doAllocFn expected " << size << " to be an integer in " << I);
        }
   };
-  auto addMakeRefWithoutSize = [this, &I]
-    (crab_lit_ref_t retRef, Region rgn) {
-        var_or_cst_t size(m_lfac.mkIntVar(getPointerSizeInBits()));
-	m_bb.havoc(size.get_variable(), valueToStr(I));
-	 insertCrabIRWithEmitter::
-	   make_ref(I, m_propertyEmitters, m_bb, *m_tli,
-		    retRef->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
+
+  auto addMakeRefFromCalloc = [this, &I]
+    (crab_lit_ref_t retRef, Region rgn, const Value &nElts, const Value& szElt) {
+    crab_lit_ref_t lit_nElts = m_lfac.getLit(nElts);
+    crab_lit_ref_t lit_szElt = m_lfac.getLit(szElt);
+    if (lit_nElts->isInt() && lit_szElt->isInt()) {
+      if (!lit_nElts->isVar() && !lit_szElt->isVar()) {
+	var_or_cst_t size(m_lfac.getIntCst(lit_nElts) * m_lfac.getIntCst(lit_szElt),
+			  crab::variable_type(INT_TYPE, getPointerSizeInBits()));
+	insertCrabIRWithEmitter::
+	  make_ref(I, m_propertyEmitters, m_bb, *m_tli,
+		   retRef->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
+	
+      } else {
+	var_t size = m_lfac.mkIntVar(getPointerSizeInBits());
+	if (lit_nElts->isVar() && lit_szElt->isVar()) {
+	  m_bb.mul(size, lit_nElts->getVar(), lit_szElt->getVar());
+	} else if (!lit_nElts->isVar() && lit_szElt->isVar()) {
+	  m_bb.mul(size, lit_szElt->getVar(), m_lfac.getIntCst(lit_nElts));
+	} else if (lit_nElts->isVar() && !lit_szElt->isVar()) {
+	  m_bb.mul(size, lit_nElts->getVar(), m_lfac.getIntCst(lit_szElt));
+	} else {
+	  assert(0 && "unreachable");
+	}
+	  
+	insertCrabIRWithEmitter::
+	  make_ref(I, m_propertyEmitters, m_bb, *m_tli,
+		   retRef->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
+      }
+    } else {
+      CLAM_ERROR("doAllocFn expected " << nElts << " and " << szElt << " to be integers in " << I);
+    }
   };
   
-  #if 0
-  // TODO(PORT LLVM14): MemoryBuiltins changed in LLVM14 and isMallocLikeFn,
-  // isCallocLikeFn, and isStrdupLikeFn are not available anymore.
-  
+  // auto addMakeRefWithoutSize = [this, &I]
+  //   (crab_lit_ref_t retRef, Region rgn) {
+  //       var_or_cst_t size(m_lfac.mkIntVar(getPointerSizeInBits()));
+  // 	m_bb.havoc(size.get_variable(), valueToStr(I));
+  // 	 insertCrabIRWithEmitter::
+  // 	   make_ref(I, m_propertyEmitters, m_bb, *m_tli,
+  // 		    retRef->getVar(), m_lfac.mkRegionVar(rgn), size, m_as_man.mk_tag());
+  // };
+
+
   if (!I.getType()->isVoidTy()) {
     crab_lit_ref_t retRef = m_lfac.getLit(I);
     assert(retRef->isVar());
     if (isReference(I, m_params)) {
       Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
+      // malloc/new/calloc/align alloc
       if (isMallocLikeFn(&I, m_tli)) {
-	// In LLVM14, it includes also new
 	// ptr  := malloc(size) or new(size) allocates size bytes
-	addMakeRefFromVal(retRef, rgn, *(I.getOperand(0)));
+	addMakeRefFromMalloc(retRef, rgn, *(I.getOperand(0)));
       } else if (isCallocLikeFn(&I, m_tli)) {
-	// TODO(TRANSLATION): we ignore the size of the allocated memory which is num*size
-	// TODO(TRANSLATION): we also ignore that the new allocated memory is zeroed
 	// ptr  := calloc(num, size) allocates num*size bytes
-	addMakeRefWithoutSize(retRef, rgn);
+	// TODO(TRANSLATION): we ignore that the new allocated memory is zeroed
+	addMakeRefFromCalloc(retRef, rgn, *(I.getOperand(0)), *(I.getOperand(1)));
       } else if (isReallocLikeFn(&I, m_tli)) {
 	// ptr' := realloc(ptr, new_size)
 	// TODO(TRANSLATION): we ignore that the contents of the new allocated memory
-	addMakeRefFromVal(retRef, rgn, *(I.getOperand(1)));
-      } else if (isStrdupLikeFn(&I, m_tli)) {
+	addMakeRefFromMalloc(retRef, rgn, *(I.getOperand(1)));
+      } /*else if (isStrdupLikeFn(&I, m_tli)) {
+	// After LLVM14, MemoryBuiltins doesn't tell you if a call is strdup like
 	// str' := strdup(str,...)
 	// TODO(TRANSLATION): we ignore the size of the new string
 	// TODO(TRANSLATION): we ignore that the contents of the new string	
 	addMakeRefWithoutSize(retRef, rgn);
-      } else {
-	CLAM_ERROR("unexpected allocation function " << I);
+	}*/
+      else {
+	CLAM_WARNING("unsupported allocation function " << I);
       }
     } else if (isTracked(I, m_params)) {
       // -- havoc return value
       havoc(retRef->getVar(), valueToStr(I), m_bb, m_params.include_useless_havoc);
     }
   }
-  #endif
 }
 
 void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
@@ -2380,7 +2440,7 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
 
   // note that it has side-effects (it might add a multiplication in the basic block)
   auto getAllocaSize = [this](AllocaInst &I) -> var_or_cst_t {
-    Type *ty = I.getType()->getElementType();
+    Type *ty = I.getType()->getPointerElementType();
     unsigned typeSz = (size_t)m_dl->getTypeAllocSize(ty);
     llvm::Optional<var_or_cst_t> size;
     if (const ConstantInt *cv = dyn_cast<const ConstantInt>(I.getOperand(0))) {
@@ -4602,7 +4662,7 @@ void CfgBuilderImpl::addFunctionDeclaration() {
         if (rgn.getRegionInfo().containScalar()) {
           // input version
           change = true;
-          Type *ty = cast<PointerType>(v->getType())->getElementType();
+          Type *ty = cast<PointerType>(v->getType())->getPointerElementType();
           var_t s = m_lfac.mkScalarVar(rgn);
           if (isInteger(ty)) {
             var_t a_in = m_lfac.mkIntVar(ty->getIntegerBitWidth());
