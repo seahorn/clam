@@ -93,7 +93,7 @@ bool LoopPeelerPass::runOnLoop(Loop *L, LPPassManager &LPM) {
   if (!canPeel(L)) {
     return false;
   }
-  auto res = peelLoop(L, m_Num, &LI, &SE, &DT, &AC, true /* PreserveLCSSA */);
+  auto res = peelLoop(L, m_Num, &LI, &SE, DT, &AC, true /* PreserveLCSSA */);
   return res;
 }
 
