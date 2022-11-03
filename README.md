@@ -30,7 +30,8 @@ main requirements are:
 - Modern C++ compiler supporting c++14 
 - Boost >= 1.65
 - GMP 
-- MPFR (if `-DCRAB_USE_APRON=ON` or `-DCRAB_USE_ELINA=ON`)
+- MPFR (only if `-DCRAB_USE_APRON=ON` or `-DCRAB_USE_ELINA=ON`)
+- FLINT (only if `-DCRAB_USE_PPLITE=ON`) - 
 - Python >= 3.6
 
 In linux, you can install requirements typing the commands:
@@ -38,7 +39,7 @@ In linux, you can install requirements typing the commands:
      sudo apt-get install libboost-all-dev libboost-program-options-dev
      sudo apt-get install libgmp-dev
      sudo apt-get install libmpfr-dev	
-
+	 sudo apt-get install libflint-dev
 
 ## Tests ##
 
@@ -72,7 +73,7 @@ target at line 4. These components are:
   
 * [llvm-seahorn](https://github.com/seahorn/llvm-seahorn) provides specialized versions of LLVM components to make them more amenable for verification. `llvm-seahorn` is optional but hightly recommended.  
 
-The Boxes/Apron/Elina domains require third-party libraries. To avoid
+The Boxes/Apron/Elina/PPLite domains require third-party libraries. To avoid
 the burden to users who are not interested in those domains, the
 installation of the libraries is optional.
 
@@ -83,6 +84,9 @@ installation of the libraries is optional.
 
 - If you want to use the Elina library domains then add
   `-DCRAB_USE_ELINA=ON` option.
+
+- If you want to use the PPLite library domains then add
+  `-DCRAB_USE_APRON=ON -DCRAB_USE_PPLITE=ON` options.
 
 **Important:** Apron and Elina are currently not compatible so you
 cannot enable `-DCRAB_USE_APRON=ON` and `-DCRAB_USE_ELINA=ON` at the same time. 
@@ -105,7 +109,8 @@ line 5 and 6 and add the following options at line 2.
 - For Apron: `-DAPRON_ROOT=$APRON_INSTALL_DIR`
 - For Elina: `-DELINA_ROOT=$ELINA_INSTALL_DIR`
 - For Boxes: `-DCUDD_ROOT=$CUDD_INSTALL_DIR -DLDD_ROOT=$LDD_INSTALL_DIR`
-
+- For PPLite: `-DPPLITE_ROOT=$PPLITE_INSTALL_DIR -DFLINT_ROOT=$FLINT_INSTALL_DIR`
+- 
 ## Checking installation ## 
 
 To run some regression tests:

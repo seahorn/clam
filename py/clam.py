@@ -315,11 +315,12 @@ def parseArgs(argv):
                           "- soct: octagons domain using DBMs in Split Normal Form\n"
                           "- oct: octagons domain from Apron or Elina\n"
                           "- pk: polyhedra domain from Apron or Elina\n"
+                          "- pk-pplite: polyhedra domain from PPLite\n"                   
                           "- rtz: reduced product of term-dis-int with zones\n"
                           "- w-int: wrapped intervals\n",
                     choices=['int', 'sign-const', 'ric', 'term-int',
                              'dis-int', 'term-dis-int', 'boxes',
-                             'zones', 'soct', 'oct', 'pk', 'rtz',
+                             'zones', 'soct', 'oct', 'pk', 'pk-pplite', 'rtz',
                              'w-int'],
                     dest='crab_dom', default='zones')
     p.add_argument('--crab-dom-params', dest='crab_dom_params', default=None,
