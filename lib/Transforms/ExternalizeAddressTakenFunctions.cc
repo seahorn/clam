@@ -94,7 +94,7 @@ public:
 	      // the alias.
 	      bool AliasUsedInCall = false;
 	      for (auto *u : a->users()) {
-		if (auto *CI = dyn_cast<CallInst>(u)) {
+		if (isa<CallInst>(u)) {
 		  // if alias is used in a call, replace all uses with F
 		  a->replaceAllUsesWith(&F);
 		  AliasUsedInCall = true;

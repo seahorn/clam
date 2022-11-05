@@ -28,7 +28,7 @@ DerefPointer getBasePtr(Value *V, SmallPtrSet<Instruction *, 8> &SeenInsts) {
       } else
         return DerefPointer(nullptr, 0);
     }
-    if (AllocaInst *AI = dyn_cast<AllocaInst>(V))
+    if (isa<AllocaInst>(V))
       return DerefPointer(V, 1);
     // if (LoadInst *LI = dyn_cast<LoadInst>(V))
     //   return getBasePtr(LI->getPointerOperand(), SeenInsts);

@@ -210,7 +210,7 @@ var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
   
   unsigned bitwidth = 0;
   if (const Value *v = rgn.getSingleton()) {
-    Type *ty = cast<PointerType>(v->getType())->getElementType();
+    Type *ty = cast<PointerType>(v->getType())->getPointerElementType();
     bitwidth = ty->getIntegerBitWidth();
     if (rgn.getRegionInfo().getType().first == region_type_t::INT_REGION &&
         bitwidth <= 1) {

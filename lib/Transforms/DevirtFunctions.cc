@@ -158,7 +158,7 @@ AliasSetId typeAliasId(CallBase &CB, bool LookThroughCast) {
           if (CE->getOpcode() == Instruction::BitCast) {
             if (PointerType *ppTy =
                     dyn_cast<PointerType>(CE->getOperand(0)->getType())) {
-              pTy = dyn_cast<PointerType>(ppTy->getElementType());
+              pTy = dyn_cast<PointerType>(ppTy->getPointerElementType());
               if (pTy) {
                 assert(
                     isa<FunctionType>(pTy->getElementType()) &&

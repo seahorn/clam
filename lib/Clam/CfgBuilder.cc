@@ -4110,7 +4110,7 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
             (ci->isZero() && br->getSuccessor(1) != &dst)) {
           bb.unreachable();
         }
-      } else if (const ConstantExpr *ce = dyn_cast<const ConstantExpr>(&c)) {
+      } else if (isa<const ConstantExpr>(&c)) {
         CLAM_WARNING("Clam cfg builder skipped a branch condition with "
                      "constant expression");
       } else {
@@ -4172,7 +4172,7 @@ basic_block_t *CfgBuilderImpl::execEdge(const BasicBlock &src,
       // br is unconditional
       addEdge(src, dst);
     }
-  } else if (const SwitchInst *SI = dyn_cast<SwitchInst>(src.getTerminator())) {
+  } else if (isa<SwitchInst>(src.getTerminator())) {
     // switch <value>, label <defaultdest> [ <val>, label <dest> ... ]
     //
     // TODO: we do not translate precisely switch instructions. We

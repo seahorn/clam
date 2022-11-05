@@ -636,7 +636,7 @@ const llvm::Value *SeaDsaHeapAbstraction::getSingleton(RegionId region) const {
   if (const Value *v = n->getUniqueScalar()) {
     if (const GlobalVariable *gv = dyn_cast<const GlobalVariable>(v)) {
       seadsa_heap_abs_impl::isIntegerOrBool is_typed;
-      if (is_typed(gv->getType()->getElementType()))
+      if (is_typed(gv->getType()->getPointerElementType()))
         return v;
     }
   }

@@ -33,7 +33,7 @@ using namespace llvm;
 
 static Value *getCastedInt8PtrValue(IRBuilder<> &B, Value *Ptr) {
   auto *PT = cast<PointerType>(Ptr->getType());
-  if (PT->getElementType()->isIntegerTy(8))
+  if (PT->getPointerElementType()->isIntegerTy(8))
     return Ptr;
   return B.CreateBitCast(Ptr, Type::getInt8PtrTy(B.getContext()));
 }

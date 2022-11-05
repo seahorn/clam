@@ -57,7 +57,7 @@ class crabBoolLit : public crabLit {
 
   crabBoolLit(bool cst) : crabLit(CRAB_LITERAL_BOOL), m_cst(cst) {}
 
-  crabBoolLit(var_t var) : crabLit(CRAB_LITERAL_BOOL), m_var(var) {}
+  crabBoolLit(var_t var) : crabLit(CRAB_LITERAL_BOOL), m_cst(false), m_var(var) {}
 
 public:
   bool isVar() const override { return (m_var.hasValue()); }
