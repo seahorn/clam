@@ -2,25 +2,19 @@
 
 Clam is an [Abstract Interpretation](https://en.wikipedia.org/wiki/Abstract_interpretation)-based static analyzer that computes inductive invariants for
 LLVM bitcode based on
-the [Crab](https://github.com/seahorn/crab) library. 
+the [Crab](https://github.com/seahorn/crab) library. This branch supports LLVM 14.
 
-Clam is a static analyzer that computes inductive invariants for
-LLVM-based languages based on
-the [Crab](https://github.com/seahorn/crab) library. This branch
-supports LLVM 14.
-
-The available documentation can be found in
-our [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
+The available documentation can be found in both
+Clam [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
 
 <a href="https://github.com/seahorn/crab-llvm/actions"><img src="https://github.com/seahorn/crab-llvm/workflows/CI/badge.svg" title="Ubuntu 18.04 LTS 64bit, g++-6"/></a>
 
 # Docker #
 
-You can get the latest binary
-from [Docker Hub](https://hub.docker.com/) (nightly built) using the
+You can get Clam from [Docker Hub](https://hub.docker.com/) (nightly built) using the
 command:
 
-     docker pull seahorn/clam-llvm10:nightly
+     docker pull seahorn/clam-llvm14:nightly
 
 # Requirements #
 
@@ -31,7 +25,7 @@ main requirements are:
 - Boost >= 1.65
 - GMP 
 - MPFR (only if `-DCRAB_USE_APRON=ON` or `-DCRAB_USE_ELINA=ON`)
-- FLINT (only if `-DCRAB_USE_PPLITE=ON`) - 
+- FLINT (only if `-DCRAB_USE_PPLITE=ON`) 
 - Python >= 3.6
 
 In linux, you can install requirements typing the commands:
@@ -39,7 +33,7 @@ In linux, you can install requirements typing the commands:
      sudo apt-get install libboost-all-dev libboost-program-options-dev
      sudo apt-get install libgmp-dev
      sudo apt-get install libmpfr-dev	
-	 sudo apt-get install libflint-dev
+     sudo apt-get install libflint-dev
 
 ## Tests ##
 
@@ -110,7 +104,7 @@ line 5 and 6 and add the following options at line 2.
 - For Elina: `-DELINA_ROOT=$ELINA_INSTALL_DIR`
 - For Boxes: `-DCUDD_ROOT=$CUDD_INSTALL_DIR -DLDD_ROOT=$LDD_INSTALL_DIR`
 - For PPLite: `-DPPLITE_ROOT=$PPLITE_INSTALL_DIR -DFLINT_ROOT=$FLINT_INSTALL_DIR`
-- 
+
 ## Checking installation ## 
 
 To run some regression tests:
