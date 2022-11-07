@@ -24,7 +24,7 @@ RUN rm -rf /clam/build /clam/debug /clam/release && \
   rm -rf /clam/crab /clam/sea-dsa /clam/llvm-seahorn
 WORKDIR /clam/build
 
-ARG BUILD_TYPE=RelWithDebInfo
+ARG BUILD_TYPE=Release
 
 # Build configuration.
 RUN cmake .. -GNinja \
@@ -33,12 +33,10 @@ RUN cmake .. -GNinja \
           -DCMAKE_CXX_COMPILER=clang++-14 \
 	  -DCMAKE_C_COMPILER=clang-14 \	  
           -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
-          -DCRAB_USE_LDD=ON \
           -DCRAB_USE_APRON=ON \
           && \
     cmake --build . --target extra  && cmake .. && \
     cmake --build . --target crab  && cmake .. && \
-    cmake --build . --target ldd  && cmake .. && \
     cmake --build . --target apron  && cmake .. && \
     cmake --build . --target install
 
@@ -50,10 +48,11 @@ ENV PATH "/clam/build/run/bin:$PATH"
 # run tests
 RUN cmake --build . --target test-simple
 RUN cmake --build . --target test-readme
-RUN cmake --build . --target test-ssh-simplified
-RUN cmake --build . --target test-ntdrivers-simplified
+RUN cmake --build . --target test-inter
 RUN cmake --build . --target test-array-adapt
 RUN cmake --build . --target test-mem
+#RUN cmake --build . --target test-ssh-simplified
+#RUN cmake --build . --target test-ntdrivers-simplified
 
 WORKDIR /clam
 
