@@ -635,6 +635,7 @@ def clang(in_name, out_name, args, arch=32, extra_args=[]):
     # To allow syntax such as __declspec(noalias) in C programs
     clang_args.append('-fdeclspec')
     clang_args.extend (extra_args)
+    clang_args.extend (['-fno-discard-value-names'])
     clang_args.append ('-m{0}'.format (arch))
     # To avoid the error:
     # "unknown target triple 'unknown-apple-macosx10.17.0', please use -triple or -arch"
