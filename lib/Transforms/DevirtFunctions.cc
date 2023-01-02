@@ -161,7 +161,7 @@ AliasSetId typeAliasId(CallBase &CB, bool LookThroughCast) {
               pTy = dyn_cast<PointerType>(ppTy->getPointerElementType());
               if (pTy) {
                 assert(
-                    isa<FunctionType>(pTy->getElementType()) &&
+                    isa<FunctionType>(pTy->getPointerElementType()) &&
                     "The type of called value is not a pointer to a function");
               }
             }
@@ -177,7 +177,7 @@ AliasSetId typeAliasId(CallBase &CB, bool LookThroughCast) {
 
   pTy = dyn_cast<PointerType>(CB.getCalledOperand()->getType());
   assert(pTy && "Unexpected call not through a pointer");
-  assert(isa<FunctionType>(pTy->getElementType()) &&
+  assert(isa<FunctionType>(pTy->getPointerElementType()) &&
          "The type of called value is not a pointer to a function");
   return pTy;
 }
