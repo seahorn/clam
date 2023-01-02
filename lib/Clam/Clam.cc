@@ -31,8 +31,8 @@
 #include "clam/Support/Debug.hh"
 #include "clam/Support/NameValues.hh"
 #include "ClamQueryCache.hh"
-#include "crab/path_analyzer.hpp"
-#include "crab/printer.hpp"
+#include "crab/path_analysis/path_analyzer.hpp"
+#include "crab/cfg_printer/cfg_printer.hpp"
 
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/CompleteCallGraph.hh"
