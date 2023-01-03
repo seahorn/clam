@@ -32,7 +32,8 @@
 #include "clam/Support/NameValues.hh"
 #include "ClamQueryCache.hh"
 #include "crab/path_analysis/path_analyzer.hpp"
-#include "crab/cfg_printer/cfg_printer.hpp"
+#include "crab/output/crabir/cfg_printer.hpp"
+#include "crab/output/json/write_json.hh"
 
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/CompleteCallGraph.hh"
@@ -125,10 +126,11 @@ static bool isTrackable(const Function &fun) {
   return !fun.isDeclaration() && !fun.empty() && !fun.isVarArg();
 }
 
-static std::unique_ptr<llvm::ToolOutputFile> openOutputFile(StringRef filename) {
+static std::unique_ptr<llvm::ToolOutputFile>
+openOutputFile(StringRef filename,
+	       llvm::sys::fs::OpenFlags flags = llvm::sys::fs::OF_None) {
   std::error_code error_code;
-  auto output = std::make_unique<llvm::ToolOutputFile>
-    (filename, error_code, llvm::sys::fs::OF_None); 
+  auto output = std::make_unique<llvm::ToolOutputFile>(filename, error_code, flags); 
   if (error_code) {
     if (llvm::errs().has_colors()) {
       llvm::errs().changeColor(llvm::raw_ostream::RED);
@@ -144,6 +146,15 @@ static std::unique_ptr<llvm::ToolOutputFile> openOutputFile(StringRef filename) 
   }
 }
 
+static std::string appendFunctionNameToFileName(const std::string &filename, StringRef functionName) {
+  StringRef ext = sys::path::extension(filename);
+  StringRef filenameRef(filename);
+  SmallString<128> path(filenameRef);
+  sys::path::replace_extension(path, functionName + ext);
+  return path.str().str();
+}
+
+  
 /** return invariant for block in table but filtering out shadow_varnames **/
 static llvm::Optional<clam_abstract_domain>
 lookup(const abs_dom_map_t &table, const llvm::BasicBlock &block,
@@ -198,8 +209,6 @@ void AnalysisParams::write(raw_ostream &o) const {
   o << "\tSwitch to non-relation domain if max number of live variables >= " << relational_threshold << "\n";
   o << "\tPretty printing options" << "\n";
   o << "\t\tprint invariants: " << print_invars << "\n";
-  //o << "\t\tprint preconditions: " << print_preconds << "\n";
-  //o << "\t\tprint summaries" << print_summaries << "\n";  
   o << "\t\tprint unjustified assumptions: " << print_unjustified_assumptions  << "\n";
   o << "\t\tprint variables-of-influence wrt assertions: " << print_voi << "\n";
   o << "\tstore invariants for clam clients: " << store_invariants << "\n";
@@ -392,8 +401,8 @@ private:
                              << "Finished assert checking.\n");
     }
     
-    const bool storeInvariants = (params.store_invariants || params.print_invars);
-    const bool printAnnotatedCFG = (params.output_filename != "" || params.print_invars ||
+    const bool storeInvariants = (params.store_invariants || params.print_invars || params.output_json != "");
+    const bool printAnnotatedCFG = (params.output_crabir != "" || params.print_invars ||
 				    params.print_unjustified_assumptions);
     
     if (storeInvariants) {
@@ -448,19 +457,25 @@ private:
       }
 
       crab_pretty_printer::print_annotated_cfg(
-	   (params.output_filename != "" ? output_str : crab::outs()),
+	   (params.output_crabir != "" ? output_str : crab::outs()),
 	   cfg, results.checksdb, annotations);
 
-      if (params.output_filename != "") {
-	StringRef ext = sys::path::extension(params.output_filename);			
-	std::string output_filename(params.output_filename);
-	StringRef output_filename_ref(output_filename);
-	SmallString<128> path(output_filename_ref);
-	sys::path::replace_extension(path, m_fun.getName() + ext);
-	std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(path.str());
+      if (params.output_crabir != "") {
+	std::string adjustedOutputCrabIr = appendFunctionNameToFileName(params.output_crabir, m_fun.getName());
+	std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputCrabIr);
 	output->os() << output_str.str();
 	output->keep();
       }
+    }
+
+    if (params.output_json != "") {
+      std::string adjustedOutputJson = appendFunctionNameToFileName(params.output_json, m_fun.getName());      
+      std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputJson);
+      json::json_report json_report;
+      json_report.write(cfg, params, results.premap, results.checksdb);
+      output->os() << json_report.generate();
+      output->keep();
+      llvm::errs() << "Created file " << adjustedOutputJson << " with analysis results\n";
     }
     
     return;
@@ -942,7 +957,7 @@ private:
     inter_params.checker_verbosity = params.check_verbose;
     inter_params.keep_cc_invariants = false;
     inter_params.keep_invariants =
-        params.store_invariants || params.print_invars;
+        params.store_invariants || params.print_invars || params.output_json != "";
     inter_params.max_call_contexts = params.max_calling_contexts;
     inter_params.exact_summary_reuse = params.exact_summary_reuse;
     inter_params.analyze_recursive_functions =
@@ -959,8 +974,8 @@ private:
       results.checksdb += analyzer.get_all_checks();
     }
 
-    const bool storeInvariants = (params.store_invariants || params.print_invars);    
-    const bool printAnnotatedCFG = (params.output_filename != "" ||
+    const bool storeInvariants = (params.store_invariants || params.print_invars || params.output_json != "");    
+    const bool printAnnotatedCFG = (params.output_crabir != "" ||
 				    params.print_invars || params.print_voi);
     
     if (!storeInvariants && !printAnnotatedCFG) {
@@ -976,10 +991,16 @@ private:
       voi->run();
     }
 
-    std::unique_ptr<llvm::ToolOutputFile> output = nullptr;
-    crab::crab_string_os output_str;
-    if (params.output_filename != "") {
-      output = openOutputFile(params.output_filename);
+    std::unique_ptr<llvm::ToolOutputFile> crabir_output = nullptr;
+    crab::crab_string_os crabir_output_str;
+    if (params.output_crabir != "") {
+      crabir_output = openOutputFile(params.output_crabir);
+    }
+
+    std::unique_ptr<llvm::ToolOutputFile> json_output = nullptr;
+    json::json_report json_report;
+    if (params.output_json != "") {      
+      json_output = openOutputFile(params.output_json);
     }
     
     for (auto &n : llvm::make_range(vertices(*m_cg))) {
@@ -1036,16 +1057,28 @@ private:
 	    annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
 	  }
 	  
-	  crab_pretty_printer::print_annotated_cfg((output ? output_str: crab::outs()),
+	  crab_pretty_printer::print_annotated_cfg((crabir_output ? crabir_output_str: crab::outs()),
 						   cfg, results.checksdb, annotations);
 	}
+
+	if (json_output) {
+	  json_report.write(cfg, params, results.premap, results.checksdb);
+	}
+	
       }
     } // end for
     
-    if (output) {
-      output->os() << output_str.str();	    
-      output->keep();      
+    if (crabir_output) {
+      crabir_output->os() << crabir_output_str.str();	    
+      crabir_output->keep();      
     }
+
+    if (json_output) {
+      json_output->os() << json_report.generate();
+      json_output->keep();
+      llvm::errs() << "Created file " << params.output_json << " with analysis results\n";      
+    }
+    
     return;
   }
 };
@@ -1295,7 +1328,8 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.print_invars = CrabPrintInvariants;
   m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
   m_params.print_voi = CrabPrintVoi;
-  m_params.output_filename = CrabOutputFilename;  
+  m_params.output_crabir = CrabIRToFile;
+  m_params.output_json = CrabInvariantsToJSON;    
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;
   m_params.check = (CrabCheck ?

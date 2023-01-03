@@ -25,9 +25,9 @@ bool CrabBoundsChecks;
 bool CrabIsDeref;
 bool CrabCheckOnlyTyped;
 bool CrabCheckOnlyNonCyclic;
-bool CrabPrintInvariants;
 bool CrabStoreInvariants;
 bool CrabBuildOnlyCFG;
+bool CrabPrintInvariants;
 bool CrabPrintUnjustifiedAssumptions;
 bool CrabPrintVoi;
 unsigned int CrabWideningDelay;
@@ -199,6 +199,7 @@ XCrabPrintInvariants("crab-print-invariants",
 	      llvm::cl::location(clam::CrabPrintInvariants),
               llvm::cl::init(false),
 	      llvm::cl::cat(ClamOptCat));
+
 
 llvm::cl::opt<bool, true>
 XCrabStoreInvariants("crab-store-invariants", 
@@ -520,8 +521,16 @@ XCrabStats("crab-stats",
 
 
 static llvm::cl::opt<std::string>
-CrabOutputFilename("ocrab", 
+CrabIRToFile("ocrab", 
 llvm::cl::desc("Output CrabIR analyzed with (optionally) annotations. Use preferably \".crabir\" extension"),
+llvm::cl::value_desc("filename"),
+llvm::cl::init(""),
+llvm::cl::cat(ClamOptCat));
+
+
+static llvm::cl::opt<std::string>
+CrabInvariantsToJSON("crab-invariants-to-json", 
+llvm::cl::desc("Print Crab invariants in JSON format"),
 llvm::cl::value_desc("filename"),
 llvm::cl::init(""),
 llvm::cl::cat(ClamOptCat));

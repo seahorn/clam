@@ -43,8 +43,10 @@ struct AnalysisParams {
   // print variables of interest that might affect assertions
   bool print_voi; 
   /* end pretty printing */
-  /* Redirect pretty-printing to file, otherwise standard output*/
-  std::string output_filename;
+  /* Print CrabIR + optional invariants to file */
+  std::string output_crabir;
+  /* Print invariants to json format */
+  std::string output_json;
   /* keep invariants for clients */
   bool store_invariants;
   /* internal option */
@@ -60,10 +62,10 @@ struct AnalysisParams {
         analyze_recursive_functions(false), exact_summary_reuse(true),
 	inter_entry_main(false), 
         relational_threshold(10000), widening_delay(1), narrowing_iters(10),
-        widening_jumpset(0), stats(false), print_invars(false),
+        widening_jumpset(0), stats(false), print_invars(false), 
         print_preconds(false), print_unjustified_assumptions(false),
         print_summaries(false), print_voi(false),
-	output_filename(""), store_invariants(true), keep_shadow_vars(false),
+	output_crabir(""), output_json(""), store_invariants(true), keep_shadow_vars(false),
         check(CheckerKind::NOCHECKS), check_verbose(0) {}
 
   void write(llvm::raw_ostream &o) const;  

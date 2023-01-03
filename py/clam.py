@@ -183,8 +183,10 @@ def parseArgs(argv):
                          formatter_class=a.RawTextHelpFormatter)
     p.add_argument ('-oll', '--oll', dest='asm_out_name', metavar='FILE',
                     help='Output analyzed bitecode')
-    p.add_argument ('-ocrab', '--ocrab', dest='crab_out_name', metavar='FILE',
+    p.add_argument ('-ocrab', '--ocrab', dest='crabir_out_name', metavar='FILE',
                     help='Output analyzed CrabIR with (optionally) annotations')
+    p.add_argument ('-ojson', '--ojson', dest='json_out_name', metavar='FILE',
+                    help='Output invariants to JSON format')
     p.add_argument('--log', dest='log', default=None,
                     metavar='STR', help='Log level for clam')
     p.add_argument('-o', dest='out_name', metavar='FILE',
@@ -992,8 +994,10 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--crab-dot-cfg=true')
     else:
         clam_args.append('--crab-dot-cfg=false')
-    if args.crab_out_name is not None:
-        clam_args.append('--ocrab={0}'.format(args.crab_out_name))
+    if args.crabir_out_name is not None:
+        clam_args.append('--ocrab={0}'.format(args.crabir_out_name))
+    if args.json_out_name is not None:
+        clam_args.append('--crab-invariants-to-json={0}'.format(args.json_out_name))
         
     # begin hidden options
     if args.crab_dsa_unknown: clam_args.append('--crab-dsa-disambiguate-unknown')
