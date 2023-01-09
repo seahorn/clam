@@ -171,7 +171,10 @@ lookup(const abs_dom_map_t &table, const llvm::BasicBlock &block,
     std::vector<var_t> shadow_vars;
     shadow_vars.reserve(shadow_varnames.size());
     for (unsigned i = 0; i < shadow_vars.size(); ++i) {
-      // we need to create a typed variable
+      // HACK: we need to create a typed variable.  This is okay
+      // because forget operation in Crab abstract domains just care
+      // about variable names but this is dangerous and it might
+      // create problems in the future.
       shadow_vars.push_back(var_t(shadow_varnames[i], crab::UNK_TYPE, 0));
     }
     clam_abstract_domain copy_invariants(it->second);
@@ -987,6 +990,11 @@ private:
       json_output = openOutputFile(params.output_json);
     }
 
+    std::vector<varname_t> shadow_varnames;	  
+    if (params.print_invars != InvariantPrinterOptions::NONE && !params.keep_shadow_vars) {
+      shadow_varnames = m_crab_builder_man.getVarFactory().get_shadow_vars();
+    }
+    
     
     for (auto &n : llvm::make_range(vertices(cg))) {
       cfg_ref_t cfg = n.get_cfg();
@@ -1027,11 +1035,6 @@ private:
 
 	if (params.print_invars != InvariantPrinterOptions::NONE) {
 	  std::vector<std::unique_ptr<block_annotation_t>> annotations;
-	  std::vector<varname_t> shadow_varnames;	  
-	  // --- print invariants 
-	  if (!params.keep_shadow_vars) {
-	    shadow_varnames = m_crab_builder_man.getVarFactory().get_shadow_vars();
-	  }
 	  annotations.emplace_back(std::make_unique<invariant_annotation_t>(
 		      results.premap, results.postmap, shadow_varnames, &lookup));
 	  // -- variables of interest that might affect each assertion
@@ -1041,11 +1044,16 @@ private:
 	  crab_pretty_printer::print_annotated_cfg(crabir_os, cfg, results.checksdb, annotations);
 	}
 
-	
 	if (json_output) {
-	  json_report.write(cfg, params, results.premap, results.checksdb);
+	  // results is a whole-program datastructure so we make sure
+	  // that the checks are counted only once.
+	  if (n == cg.entry()) {
+	    json_report.write(cfg, params, results.premap, results.checksdb);
+	  } else {
+	    checks_db_t empty;
+	    json_report.write(cfg, params, results.premap, empty);
+	  }
 	}
-	
       }
     } // end for
     
@@ -1059,7 +1067,7 @@ private:
       }
     }
 
-    if (json_output) {
+    if (json_output) {      
       json_output->os() << json_report.generate();
       json_output->keep();
       llvm::errs() << "Created file " << params.output_json << " with analysis results\n";      

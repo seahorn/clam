@@ -1,5 +1,21 @@
 #include <clam/crab/read_json.hh>
+#include "crab/support/debug.hpp"
 
+#if BOOST_VERSION / 100 % 100 < 80
+#include "llvm/Support/raw_ostream.h"
+namespace clam {
+namespace json {
+std::unique_ptr<global_analysis_results>
+read_json(std::string json_filename, clam::json::parse_options &clam_opts,
+	  invariants_cache_t* cache) {
+  llvm::errs()
+    << "Warning: too old version of boost. It needs >= 1.80 for json support\n";
+  return nullptr;
+}
+} // end namespace json
+} // end namespace clam
+#else
+/** Real implementation starts here **/
 #include <boost/json/parse.hpp>
 #include <clam/Support/Debug.hh>
 #include <fstream>
@@ -64,8 +80,22 @@ static std::string read_as_string(const boost::json::value &v) {
   CLAM_ERROR("cannot read json value as an std::string");
 }
 
+static std::shared_ptr<linear_constraint_system_t>
+lookup(invariants_cache_t *cache, const std::string &invariant_text) {
+  if (cache == nullptr) {
+    return nullptr;
+  } 
+  auto it = cache->find(invariant_text);
+  if (it != cache->end()) {
+    return it->second;
+  } else {
+    return nullptr;
+  }
+}
+  
 std::unique_ptr<global_analysis_results>
-read_json(std::string filename, clam::json::parse_options &clam_opts) {
+read_json(std::string filename, clam::json::parse_options &clam_opts,
+	  invariants_cache_t* cache) {
 
   boost::json::parse_options opts; // all extensions default to off
   opts.allow_comments =
@@ -75,12 +105,17 @@ read_json(std::string filename, clam::json::parse_options &clam_opts) {
   opts.allow_invalid_utf8 = true; // skip utf-8 validation of keys and strings
 
   std::ifstream ifs(filename);
+  if (!ifs.is_open()) {
+    CLAM_ERROR("Cannot open file " << filename);
+  }
+  
   std::string content((std::istreambuf_iterator<char>(ifs)),
                       (std::istreambuf_iterator<char>()));
 
   std::unique_ptr<global_analysis_results> out =
       std::make_unique<global_analysis_results>();
 
+  CRAB_LOG("clam-diff", llvm::errs() << "Reading " << filename << "\n";);
   boost::json::value report = parse(content, boost::json::storage_ptr(), opts);
   auto &report_map = read_as_object(report);
   for (auto &kv : report_map) {
@@ -97,17 +132,31 @@ read_json(std::string filename, clam::json::parse_options &clam_opts) {
     auto &params_obj = read_as_object(body_obj.at("analysis_parameters"));
     results->domain = read_as_string(params_obj.at("domain"));
     // Parse invariants
-    if (clam_opts.m_compare_invariants) {
-      auto &invariants_array = read_as_array(body_obj.at("invariants"));
-      for (unsigned i = 0, size = invariants_array.size(); i < size; ++i) {
-        auto &invariant_tuple = read_as_array(invariants_array[i]);
-        std::string block_name = read_as_string(invariant_tuple[0]);
-        std::string invariant_text = read_as_string(invariant_tuple[1]);
-        linear_constraint_system_t csts =
-            parse_linear_constraint_system(invariant_text, clam_opts);
-        results->invariants[block_name] = std::move(csts);
+    auto &invariants_array = read_as_array(body_obj.at("invariants"));
+    CRAB_LOG("clam-diff", llvm::errs() << "Found " << invariants_array.size() << " invariants \n";);    
+    for (unsigned i = 0, size = invariants_array.size(); i < size; ++i) {
+      auto &invariant_tuple = read_as_array(invariants_array[i]);
+      std::string block_name = read_as_string(invariant_tuple[0]);
+      CRAB_LOG("clam-diff", llvm::errs() << "\t" << block_name;);          
+      std::string invariant_text = read_as_string(invariant_tuple[1]);
+      if (clam_opts.m_semantic_diff) {
+	std::shared_ptr<linear_constraint_system_t> csts = lookup(cache, invariant_text);
+	if (csts == nullptr) {
+	  csts = std::make_shared<linear_constraint_system_t>(
+		     parse_linear_constraint_system(invariant_text, clam_opts));
+	  results->invariants[block_name] = csts;
+	  if (cache != nullptr) {
+	    cache->insert({invariant_text, csts});
+	  }
+	} else {
+	  results->invariants[block_name] = csts;
+	  CRAB_LOG("clam-diff", llvm::errs() << " [CACHED]";);
+	}
+      } else {
+	results->str_invariants[block_name] = invariant_text;
       }
-    }
+      CRAB_LOG("clam-diff", llvm::errs() << "\n";);
+    }   
     // Parse checks
     auto &checks_obj = read_as_object(body_obj.at("checks"));
     results->safe_checks = read_as_uint64(checks_obj.at("safe"));
@@ -116,8 +165,10 @@ read_json(std::string filename, clam::json::parse_options &clam_opts) {
 
     out->m_results[function_name] = std::move(results);
   }
+  CRAB_LOG("clam-diff", llvm::errs() << "Finished reading " << filename << "\n";);        
   return out;
 }
 
 } // end namespace json
 } // end namespace clam
+#endif 

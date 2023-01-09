@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <unordered_map>
+#include <memory>
 
 namespace crab {  
 template <> class variable_name_traits<std::string> {
@@ -26,7 +28,9 @@ using number_t = ikos::z_number;
 using linear_constraint_t = ikos::linear_constraint<number_t, varname_t>;
 using linear_constraint_system_t =
     ikos::linear_constraint_system<number_t, varname_t>;
-
+using invariants_cache_t =
+  std::unordered_map<std::string, std::shared_ptr<linear_constraint_system_t>>;
+  
 // Simple container
 struct parse_options {
   // Fresh variable factory to create variables from the parsed JSON file.
@@ -34,24 +38,26 @@ struct parse_options {
   // Type for the variables: we use the same type for all variables.
   crab::variable_type m_var_type;
   // Whether we want to compare semantically invariants
-  bool m_compare_invariants;
+  bool m_semantic_diff;
 
-  parse_options(bool compare_invariants)
+  parse_options(bool semantic_diff)
       : m_var_type(crab::variable_type(crab::variable_type_kind::INT_TYPE, 32)),
-        m_compare_invariants(compare_invariants) {}
+        m_semantic_diff(semantic_diff) {}
   parse_options(const parse_options &other) = delete;
   parse_options &operator=(const parse_options &other) = delete;
 };
 
 // Simple container
 struct analysis_results {
-  using invariant_map = std::map<std::string, linear_constraint_system_t>;
+  using invariant_map = std::map<std::string, std::shared_ptr<linear_constraint_system_t>>;
+  using str_invariant_map = std::map<std::string, std::string>;  
   std::string function_name;
   std::string date;
   std::string clam_version;
   std::string analysis_time;
   std::string domain;
   invariant_map invariants;
+  str_invariant_map str_invariants;  
   std::uint64_t safe_checks;
   std::uint64_t warning_checks;
   std::uint64_t error_checks;
@@ -80,6 +86,9 @@ struct global_analysis_results {
 };
 
 std::unique_ptr<global_analysis_results>
-read_json(std::string json_filename, clam::json::parse_options &clam_opts);
+read_json(std::string json_filename, clam::json::parse_options &clam_opts,
+	  // Cache to avoid converting the same string to linear_constraint_system_t over and over.
+	  // if null then no caching.
+	  invariants_cache_t *cache);
 } // end namespace json
 } // end namespace clam

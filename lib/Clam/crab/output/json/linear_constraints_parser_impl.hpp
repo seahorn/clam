@@ -11,10 +11,12 @@
 
 namespace crab {
 
+#define TRUE_PATTERN R"_(\s*true\s*)_"
+#define FALSE_PATTERN R"_(\s*false\s*)_"  
 #define IMM_PATTERN R"_(\s*([-+]?\d+)\s*)_"
-#define KIND_PATTERN R"_(\s*(<=|<|>=|>|==|!=|<=_u|<_u|>=_u|>_u)\s*)_"
-#define LIT_PATTERN R"_(\s*([-+]?)(\d*)\*?([@a-zA-Z_][\.a-zA-Z0-9_]*)\s*)_"
-#define LHS_CST_PATTERN R"_(\s*(([-+]?\d*\*?[@a-zA-Z_][\.a-zA-Z0-9_]*)*)\s*)_"
+#define KIND_PATTERN R"_(\s*(<=|<|>=|>|==|=|!=|<=_u|<_u|>=_u|>_u)\s*)_"
+#define LIT_PATTERN R"_(\s*([-+]?)(\d*)\*?([\.@a-zA-Z_][\.a-zA-Z0-9_]*)\s*)_"
+#define LHS_CST_PATTERN R"_(\s*(([-+]?\d*\*?[\.@a-zA-Z_][\.a-zA-Z0-9_]*)*)\s*)_"
 #define CSTS_SYS_PATTERN R"_(\s*\{(.*)\}\s*)_"
 
 /**
@@ -81,7 +83,7 @@ parse_linear_constraint(const std::string &cst_text, VariableNameFactory &vfac,
       return linear_constraint_t(e >= 0);
     } else if (kind == ">") {
       return linear_constraint_t(e > 0);
-    } else if (kind == "==") {
+    } else if (kind == "==" || kind == "=") {
       return linear_constraint_t(e == 0);
     } else if (kind == "!=") {
       return linear_constraint_t(e != 0);
@@ -106,12 +108,12 @@ parse_linear_constraint(const std::string &cst_text, VariableNameFactory &vfac,
     }
   };
 
-  if (cst_text == "true") {
+  std::smatch m;
+  if (std::regex_match(cst_text, m, std::regex(TRUE_PATTERN))) {    
     return linear_constraint_t::get_true();
-  } else if (cst_text == "false") {
+  } else if (std::regex_match(cst_text, m, std::regex(FALSE_PATTERN))) {
     return linear_constraint_t::get_false();
   } else {
-    std::smatch m;
     if (std::regex_match(
             cst_text, m,
             std::regex(LHS_CST_PATTERN KIND_PATTERN IMM_PATTERN))) {
