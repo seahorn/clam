@@ -208,7 +208,12 @@ void AnalysisParams::write(raw_ostream &o) const {
   o << "\t\tsize of the widening jumpset: " << widening_jumpset << "\n";
   o << "\tSwitch to non-relation domain if max number of live variables >= " << relational_threshold << "\n";
   o << "\tPretty printing options" << "\n";
-  o << "\t\tprint invariants: " << print_invars << "\n";
+  o << "\t\tprint invariants: ";
+  switch(print_invars) {
+  case InvariantPrinterOptions::NONE: o << "none\n"; break;
+  case InvariantPrinterOptions::BLOCKS: o << "at each basic block\n"; break;
+  case InvariantPrinterOptions::LOOPS: o << "only at loop headers\n"; break;       
+  }
   o << "\t\tprint unjustified assumptions: " << print_unjustified_assumptions  << "\n";
   o << "\t\tprint variables-of-influence wrt assertions: " << print_voi << "\n";
   o << "\tstore invariants for clam clients: " << store_invariants << "\n";
@@ -347,6 +352,88 @@ private:
   abs_dom_map_t m_post_map;
   edges_set m_infeasible_edges;
   checks_db_t m_checks_db;
+
+  void storeAndOutputResults(cfg_ref_t cfg, const AnalysisParams &params,
+			     const intra_analyzer_t &analyzer, AnalysisResults &results) {    
+    bool storeInvariants = (params.store_invariants ||
+			    params.print_invars != InvariantPrinterOptions::NONE);
+       
+    if (storeInvariants) {
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing analysis results.\n");
+      for (basic_block_label_t bl : llvm::make_range(cfg.label_begin(), cfg.label_end())) {
+        if (bl.is_edge()) {
+          // Note that we use get_post instead of get_pre:
+          //   the crab block (bl) has an assume statement corresponding
+          //   to the branch condition in the predecessor of the
+          //   LLVM edge. We want the invariant *after* the
+          //   evaluation of the assume.
+          if (analyzer.get_post(bl).is_bottom()) {
+            results.infeasible_edges.insert(
+                {bl.get_edge().first, bl.get_edge().second});
+          }
+        } else if (const BasicBlock *B = bl.get_basic_block()) {
+          // --- invariants that hold at the entry of the blocks
+          update(results.premap, *B, analyzer.get_pre(bl));
+          // --- invariants that hold at the exit of the blocks
+          update(results.postmap, *B, analyzer.get_post(bl));
+        } else {
+          // this should be unreachable
+          assert(
+              false &&
+              "A Crab block should correspond to either an LLVM edge or block");
+        }
+      }
+      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished storing analysis results.\n");
+    }
+
+    crab::crab_string_os crabir_os;
+    if (params.print_invars != InvariantPrinterOptions::NONE) {
+      std::vector<std::unique_ptr<block_annotation_t>> annotations;
+      std::vector<varname_t> shadow_varnames;
+      assumption_analysis_t unproven_assumption_analyzer(cfg);
+      
+      if (!params.keep_shadow_vars) {
+	shadow_varnames = m_vfac.get_shadow_vars();
+      }
+      annotations.emplace_back(std::make_unique<invariant_annotation_t>(
+		  results.premap, results.postmap, shadow_varnames, &lookup));
+      
+      if (params.print_unjustified_assumptions) {
+        // -- run first the analysis
+        unproven_assumption_analyzer.exec();
+        annotations.emplace_back(
+            std::make_unique<unproven_assume_annotation_t>(
+                cfg, unproven_assumption_analyzer));
+      }
+
+      // Print the annnotated CFG
+      crab_pretty_printer::print_annotated_cfg(crabir_os, cfg, results.checksdb, annotations);
+    }
+
+    if (params.output_crabir != "") {
+      std::string adjustedOutputCrabIr = appendFunctionNameToFileName(params.output_crabir, m_fun.getName());
+      std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputCrabIr);
+      output->os() << crabir_os.str();
+      output->keep();
+      llvm::errs() << "Created file " << adjustedOutputCrabIr << " with analysis results\n";	
+    } else {
+      if (params.print_invars != InvariantPrinterOptions::NONE) {
+	crab::outs() << crabir_os.str();
+      }
+    }
+    
+    if (params.output_json != "") {
+      std::string adjustedOutputJson = appendFunctionNameToFileName(params.output_json, m_fun.getName());      
+      std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputJson);
+      json::json_report json_report;
+      json_report.write(cfg, params, results.premap, results.checksdb);
+      output->os() << json_report.generate();
+      output->keep();
+      llvm::errs() << "Created file " << adjustedOutputJson << " with analysis results\n";
+    }
+        
+  }
+
   
   void analyzeImpl(const AnalysisParams &params, const BasicBlock *entry,
                    clam_abstract_domain entry_abs,
@@ -401,82 +488,8 @@ private:
                              << "Finished assert checking.\n");
     }
     
-    const bool storeInvariants = (params.store_invariants || params.print_invars || params.output_json != "");
-    const bool printAnnotatedCFG = (params.output_crabir != "" || params.print_invars ||
-				    params.print_unjustified_assumptions);
-    
-    if (storeInvariants) {
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing analysis results.\n");
-      for (basic_block_label_t bl : llvm::make_range(cfg.label_begin(), cfg.label_end())) {
-        if (bl.is_edge()) {
-          // Note that we use get_post instead of get_pre:
-          //   the crab block (bl) has an assume statement corresponding
-          //   to the branch condition in the predecessor of the
-          //   LLVM edge. We want the invariant *after* the
-          //   evaluation of the assume.
-          if (analyzer.get_post(bl).is_bottom()) {
-            results.infeasible_edges.insert(
-                {bl.get_edge().first, bl.get_edge().second});
-          }
-        } else if (const BasicBlock *B = bl.get_basic_block()) {
-          // --- invariants that hold at the entry of the blocks
-          update(results.premap, *B, analyzer.get_pre(bl));
-          // --- invariants that hold at the exit of the blocks
-          update(results.postmap, *B, analyzer.get_post(bl));
-        } else {
-          // this should be unreachable
-          assert(
-              false &&
-              "A Crab block should correspond to either an LLVM edge or block");
-        }
-      }
-      CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished storing analysis results.\n");
-    }
-
-    if (printAnnotatedCFG) {
-      std::vector<std::unique_ptr<block_annotation_t>> annotations;
-      std::vector<varname_t> shadow_varnames;
-      crab::crab_string_os output_str;
-      assumption_analysis_t unproven_assumption_analyzer(cfg);
-      
-      if (params.print_invars) {
-        if (!params.keep_shadow_vars) {
-	  shadow_varnames = m_vfac.get_shadow_vars();
-        }
-        annotations.emplace_back(std::make_unique<invariant_annotation_t>(
-            results.premap, results.postmap, shadow_varnames, &lookup));
-      }
-
-      
-      if (params.print_unjustified_assumptions) {
-        // -- run first the analysis
-        unproven_assumption_analyzer.exec();
-        annotations.emplace_back(
-            std::make_unique<unproven_assume_annotation_t>(
-                cfg, unproven_assumption_analyzer));
-      }
-
-      crab_pretty_printer::print_annotated_cfg(
-	   (params.output_crabir != "" ? output_str : crab::outs()),
-	   cfg, results.checksdb, annotations);
-
-      if (params.output_crabir != "") {
-	std::string adjustedOutputCrabIr = appendFunctionNameToFileName(params.output_crabir, m_fun.getName());
-	std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputCrabIr);
-	output->os() << output_str.str();
-	output->keep();
-      }
-    }
-
-    if (params.output_json != "") {
-      std::string adjustedOutputJson = appendFunctionNameToFileName(params.output_json, m_fun.getName());      
-      std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputJson);
-      json::json_report json_report;
-      json_report.write(cfg, params, results.premap, results.checksdb);
-      output->os() << json_report.generate();
-      output->keep();
-      llvm::errs() << "Created file " << adjustedOutputJson << " with analysis results\n";
-    }
+    // -- (optionally) store and output results
+    storeAndOutputResults(cfg, params, analyzer, results);
     
     return;
   }
@@ -942,57 +955,28 @@ private:
       }
     }
   }
-  
-  void analyze(const AnalysisParams &params, clam_abstract_domain init,
-               AnalysisResults &results) {
-    
-    CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                           << "Running top-down inter-procedural analysis "
-                           << "with domain:"
-                           << "\"" << init.domain_name() << "\""
-                           << "  ...\n";);
 
-    inter_params_t inter_params;
-    inter_params.run_checker = (params.check != CheckerKind::NOCHECKS);
-    inter_params.checker_verbosity = params.check_verbose;
-    inter_params.keep_cc_invariants = false;
-    inter_params.keep_invariants =
-        params.store_invariants || params.print_invars || params.output_json != "";
-    inter_params.max_call_contexts = params.max_calling_contexts;
-    inter_params.exact_summary_reuse = params.exact_summary_reuse;
-    inter_params.analyze_recursive_functions =
-        params.analyze_recursive_functions;
-    inter_params.only_main_as_entry = params.inter_entry_main;
-    inter_params.live_map = (params.run_liveness ? &m_live_map : nullptr);
-    inter_params.widening_delay = params.widening_delay;
-    inter_params.descending_iters = params.narrowing_iters;
-    inter_params.thresholds_size = params.widening_jumpset;
-    
-    inter_analyzer_t analyzer(*m_cg, init, inter_params);
-    analyzer.run(init);
-    if (inter_params.run_checker) {
-      results.checksdb += analyzer.get_all_checks();
-    }
 
-    const bool storeInvariants = (params.store_invariants || params.print_invars || params.output_json != "");    
-    const bool printAnnotatedCFG = (params.output_crabir != "" ||
-				    params.print_invars || params.print_voi);
-    
-    if (!storeInvariants && !printAnnotatedCFG) {
-      // nothing else to do
+  void storeAndOutputResults(cg_t &cg, const AnalysisParams &params,
+			     const inter_analyzer_t &analyzer, AnalysisResults &results) {    
+    bool storeInvariants = (params.store_invariants ||
+			    params.print_invars != InvariantPrinterOptions::NONE);
+
+    if (!storeInvariants && params.output_json == "") {
+      // left intentionally params.output_crabir == "" 
       return;
     }
-
+    
     std::unique_ptr<voi_analysis_t> voi = nullptr;
     if (params.print_voi) {
-      voi.reset(new voi_analysis_t(*m_cg,
+      voi.reset(new voi_analysis_t(cg,
 				   true /*only data*/,
 				   true /*ignore region offsets*/));
       voi->run();
     }
 
     std::unique_ptr<llvm::ToolOutputFile> crabir_output = nullptr;
-    crab::crab_string_os crabir_output_str;
+    crab::crab_string_os crabir_os;
     if (params.output_crabir != "") {
       crabir_output = openOutputFile(params.output_crabir);
     }
@@ -1002,11 +986,11 @@ private:
     if (params.output_json != "") {      
       json_output = openOutputFile(params.output_json);
     }
+
     
-    for (auto &n : llvm::make_range(vertices(*m_cg))) {
+    for (auto &n : llvm::make_range(vertices(cg))) {
       cfg_ref_t cfg = n.get_cfg();
       if (const Function *F = m_M.getFunction(n.name())) {
-
 	if (storeInvariants) {
 	  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
 			  << "Storing analysis results for "
@@ -1041,26 +1025,23 @@ private:
 			  << F->getName().str() << ".\n");
 	}
 
-	if (printAnnotatedCFG) {
+	if (params.print_invars != InvariantPrinterOptions::NONE) {
 	  std::vector<std::unique_ptr<block_annotation_t>> annotations;
 	  std::vector<varname_t> shadow_varnames;	  
 	  // --- print invariants 
-	  if (params.print_invars) {
-	    if (!params.keep_shadow_vars) {
-	      shadow_varnames = m_crab_builder_man.getVarFactory().get_shadow_vars();
-	    }
-	    annotations.emplace_back(std::make_unique<invariant_annotation_t>(
-		       results.premap, results.postmap, shadow_varnames, &lookup));
+	  if (!params.keep_shadow_vars) {
+	    shadow_varnames = m_crab_builder_man.getVarFactory().get_shadow_vars();
 	  }
+	  annotations.emplace_back(std::make_unique<invariant_annotation_t>(
+		      results.premap, results.postmap, shadow_varnames, &lookup));
 	  // -- variables of interest that might affect each assertion
 	  if (params.print_voi) {
 	    annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
 	  }
-	  
-	  crab_pretty_printer::print_annotated_cfg((crabir_output ? crabir_output_str: crab::outs()),
-						   cfg, results.checksdb, annotations);
+	  crab_pretty_printer::print_annotated_cfg(crabir_os, cfg, results.checksdb, annotations);
 	}
 
+	
 	if (json_output) {
 	  json_report.write(cfg, params, results.premap, results.checksdb);
 	}
@@ -1069,8 +1050,13 @@ private:
     } // end for
     
     if (crabir_output) {
-      crabir_output->os() << crabir_output_str.str();	    
-      crabir_output->keep();      
+      crabir_output->os() << crabir_os.str();	    
+      crabir_output->keep();
+      llvm::errs() << "Created file " << params.output_crabir << " with analysis results\n";            
+    } else {
+      if (params.print_invars != InvariantPrinterOptions::NONE) {
+	llvm::outs() << crabir_os.str();
+      }
     }
 
     if (json_output) {
@@ -1078,8 +1064,42 @@ private:
       json_output->keep();
       llvm::errs() << "Created file " << params.output_json << " with analysis results\n";      
     }
+
+  }
+
+  
     
-    return;
+  void analyze(const AnalysisParams &params, clam_abstract_domain init,
+               AnalysisResults &results) {
+    
+    CRAB_VERBOSE_IF(1, crab::get_msg_stream()
+                           << "Running top-down inter-procedural analysis "
+                           << "with domain:"
+                           << "\"" << init.domain_name() << "\""
+                           << "  ...\n";);
+
+    inter_params_t inter_params;
+    inter_params.run_checker = (params.check != CheckerKind::NOCHECKS);
+    inter_params.checker_verbosity = params.check_verbose;
+    inter_params.keep_cc_invariants = false;
+    inter_params.keep_invariants =
+      params.store_invariants || params.print_invars != InvariantPrinterOptions::NONE;        
+    inter_params.max_call_contexts = params.max_calling_contexts;
+    inter_params.exact_summary_reuse = params.exact_summary_reuse;
+    inter_params.analyze_recursive_functions =
+        params.analyze_recursive_functions;
+    inter_params.only_main_as_entry = params.inter_entry_main;
+    inter_params.live_map = (params.run_liveness ? &m_live_map : nullptr);
+    inter_params.widening_delay = params.widening_delay;
+    inter_params.descending_iters = params.narrowing_iters;
+    inter_params.thresholds_size = params.widening_jumpset;
+    
+    inter_analyzer_t analyzer(*m_cg, init, inter_params);
+    analyzer.run(init);
+    if (inter_params.run_checker) {
+      results.checksdb += analyzer.get_all_checks();
+    }
+    storeAndOutputResults(*m_cg, params, analyzer, results);   
   }
 };
 
@@ -1329,7 +1349,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
   m_params.print_voi = CrabPrintVoi;
   m_params.output_crabir = CrabIRToFile;
-  m_params.output_json = CrabInvariantsToJSON;    
+  m_params.output_json = CrabResultsToJSON;    
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;
   m_params.check = (CrabCheck ?

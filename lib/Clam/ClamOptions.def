@@ -27,7 +27,7 @@ bool CrabCheckOnlyTyped;
 bool CrabCheckOnlyNonCyclic;
 bool CrabStoreInvariants;
 bool CrabBuildOnlyCFG;
-bool CrabPrintInvariants;
+InvariantPrinterOptions CrabPrintInvariants;
 bool CrabPrintUnjustifiedAssumptions;
 bool CrabPrintVoi;
 unsigned int CrabWideningDelay;
@@ -193,13 +193,16 @@ XCrabLowerUnsignedICmp("crab-lower-unsigned-icmp",
 
 /*** Crab Analysis Options ***/
 
-llvm::cl::opt<bool, true>
+llvm::cl::opt<clam::InvariantPrinterOptions, true>
 XCrabPrintInvariants("crab-print-invariants", 
-              llvm::cl::desc("Print Crab invariants"),
+      llvm::cl::desc("Print Crab invariants"),
+      llvm::cl::values
+      (clEnumValN(clam::InvariantPrinterOptions::NONE, "none", "invariants are not printed"),
+       clEnumValN(clam::InvariantPrinterOptions::BLOCKS, "blocks", "print invariants at each basic block"),
+       clEnumValN(clam::InvariantPrinterOptions::LOOPS, "loops", "print invariants only at each loop header")),
 	      llvm::cl::location(clam::CrabPrintInvariants),
-              llvm::cl::init(false),
+              llvm::cl::init(InvariantPrinterOptions::NONE),
 	      llvm::cl::cat(ClamOptCat));
-
 
 llvm::cl::opt<bool, true>
 XCrabStoreInvariants("crab-store-invariants", 
@@ -529,8 +532,8 @@ llvm::cl::cat(ClamOptCat));
 
 
 static llvm::cl::opt<std::string>
-CrabInvariantsToJSON("crab-invariants-to-json", 
-llvm::cl::desc("Print Crab invariants in JSON format"),
+CrabResultsToJSON("ojson", 
+llvm::cl::desc("Print analysis results and invariants to JSON format"),
 llvm::cl::value_desc("filename"),
 llvm::cl::init(""),
 llvm::cl::cat(ClamOptCat));
