@@ -457,6 +457,9 @@ def parseArgs(argv):
     add_bool_argument(p, 'crab-print-voi',
                     help='Print variables-of-influence of assertions (only if --crab-inter)',
                     dest='print_voi', default=False)
+    add_bool_argument(p, 'crab-print-ghost-variables', default=False,
+                      help='Print all ghost variables in the invariants. False by default.',
+                      dest='crab_keep_shadows')
     p.add_argument('--crab-stats',
                     help='Display crab statistics',
                     dest='print_stats', default=False, action='store_true')
@@ -482,8 +485,6 @@ def parseArgs(argv):
     # Choose between own crab way of naming values and instnamer
     add_bool_argument(p, 'crab-name-values', default=True,
                       help=a.SUPPRESS, dest='crab_name_values')
-    add_bool_argument(p, 'crab-keep-shadows', default=False,
-                      help=a.SUPPRESS, dest='crab_keep_shadows')
     add_bool_argument(p, 'crab-enable-bignums', default=False,
                       help=a.SUPPRESS, dest='crab_enable_bignums')
     #### END CRAB
