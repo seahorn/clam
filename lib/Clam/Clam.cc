@@ -357,11 +357,28 @@ private:
   checks_db_t m_checks_db;
 
   void storeAndOutputResults(cfg_ref_t cfg, const AnalysisParams &params,
-			     const intra_analyzer_t &analyzer, AnalysisResults &results) {    
-    bool storeInvariants = (params.store_invariants ||
-			    params.print_invars != InvariantPrinterOptions::NONE);
-       
-    if (storeInvariants) {
+			     const intra_analyzer_t &analyzer, AnalysisResults &results) {
+    /**
+     * There are two output formats: crabir and json
+     *
+     * By default, crabir format prints the CFGs and checks (if
+     * any). The json format prints the checks (if any).
+     * 
+     * In addition, the user can choose to print invariants or not in
+     * both formats.
+     *
+     * The crabir format can be printed to either standard output or to a file
+     * The json format is always output to a file
+     **/
+    
+    bool processInvariants = (params.store_invariants ||
+			      params.print_invars != InvariantPrinterOptions::NONE);
+
+    if (!processInvariants && params.output_json == "" && params.output_crabir == "" ) {
+      return;
+    }
+    
+    if (processInvariants) {
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Storing analysis results.\n");
       for (basic_block_label_t bl : llvm::make_range(cfg.label_begin(), cfg.label_end())) {
         if (bl.is_edge()) {
@@ -389,43 +406,46 @@ private:
       CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished storing analysis results.\n");
     }
 
+    bool dumpCrabIR = (params.output_crabir != "");
+    bool dumpJson   = (params.output_json != "");
+    bool dumpStdout = (!dumpCrabIR && !dumpJson && (params.print_invars != InvariantPrinterOptions::NONE));
+    
     crab::crab_string_os crabir_os;
-    if (params.print_invars != InvariantPrinterOptions::NONE) {
+
+    if (dumpCrabIR || dumpStdout) {
       std::vector<std::unique_ptr<block_annotation_t>> annotations;
-      std::vector<varname_t> shadow_varnames;
-      assumption_analysis_t unproven_assumption_analyzer(cfg);
-      
-      if (!params.keep_shadow_vars) {
-	shadow_varnames = m_vfac.get_shadow_vars();
-      }
-      annotations.emplace_back(std::make_unique<invariant_annotation_t>(
+      if (params.print_invars != InvariantPrinterOptions::NONE) {
+	std::vector<varname_t> shadow_varnames;
+	assumption_analysis_t unproven_assumption_analyzer(cfg);
+	
+	if (!params.keep_shadow_vars) {
+	  shadow_varnames = m_vfac.get_shadow_vars();
+	}
+	annotations.emplace_back(std::make_unique<invariant_annotation_t>(
 		  results.premap, results.postmap, shadow_varnames, &lookup));
       
-      if (params.print_unjustified_assumptions) {
-        // -- run first the analysis
-        unproven_assumption_analyzer.exec();
-        annotations.emplace_back(
+	if (params.print_unjustified_assumptions) {
+	  // -- run first the analysis
+	  unproven_assumption_analyzer.exec();
+	  annotations.emplace_back(
             std::make_unique<unproven_assume_annotation_t>(
                 cfg, unproven_assumption_analyzer));
+	}
       }
-
-      // Print the annnotated CFG
+    
       crab_pretty_printer::print_annotated_cfg(crabir_os, cfg, results.checksdb, annotations);
     }
+    
 
-    if (params.output_crabir != "") {
+    if (dumpCrabIR) {
       std::string adjustedOutputCrabIr = appendFunctionNameToFileName(params.output_crabir, m_fun.getName());
       std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputCrabIr);
       output->os() << crabir_os.str();
       output->keep();
       llvm::errs() << "Created file " << adjustedOutputCrabIr << " with analysis results\n";	
-    } else {
-      if (params.print_invars != InvariantPrinterOptions::NONE) {
-	crab::outs() << crabir_os.str();
-      }
     }
     
-    if (params.output_json != "") {
+    if (dumpJson) {
       std::string adjustedOutputJson = appendFunctionNameToFileName(params.output_json, m_fun.getName());      
       std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputJson);
       json::json_report json_report;
@@ -434,7 +454,10 @@ private:
       output->keep();
       llvm::errs() << "Created file " << adjustedOutputJson << " with analysis results\n";
     }
-        
+
+    if (dumpStdout) {
+      llvm::outs() << crabir_os.str();
+    }
   }
 
   
@@ -961,15 +984,27 @@ private:
 
 
   void storeAndOutputResults(cg_t &cg, const AnalysisParams &params,
-			     const inter_analyzer_t &analyzer, AnalysisResults &results) {    
-    bool storeInvariants = (params.store_invariants ||
-			    params.print_invars != InvariantPrinterOptions::NONE);
+			     const inter_analyzer_t &analyzer, AnalysisResults &results) {
+     /**
+     * There are two output formats: crabir and json
+     *
+     * By default, crabir format prints the CFGs and checks (if
+     * any). The json format prints the checks (if any).
+     * 
+     * In addition, the user can choose to print invariants or not in
+     * both formats.
+     *
+     * The crabir format can be printed to either standard output or to a file
+     * The json format is always output to a file
+     **/
+    
+    bool processInvariants = (params.store_invariants ||
+			      params.print_invars != InvariantPrinterOptions::NONE);
 
-    if (!storeInvariants && params.output_json == "") {
-      // left intentionally params.output_crabir == "" 
+    if (!processInvariants && params.output_json == "" && params.output_crabir == "" ) {
       return;
     }
-    
+
     std::unique_ptr<voi_analysis_t> voi = nullptr;
     if (params.print_voi) {
       voi.reset(new voi_analysis_t(cg,
@@ -994,12 +1029,16 @@ private:
     if (params.print_invars != InvariantPrinterOptions::NONE && !params.keep_shadow_vars) {
       shadow_varnames = m_crab_builder_man.getVarFactory().get_shadow_vars();
     }
+
+    bool dumpCrabIR = crabir_output != nullptr ;
+    bool dumpJson   = json_output != nullptr;
+    bool dumpStdout = (!dumpCrabIR && !dumpJson && (params.print_invars != InvariantPrinterOptions::NONE));
     
     
     for (auto &n : llvm::make_range(vertices(cg))) {
       cfg_ref_t cfg = n.get_cfg();
       if (const Function *F = m_M.getFunction(n.name())) {
-	if (storeInvariants) {
+	if (processInvariants) {
 	  CRAB_VERBOSE_IF(1, crab::get_msg_stream()
 			  << "Storing analysis results for "
 			  << F->getName().str() << ".\n");
@@ -1033,18 +1072,22 @@ private:
 			  << F->getName().str() << ".\n");
 	}
 
-	if (params.print_invars != InvariantPrinterOptions::NONE) {
-	  std::vector<std::unique_ptr<block_annotation_t>> annotations;
-	  annotations.emplace_back(std::make_unique<invariant_annotation_t>(
+	
+	if (dumpCrabIR || dumpStdout) {
+	    std::vector<std::unique_ptr<block_annotation_t>> annotations;	
+	    if (params.print_invars != InvariantPrinterOptions::NONE) {
+	      annotations.emplace_back(std::make_unique<invariant_annotation_t>(
 		      results.premap, results.postmap, shadow_varnames, &lookup));
-	  // -- variables of interest that might affect each assertion
-	  if (params.print_voi) {
-	    annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
-	  }
+	      // -- variables of interest that might affect each assertion
+	      if (params.print_voi) {
+		annotations.emplace_back(std::make_unique<voi_annotation_t>(cfg, *voi));
+	      }
+	    }
+
 	  crab_pretty_printer::print_annotated_cfg(crabir_os, cfg, results.checksdb, annotations);
 	}
 
-	if (json_output) {
+	if (dumpJson) {
 	  // results is a whole-program datastructure so we make sure
 	  // that the checks are counted only once.
 	  if (n == cg.entry()) {
@@ -1057,20 +1100,22 @@ private:
       }
     } // end for
     
-    if (crabir_output) {
+    if (dumpCrabIR) {
+      assert(crabir_output != nullptr);
       crabir_output->os() << crabir_os.str();	    
       crabir_output->keep();
       llvm::errs() << "Created file " << params.output_crabir << " with analysis results\n";            
-    } else {
-      if (params.print_invars != InvariantPrinterOptions::NONE) {
-	llvm::outs() << crabir_os.str();
-      }
-    }
+    } 
 
-    if (json_output) {      
+    if (dumpJson) {
+      assert(json_output != nullptr);
       json_output->os() << json_report.generate();
       json_output->keep();
       llvm::errs() << "Created file " << params.output_json << " with analysis results\n";      
+    }
+
+    if (dumpStdout) {
+      llvm::outs() << crabir_os.str();
     }
 
   }
