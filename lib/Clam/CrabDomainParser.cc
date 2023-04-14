@@ -26,7 +26,7 @@ void CrabDomainParser::addLiteralOption(llvm::StringRef Name, const unsigned &V,
 
 // parse - Return true on error.
 bool CrabDomainParser::parse(llvm::cl::Option &O, llvm::StringRef ArgName,
-                             const std::string &ArgValue,
+                             llvm::StringRef ArgValue,
                              CrabDomain::Type &Val) {
   bool found = false;
   for (auto t : CrabDomain::List) {

@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
 
   if (!AsmOutputFilename.empty())
     asmOutput = std::make_unique<llvm::ToolOutputFile>(
-        AsmOutputFilename.c_str(), error_code, llvm::sys::fs::F_Text);
+        AsmOutputFilename.c_str(), error_code, llvm::sys::fs::OF_Text);
 
   if (error_code) {
     if (llvm::errs().has_colors())
@@ -178,7 +178,7 @@ int main(int argc, char **argv) {
 
   if (!OutputFilename.empty())
     output = std::make_unique<llvm::ToolOutputFile>(
-        OutputFilename.c_str(), error_code, llvm::sys::fs::F_None);
+        OutputFilename.c_str(), error_code, llvm::sys::fs::OF_None);
 
   if (error_code) {
     if (llvm::errs().has_colors())
@@ -309,7 +309,9 @@ int main(int argc, char **argv) {
   }
 
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());
-  pass_manager.add(llvm::createDeadInstEliminationPass());
+  pass_manager.add(llvm::createDeadCodeEliminationPass());
+  // Superseded by DCE
+  //pass_manager.add(llvm::createDeadInstEliminationPass());
 
   if (OptimizeLoops || PeelLoops > 0) {
     // canonical form for loops
@@ -331,7 +333,8 @@ int main(int argc, char **argv) {
       pass_manager.add(clam::createLoopPeelerPass(PeelLoops));
 #ifdef HAVE_LLVM_SEAHORN
     // induction variable requires loop-closed SSA
-    pass_manager.add(llvm::createLCSSAPass());
+    // Preserved by LoopPeelerPass
+    // pass_manager.add(llvm::createLCSSAPass());
     // induction variable
     pass_manager.add(llvm_seahorn::createIndVarSimplifyPass());
 #endif

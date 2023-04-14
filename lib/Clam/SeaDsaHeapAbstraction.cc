@@ -226,8 +226,7 @@ void SeaDsaHeapAbstraction::computeReadModNewNodesFromCallSite(
   if (I.isInlineAsm())
     return;
 
-  ImmutableCallSite ICS(&I);
-  DsaCallSite CS(ICS);
+  DsaCallSite CS(I);
 
   if (!CS.getCallee()) {
     CRAB_LOG("heap-abs-regions", llvm::errs()
@@ -377,8 +376,7 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
         computeReadModNewNodesFromCallSite(*CI, CSAccessed, CSMods, CSNews);
 
         // For the sanity check implemented below
-        ImmutableCallSite ICS(CI);
-        DsaCallSite CS(ICS);
+        DsaCallSite CS(*CI);
         if (const Function *calleeF = CS.getCallee()) {
           if (!calleeF->empty()) {
             FunctionCallsMap[calleeF].push_back(CS);
@@ -435,7 +433,7 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
       // Keep track of inconsistent memory regions (i.e., regions on
       // which caller and callee disagree)
       for (unsigned i = 0, e = readsC.size(); i < e; i++) {
-        readsB[i] = readsB[i] & readsC[i].second;
+        readsB[i] = readsB[i] && readsC[i].second;
 	if (!readsC[i].second) {
 	  CLAM_WARNING("Caller and callee disagree on some read region type\n"
 		       << "Callsite=" << *CI << "\n"
@@ -443,7 +441,7 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 	}
       }
       for (unsigned i = 0, e = modsC.size(); i < e; i++) {
-        modsB[i] = modsB[i] & modsC[i].second;
+        modsB[i] = modsB[i] && modsC[i].second;
 	if (!modsC[i].second) {
 	  CLAM_WARNING("Caller and callee disagree on some modified region type\n"
 		       << "Callsite=" << *CI << "\n"
@@ -451,7 +449,7 @@ void SeaDsaHeapAbstraction::initialize(const llvm::Module &M) {
 	}	
       }
       for (unsigned i = 0, e = newsC.size(); i < e; i++) {
-        newsB[i] = newsB[i] & newsC[i].second;
+        newsB[i] = newsB[i] && newsC[i].second;
 	if (!newsC[i].second) {
 	  CLAM_WARNING("Caller and callee disagree on some new region type\n"
 		       << "Callsite=" << *CI << "\n"
@@ -638,7 +636,7 @@ const llvm::Value *SeaDsaHeapAbstraction::getSingleton(RegionId region) const {
   if (const Value *v = n->getUniqueScalar()) {
     if (const GlobalVariable *gv = dyn_cast<const GlobalVariable>(v)) {
       seadsa_heap_abs_impl::isIntegerOrBool is_typed;
-      if (is_typed(gv->getType()->getElementType()))
+      if (is_typed(gv->getType()->getPointerElementType()))
         return v;
     }
   }

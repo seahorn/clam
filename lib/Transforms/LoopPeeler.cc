@@ -7,9 +7,8 @@
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Utils.h"
-#include "llvm/Transforms/Utils/UnrollLoop.h"
+#include "llvm/Transforms/Utils/LoopPeel.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 
 namespace clam {
 
@@ -25,17 +24,8 @@ public:
 
   StringRef getPassName() const override { return "LoopPeeler"; }
   void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<DominatorTreeWrapperPass>();
-    AU.addRequired<ScalarEvolutionWrapperPass>();
-    AU.addRequired<LoopInfoWrapperPass>();
-    AU.addRequiredID(LoopSimplifyID);
-    AU.addRequiredID(LCSSAID);
-
-    AU.addPreserved<ScalarEvolutionWrapperPass>();
-    AU.addPreserved<DominatorTreeWrapperPass>();
-    // AU.addPreserved<LoopInfoWrapperPass>();
-    AU.addPreservedID(LoopSimplifyID);
-    AU.addPreservedID(LCSSAID);
+    AU.addRequired<AssumptionCacheTracker>();
+    getLoopAnalysisUsage(AU);
   }
 };
 
@@ -95,18 +85,15 @@ bool LoopPeelerPass::runOnLoop(Loop *L, LPPassManager &LPM) {
     return false;
   Function *F = Header->getParent();
 
-  auto &SEWP = getAnalysis<ScalarEvolutionWrapperPass>();
-  auto *SE = &SEWP.getSE();
-  auto *DTWP = getAnalysisIfAvailable<DominatorTreeWrapperPass>();
-  auto *DT = DTWP ? &DTWP->getDomTree() : nullptr;
-  auto *ACWP = getAnalysisIfAvailable<AssumptionCacheTracker>();
-  auto *AC = ACWP ? &ACWP->getAssumptionCache(*F) : nullptr;
+  auto &SE = getAnalysis<ScalarEvolutionWrapperPass>().getSE();
+  auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
   auto &LI = getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
+  auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(*F);
 
   if (!canPeel(L)) {
     return false;
   }
-  auto res = peelLoop(L, m_Num, &LI, SE, DT, AC, false /* PreserveLCSSA */);
+  auto res = peelLoop(L, m_Num, &LI, &SE, DT, &AC, true /* PreserveLCSSA */);
   return res;
 }
 

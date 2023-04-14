@@ -1,10 +1,10 @@
 #include "CfgBuilderUtils.hh"
 
 #include "llvm/ADT/APInt.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/PostOrderIterator.h"
-#include "llvm/Analysis/CFG.h"
-#include "llvm/IR/CallSite.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/IR/CFG.h"
+#include "llvm/IR/Instructions.h" 
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
@@ -100,9 +100,9 @@ bool isTracked(const Value &v, const CrabBuilderParams &params) {
 }
 
 bool ShouldCallSiteReturn(CallInst &I, const CrabBuilderParams &params) {
-  CallSite CS(&I);
+  CallBase &CB = I;
   if (Function *Callee =
-          dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts())) {
+          dyn_cast<Function>(CB.getCalledOperand()->stripPointerCasts())) {
     Type *RT = Callee->getReturnType();
     return (!(RT->isVoidTy()) && isTrackedType(*RT, params));
   }
@@ -129,7 +129,7 @@ crab::cfg::debug_info getDebugLoc(const Instruction *I, uint32_t Id) {
     const DebugLoc &dloc = I->getDebugLoc();
     unsigned Line = dloc.getLine();
     unsigned Col = dloc.getCol();
-    std::string File = (*dloc).getFilename();
+    std::string File = (*dloc).getFilename().str();
     return crab::cfg::debug_info(File, Line, Col, Id == 0 ? -1 : (int64_t) Id);
   } else {
     return crab::cfg::debug_info(Id);
@@ -248,8 +248,8 @@ bool isZeroInitializer(const Function &F) {
 }
 
 bool isZeroInitializer(const CallInst &CI) {
-  ImmutableCallSite CS(&CI);
-  const Value *calleeV = CS.getCalledValue();
+  const CallBase &CB = CI;
+  const Value *calleeV = CB.getCalledOperand();
   if (const Function *callee =
           dyn_cast<Function>(calleeV->stripPointerCasts())) {
     return isZeroInitializer(*callee);
@@ -262,8 +262,8 @@ bool isIntInitializer(const Function &F) {
 }
 
 bool isIntInitializer(const CallInst &CI) {
-  ImmutableCallSite CS(&CI);
-  const Value *calleeV = CS.getCalledValue();
+  const CallBase &CB = CI;
+  const Value *calleeV = CB.getCalledOperand();
   if (const Function *callee =
           dyn_cast<Function>(calleeV->stripPointerCasts())) {
     return isIntInitializer(*callee);
@@ -275,7 +275,7 @@ std::string getAssertKindFromMetadata(MDNode *MDN) {
   // assume MDN is the metadata associate to getMetadata("clam-assertion")
   if (MDN) {
     if (MDTuple *t = dyn_cast<MDTuple>(MDN->getOperand(0))) {
-      std::string checkName = cast<MDString>(t->getOperand(0))->getString();
+      std::string checkName = cast<MDString>(t->getOperand(0))->getString().str();
       return checkName;
     } 
   }
@@ -287,8 +287,8 @@ bool AnyUseIsVerifierCall(Value &V) {
   for (auto &U : V.uses()) {
     Value *User = U.getUser();
     if (CallInst *CI = dyn_cast<CallInst>(User)) {
-      CallSite CS(CI);
-      const Function *callee = dyn_cast<Function>(CS.getCalledValue()->stripPointerCasts());
+      CallBase &CS = *CI;
+      const Function *callee = dyn_cast<Function>(CS.getCalledOperand()->stripPointerCasts());
       if (callee && isVerifierCall(*callee)) {
 	return true;
       }
@@ -334,8 +334,8 @@ bool AllUsesAreIndirectCalls(Value &V) {
   // XXX: do not strip pointers here
   for (auto &U : V.uses()) {
     if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
-      CallSite CS(CI);
-      const Value *callee = CS.getCalledValue();
+      CallBase &CB = *CI;
+      const Value *callee = CB.getCalledOperand();
       if (callee == &V)
         continue;
     }
@@ -368,8 +368,8 @@ bool AllUsesAreVerifierCalls(Value &V, bool goThroughIntegerCasts,
     }
 
     if (CallInst *CI = dyn_cast<CallInst>(User)) {
-      CallSite CS(CI);
-      const Value *calleeV = CS.getCalledValue();
+      CallBase &CB = *CI;
+      const Value *calleeV = CB.getCalledOperand();
       const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
       if (callee && isVeriCall(*callee)) {
         if (nonBoolCond) {

@@ -40,26 +40,18 @@ class NondetInit : public ModulePass {
 
 private:
   /** map for nondet functions */
-  DenseMap<const Type *, Constant *> m_ndfn;
+  DenseMap<const Type *, FunctionCallee> m_ndfn;
   Module *m;
 
-  Constant *getNondetFn(Type *type) {
-    Constant *res = m_ndfn[type];
-    if (res == NULL) {
-      res = dyn_cast<Constant>(
-          m->getOrInsertFunction(
-               "verifier.nondet." + std::to_string(m_ndfn.size()), type)
-              .getCallee());
-
-      // -- say that f does not access memory will make llvm
-      // -- assume that all calls to it return the same value
-      // if (Function *f = dyn_cast<Function>(res))
-      // {
-      //   // f->setDoesNotAccessMemory (true);
-      //   // f->setDoesNotAlias (0);
-      // }
-      m_ndfn[type] = res;
+  FunctionCallee getNondetFn(Type *type) {
+    auto it = m_ndfn.find(type);
+    if (it != m_ndfn.end()) {
+      return it->second;
     }
+    
+    FunctionCallee res =
+      m->getOrInsertFunction("verifier.nondet." + std::to_string(m_ndfn.size()), type); 
+    m_ndfn[type] = res;
     return res;
   }
 
@@ -90,7 +82,7 @@ public:
           for (unsigned i = 0; i < phi->getNumIncomingValues(); i++) {
             if (UndefValue *uv =
                     dyn_cast<UndefValue>(phi->getIncomingValue(i))) {
-              Constant *ndf = getNondetFn(uv->getType());
+              FunctionCallee ndf = getNondetFn(uv->getType());
               IRBuilder<> Builder(F.getContext());
               Builder.SetInsertPoint(&F.getEntryBlock(),
                                      F.getEntryBlock().begin());
@@ -106,7 +98,7 @@ public:
         // -- the normal case
         for (unsigned i = 0; i < u.getNumOperands(); i++) {
           if (UndefValue *uv = dyn_cast<UndefValue>(u.getOperand(i))) {
-            Constant *ndf = getNondetFn(uv->getType());
+            FunctionCallee ndf = getNondetFn(uv->getType());
             IRBuilder<> Builder(F.getContext());
             Builder.SetInsertPoint(&F.getEntryBlock(),
                                    F.getEntryBlock().begin());
@@ -134,7 +126,7 @@ public:
   static char ID;
   KillUnusedNondet() : FunctionPass(ID) {}
 
-  bool runOnFunction(Function &F) {
+  bool runOnFunction(Function &F) override {
     std::forward_list<CallInst *> toerase;
 
     for (Function::iterator b = F.begin(), be = F.end(); b != be; ++b)
@@ -162,7 +154,7 @@ public:
     return !toerase.empty();
   }
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesAll();
   }
 };

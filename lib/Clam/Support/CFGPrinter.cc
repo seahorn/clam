@@ -147,7 +147,7 @@ struct DOTGraphTraits<const clam::ClamFunction *>
   }
 
   static std::string getEdgeSourceLabel(const BasicBlock *Node,
-                                        succ_const_iterator I) {
+                                        const_succ_iterator I) {
     // Label source of conditional branches with "T" or "F"
     if (const BranchInst *BI = dyn_cast<BranchInst>(Node->getTerminator()))
       if (BI->isConditional())
@@ -201,7 +201,7 @@ private:
   static bool writeGraph(Function &F, const LoopInfo &LI, const ClamPass &Clam,
                          std::string Filename) {
     std::error_code EC;
-    raw_fd_ostream File(Filename, EC, sys::fs::F_Text);
+    raw_fd_ostream File(Filename, EC, sys::fs::OF_Text);
     ClamFunction FW(F, LI, Clam);
     if (!EC) {
       errs() << "Writing '" << Filename << "'...";

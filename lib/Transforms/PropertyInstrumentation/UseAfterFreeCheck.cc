@@ -31,9 +31,9 @@ namespace clam {
 
 using namespace llvm;
 
-static Value *getCastedInt8PtrValue(IRBuilder<> B, Value *Ptr) {
+static Value *getCastedInt8PtrValue(IRBuilder<> &B, Value *Ptr) {
   auto *PT = cast<PointerType>(Ptr->getType());
-  if (PT->getElementType()->isIntegerTy(8))
+  if (PT->getPointerElementType()->isIntegerTy(8))
     return Ptr;
   return B.CreateBitCast(Ptr, Type::getInt8PtrTy(B.getContext()));
 }
@@ -50,7 +50,7 @@ private:
   Function *NotDanglingFn;
   CallGraph *CG;
 
-  void insertNonDanglingCheck(Value *Ptr, IRBuilder<> B, Instruction *I);
+  void insertNonDanglingCheck(Value *Ptr, IRBuilder<> &B, Instruction *I);
 
 public:
   UseAfterFreeCheck()
@@ -64,7 +64,7 @@ public:
   virtual StringRef getPassName() const override { return "UseAfterFreeCheck"; }
 };
 
-void UseAfterFreeCheck::insertNonDanglingCheck(Value *Ptr, IRBuilder<> B,
+void UseAfterFreeCheck::insertNonDanglingCheck(Value *Ptr, IRBuilder<> &B,
                                                Instruction *I) {
   static unsigned id = 0;
   ChecksAdded++;
@@ -172,7 +172,7 @@ bool UseAfterFreeCheck::runOnModule(llvm::Module &M) {
   LLVMContext &ctx = M.getContext();
 
   {
-    AttrBuilder B;
+    AttrBuilder B(ctx);
     // Function does not access memory
     B.addAttribute(Attribute::ReadNone);
     AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
@@ -183,7 +183,7 @@ bool UseAfterFreeCheck::runOnModule(llvm::Module &M) {
   }
 
   {
-    AttrBuilder B;
+    AttrBuilder B(ctx);
     // Function does not access memory
     B.addAttribute(Attribute::ReadNone);
     B.addAttribute(Attribute::NoReturn);
@@ -196,7 +196,7 @@ bool UseAfterFreeCheck::runOnModule(llvm::Module &M) {
   }
 
   {
-    AttrBuilder B;
+    AttrBuilder B(ctx);
     // Function does not access memory
     B.addAttribute(Attribute::ReadNone);
     AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);

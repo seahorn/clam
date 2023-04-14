@@ -12,7 +12,7 @@
 namespace llvm {
 class Module;
 class Function;
-class CallSite;
+class CallBase;
 class PointerType;
 class CallGraph;
 } // namespace llvm
@@ -29,7 +29,7 @@ using AliasSetId = const llvm::PointerType *;
 AliasSetId typeAliasId(const llvm::Function &F);
 
 /// returns an id of an alias set of the called value
-AliasSetId typeAliasId(llvm::CallSite &CS);
+AliasSetId typeAliasId(llvm::CallBase &CB);
 } // end namespace devirt_impl
 
 enum CallSiteResolverKind {
@@ -74,12 +74,12 @@ public:
   CallSiteResolverKind get_kind() const { return m_kind; }
 
   /* return all possible targets for CS */
-  virtual const AliasSet *getTargets(llvm::CallSite &CS) = 0;
+  virtual const AliasSet *getTargets(llvm::CallBase &CB) = 0;
 
 #ifdef USE_BOUNCE_FUNCTIONS
   /* for reusing bounce functions */
-  virtual llvm::Function *getBounceFunction(llvm::CallSite &CS) = 0;
-  virtual void cacheBounceFunction(llvm::CallSite &CS,
+  virtual llvm::Function *getBounceFunction(llvm::CallBase &CB) = 0;
+  virtual void cacheBounceFunction(llvm::CallBase &CB,
                                    llvm::Function *bounce) = 0;
 #endif
 };
@@ -97,11 +97,11 @@ public:
 
   virtual ~CallSiteResolverByTypes();
 
-  virtual const AliasSet *getTargets(llvm::CallSite &CS) override;
+  virtual const AliasSet *getTargets(llvm::CallBase &CB) override;
 
 #ifdef USE_BOUNCE_FUNCTIONS
-  llvm::Function *getBounceFunction(llvm::CallSite &CS);
-  void cacheBounceFunction(llvm::CallSite &CS, llvm::Function *bounce);
+  llvm::Function *getBounceFunction(llvm::CallBase &CB);
+  void cacheBounceFunction(llvm::CallBase &CB, llvm::Function *bounce);
 #endif
 
 private:
@@ -130,9 +130,9 @@ template <typename Dsa>
 class CallSiteResolverByDsa final : public CallSiteResolverByTypes {
   /*
     Assume that Dsa provides these methods:
-    - bool isComplete(CallSite&)
-    - iterator begin(CallSite&)
-    - iterator end(CallSite&)
+    - bool isComplete(CallBase&)
+    - iterator begin(CallBase&)
+    - iterator end(CallBase&)
     where each element of iterator is of type Function*
   */
 
@@ -145,11 +145,11 @@ public:
 
   ~CallSiteResolverByDsa();
 
-  const AliasSet *getTargets(llvm::CallSite &CS);
+  const AliasSet *getTargets(llvm::CallBase &CB) override;
 
 #ifdef USE_BOUNCE_FUNCTIONS
-  llvm::Function *getBounceFunction(llvm::CallSite &CS);
-  void cacheBounceFunction(llvm::CallSite &CS, llvm::Function *bounceFunction);
+  llvm::Function *getBounceFunction(llvm::CallBase &CB);
+  void cacheBounceFunction(llvm::CallBase &CB, llvm::Function *bounceFunction);
 #endif
 
 private:
@@ -196,16 +196,16 @@ private:
   // (required for soundness)
   bool m_allowIndirectCalls;
   // Worklist of call sites to transform
-  llvm::SmallVector<llvm::Instruction *, 32> m_worklist;
+  llvm::SmallVector<llvm::CallBase *, 32> m_worklist;
   // For stats
   DevirtStats m_stats;
 
   /// turn the indirect call-site into a direct one
-  void mkDirectCall(llvm::CallSite CS, CallSiteResolver *CSR);
+  void mkDirectCall(llvm::CallBase &CS, CallSiteResolver *CSR);
 
 #ifdef USE_BOUNCE_FUNCTIONS
   /// create a bounce function that calls functions directly
-  llvm::Function *mkBounceFn(llvm::CallSite &CS, CallSiteResolver *CSR);
+  llvm::Function *mkBounceFn(llvm::CallBase &CB, CallSiteResolver *CSR);
 #endif
 
 public:
@@ -222,7 +222,7 @@ public:
   bool resolveCallSites(llvm::Module &M, CallSiteResolver *CSR);
   // -- VISITOR IMPLEMENTATION --
 
-  void visitCallSite(llvm::CallSite CS);
+  void visitCallBase(llvm::CallBase &CB);
   void visitCallInst(llvm::CallInst &CI);
   void visitInvokeInst(llvm::InvokeInst &II);
 };

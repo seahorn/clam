@@ -43,12 +43,12 @@ namespace clam {
 
 using namespace llvm;
 
-static Value *getCastedInt8PtrValue(IRBuilder<> B, Value *Ptr) {
-  auto *PT = cast<PointerType>(Ptr->getType());
-  if (PT->getElementType()->isIntegerTy(8))
-    return Ptr;
-  return B.CreateBitCast(Ptr, Type::getInt8PtrTy(B.getContext()));
-}
+// static Value *getCastedInt8PtrValue(IRBuilder<> &B, Value *Ptr) {
+//   auto *PT = cast<PointerType>(Ptr->getType());
+//   if (PT->getElementType()->isIntegerTy(8))
+//     return Ptr;
+//   return B.CreateBitCast(Ptr, Type::getInt8PtrTy(B.getContext()));
+// }
 
 class NullCheck : public llvm::ModulePass {
 public:
@@ -61,7 +61,7 @@ private:
   Function *AssumeFn;
   CallGraph *CG;
 
-  void insertNullCheck(Value *Ptr, IRBuilder<> B, Instruction *I);
+  void insertNullCheck(Value *Ptr, IRBuilder<> &B, Instruction *I);
 
 public:
   NullCheck()
@@ -74,6 +74,7 @@ public:
   virtual StringRef getPassName() const override { return "NullCheck"; }
 };
 
+void NullCheck::insertNullCheck(Value *Ptr, IRBuilder<> &B, Instruction *I) {
 /*
   Before:
        I;
@@ -82,7 +83,6 @@ public:
        clam_assert(%b);  
        I;
 */  
-void NullCheck::insertNullCheck(Value *Ptr, IRBuilder<> B, Instruction *I) {
   static unsigned id = 0;
   B.SetInsertPoint(I);
   Value *GtNull = B.CreateICmpNE /*SGT*/ (
@@ -269,7 +269,7 @@ bool NullCheck::runOnModule(llvm::Module &M) {
   LLVMContext &ctx = M.getContext();
 
   {
-    AttrBuilder B;
+    AttrBuilder B(ctx);
     // Function does not access memory
     B.addAttribute(Attribute::ReadNone);
     AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
@@ -280,7 +280,7 @@ bool NullCheck::runOnModule(llvm::Module &M) {
   }
 
   {
-    AttrBuilder B;
+    AttrBuilder B(ctx);
     // Function does not access memory
     B.addAttribute(Attribute::ReadNone);
     B.addAttribute(Attribute::NoReturn);

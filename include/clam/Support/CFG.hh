@@ -10,7 +10,7 @@ inline llvm::iterator_range<llvm::succ_iterator> succs(llvm::BasicBlock &bb) {
   return llvm::make_range(succ_begin(&bb), succ_end(&bb));
 }
 
-inline llvm::iterator_range<llvm::succ_const_iterator>
+inline llvm::iterator_range<llvm::const_succ_iterator>
 succs(const llvm::BasicBlock &bb) {
   return llvm::make_range(succ_begin(&bb), succ_end(&bb));
 }

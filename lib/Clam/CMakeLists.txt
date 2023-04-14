@@ -12,13 +12,16 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   SeaDsaHeapAbstractionUtils.cc
   SeaDsaToRegion.cc
   CrabDomainParser.cc
-  crab/path_analyzer.cc
-  crab/printer.cc
+  crab/path_analysis/path_analyzer.cc
+  crab/output/crabir/cfg_printer.cc
+  crab/output/json/write_json.cc
+  crab/output/json/read_json.cc
   crab/domains/intervals.cc
   crab/domains/boxes.cc
   crab/domains/dis_intervals.cc
   crab/domains/oct.cc
   crab/domains/pk.cc
+  crab/domains/pk_pplite.cc  
   crab/domains/ric.cc
   crab/domains/sign_constant.cc
   crab/domains/split_dbm.cc

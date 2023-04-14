@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.3)
 
 project(Clam)
-set (Clam_VERSION_MAJOR 10)
+set (Clam_VERSION_MAJOR 14)
 set (Clam_VERSION_MINOR 0)
 set (Clam_VERSION_PATCH 0)
 set (Clam_VERSION_TWEAK "rc0")
@@ -11,7 +11,7 @@ cmake_policy(SET CMP0074 NEW)
 cmake_policy(SET CMP0077 NEW)
 endif()
 
-## LLVM 10 requires c++14
+## LLVM 14 requires c++14
 set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
@@ -226,67 +226,52 @@ endif ()
 
 
 if (TopLevel)
-  include(download_llvm)
-  ## We check if LLVM_DIR is already set to the directory used to
-  ## install llvm from sources.  If it is then we do not try to find
-  ## llvm in the rest of the system. This allows us, for instance, to
-  ## install a debug build from sources even if a release build is
-  ## already found in the system.
-  if (NOT LLVM_DIR MATCHES "${LLVM_ROOT}/lib/cmake/llvm")
-    ## Search for llvm10 in the whole system
-    find_package(LLVM 10.0.1 CONFIG)
-  else()
-    ## Search for llvm10 only in "${LLVM_ROOT}/lib/cmake/llvm"
-    find_package(LLVM 10.0.1 CONFIG PATHS "${LLVM_ROOT}/lib/cmake/llvm" NO_DEFAULT_PATH)
-  endif()
-  
+  find_package(LLVM 14 CONFIG)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})
     set (LLVM_DIR ${LLVM_ROOT}/lib/cmake/llvm CACHE PATH
       "Forced location of LLVM cmake config" FORCE)
-    message (WARNING "Clam: no llvm found. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
+    message (WARNING "No llvm found. Install LLVM 14.")
     return()
   else()
-    set_target_properties(llvm PROPERTIES EXCLUDE_FROM_ALL ON)
-  endif()
-  
-  message(STATUS "Clam: found LLVM ${LLVM_PACKAGE_VERSION}")
-  message(STATUS "Clam: using LLVMConfig.cmake in: ${LLVM_DIR}")
-  
-  # We incorporate the CMake features provided by LLVM:
-  list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
-  include(AddLLVM)
-  include(HandleLLVMOptions)
-  set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin)
-  set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib)
-
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
-
-  include_directories(${LLVM_INCLUDE_DIRS})
-  link_directories(${LLVM_LIBRARY_DIRS})
-  add_definitions(${LLVM_DEFINITIONS})
-
-  if (NOT LLVM_BUILD_TYPE STREQUAL CMAKE_BUILD_TYPE)
-    message(WARNING
-      "LLVM_BUILD_TYPE and CMAKE_BUILD_TYPE differ:\n"
-      "\tLLMV_BUILD_TYPE=${LLVM_BUILD_TYPE}\n"
-      "\tCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}\n"
-      "Runtime errors might occur.")
-    if (LLVM_BUILD_TYPE MATCHES "Release|RelWithDebInfo" AND 
-        CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
-      message(STATUS "Assuming that mixing Release and RelWithDebInfo is allowed.")
-    else()
-      ExternalProject_Get_Property (llvm INSTALL_DIR)
-      set (LLVM_ROOT ${INSTALL_DIR})
-      set (LLVM_DIR ${LLVM_ROOT}/lib/cmake/llvm CACHE PATH
-	"Forced location of LLVM cmake config" FORCE)
-      message (WARNING "Incompatible mix of LLVM_BUILD_TYPE and CMAKE_BUILD_TYPE. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
+    message(STATUS "Clam: found LLVM ${LLVM_PACKAGE_VERSION}")
+    message(STATUS "Clam: using LLVMConfig.cmake in: ${LLVM_DIR}")
+    
+    # We incorporate the CMake features provided by LLVM:
+    list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+    include(AddLLVM)
+    include(HandleLLVMOptions)
+    set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin)
+    set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib)
+    
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
+    
+    include_directories(${LLVM_INCLUDE_DIRS})
+    link_directories(${LLVM_LIBRARY_DIRS})
+    add_definitions(${LLVM_DEFINITIONS})
+    
+    if (NOT LLVM_BUILD_TYPE STREQUAL CMAKE_BUILD_TYPE)
+      message(WARNING
+	"LLVM_BUILD_TYPE and CMAKE_BUILD_TYPE differ:\n"
+	"\tLLMV_BUILD_TYPE=${LLVM_BUILD_TYPE}\n"
+	"\tCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}\n"
+	"Runtime errors might occur.")
+      if (LLVM_BUILD_TYPE MATCHES "Release|RelWithDebInfo" AND 
+          CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
+	message(STATUS "Assuming that mixing Release and RelWithDebInfo is allowed.")
+      else()
+	ExternalProject_Get_Property (llvm INSTALL_DIR)
+	set (LLVM_ROOT ${INSTALL_DIR})
+	set (LLVM_DIR ${LLVM_ROOT}/lib/cmake/llvm CACHE PATH
+	  "Forced location of LLVM cmake config" FORCE)
+	message (WARNING "Incompatible mix of LLVM_BUILD_TYPE and CMAKE_BUILD_TYPE. Run \n\tcmake --build . && cmake ${CMAKE_SOURCE_DIR}")
       return()
+       endif()
     endif()
   endif()
-endif()
+ endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 

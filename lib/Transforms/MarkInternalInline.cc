@@ -10,7 +10,9 @@ struct MarkInternalInline : public ModulePass {
   static char ID;
   MarkInternalInline() : ModulePass(ID) {}
 
-  void getAnalysisUsage(AnalysisUsage &AU) const { AU.setPreservesAll(); }
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.setPreservesAll();
+  }
 
   virtual bool runOnModule(Module &M) override {
     for (Function &F : M)

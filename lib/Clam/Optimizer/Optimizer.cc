@@ -118,7 +118,7 @@ class CodeExpander {
 private:  
   enum bin_op_t { ADD, SUB, MUL };
 
-  static Value *mkBinOp(bin_op_t Op, IRBuilder<> B, Value *LHS, Value *RHS,
+  static Value *mkBinOp(bin_op_t Op, IRBuilder<> &B, Value *LHS, Value *RHS,
 			const Twine &Name) {
     assert(LHS->getType()->isIntegerTy() && RHS->getType()->isIntegerTy());
     switch (Op) {
@@ -128,8 +128,6 @@ private:
       return B.CreateSub(LHS, RHS, Name);
     case MUL:
       return B.CreateMul(LHS, RHS, Name);
-    default:
-      return nullptr;
     }
   }
 
@@ -187,7 +185,7 @@ private:
 
   // post: return a value of bool type(Int1Ty) that contains the
   // computation of cst
-  static Value *genCode(lin_cst_t cst, IRBuilder<> B, LLVMContext &ctx,
+  static Value *genCode(const lin_cst_t &cst, IRBuilder<> &B, LLVMContext &ctx,
 			DominatorTree *DT, const Twine &Name) {
     
     if (cst.is_tautology()) {
@@ -295,7 +293,7 @@ public:
    *   llvm.assume(b2)
    *   ...
    **/
-  bool genCode(lin_cst_sys_t csts, IRBuilder<> B, LLVMContext &ctx,
+  bool genCode(const lin_cst_sys_t &csts, IRBuilder<> &B, LLVMContext &ctx,
 	       Function *assumeFn, CallGraph *cg, DominatorTree *DT,
 	       const Function *insertFun, const Twine &Name = "") const {
     bool change = false;
@@ -653,7 +651,7 @@ bool Optimizer::runOnModule(Module &M) {
 		  << "Starting clam optimizer based on invariants.\n";);
   
   LLVMContext &ctx = M.getContext();
-  AttrBuilder B;
+  AttrBuilder B(ctx);
   B.addAttribute(Attribute::NoUnwind);
   B.addAttribute(Attribute::NoRecurse);
   B.addAttribute(Attribute::OptimizeNone);
@@ -833,7 +831,7 @@ void OptimizerPass::getAnalysisUsage(AnalysisUsage &AU) const {
   if (!m_clam) {
     AU.addRequired<clam::ClamPass>();
   }
-  AU.addRequired<UnifyFunctionExitNodes>();
+  AU.addRequired<UnifyFunctionExitNodesLegacyPass>();
   AU.addRequired<CallGraphWrapperPass>();
   AU.addPreserved<CallGraphWrapperPass>();
   if (requireDominatorTree(InvLoc)) {

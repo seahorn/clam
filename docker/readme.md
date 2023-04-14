@@ -3,6 +3,6 @@
 This container builds Clam and runs some tests:
 
 ```shell
-docker build -t seahorn/clam-llvm10:latest -f clam.Dockerfile .
-docker run -v `pwd`:/host -it seahorn/clam-llvm10:latest
+docker build -t seahorn/clam-llvm14 -f docker/clam.Dockerfile .
+docker run -v `pwd`:/host -it seahorn/clam-llvm14
 ```
