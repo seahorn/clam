@@ -118,6 +118,15 @@ using namespace crab::cfg;
  * 
  *   The translation of LLVM branches is mostly done in execEdge. 
  **/
+
+
+#define BUILDER_SCOPED_TIMER(name) BUILDER_SCOPED_TIMER_(name, 0)
+#define BUILDER_SCOPED_TIMER_(name, active)	\
+  BUILDER_SCOPED_TIMER_ ## active(name)
+#define BUILDER_SCOPED_TIMER_0(name) 
+#define BUILDER_SCOPED_TIMER_1(name) \
+  crab::ScopedCrabStats __st__(name, false);
+
 namespace clam {
 
 static bool checkAllDefinitionsHaveNames(const Function &F) {
@@ -627,7 +636,7 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
 	m_propertyEmitters(propertyEmitters) {}
 
   void visitBasicBlock(BasicBlock &BB) {
-    crab::ScopedCrabStats __st__("CFG.Builder.visitPHI");      
+    BUILDER_SCOPED_TIMER("CFG.Builder.visitPHI");
     if (!isa<PHINode>(BB.begin())) {
       return;
     }
@@ -1717,7 +1726,7 @@ bool skipAssertionIfUntypedOrCyclic(CallInst &I, Value *cond, HeapAbstraction &m
 
 /* Special functions for verification */
 void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.SpecialVerifierFn");      
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitCall.SpecialVerifierFn");      
   CallBase &CB = I;
   const Value *calleeV = CB.getCalledOperand();
   const Function *callee = dyn_cast<Function>(calleeV->stripPointerCasts());
@@ -1858,7 +1867,7 @@ void CrabIntraBlockBuilder::doVerifierCall(CallInst &I) {
 }
 
 void CrabIntraBlockBuilder::visitReturnInst(ReturnInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitReturn");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitReturn");  
   if (m_ret_insts) {
     m_bb.copy_back(*m_ret_insts);
     delete m_ret_insts;
@@ -1869,7 +1878,7 @@ void CrabIntraBlockBuilder::visitReturnInst(ReturnInst &I) {
 /// a select's condition.  Here we cover cases where I is an
 /// operand of other instructions.
 void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitCmp");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitCmp");  
   if (!isTracked(I, m_params))
     return;
 
@@ -1928,7 +1937,7 @@ void CrabIntraBlockBuilder::visitCmpInst(CmpInst &I) {
 }
 
 void CrabIntraBlockBuilder::visitBinaryOperator(BinaryOperator &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitBinaryOperator");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitBinaryOperator");  
   if (!isTracked(I, m_params))
     return;
 
@@ -1964,7 +1973,7 @@ void CrabIntraBlockBuilder::visitBinaryOperator(BinaryOperator &I) {
 }
   
 void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitCast");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitCast");  
   if (!isTracked(I, m_params)) {
     return;
   }
@@ -2086,7 +2095,7 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
 // undesirable then we try to deal with the select instruction
 // here.
 void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitSelect");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitSelect");  
   if (!isTracked(I, m_params)) {
     return;
   }
@@ -2311,7 +2320,7 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 
 /* malloc-like functions */
 void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.AllocFn");
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitCall.AllocFn");
 
   auto isMallocLikeFn = [] (const Value *V, const TargetLibraryInfo *TLI) {
     if (!isMallocOrCallocLikeFn(V, TLI)) {
@@ -2436,7 +2445,7 @@ void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
 }
 
 void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitAlloca");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitAlloca");  
 
   // note that it has side-effects (it might add a multiplication in the basic block)
   auto getAllocaSize = [this](AllocaInst &I) -> var_or_cst_t {
@@ -2494,7 +2503,7 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
 
 /* free-like functions */
 void CrabIntraBlockBuilder::doFreeFn(CallInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.FreeFn");      
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitCall.FreeFn");      
   if (m_params.trackMemory()) {
     CallBase &CB = I;
     crab_lit_ref_t Ptr = m_lfac.getLit(*(CB.getArgOperand(0)));
@@ -2800,7 +2809,7 @@ void CrabIntraBlockBuilder::doGep(GetElementPtrInst &I, var_t lhs, llvm::Optiona
  overflow. We try to avoid that.
 */
 void CrabIntraBlockBuilder::visitGetElementPtrInst(GetElementPtrInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitGep");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitGep");  
   if (m_params.precision_level == CrabBuilderPrecision::NUM) {
     return;
   }
@@ -2945,7 +2954,7 @@ void CrabIntraBlockBuilder::StoreIntoSingletonMem(StoreInst &I, var_t v,
 }
 
 void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitStore");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitStore");  
   /**
    * The LLVM store instruction will be translated to *either*:
    * (a) crab array store if SINGLETON_MEM, or
@@ -3150,7 +3159,7 @@ void CrabIntraBlockBuilder::LoadFromSingletonMem(LoadInst &I, var_t lhs_v,
 }
 
 void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitLoad");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitLoad");  
   /*
     This case is symmetric to StoreInst.
    */
@@ -3261,7 +3270,7 @@ void CrabIntraBlockBuilder::visitLoadInst(LoadInst &I) {
 }
 
 void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitCall");      
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitCall");      
   CallBase &CB(I);
   const Value *calleeV = CB.getCalledOperand();
   const Function *callee =
@@ -3436,7 +3445,7 @@ doArithmeticWithOverflowIntrinsic(WithOverflowInst &I, var_t res) {
 }
 
 void CrabIntraBlockBuilder::visitExtractValueInst(ExtractValueInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitExtractValue");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitExtractValue");  
   // We only translate this instruction if it's used to extract the
   // values returned by an arithmetic with overflow intrinsics.
   if (m_params.lower_arithmetic_with_overflow_intrinsics) {
@@ -4275,7 +4284,7 @@ void CfgBuilderImpl::buildCfg() {
     m_is_cfg_built = true;
   }
 
-  crab::ScopedCrabStats __st__("CFG.Builder");  
+  BUILDER_SCOPED_TIMER("CFG.Builder");  
   CRAB_VERBOSE_IF(1,
 		  crab::get_msg_stream() 
 		  << "Starting CFG construction for "
@@ -4457,7 +4466,7 @@ void CfgBuilderImpl::buildCfg() {
  *
  **/
 void CfgBuilderImpl::addFunctionDeclaration() {
-  crab::ScopedCrabStats __st__("CFG.Builder");
+  BUILDER_SCOPED_TIMER("CFG.Builder");
 
   if (!m_params.interprocedural || m_func.isVarArg() || m_func.empty()) {
     return;
@@ -5092,7 +5101,7 @@ CrabIREmitterVec &CrabBuilderManagerImpl::getPropertyEmitters() {
  *    - a_o1,...,a_om are modified and new regions created inside foo.
  **/
 void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
-  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.doCallSite");  
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitCall.doCallSite");  
   CallBase &CB(I);
   const Function *calleeF =
       dyn_cast<Function>(CB.getCalledOperand()->stripPointerCastsAndAliases());
@@ -5449,7 +5458,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
                                             bool_assert(b);
    */
   // clang-format on
-  crab::ScopedCrabStats __st__("CFG.Builder.visitCall.doCrabSpecialIntrinsic");    
+  BUILDER_SCOPED_TIMER("CFG.Builder.visitCall.doCrabSpecialIntrinsic");    
   CallBase &CB(I);
   const Function *calleeF =
       dyn_cast<Function>(CB.getCalledOperand()->stripPointerCastsAndAliases());
