@@ -4,11 +4,11 @@ name: CI
 
 # Controls when the action will run. 
 on:
-  # Triggers the workflow on push or pull request events but only for the dev14 branch
+  # Triggers the workflow on push or pull request events but only for the master and dev14 branches
   push:
-    branches: dev14
+    branches: [master, dev14]
   pull_request:
-    branches: dev14
+    branches: [master, dev14]
   schedule:
     - cron: 0 0 * * *  # run every day at UTC 00:00
 
@@ -25,9 +25,9 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v2
         with:
-          ref: dev14 # only checkout dev14
+          ref: master 
       - name: Build clam and run tests
-        run: docker build --build-arg BRANCH=dev14 -t seahorn/clam-llvm14:nightly -f docker/clam.Dockerfile .
+        run: docker build --build-arg BRANCH=master -t seahorn/clam-llvm14:nightly -f docker/clam.Dockerfile .
       # Logging in using this mechanism prints the following warning
       # WARNING! Your password will be stored unencrypted in /home/runner/.docker/config.json.
       # There does not seem to be an easy way around it though using docker actions may mitigate
