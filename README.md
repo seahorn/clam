@@ -7,10 +7,6 @@ the [Crab](https://github.com/seahorn/crab) library. This branch supports LLVM 1
 The available documentation can be found in both
 Clam [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
 
-Clam is an [Abstract Interpretation](https://en.wikipedia.org/wiki/Abstract_interpretation)-based static analyzer that computes inductive invariants for
-LLVM bitcode based on
-the [Crab](https://github.com/seahorn/crab) library. 
-
 # Docker #
 
 You can get Clam from [Docker Hub](https://hub.docker.com/) (nightly built) using the
