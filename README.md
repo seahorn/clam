@@ -7,6 +7,8 @@ the [Crab](https://github.com/seahorn/crab) library. This branch supports LLVM 1
 The available documentation can be found in both
 Clam [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
 
+<a href="https://github.com/seahorn/clam/actions"><img src="https://github.com/seahorn/clam/workflows/CI/badge.svg" title="Ubuntu 22.04 LTS 64bit, clang++"/></a>
+
 # Docker #
 
 You can get Clam from [Docker Hub](https://hub.docker.com/) (nightly built) using the
