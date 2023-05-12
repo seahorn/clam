@@ -334,9 +334,7 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
       unsignedCmpIntoSignOnes(lhs, op0, op1, lfac, bb,
 			      false /*isNegated*/, false /* isCmpULE*/);
     } else {
-      lin_cst_t cst(op0 <= op1 - number_t(1));
-      cst.set_unsigned();
-      bb.bool_assign(lhs, cst);
+      CLAM_WARNING("Crab does not support unsigned constraints. Use --crab-lower-unsigned-icmp option");
     }
     break;
   }
@@ -345,9 +343,7 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
       unsignedCmpIntoSignOnes(lhs, op0, op1, lfac, bb,
 			      false /*isNegated*/, true /*isCmpULE*/); 
     } else {
-      lin_cst_t cst(op0 <= op1);
-      cst.set_unsigned();
-      bb.bool_assign(lhs, cst);
+      CLAM_WARNING("Crab does not support unsigned constraints. Use --crab-lower-unsigned-icmp option"); 
     }
     break;
   }
@@ -488,29 +484,29 @@ cmpInstToCrabInt(CmpInst &I, crabLitFactory &lfac,
     else
       return lin_cst_t(op0 == op1);
     break;
-  case CmpInst::ICMP_ULT:
+  case CmpInst::ICMP_ULT: {
+    CLAM_WARNING("Crab does not support unsigned constraints. Use --crab-lower-unsigned-icmp option");
+    return llvm::None;
+  }
   case CmpInst::ICMP_SLT: {
     lin_cst_t cst;
     if (!isNegated)
       cst = lin_cst_t(op0 <= op1 - number_t(1));
     else
       cst = lin_cst_t(op0 >= op1);
-    if (I.getPredicate() == CmpInst::ICMP_ULT) {
-      cst.set_unsigned();
-    }
     return cst;
     break;
   }
-  case CmpInst::ICMP_ULE:
+  case CmpInst::ICMP_ULE: {
+    CLAM_WARNING("Crab does not support unsigned constraints. Use --crab-lower-unsigned-icmp option");
+    return llvm::None;
+  }
   case CmpInst::ICMP_SLE: {
     lin_cst_t cst;
     if (!isNegated)
       cst = lin_cst_t(op0 <= op1);
     else
       cst = lin_cst_t(op0 >= op1 + number_t(1));
-    if (I.getPredicate() == CmpInst::ICMP_ULE) {
-      cst.set_unsigned();
-    }
     return cst;
     break;
   }
