@@ -37,21 +37,21 @@ void reachableNodes(const llvm::Function &fn, seadsa::Graph &g,
 void argReachableNodes(const llvm::Function &fn, seadsa::Graph &G,
                        NodeSet &reach, NodeSet &outReach);
 
-struct isInteger : std::unary_function<const llvm::Type *, bool> {
+struct isInteger {
   unsigned m_bitwidth; // bits
   isInteger() : m_bitwidth(0) {}
   bool operator()(const llvm::Type *t);
 };
 
-struct isBool : std::unary_function<const llvm::Type *, bool> {
+struct isBool {
   bool operator()(const llvm::Type *t) const;
 };
 
-struct isIntegerOrBool : std::unary_function<const llvm::Type *, bool> {
+struct isIntegerOrBool {
   bool operator()(const llvm::Type *t) const;
 };
 
-struct isPointer : std::unary_function<const llvm::Type *, bool> {
+struct isPointer {
   bool operator()(const llvm::Type *t) const;
 };
 

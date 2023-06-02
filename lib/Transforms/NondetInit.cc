@@ -25,7 +25,6 @@ DM-0002198
 
 #include "llvm/IR/IRBuilder.h"
 
-#include "boost/format.hpp"
 #include "llvm/ADT/Statistic.h"
 
 #include <forward_list>
