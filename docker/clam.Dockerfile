@@ -51,6 +51,7 @@ RUN cmake --build . --target test-readme
 RUN cmake --build . --target test-inter
 RUN cmake --build . --target test-array-adapt
 RUN cmake --build . --target test-mem
+RUN cmake --build . --target test-opt
 #RUN cmake --build . --target test-ssh-simplified
 #RUN cmake --build . --target test-ntdrivers-simplified
 
