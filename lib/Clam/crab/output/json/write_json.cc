@@ -220,6 +220,7 @@ void json_report_impl::write(cfg_ref_t cfg, const AnalysisParams &params,
 }
 } // end namespace json
 } // end namespace clam
+#pragma GCC diagnostic pop
 #endif
 
 namespace clam {
@@ -238,4 +239,3 @@ std::string json_report::generate() { return m_pimpl->generate(); }
 } // end namespace json
 } // end namespace clam
 
-#pragma GCC diagnostic pop
