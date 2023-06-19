@@ -159,11 +159,11 @@ void print_block::operator()(const basic_block_label_t &bbl) const {
         unsigned error = 0;
         for (unsigned i = 0, num_checks = checks.size(); i < num_checks; ++i) {
           switch (checks[i]) {
-          case crab::checker::_SAFE:
-          case crab::checker::_UNREACH:
+          case crab::checker::check_kind::CRAB_SAFE:
+          case crab::checker::check_kind::CRAB_UNREACH:
             safe++;
             break;
-          case crab::checker::_ERR:
+          case crab::checker::check_kind::CRAB_ERR:
             error++;
             break;
           default:

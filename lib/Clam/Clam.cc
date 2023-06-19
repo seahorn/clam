@@ -492,10 +492,15 @@ private:
           {m_cfg_builder->getCrabBasicBlock(kv.first), absval});
     }
 
+    crab::analyzer::fwd_bwd_parameters fwd_bwd_params;
+    fwd_bwd_params.enable_backward() = params.run_backward;
+    crab::fixpoint_parameters fixpo_params;
+    fixpo_params.get_widening_delay() = params.widening_delay;
+    fixpo_params.get_descending_iterations() = params.narrowing_iters;
+    fixpo_params.get_max_thresholds() = params.widening_jumpset;
+    
     analyzer.run(m_cfg_builder->getCrabBasicBlock(entry), entry_abs,
-                 !params.run_backward, crab_assumptions, live,
-                 params.widening_delay, params.narrowing_iters,
-                 params.widening_jumpset);
+                 crab_assumptions, live, fixpo_params, fwd_bwd_params);
     CRAB_VERBOSE_IF(1, crab::get_msg_stream()
                            << "Finished intra-procedural analysis.\n");
 
