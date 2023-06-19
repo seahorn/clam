@@ -206,6 +206,7 @@ void AnalysisParams::write(raw_ostream &o) const {
   o << "\t\texact summary reuse: " << exact_summary_reuse << "\n";
   o << "\t\tonly main as entry point: " << inter_entry_main << "\n";
   o << "\tFixpoint parameters" <<  "\n";
+  o << "\t\tenable decoupled ascending/descending phases: " << enable_decoupling << "\n";
   o << "\t\twidening delay: " << widening_delay << "\n";
   o << "\t\tnarrowing iterations: " << narrowing_iters  << "\n";
   o << "\t\tsize of the widening jumpset: " << widening_jumpset << "\n";
@@ -498,6 +499,7 @@ private:
     fixpo_params.get_widening_delay() = params.widening_delay;
     fixpo_params.get_descending_iterations() = params.narrowing_iters;
     fixpo_params.get_max_thresholds() = params.widening_jumpset;
+    fixpo_params.enable_decoupling() = params.enable_decoupling;
     
     analyzer.run(m_cfg_builder->getCrabBasicBlock(entry), entry_abs,
                  crab_assumptions, live, fixpo_params, fwd_bwd_params);
@@ -1148,10 +1150,11 @@ private:
         params.analyze_recursive_functions;
     inter_params.only_main_as_entry = params.inter_entry_main;
     inter_params.live_map = (params.run_liveness ? &m_live_map : nullptr);
+    inter_params.enable_decoupling = params.enable_decoupling;
     inter_params.widening_delay = params.widening_delay;
     inter_params.descending_iters = params.narrowing_iters;
     inter_params.thresholds_size = params.widening_jumpset;
-    
+
     inter_analyzer_t analyzer(*m_cg, init, inter_params);
     analyzer.run(init);
     if (inter_params.run_checker) {
@@ -1399,6 +1402,7 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.inter_entry_main = CrabInterStartFromMain;
   m_params.run_liveness = CrabLive;
   m_params.relational_threshold = CrabRelationalThreshold;
+  m_params.enable_decoupling = CrabEnableDecoupling;
   m_params.widening_delay = CrabWideningDelay;
   m_params.narrowing_iters = CrabNarrowingIters;
   m_params.widening_jumpset = CrabWideningJumpSet;

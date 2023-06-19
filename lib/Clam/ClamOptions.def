@@ -33,6 +33,7 @@ bool CrabPrintVoi;
 unsigned int CrabWideningDelay;
 unsigned int CrabNarrowingIters;
 unsigned int CrabWideningJumpSet;
+bool CrabEnableDecoupling;
 CrabDomain::Type ClamDomain;
 bool CrabBackward;
 unsigned CrabRelationalThreshold;
@@ -252,6 +253,13 @@ XCrabWideningJumpSet("crab-widening-jump-set",
 		    llvm::cl::location(clam::CrabWideningJumpSet),
                     llvm::cl::init(0),
 		    llvm::cl::cat(ClamOptCat));
+
+llvm::cl::opt<bool, true>
+XCrabEnableDecoupling("crab-enable-decoupling",
+    llvm::cl::desc("Enable decoupled ascending/descending phases"),
+    llvm::cl::location(clam::CrabEnableDecoupling),
+    llvm::cl::init(false),
+    llvm::cl::cat(ClamOptCat));
 
 llvm::cl::opt<clam::CrabDomain::Type, true, clam::CrabDomainParser>
 XClamDomain("crab-dom",

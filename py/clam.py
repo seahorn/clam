@@ -328,6 +328,9 @@ def parseArgs(argv):
     p.add_argument('--crab-dom-params', dest='crab_dom_params', default=None,
                    help="Set abstract domain options STR=\"param1=val1:param2=val2:...\"",
                    metavar='STR')
+    add_bool_argument(p, 'crab-enable-decoupling', default=False,
+                      help='Enable decoupled ascending/descending phases',
+                      dest='enable_decoupling')
     p.add_argument('--crab-widening-delay',
                     type=int, dest='widening_delay',
                     help='Max number of iterations until performing widening', default=1)
@@ -881,6 +884,10 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.crab_lower_with_overflow_intrinsics:
         clam_args.append('--crab-lower-with-overflow-intrinsics')
     clam_args.append('--crab-dom={0}'.format(args.crab_dom))
+    if args.enable_decoupling:
+        clam_args.append('--crab-enable-decoupling=true')
+    else:
+        clam_args.append('--crab-enable-decoupling=false')
     clam_args.append('--crab-widening-delay={0}'.format(args.widening_delay))
     clam_args.append('--crab-widening-jump-set={0}'.format(args.widening_jump_set))
     clam_args.append('--crab-narrowing-iterations={0}'.format(args.narrowing_iterations))

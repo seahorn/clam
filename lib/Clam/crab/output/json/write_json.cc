@@ -160,6 +160,7 @@ void json_report_impl::write_parameters(const AnalysisParams &params,
   params_text["inter.exact_summary_reuse"].emplace_bool() =
       params.exact_summary_reuse;
   params_text["backward"].emplace_bool() = params.run_backward;
+  params_text["enable_decoupling"].emplace_bool() = params.enable_decoupling;
   params_text["widening_delay"].emplace_uint64() = params.widening_delay;
   params_text["narrowing_iterations"].emplace_uint64() = params.narrowing_iters;
   params_text["widening_jumpset"].emplace_uint64() = params.widening_jumpset;

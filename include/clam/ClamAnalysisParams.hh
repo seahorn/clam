@@ -36,6 +36,7 @@ struct AnalysisParams {
   /* end inter-procedural analysis */
   /* begin fixpoint parameters */
   unsigned relational_threshold;
+  bool enable_decoupling;
   unsigned widening_delay;
   unsigned narrowing_iters;
   unsigned widening_jumpset;
@@ -67,7 +68,8 @@ struct AnalysisParams {
         run_inter(false), max_calling_contexts(UINT_MAX),
         analyze_recursive_functions(false), exact_summary_reuse(true),
 	inter_entry_main(false), 
-        relational_threshold(10000), widening_delay(1), narrowing_iters(10),
+        relational_threshold(10000), enable_decoupling(false),
+        widening_delay(1), narrowing_iters(10),
         widening_jumpset(0), stats(false),
 	print_invars(InvariantPrinterOptions::NONE), 
 	print_unjustified_assumptions(false), print_preconds(false),
