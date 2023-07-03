@@ -18,7 +18,8 @@ void DomainRegistry::registerAllDomains() {
   register_num_domain();
   register_oct_domain();
   register_pk_domain();
-  register_pk_pplite_domain();  
+  register_pk_pplite_domain();
+  register_pk_ap_pplite_domain();
   register_sign_constant_domain();  
 }
 

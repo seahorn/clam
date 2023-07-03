@@ -6,6 +6,7 @@
 #include "oct.hh"
 #include "pk.hh"
 #include "pk_pplite.hh"
+#include "pk_ap_pplite.hh"
 #include "ric.hh"
 #include "split_dbm.hh"
 #include "split_oct.hh"
