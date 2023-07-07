@@ -41,7 +41,7 @@ public:
  * To add a new domain value:
  *
  * namespace CrabDomain {
- *   constexpr Type NEW_DOMAIN(15, ...);
+ *   constexpr Type NEW_DOMAIN(16, ...);
  * }
  **/
 
@@ -66,13 +66,18 @@ constexpr Type TERMS_ZONES(10, "rtz", "terms+zones", true, false);
 constexpr Type OCT(11, "oct", "octagons from Apron or Elina", true, false);
 constexpr Type PK(12, "pk", "polyhedra from Apron or Elina", true, false);
 constexpr Type PK_PPLITE(13, "pk-pplite", "polyhedra from PPLite", true, false);  
-constexpr Type SIGN_CONSTANTS(14, "sign-const", "sign+constants", false, false);  
-constexpr std::array<Type, 14> List = {INTERVALS,
+constexpr Type SIGN_CONSTANTS(14, "sign-const", "sign+constants", false, false);
+constexpr Type NON_UNIT_ZONES(15, "non-unit-zones",
+                               "zones with a fixed set of non-unit coefficients", true,
+                               false);
+  
+constexpr std::array<Type, 15> List = {INTERVALS,
                                        INTERVALS_CONGRUENCES,
                                        WRAPPED_INTERVALS,
                                        BOXES,
                                        DIS_INTERVALS,
                                        ZONES_SPLIT_DBM,
+				       NON_UNIT_ZONES,
 				       OCT_SPLIT_DBM,
                                        TERMS_INTERVALS,
                                        TERMS_DIS_INTERVALS,
