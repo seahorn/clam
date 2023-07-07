@@ -12,6 +12,7 @@ void DomainRegistry::registerAllDomains() {
   register_dis_interval_domain();
   register_boxes_domain();
   register_split_dbm_domain();
+  
   register_split_oct_domain();  
   register_term_int_domain();
   register_term_dis_int_domain();
@@ -19,7 +20,8 @@ void DomainRegistry::registerAllDomains() {
   register_oct_domain();
   register_pk_domain();
   register_pk_pplite_domain();  
-  register_sign_constant_domain();  
+  register_sign_constant_domain();
+  register_fixed_tvpi_split_dbm_domain();
 }
 
 bool DomainRegistry::count(CrabDomain::Type dom_ty) {

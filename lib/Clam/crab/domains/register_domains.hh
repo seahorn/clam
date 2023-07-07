@@ -10,6 +10,7 @@ extern bool register_pk_pplite_domain();
 extern bool register_ric_domain();
 extern bool register_sign_constant_domain();
 extern bool register_split_dbm_domain();
+extern bool register_fixed_tvpi_split_dbm_domain();  
 extern bool register_split_oct_domain();  
 extern bool register_term_dis_int_domain();  
 extern bool register_term_int_domain();  
