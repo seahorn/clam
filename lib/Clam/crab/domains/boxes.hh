@@ -10,6 +10,7 @@ using BASE(boxes_domain_t) = crab::domains::boxes_domain<number_t, varname_t>;
 // combine it with a boolean domain.
 //
 // TODO: Boxes does not implement rename operation so we cannot wrap
-// it in REF_FUN or ARRAY_FUN.
-using boxes_domain_t = crab::domains::array_smashing<BASE(boxes_domain_t)>;
+// it in ARRAY_FUN.
+
+using boxes_domain_t = RGN_FUN(array_smashing<BASE(boxes_domain_t)>);
 } // end namespace clam
