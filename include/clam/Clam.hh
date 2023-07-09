@@ -172,17 +172,16 @@ public:
   /* ClamQueryAPI */
   llvm::AliasResult alias(const llvm::MemoryLocation &,
 			  const llvm::MemoryLocation &,
-			  llvm::AAQueryInfo &) override;
+			  llvm::AAQueryInfo &) const override;
   
-  llvm::ConstantRange range(const llvm::Instruction &I) override;
-  
+  llvm::ConstantRange range(const llvm::Instruction &I) const override;
+  llvm::ConstantRange range(const llvm::Instruction &Inst, unsigned i) const override;
   llvm::ConstantRange range(const llvm::BasicBlock &B,
-			    const llvm::Value &V) override;
+			    const llvm::Value &V) const override;
 
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) override;
-  
+  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) const override;
   llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
-					       const llvm::Value &V) override;
+					       const llvm::Value &V) const override;
   
 };
 
@@ -248,17 +247,16 @@ public:
   /* ClamQueryAPI */
   llvm::AliasResult alias(const llvm::MemoryLocation &,
 			  const llvm::MemoryLocation &,
-			  llvm::AAQueryInfo &) override;
+			  llvm::AAQueryInfo &) const override;
   
-  llvm::ConstantRange range(const llvm::Instruction &I) override;
-  
+  llvm::ConstantRange range(const llvm::Instruction &I) const override;
+  llvm::ConstantRange range(const llvm::Instruction &Inst, unsigned i) const override;  
   llvm::ConstantRange range(const llvm::BasicBlock &B,
-			    const llvm::Value &V) override;
+			    const llvm::Value &V) const override;
 
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) override;
-  
+  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) const override;
   llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
-					       const llvm::Value &V) override;
+					       const llvm::Value &V) const override;
 };
 
 /**
