@@ -317,7 +317,9 @@ public:
     m_ref_bnd_map.insert({&I, {lhs_obj_sz, lhs_offset}});
   }
 
-  // Given b = is_deref(reg, ref, offset), add the CrabIR:
+  // Given b = is_deref(reg, ref, offset):
+  // remove the is_deref statement and
+  // add the CrabIR:
   //   check1 := ref.offset >= 0
   //   check2 := ref.offset + offset <= ref.size
   //   b := check1 && check2
@@ -336,6 +338,11 @@ public:
       CLAM_WARNING("Could not find arg of is_deref ptr "
                    << *vRef << " from reference map" << I);
     } else {
+      // We remove the call to is_deref because the lhs will be
+      // re-assigned by the new instruction.
+      statement_t &last_stmt = bb[bb.size()-1];
+      bb.remove(&last_stmt);
+      
       var_t ptr_obj_sz = it->second.first;
       var_t ptr_offset = it->second.second;
       var_t first_check = m_lfac.mkBoolVar();
