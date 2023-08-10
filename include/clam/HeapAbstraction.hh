@@ -132,12 +132,17 @@ public:
       o << "B";
       break;
     case region_type_t::INT_REGION:
-      o << "I"
-        << ":" << m_bitwidth;
+      o << "i" << m_bitwidth;
       break;
     case region_type_t::PTR_REGION:
       o << "P";
       break;
+    }
+    if (isSequence()) {
+      o << ":S";
+    }
+    if (isHeap()) {
+      o << ":H";
     }
   }
 
