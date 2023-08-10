@@ -1,6 +1,7 @@
 #pragma once
 
 #include "clam/HeapAbstraction.hh"
+#include "clam/CfgBuilderParams.hh"
 #include "llvm/ADT/StringRef.h"
 
 // forward declarations
@@ -22,6 +23,21 @@ class TargetLibraryInfoWrapperPass;
 namespace clam {
   
 class SeaDsaHeapAbstractionImpl;
+
+struct SeaDsaHeapAbstractionParams {
+  CrabBuilderPrecision precision_level;
+  bool is_context_sensitive;
+  bool disambiguate_unknown;
+  bool disambiguate_ptr_cast;
+  bool disambiguate_external;
+  
+  SeaDsaHeapAbstractionParams():
+    precision_level(CrabBuilderPrecision::MEM),
+    is_context_sensitive(true),
+    disambiguate_unknown(false),
+    disambiguate_ptr_cast(false),
+    disambiguate_external(false) {}
+};
   
 /*
  * Wrapper for sea-dsa (https://github.com/seahorn/sea-dsa)
@@ -38,17 +54,12 @@ public:
                         const llvm::TargetLibraryInfoWrapperPass &tli,
                         const seadsa::AllocWrapInfo &alloc_wrap_info,
                         const seadsa::DsaLibFuncInfo &spec_graph_info,
-                        bool is_context_sensitive,
-                        bool disambiguate_unknown = false,
-                        bool disambiguate_ptr_cast = false,
-                        bool disambiguate_external = false);
+			SeaDsaHeapAbstractionParams params);
 
   // This constructor takes an existing sea-dsa Global Analysis instance.
   // It doesn't own it.
   SeaDsaHeapAbstraction(const llvm::Module &M, seadsa::GlobalAnalysis &dsa,
-                        bool disambiguate_unknown = false,
-                        bool disambiguate_ptr_cast = false,
-                        bool disambiguate_external = false);
+			SeaDsaHeapAbstractionParams params);
 
   ~SeaDsaHeapAbstraction();
 

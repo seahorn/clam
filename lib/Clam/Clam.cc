@@ -1383,14 +1383,14 @@ bool ClamPass::runOnModule(Module &M) {
     seadsa::DsaLibFuncInfo &dsaLibFuncInfo =
         getAnalysis<seadsa::DsaLibFuncInfo>();
 
-    mem.reset(new SeaDsaHeapAbstraction(
-        M, cg, tli, allocWrapInfo, dsaLibFuncInfo,
-        (CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA),
-        CrabDsaDisambiguateUnknown, CrabDsaDisambiguatePtrCast,
-        CrabDsaDisambiguateExternal));
-    CRAB_VERBOSE_IF(1, crab::get_msg_stream()
-                           << "Finished sea-dsa analysis\n";);
-
+    SeaDsaHeapAbstractionParams params;
+    params.precision_level = CrabTrackLev;
+    params.is_context_sensitive = CrabHeapAnalysis == heap_analysis_t::CS_SEA_DSA;
+    params.disambiguate_unknown = CrabDsaDisambiguateUnknown;
+    params.disambiguate_ptr_cast = CrabDsaDisambiguatePtrCast;
+    params.disambiguate_external = CrabDsaDisambiguateExternal;
+    mem.reset(new SeaDsaHeapAbstraction(M, cg, tli, allocWrapInfo, dsaLibFuncInfo, params));
+    CRAB_VERBOSE_IF(1, crab::get_msg_stream() << "Finished sea-dsa analysis\n";);
     if (CrabDsaDot) {
       seadsa::DsaPrinter
 	printer(*(static_cast<SeaDsaHeapAbstraction*>(&*mem)->getSeaDsa()), &ccg);
