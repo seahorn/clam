@@ -66,6 +66,10 @@ static llvm::cl::opt<bool>
                  llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
+    DevirtualizeCallArgs("clam-devirt-callargs", llvm::cl::desc("Resolve call arguments"),
+                 llvm::cl::init(false));
+
+static llvm::cl::opt<bool>
     Scalarize("clam-scalarize", llvm::cl::desc("Scalarize vector operations"),
               llvm::cl::init(true));
 
@@ -242,6 +246,10 @@ int main(int argc, char **argv) {
   if (Devirtualize) {
     pass_manager.add(llvm::createWholeProgramDevirtPass(nullptr, nullptr));    
     pass_manager.add(clam::createDevirtualizeFunctionsPass());
+
+    if (DevirtualizeCallArgs) {
+      pass_manager.add(clam::createDevirtualizeCallArgsPass(true/*only extern calls*/));
+    }
   }
 
   // -- externalize some user-selected functions

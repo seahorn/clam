@@ -7,6 +7,7 @@ add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   MarkInternalInline.cc
   DevirtFunctions.cc
   DevirtFunctionsPass.cc
+  DevirtCallArgs.cc
   ExternalizeFunctions.cc  
   ExternalizeAddressTakenFunctions.cc
   PromoteAssume.cc  

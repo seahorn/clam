@@ -271,6 +271,9 @@ def parseArgs(argv):
                     dest='devirt',
                     choices=['none','types','sea-dsa'],
                     default='none')
+    p.add_argument('--devirt-callargs',
+                    help='Resolve callsite arguments. --devirt-function must be != none',
+                    dest='devirt_callargs', default=False, action='store_true')
     p.add_argument ('--entry', dest='entry', help='Make entry point if main does not exist',
                     default=None, metavar='str')
     p.add_argument ('--externalize-functions',
@@ -814,6 +817,8 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
             crabpp_args.append('--sea-dsa-type-aware=true')
         elif args.devirt == 'dsa':
             crabpp_args.append('--devirt-resolver=dsa')
+        if args.devirt_callargs:
+            crabpp_args.append('--clam-devirt-callargs')
             
     if args.extern_funcs:
         for f in args.extern_funcs.split(','):

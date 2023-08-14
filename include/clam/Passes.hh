@@ -17,6 +17,7 @@ llvm::Pass *createMarkInternalInlinePass();
 llvm::Pass *createRemoveUnreachableBlocksPass();
 llvm::Pass *createSimplifyAssumePass();
 llvm::Pass *createDevirtualizeFunctionsPass();
+llvm::Pass *createDevirtualizeCallArgsPass(bool onlyExternCalls);
 llvm::Pass *createExternalizeAddressTakenFunctionsPass();
 llvm::Pass *createExternalizeFunctionsPass();
 llvm::Pass *createPromoteMallocPass();
