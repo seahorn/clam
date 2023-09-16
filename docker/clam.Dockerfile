@@ -10,11 +10,6 @@ FROM seahorn/buildpack-deps-seahorn:$BASE_IMAGE
 # Needed to run clang with -m32
 RUN apt-get install -yqq libc6-dev-i386
 
-#ARG BRANCH=dev14
-#RUN cd / && rm -rf /clam && \
-#    git clone -b $BRANCH https://github.com/seahorn/clam.git clam --depth=10 ; \
-#    mkdir -p /clam/build
-
 # Assume that docker-build is ran in the top-level Clam directory
 COPY . /clam
 # Re-create the build directory that might have been present in the source tree

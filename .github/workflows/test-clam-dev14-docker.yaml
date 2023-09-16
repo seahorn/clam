@@ -1,14 +1,14 @@
 # Workflow to build and test clam after each push or pull request
 
-name: CI
+name: CI-dev14
 
 # Controls when the action will run. 
 on:
-  # Triggers the workflow on push or pull request events but only for the master branch
+  # Triggers the workflow on push or pull request events but only for the dev14 branch
   push:
-    branches: master
+    branches: dev14
   pull_request:
-    branches: master
+    branches: dev14
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -23,6 +23,6 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v2
         with:
-          ref: master
+          ref: dev14
       - name: Build clam and run tests
         run: docker build -t seahorn/clam-llvm14:nightly -f docker/clam.Dockerfile .
