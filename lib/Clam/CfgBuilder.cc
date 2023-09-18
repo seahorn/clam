@@ -175,23 +175,21 @@ static void havoc(var_t v, std::string comment, basic_block_t &bb,
   }
 }
 
+/**
+ * Translating unsigned comparisons by using select operators
+ * PRECONDITION: x cmp y, where cmp will be either <= or <
+ * 
+ * For instance, x u< y will be translated into:
+ *
+ *    select(x s>= 0, select(y s>= 0, x u< y, true), select(y s>= 0, false, x u< y)
+ * 
+ * if isNegated is true then we logically negate cmp, true and false 
+**/
 static void unsignedCmpIntoSignOnes(var_t &res, lin_exp_t &op0, lin_exp_t &op1,
 				    crabLitFactory &lfac, basic_block_t &bb,
-				    const bool isNegated, const bool isCmpULE) {
-  // translating unsigned comparisons by using select operators
-  // x cmp y, where cmp will be either <= or <
-  // will be translated into:
-  // if x >= 0
-  //     if y >= 0 then x cmp y
-  //     else // x >= 0 y < 0
-  //        false
-  // else
-  //     if y >= 0 then // x < 0 y >= 0
-  //        true
-  //     else x cmp y
-  // reverse cmp, true and false if isNegated is set
+				    const bool isNegated, const bool isNonStrict) {
   lin_cst_t cmp;
-  if (isCmpULE) {
+  if (isNonStrict) {
     if (!isNegated)
       cmp = lin_cst_t(op0 <= op1);
     else
@@ -202,70 +200,100 @@ static void unsignedCmpIntoSignOnes(var_t &res, lin_exp_t &op0, lin_exp_t &op1,
     else
       cmp = lin_cst_t(op0 >= op1);
   }
+  lin_cst_t trueC  = !isNegated ? lin_cst_t::get_true() : lin_cst_t::get_false();
+  lin_cst_t falseC = !isNegated ? lin_cst_t::get_false() : lin_cst_t::get_true();  
   lin_cst_t cst_op0 = lin_cst_t(op0 >= 0);
   lin_cst_t cst_op1 = lin_cst_t(op1 >= 0);
+
   if (cst_op0.is_tautology()) {   // if the first operand is >= 0
     if (cst_op1.is_tautology()) { // if the second operand is >= 0
+      /**
+       *   x u< y
+       **/      
       bb.bool_assign(res, cmp);
     } else if (cst_op1.is_contradiction()) { // if the second operand is < 0
-      bb.bool_assign(res, !isNegated ? lin_cst_t::get_false()
-                                     : lin_cst_t::get_true());
+      /**
+       *   true
+       **/      
+      bb.bool_assign(res, trueC);
     } else { // don't know the value of the second operand
-      var_t select_cond_1 = lfac.mkBoolVar();
-      bb.bool_assign(select_cond_1, cst_op1);
-      var_t cmp_var = lfac.mkBoolVar();
-      bb.bool_assign(cmp_var, cmp);
-      var_t v_false = lfac.mkBoolVar();
-      bb.bool_assign(v_false, !isNegated ? lin_cst_t::get_false()
-                                         : lin_cst_t::get_true());
-      bb.bool_select(res, select_cond_1, cmp_var, v_false);
+      /**
+       *   select(y s>= 0, x u< y, true)
+       **/      
+      var_t condB = lfac.mkBoolVar();
+      bb.bool_assign(condB, cst_op1);
+      var_t thenB = lfac.mkBoolVar();
+      bb.bool_assign(thenB, cmp);
+      var_t elseB = lfac.mkBoolVar();
+      bb.bool_assign(elseB, trueC); 
+      bb.bool_select(res, condB, thenB, elseB);
     }
   } else if (cst_op0.is_contradiction()) { // if the first operand is < 0
     if (cst_op1.is_tautology()) {          // if the second operand is >= 0
-      bb.bool_assign(res, !isNegated ? lin_cst_t::get_true()
-                                     : lin_cst_t::get_false());
+      /**
+       *   false
+       **/
+      bb.bool_assign(res, falseC);
     } else if (cst_op1.is_contradiction()) { // if the second operand is < 0
+      /**
+       *    x u< y
+       **/
       bb.bool_assign(res, cmp);
     } else { // don't know the value of the second operand
-      var_t select_cond_1 = lfac.mkBoolVar();
-      bb.bool_assign(select_cond_1, cst_op1);
-      var_t v_true = lfac.mkBoolVar();
-      bb.bool_assign(v_true, !isNegated ? lin_cst_t::get_true()
-                                        : lin_cst_t::get_false());
-      var_t cmp_var = lfac.mkBoolVar();
-      bb.bool_assign(cmp_var, cmp);
-      bb.bool_select(res, select_cond_1, v_true, cmp_var);
+      /**
+       *   select(y s>= 0, false, x u< y) 
+       **/      
+      var_t condB = lfac.mkBoolVar();
+      bb.bool_assign(condB, cst_op1);
+      var_t thenB = lfac.mkBoolVar();
+      bb.bool_assign(thenB, falseC);
+      var_t elseB = lfac.mkBoolVar();
+      bb.bool_assign(elseB, cmp);
+      bb.bool_select(res, condB, thenB, elseB);
     }
   } else { // don't know the value of the first operand
-    var_t select_cond_2 = lfac.mkBoolVar();
-    var_t op0_ge_0 = lfac.mkBoolVar();
-    var_t op0_lt_0 = lfac.mkBoolVar();
-    bb.bool_assign(select_cond_2, cst_op0);
     if (cst_op1.is_tautology()) { // if the second operand is >= 0
-      bb.bool_assign(op0_ge_0, cmp);
-      bb.bool_assign(op0_lt_0, !isNegated ? lin_cst_t::get_true()
-                                          : lin_cst_t::get_false());
+      /**
+       *   select(x s>= 0, x u< y, false) 
+       **/
+      var_t condB = lfac.mkBoolVar();
+      bb.bool_assign(condB, cst_op0);            
+      var_t thenB = lfac.mkBoolVar();
+      bb.bool_assign(thenB, cmp);
+      var_t elseB = lfac.mkBoolVar();      
+      bb.bool_assign(elseB, falseC);
+      bb.bool_select(res, condB, thenB, elseB);      
     } else if (cst_op1.is_contradiction()) { // if the second operand is < 0
-      bb.bool_assign(op0_ge_0, !isNegated ? lin_cst_t::get_false()
-                                          : lin_cst_t::get_true());
-      bb.bool_assign(op0_lt_0, cmp);
+      /**
+       *   select(x s>= 0, true, x u< y) 
+       **/
+      var_t condB = lfac.mkBoolVar();
+      bb.bool_assign(condB, cst_op0);      
+      var_t thenB = lfac.mkBoolVar();
+      bb.bool_assign(thenB, trueC);      
+      var_t elseB = lfac.mkBoolVar();
+      bb.bool_assign(elseB, cmp);
+      bb.bool_select(res, condB, thenB, elseB);      
     } else { // don't know the value of those operands, general cases
-      var_t select_cond_1 = lfac.mkBoolVar();
-      bb.bool_assign(select_cond_1, cst_op1);
-      var_t cmp_var_true = lfac.mkBoolVar();
-      bb.bool_assign(cmp_var_true, cmp);
-      var_t v_false = lfac.mkBoolVar();
-      bb.bool_assign(v_false, !isNegated ? lin_cst_t::get_false()
-                                         : lin_cst_t::get_true());
-      bb.bool_select(op0_ge_0, select_cond_1, cmp_var_true, v_false);
-      var_t cmp_var_false = lfac.mkBoolVar();
-      bb.bool_assign(cmp_var_false, cmp);
-      var_t v_true = lfac.mkBoolVar();
-      bb.bool_assign(v_true, !isNegated ? lin_cst_t::get_true()
-                                        : lin_cst_t::get_false());
-      bb.bool_select(op0_lt_0, select_cond_1, v_true, cmp_var_false);
+      /**
+       *   select(x s>= 0, select(y s>= 0, x u< y, true), select(y s>= 0, false, x u< y) 
+       **/
+      var_t condB1 = lfac.mkBoolVar();
+      bb.bool_assign(condB1, cst_op0);  
+      var_t condB2 = lfac.mkBoolVar();
+      bb.bool_assign(condB2, cst_op1);
+      var_t cmpB = lfac.mkBoolVar();
+      bb.bool_assign(cmpB, cmp);
+      var_t elseB2 = lfac.mkBoolVar();
+      bb.bool_assign(elseB2, trueC);
+      var_t thenB1 = lfac.mkBoolVar();
+      bb.bool_select(thenB1, condB2, cmpB, elseB2);
+      var_t thenB2 = lfac.mkBoolVar();
+      bb.bool_assign(thenB2, falseC);
+      var_t elseB1 = lfac.mkBoolVar();  
+      bb.bool_select(elseB1, condB2, thenB2, cmpB);
+      bb.bool_select(res, condB1, thenB1, elseB1);
     }
-    bb.bool_select(res, select_cond_2, op0_ge_0, op0_lt_0);
   }
 }
 
@@ -332,7 +360,7 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
   case CmpInst::ICMP_ULT: {
     if (removeUnsignedCmp) {
       unsignedCmpIntoSignOnes(lhs, op0, op1, lfac, bb,
-			      false /*isNegated*/, false /* isCmpULE*/);
+			      false /*isNegated*/, false /* isNonStrict*/);
     } else {
       CLAM_WARNING("Crab does not support unsigned constraints. Use --crab-lower-unsigned-icmp option");
     }
@@ -341,7 +369,7 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
   case CmpInst::ICMP_ULE: {
     if (removeUnsignedCmp) {
       unsignedCmpIntoSignOnes(lhs, op0, op1, lfac, bb,
-			      false /*isNegated*/, true /*isCmpULE*/); 
+			      false /*isNegated*/, true /*isNonStrict*/); 
     } else {
       CLAM_WARNING("Crab does not support unsigned constraints. Use --crab-lower-unsigned-icmp option"); 
     }

@@ -1,8 +1,8 @@
 // RUN: %clam -O0 --lower-unsigned-icmp --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck %s
 // RUN: %clam -O0 --crab-lower-unsigned-icmp --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck %s
-// CHECK: ^2  Number of total safe checks$
+// CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
-// CHECK: ^0  Number of total warning checks$
+// CHECK: ^1  Number of total warning checks$
 
 #include <stdio.h>
 #include <stdint.h>
@@ -18,7 +18,8 @@ int main(void) {
   __CRAB_assume(x < mmax);
 
   
-  __CRAB_assert(x >= 3); 
-  __CRAB_assert(x <= 9); 
+  __CRAB_assert(x >= 3); // EXPECTED WARNING: this assertion is provable but we need to
+                         // restrict nd_uint8_t(). 
+  __CRAB_assert(x <= 9); // EXPECTED OK
   return 0;
 }

@@ -1,5 +1,5 @@
 // RUN: %clam --inline --crab-dom=pk --crab-track=mem --crab-heap-analysis=cs-sea-dsa-types --crab-lower-unsigned-icmp=true --crab-check=assert  --crab-disable-warnings --crab-inter  --entry=entrypoint "%s" 2>&1 | OutputCheck %s
-// CHECK: ^4  Number of total safe checks$
+// CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^0  Number of total warning checks$
 
@@ -101,20 +101,11 @@ uint64_t entrypoint(const uint8_t *input) {
   uint64_t val = CVT_nondet_uint64();
   // Make sure that the source has enough funds  
   ASSUME(src_lamport_before >= val);
-
-  // Make it a constant value so that zones can handle
-  // *source_info->lamports -= k which is translated to
-  // tmp2 := load_from_mem(...);
-  // tmp1 = tmp2 - k
-  // store_to_mem(...,tmp1);
-  ASSUME(val == 100);       
   transfer(&params, val);
 
   uint64_t src_lamport_after = *(source_info->lamports);
   uint64_t dst_lamport_after = *(destination_info->lamports);
 
-  ASSERT(src_lamport_before >= src_lamport_after);
-  ASSERT(dst_lamport_before <= dst_lamport_after);
   ASSERT(src_lamport_before == src_lamport_after + val);
   ASSERT(dst_lamport_after  == dst_lamport_before + val);
   

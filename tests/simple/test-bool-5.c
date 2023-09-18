@@ -10,12 +10,6 @@
 #include <stdbool.h>
 #include "clam/clam.h"
 
-size_t size_t_nd(void) {
-    int res = nd_int();
-    __CRAB_assume(res >= 0);
-    return res;
-}
-
 int main() {
 
   bool a = nd_bool();

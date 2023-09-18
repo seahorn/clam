@@ -1,6 +1,6 @@
 // RUN: %clam -O0 --crab-inter --lower-unsigned-icmp --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck %s
 // RUN: %clam -O0 --crab-inter --crab-lower-unsigned-icmp --crab-dom=int --crab-check=assert "%s" 2>&1 | OutputCheck %s
-// CHECK: ^1  Number of total safe checks$
+// CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^1  Number of total warning checks$
 
@@ -24,7 +24,9 @@ int main(void) {
   __CRAB_assume(x < mmax);
 
   
-  __CRAB_assert(x >= 3); // CAN BE PROVEN
-  __CRAB_assert(x <= 8); // EXPECTED OK BUT CANNOT BE PROVEN
+  __CRAB_assert(x >= 3); // EXPECTED OK
+  __CRAB_assert(x <= 8); // EXPECTED WARNING
+  __CRAB_assert(x <= 20); // EXPECTED OK
+  
   return 0;
 }
