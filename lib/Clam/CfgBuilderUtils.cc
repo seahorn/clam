@@ -362,8 +362,10 @@ bool AllUsesAreVerifierCalls(Value &V, bool goThroughIntegerCasts,
     Value *User = U.getUser();
     if (goThroughIntegerCasts) {
       if (isa<ZExtInst>(User) || isa<SExtInst>(User)) {
-        return AllUsesAreVerifierCalls(*User, goThroughIntegerCasts,
-                                       nonBoolCond, verifierCalls, onlyAssume);
+        if (!AllUsesAreVerifierCalls(*User, goThroughIntegerCasts,
+				     nonBoolCond, verifierCalls, onlyAssume)) {
+	  return false;
+	}
       }
     }
 
