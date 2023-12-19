@@ -122,7 +122,14 @@ crab_lit_ref_t crabLitFactoryImpl::getLit(const Value &v, bool IntCstAsSigned) {
     if (lit.hasValue()) {
       crab_lit_ref_t ref = std::static_pointer_cast<crabLit>(
           std::make_shared<crabIntLit>(lit.getValue()));
-      m_lit_cache.insert({&v, ref});
+      if (IntCstAsSigned) {
+	// We only cache an integer constant if it is
+	// signed. Otherwise, we can get an inconsistent integer if we
+	// cached a signed one and then we ask for an unsigned (or
+	// vice-versa). A better solution is to have two caches one
+	// for signed and one for unsigned.
+	m_lit_cache.insert({&v, ref});
+      }
       return ref;
     }
   } else if (t.isPointerTy()) {
