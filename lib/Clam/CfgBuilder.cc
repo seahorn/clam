@@ -314,18 +314,14 @@ static void cmpInstToCrabBool(CmpInst &I, crabLitFactory &lfac,
   }
   var_t lhs = ref->getVar();
 
-  const bool interpretAsSigned =
-    (I.getPredicate() != CmpInst::ICMP_ULT &&
-     I.getPredicate() != CmpInst::ICMP_ULE);
-    
-  crab_lit_ref_t ref0 = lfac.getLit(v0, interpretAsSigned);
+  crab_lit_ref_t ref0 = lfac.getLit(v0);
   if (!ref0 || !(ref0->isInt())) {
     havoc(lhs, valueToStr(I), bb,
           lfac.getCfgBuilderParams().include_useless_havoc);
     return;
   }
 
-  crab_lit_ref_t ref1 = lfac.getLit(v1, interpretAsSigned);
+  crab_lit_ref_t ref1 = lfac.getLit(v1);
   if (!ref1 || !(ref1->isInt())) {
     havoc(lhs, valueToStr(I), bb,
           lfac.getCfgBuilderParams().include_useless_havoc);
@@ -555,11 +551,11 @@ static Optional<var_t> unsignedCmpInstToCrabInt(CmpInst &I,
   const Value &v0 = *I.getOperand(0);
   const Value &v1 = *I.getOperand(1);
 
-  crab_lit_ref_t ref0 = lfac.getLit(v0, false /*interpretedAsSigned*/);
+  crab_lit_ref_t ref0 = lfac.getLit(v0);
   if (!ref0 || !(ref0->isInt()))
     return llvm::None;
 
-  crab_lit_ref_t ref1 = lfac.getLit(v1, false /*interpreterAsSigned*/);
+  crab_lit_ref_t ref1 = lfac.getLit(v1);
   if (!ref1 || !(ref1->isInt()))
     return llvm::None;
 
