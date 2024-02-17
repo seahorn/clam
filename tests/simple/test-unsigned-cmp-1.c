@@ -1,6 +1,7 @@
 #include "clam/clam.h"
 
 // RUN: %clam -O0 --inline --crab-lower-unsigned-icmp  --crab-check=assert "%s" 2>&1 | OutputCheck %s
+// RUN: %clam -O0 --inline --lower-unsigned-icmp  --crab-check=assert "%s" 2>&1 | OutputCheck %s
 // CHECK: ^2  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
 

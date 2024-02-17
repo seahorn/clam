@@ -1,5 +1,5 @@
-; RUN: %clam -O0 --crab-inter --crab-dom=int --crab-track=sing-mem --crab-opt=replace-with-constants --devirt-functions=sea-dsa --crab-print-invariants=false --crab-disable-warnings "%s".c -o %s.bc
-; RUN: %llvm_dis < %s.bc | OutputCheck %s --comment=";"
+; RUN: %clam -O0 --crab-inter --crab-dom=int --crab-track=sing-mem --crab-opt=replace-with-constants --devirt-functions=sea-dsa --crab-print-invariants=false --crab-disable-warnings "%s".c -o %t.bc
+; RUN: %llvm_dis < %t.bc | OutputCheck %s --comment=";"
 
 
 ; ModuleID = 'test.bc'

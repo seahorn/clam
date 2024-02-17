@@ -1,6 +1,6 @@
-// RUN: clang -O1 -c -emit-llvm %s -o %s.bc
-// RUN: %clam --no-preprocess --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-lower-unsigned-icmp=true --crab-check=assert %s.bc 2>&1 | OutputCheck %s
-// RUN: %clam --no-preprocess --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --lower-unsigned-icmp --crab-check=assert %s.bc 2>&1 | OutputCheck %s
+// RUN: clang -O1 -c -emit-llvm %s -o %t.bc
+// RUN: %clam --no-preprocess --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-lower-unsigned-icmp=true --crab-check=assert %t.bc 2>&1 | OutputCheck %s
+// RUN: %clam --no-preprocess --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --lower-unsigned-icmp --crab-check=assert %t.bc 2>&1 | OutputCheck %s
 // CHECK: ^0  Number of total safe checks$
 // CHECK: ^0  Number of total error checks$
 // CHECK: ^1  Number of total warning checks$
