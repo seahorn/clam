@@ -4380,13 +4380,10 @@ void CfgBuilderImpl::buildCfg() {
       v.visit(const_cast<BasicBlock &>(*dst));
 
       if (tmp_mid_bb) {
-	if (&B == dst) {
-	  // If a self-loop then insert the assignments from PHI nodes
-	  // *before* the assume statements from execEdge.
-	  mid_bb->copy_front(*tmp_mid_bb);
-	} else {
-	  mid_bb->copy_back(*tmp_mid_bb);	  
-	} 
+	// We always insert the assignments from PHI nodes after the
+	// assume statements from execEdge.  Even if we are inside a
+	// self-loop.
+	mid_bb->copy_back(*tmp_mid_bb);	  
       }
     }
 
