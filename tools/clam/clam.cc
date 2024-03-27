@@ -235,6 +235,9 @@ int main(int argc, char **argv) {
 
   assert(dl && "Could not find Data Layout for the module");
 
+  llvm::LLVMContext& ctx = module->getContext();
+  llvm::PointerType* i8PtrTy = llvm::PointerType::getInt8PtrTy(ctx);	  
+
   /**
    * Here only passes that are strictly necessary to avoid crashes or
    * too poor results. Passes that are only for improving precision
