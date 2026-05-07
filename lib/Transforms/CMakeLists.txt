@@ -12,6 +12,9 @@ add_llvm_library(LlvmPasses ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   ExternalizeAddressTakenFunctions.cc
   PromoteAssume.cc  
   PromoteMalloc.cc
+  PromoteMemcpy.cc
+  LazyValueConst.cc
+  InsertTaintIntrinsic.cc
   NondetInit.cc
   LoopPeeler.cc
   PropertyInstrumentation/MemoryCheck.cc
@@ -25,7 +28,9 @@ llvm_map_components_to_libnames(LLVM_LIBS
 target_link_libraries(LlvmPasses
   ${SEA_DSA_LIBS}
   ## Needed if dynamic linking
-  ${LLVM_LIBS})
+  ${LLVM_LIBS}
+  CrabSupport
+  )
 
 install(TARGETS LlvmPasses 
   ARCHIVE DESTINATION lib

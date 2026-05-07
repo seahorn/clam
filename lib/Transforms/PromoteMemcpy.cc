@@ -4,6 +4,7 @@
       for each field_id in fields(BufferTy):
         *GEP(Dst, field_id) = *GEP(Src, field_id)
 */
+#include "clam/NewPmPasses.hh"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/IR/DataLayout.h"
@@ -27,6 +28,7 @@ public:
   PromoteMemcpy() : FunctionPass(ID) {}
 
   bool runOnFunction(Function &F) override;
+  bool runImpl(Function &F, DominatorTree *DT, AssumptionCache *AC);
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesCFG();
@@ -51,44 +53,22 @@ private:
 
 char PromoteMemcpy::ID = 0;
 
-// Helper to try to get the original type from a value
+// Helper to try to get the original type from a value. Under opaque pointers
+// the pointee type is gone, so the type comes from the underlying object:
+// alloca allocated type, global value type, or a GEP's result element type.
 Type *PromoteMemcpy::getOriginalType(Value *V, Value *&SrcPtr) {
-  // Handle direct struct pointers
-  if (auto *PtrTy = dyn_cast<PointerType>(V->getType())) {
-    if (PtrTy->getPointerElementType()->isStructTy()) {
-      return PtrTy->getPointerElementType();
-    }
-  }
+  V = V->stripPointerCasts();
+  SrcPtr = V;
 
-  // Handle bitcast instructions
-  if (auto *BC = dyn_cast<BitCastInst>(V)) {
-    Value *Source = BC->getOperand(0);
-    SrcPtr = Source;
-    if (auto *SrcPtrTy = dyn_cast<PointerType>(Source->getType())) {
-      if (SrcPtrTy->getPointerElementType()->isStructTy()) {
-        return SrcPtrTy->getPointerElementType();
-      }
-    }
-    // Recursively look through nested bitcasts
-    return getOriginalType(Source, SrcPtr);
-  }
+  if (auto *Alloca = dyn_cast<AllocaInst>(V))
+    return Alloca->getAllocatedType();
 
-  // Handle GEP instructions (struct member access)
-  if (auto *GEP = dyn_cast<GetElementPtrInst>(V)) {
-    if (auto *SrcTy = GEP->getSourceElementType()) {
-      if (SrcTy->isStructTy()) {
-        return SrcTy;
-      }
-    }
-  }
+  if (auto *GV = dyn_cast<GlobalVariable>(V))
+    return GV->getValueType();
 
-  // Handle alloca instructions
-  if (auto *Alloca = dyn_cast<AllocaInst>(V)) {
-    Type *AllocatedTy = Alloca->getAllocatedType();
-    if (AllocatedTy->isStructTy()) {
-      return AllocatedTy;
-    }
-  }
+  // Struct member access: the copied object is the GEP's element.
+  if (auto *GEP = dyn_cast<GetElementPtrInst>(V))
+    return GEP->getResultElementType();
 
   return nullptr;
 }
@@ -109,51 +89,26 @@ bool PromoteMemcpy::isFirstClassMemcpy(MemCpyInst *MI, Type *&BufferTy,
     return false;
   }
 
-  auto *SrcPtrTy = cast<PointerType>(SrcPtr->getType());
-  auto *DstPtrTy = cast<PointerType>(DstPtr->getType());
+  // Opaque pointers carry no pointee type, so both the former "direct struct
+  // pointer" and "bitcast to i8*" cases reduce to recovering the copied type
+  // from the underlying objects and checking it spans the whole memcpy.
+  auto *RawSrcPtr = MI->getRawSource();
+  auto *RawDstPtr = MI->getRawDest();
 
-  // Method 1: Direct struct pointer check
-  if (SrcPtrTy->getPointerElementType()->isFirstClassType() &&
-      DstPtrTy->getPointerElementType()->isFirstClassType()) {
+  Type *SrcDataTy = getOriginalType(RawSrcPtr, SrcPtr);
+  Type *DstDataTy = getOriginalType(RawDstPtr, DstPtr);
 
-    auto *SrcDataTy = SrcPtrTy->getPointerElementType();
-    auto *DstDataTy = DstPtrTy->getPointerElementType();
+  if (SrcDataTy && DstDataTy && SrcDataTy->isFirstClassType() &&
+      SrcDataTy == DstDataTy) {
 
-    // Ensure both are the same type
-    if (SrcDataTy != DstDataTy) {
-      return false;
-    }
+    // Verify size matches memcpy length
+    if (MemOpLength) {
+      uint64_t Size = MemOpLength->getLimitedValue();
+      uint64_t TypeSize = m_DL->getTypeStoreSize(SrcDataTy);
 
-    if (MemOpLength &&
-        m_DL->getTypeStoreSize(SrcDataTy) == MemOpLength->getLimitedValue()) {
-      BufferTy = SrcDataTy;
-      return true;
-    }
-  }
-
-  // Method 2: Handle bitcast to i8* (common pattern)
-  if (SrcPtrTy->getPointerElementType()->isIntegerTy(8) &&
-      DstPtrTy->getPointerElementType()->isIntegerTy(8)) {
-
-    // Look through bitcasts to find original struct types
-    auto *RawSrcPtr = MI->getRawSource();
-    auto *RawDstPtr = MI->getRawDest();
-
-    Type *SrcDataTy = getOriginalType(RawSrcPtr, SrcPtr);
-    Type *DstDataTy = getOriginalType(RawDstPtr, DstPtr);
-
-    if (SrcDataTy && DstDataTy && SrcDataTy->isFirstClassType() &&
-        SrcDataTy == DstDataTy) {
-
-      // Verify size matches memcpy length
-      if (MemOpLength) {
-        uint64_t Size = MemOpLength->getLimitedValue();
-        uint64_t TypeSize = m_DL->getTypeStoreSize(SrcDataTy);
-
-        if (TypeSize == Size) {
-          BufferTy = SrcDataTy;
-          return true;
-        }
+      if (TypeSize == Size) {
+        BufferTy = SrcDataTy;
+        return true;
       }
     }
   }
@@ -220,50 +175,28 @@ bool PromoteMemcpy::simplifyMemCpy(MemCpyInst *MI) {
   // for each field_id in fields(BufferTy):
   //   *GEP(Dst, field_id) = *GEP(Src, field_id)
   //
-  using Transfer = std::pair<Value *, Value *>;
-  SmallVector<Transfer, 4> ToLower = {std::make_pair(SrcPtr, DstPtr)};
-  while (!ToLower.empty()) {
-    Value *TrSrc, *TrDst;
-    std::tie(TrSrc, TrDst) = ToLower.pop_back_val();
-    auto *Ty = TrSrc->getType();
-    assert(Ty == TrDst->getType());
-
-    if (!Ty->isStructTy()) {
-      assert(TrSrc->getType()->isPointerTy());
-      auto *TrSrcPtr = cast<PointerType>(TrSrc->getType());
-      auto *LoadedTy = TrSrcPtr->getPointerElementType();
-      auto *NewLoad =
-          Builder.CreateLoad(LoadedTy, TrSrc, SrcPtr->getName() + ".pmcpy");
-      auto *NewStore = Builder.CreateStore(NewLoad, TrDst);
-      continue;
-    }
-
-    SmallVector<Transfer, 8> TmpBuff;
-    for (unsigned i = 0, e = Ty->getStructNumElements(); i != e; ++i) {
-      auto *Idx = Constant::getIntegerValue(I32Ty, APInt(32, i));
-      auto *SrcGEP = Builder.CreateInBoundsGEP(nullptr, SrcPtr, {NullInt, Idx},
-                                               "src.gep.pmcpy");
-      auto *DstGEP = Builder.CreateInBoundsGEP(nullptr, DstPtr, {NullInt, Idx},
-                                               "buffer.gep.pmcpy");
-      TmpBuff.push_back({SrcGEP, DstGEP});
-    }
-
-    for (auto &P : llvm::reverse(TmpBuff)) {
-      ToLower.push_back(P);
-    }
-  }
+  // Under typed pointers the field-wise worklist below this comment was dead
+  // code (its struct test ran on the *pointer* type), so every promoted
+  // memcpy was emitted as one whole-aggregate load/store. Keep exactly that
+  // behavior; BufferTy now supplies the type the pointee used to.
+  Builder.CreateStore(
+      Builder.CreateLoad(BufferTy, SrcPtr, SrcPtr->getName() + ".pmcpy"),
+      DstPtr);
+  (void)NullInt;
+  (void)I32Ty;
   return true;
 }
 
-bool PromoteMemcpy::runOnFunction(Function &F) {
+bool PromoteMemcpy::runImpl(Function &F, DominatorTree *DT,
+                            AssumptionCache *AC) {
   if (F.empty())
     return false;
 
-  m_DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  m_DT = DT;
   m_M = F.getParent();
   m_Ctx = &m_M->getContext();
   m_DL = &m_M->getDataLayout();
-  m_AC = &getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
+  m_AC = AC;
 
   bool Changed = false;
   SmallVector<MemCpyInst *, 8> ToDeleteQueue;
@@ -297,10 +230,32 @@ bool PromoteMemcpy::runOnFunction(Function &F) {
   return Changed;
 }
 
+bool PromoteMemcpy::runOnFunction(Function &F) {
+  if (F.empty())
+    return false;
+  auto *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  auto *AC = &getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
+  return runImpl(F, DT, AC);
+}
+
 } // namespace
 
 namespace clam {
 llvm::FunctionPass *createPromoteMemcpyPass() { return new PromoteMemcpy(); }
+
+PreservedAnalyses PromoteMemcpyPass::run(Function &F,
+                                         FunctionAnalysisManager &FAM) {
+  auto &DT = FAM.getResult<DominatorTreeAnalysis>(F);
+  auto &AC = FAM.getResult<AssumptionAnalysis>(F);
+  PromoteMemcpy P;
+  if (!P.runImpl(F, &DT, &AC)) {
+    return PreservedAnalyses::all();
+  }
+  // memcpys are replaced by loads/stores; the CFG is untouched.
+  PreservedAnalyses PA;
+  PA.preserveSet<CFGAnalyses>();
+  return PA;
+}
 } // namespace clam
 
 static llvm::RegisterPass<PromoteMemcpy>

@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clam/NewPmPasses.hh"
+
 #include "llvm/Analysis/LazyValueInfo.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/IR/Function.h"
@@ -18,6 +20,31 @@
 using namespace llvm;
 
 namespace {
+
+bool runLazyValueConst(Function &F, LazyValueInfo &LVI) {
+  bool Changed = false;
+
+  for (auto &BB : F) {
+    for (auto &I : BB) {
+      for (unsigned i = 0, e = I.getNumOperands(); i != e; ++i) {
+        Value *Op = I.getOperand(i);
+        // skip if operand is not integer or a constant
+        if (Op->getType()->isIntegerTy() == false || isa<Constant>(Op)) {
+          continue;
+        }
+        Constant *C = LVI.getConstant(Op, &I);
+        if (C) {
+          // replace the operand with the constant
+          I.setOperand(i, C);
+          Changed = true;
+          continue;
+        }
+      }
+    }
+  }
+
+  return Changed;
+}
 
 struct LazyValueConst : public FunctionPass {
   static char ID;
@@ -31,31 +58,7 @@ struct LazyValueConst : public FunctionPass {
 
   bool runOnFunction(Function &F) override {
     LazyValueInfo &LVI = getAnalysis<LazyValueInfoWrapperPass>().getLVI();
-    bool Changed = false;
-
-    for (auto &BB : F) {
-      for (auto &I : BB) {
-        for (unsigned i = 0, e = I.getNumOperands(); i != e; ++i) {
-          Value *Op = I.getOperand(i);
-          // skip if operand is not integer or a constant
-          if (Op->getType()->isIntegerTy() == false || isa<Constant>(Op)) {
-            continue;
-          }
-          Constant *C = LVI.getConstant(Op, &I);
-          if (isa<MemCpyInst>(&I)) {
-          }
-          if (C) {
-            // replace the operand with the constant
-            I.setOperand(i, C);
-            Changed = true;
-            continue;
-          }
-        }
-      }
-    }
-
-    // no modification
-    return Changed;
+    return runLazyValueConst(F, LVI);
   }
 };
 
@@ -65,6 +68,18 @@ char LazyValueConst::ID = 0;
 
 namespace clam {
 llvm::Pass *createLazyValueConstPass() { return new LazyValueConst(); }
+
+PreservedAnalyses LazyValueConstPass::run(Function &F,
+                                          FunctionAnalysisManager &FAM) {
+  auto &LVI = FAM.getResult<LazyValueAnalysis>(F);
+  if (!runLazyValueConst(F, LVI)) {
+    return PreservedAnalyses::all();
+  }
+  // Operands are replaced by constants; no branch is touched.
+  PreservedAnalyses PA;
+  PA.preserveSet<CFGAnalyses>();
+  return PA;
+}
 } // namespace clam
 
 // Register the pass

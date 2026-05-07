@@ -16,6 +16,8 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+
+#include "clam/NewPmPasses.hh"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -840,6 +842,16 @@ char InsertTaintIntrinsic::ID = 0;
 namespace clam {
 llvm::Pass *createInsertTaintIntrinsicPass() {
   return new InsertTaintIntrinsic();
+}
+
+llvm::PreservedAnalyses
+InsertTaintIntrinsicPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
+  // The legacy pass uses no analyses; share its implementation directly.
+  InsertTaintIntrinsic P;
+  if (!P.runOnModule(M)) {
+    return llvm::PreservedAnalyses::all();
+  }
+  return llvm::PreservedAnalyses::none();
 }
 } // namespace clam
 
