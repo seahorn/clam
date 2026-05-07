@@ -41,6 +41,8 @@ CRAB_ERROR = 25    ## errors caught by crab
 CRAB_TIMEOUT = 26
 CRAB_MEMORY_OUT = 27
 CRAB_SEGFAULT = 28 ## unexpected segfaults
+### special error codes for py
+PY_ERROR = 29
 #############################################################
 
 # CMake records the LLVM release Clam was built against (and its tool
@@ -214,6 +216,8 @@ def parseArgs(argv):
                     default=None)
     p.add_argument('-g', default=False, action='store_true', dest='debug_info',
                     help='Compile with debug information')
+    p.add_argument('-S', dest='llvm_asm', default=False, action='store_true',
+                     help='Write output as LLVM assembly')
     p.add_argument('-m', type=int, dest='machine',
                     help='Machine architecture MACHINE:[32,64]', default=32)
     p.add_argument ('-I', default=None, dest='include_dir', help='Include')
@@ -254,8 +258,9 @@ def parseArgs(argv):
     #                 help='Unrolling threshold (default = 150)',
     #                 dest='unroll_threshold',
     #                 default=150, metavar='NUM')
-    p.add_argument('--inline', dest='inline', help='Inline all functions',
-                    default=False, action='store_true')
+    add_bool_argument(p, 'inline', default=False,
+                      help='Inline all functions', dest='inline')
+    
     p.add_argument('--turn-undef-nondet',
                     help='Turn undefined behaviour into non-determinism',
                     dest='undef_nondet', default=False, action='store_true')
@@ -285,11 +290,19 @@ def parseArgs(argv):
                     dest='devirt',
                     choices=['none','types','sea-dsa'],
                     default='none')
+    p.add_argument('--taint-config', dest='taint_config',
+                    help='Taint analysis configuration file',
+                    default=None, metavar='FILE')
+    add_bool_argument(p, 'lower-memcpy', default=False,
+                      help='Lower memcpy', dest='lower_memcpy')
     p.add_argument ('--entry', dest='entry', help='Make entry point if main does not exist',
                     default=None, metavar='str')
     p.add_argument ('--externalize-functions',
                     help='Externalize these functions',
                     dest='extern_funcs', type=str, metavar='str,...')    
+    p.add_argument ('--noinline-funcs',
+                    help='Functions that will not be inlined',
+                    dest='noinline_funcs', type=str, metavar='str,...', default=None)
     p.add_argument('--externalize-addr-taken-functions',
                     help='Externalize uses of address-taken functions (potentially unsound)',
                     dest='extern_addr_taken_funcs', default=False,
@@ -371,9 +384,12 @@ def parseArgs(argv):
     p.add_argument('--crab-heap-dot',
                     help='Print seadsa memory graphs of each function to dot file',
                     dest='crab_heap_dot', default=False, action='store_true')
-    p.add_argument('--crab-singleton-aliases',
-                    help='Translate singleton alias sets (mostly globals) as scalar values',
-                    dest='crab_singleton_aliases', default=False, action='store_true')
+    p.add_argument('--crab-heap-dot-outdir',
+                    help='Output directory for seadsa memory graphs',
+                    dest='crab_heap_dot_outdir', default=None, metavar='STR')
+    add_bool_argument(p, 'crab-singleton-aliases', default=False,
+                      help='Translate singleton alias sets (mostly globals) as scalar values',
+                      dest='crab_singleton_aliases')
     p.add_argument('--crab-inter',
                     help='Run summary-based, inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
@@ -484,6 +500,12 @@ def parseArgs(argv):
     p.add_argument('--crab-sanity-checks',
                     help='Enable clam and crab sanity checks',
                     dest='crab_sanity_checks', default=False, action='store_true')
+    ##---------------------------------------------------------------------##    
+    ### BEGIN ASSERTIONS
+    ##---------------------------------------------------------------------##
+    p.add_argument('--count-asserts', default=False, action='store_true',
+                    help='Count assertions based on output of crabir',
+                    dest='count_asserts')
     ######################################################################
     # Hidden options
     ######################################################################
@@ -592,6 +614,20 @@ def getOptLlvm ():
     if cmd_name is None:
         raise IOError ('neither seaopt nor opt where found')
     return (cmd_name, False)
+
+def get_assert_count_py():
+    cmd_name = None
+    if 'READ_RESULTS_PY' in os.environ:
+        cmd_name = os.environ['READ_RESULTS_PY']
+    if not isexec(cmd_name):
+        cmd_name = os.path.join(root, "bin/read_results.py")
+    if not isexec(cmd_name):
+        cmd_name = os.path.join(root, "scripts/read_results.py")
+    if not isexec(cmd_name):
+        cmd_name = which('read_results.py')
+    if not isexec(cmd_name):
+        raise IOError ('read_results.py was not found')
+    return cmd_name
 
 ### Passes
 def defBCName(name, wd=None):
@@ -712,6 +748,9 @@ def optLlvm(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if out_name is not None: opt_args.extend(['-o', out_name])
     opt_args.append('-O{0}'.format(args.L))
 
+    if args.llvm_asm:
+        opt_args.append('-S')
+
     # disable sinking instructions to end of basic block
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
@@ -791,6 +830,9 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
 
     crabpp_args = [getClamPP(), '-o', out_name, in_name ]
 
+    if args.llvm_asm:
+        crabpp_args.append('-S')
+
     # disable sinking instructions to end of basic block
     # this might create unwanted aliasing scenarios
     # for now, there is no option to undo this switch
@@ -812,6 +854,10 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
         crabpp_args.append('--clam-peel-loops={0}'.format(args.peel_loops))
     if args.undef_nondet:
         crabpp_args.append('--clam-turn-undef-nondet')
+    if args.lower_memcpy:
+        crabpp_args.append('--clam-lower-memcpy')
+    if args.taint_config:
+        crabpp_args.append('--clam-taint-config={0}'.format(args.taint_config))
 
     if args.disable_scalarize:
         crabpp_args.append('--clam-scalarize=false')
@@ -839,6 +885,8 @@ def crabpp(in_name, out_name, args, extra_args=[], cpu = -1, mem = -1):
     if args.extern_funcs:
         for f in args.extern_funcs.split(','):
             crabpp_args.append('--clam-externalize-function={0}'.format(f))
+    if args.noinline_funcs:
+        crabpp_args.append('--clam-noinline-funcs={0}'.format(args.noinline_funcs))
     if args.extern_addr_taken_funcs:
         crabpp_args.append('--clam-externalize-addr-taken-funcs')
         
@@ -865,6 +913,9 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
     if args.log is not None:
         for l in args.log.split(':'):
             clam_args.extend(['-crab-log', l])
+
+    if args.llvm_asm:
+        clam_args.append('-S')
 
     if args.crab_dom_params is not None:
         for l in args.crab_dom_params.split(':'):
@@ -926,8 +977,15 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
        args.crab_heap_analysis == 'cs-sea-dsa-types':
         clam_args.append('--sea-dsa-devirt')
 
-    if args.crab_heap_dot: clam_args.append('--crab-dsa-dot')
+    if args.crab_heap_dot:
+        clam_args.append('--crab-dsa-dot')
+    if args.crab_heap_dot_outdir:
+        clam_args.append('--sea-dsa-dot-outdir={0}'.format(args.crab_heap_dot_outdir))
         
+        
+    if args.lazy_mem_transfer:
+        clam_args.append('--sea-dsa-lazy-mem-transfer')
+
     if args.crab_singleton_aliases: clam_args.append('--crab-singleton-aliases')
 
     if args.crab_inter:
@@ -1065,6 +1123,15 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         # crab returns EXIT_FAILURE which in most platforms is 1 but not in all.
         sys.exit(CRAB_ERROR)
 
+def count_assert_py(in_name, cpu = -1, mem = -1):
+    py_args = [ get_assert_count_py(), in_name]
+    if verbose:
+        print('read_results.py command: ' + ' '.join(py_args))
+    returnvalue, timeout, out_of_mem, segfault, unknown = \
+        run_command_with_limits(py_args, cpu, mem)
+    if timeout or out_of_mem or segfault or unknown or returnvalue != 0:
+        sys.exit(PY_ERROR)
+
 def main(argv):
     #def stat(key, val): stats.put(key, val)
     os.setpgrp()
@@ -1140,6 +1207,12 @@ def main(argv):
         shutil.copy2(pp_out, args.asm_out_name)
 
     #print("\nClam finished at {0}\n".format(datetime.now().strftime("%H:%M:%S")))        
+    if args.count_asserts:
+        if args.crabir_out_name is None:
+            print("WARNING: --count-asserts is enabled but -ocrab/--ocrab is not specified. "
+                  "No assertions will be counted.")
+        else:
+            count_assert_py(args.crabir_out_name, cpu=args.cpu, mem=args.mem)
     return 0
 
 def killall():
@@ -1157,6 +1230,7 @@ if __name__ == '__main__':
     sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), 'wb', 0), write_through=True)
     try:
         signal.signal(signal.SIGTERM, lambda x, y: killall())
+        signal.signal(signal.SIGINT, lambda x, y: (killall(), sys.exit(1)))
         sys.exit(main(sys.argv))
     except KeyboardInterrupt: pass
     finally:
