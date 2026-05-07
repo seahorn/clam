@@ -37,10 +37,9 @@ static cl::opt<std::string>
                     cl::desc("Path to YAML taint configuration file"),
                     cl::init(""), cl::value_desc("filename"));
 
-static cl::opt<bool>
-    PrintTaintInfo("clam-print-taint-info",
-                cl::desc("Print taint info at sink calls"),
-                cl::init(false));
+static cl::opt<bool> PrintTaintInfo("clam-print-taint-info",
+                                    cl::desc("Print taint info at sink calls"),
+                                    cl::init(false));
 
 #define DEFAULT_TAINT_TAG 1
 #define ADD_TAINT_INTRINSIC "add_tag"
@@ -51,7 +50,6 @@ static cl::opt<bool>
 #define DEBUG_TAINT_INTRINSIC "print_tags"
 
 #define SEA_DSA_SET_MODIFIED "sea_dsa_set_modified"
-
 
 namespace {
 int safe_unsigned_to_int(unsigned int value) {
@@ -577,10 +575,8 @@ struct InsertTaintIntrinsic : public ModulePass {
         // It is NOT a bitcast (might be an Alloca, Argument, GEP, etc.)
         Source = RetValPtr;
       }
-      LoadInst *Load = Builder.CreateLoad(
-          RetType,
-          cast<AllocaInst>(Source),
-          CI.getName());
+      LoadInst *Load =
+          Builder.CreateLoad(RetType, cast<AllocaInst>(Source), CI.getName());
       // Replace all uses of the original call with the load
       CI.replaceAllUsesWith(Load);
       // Fix the store to reference the original call instruction
