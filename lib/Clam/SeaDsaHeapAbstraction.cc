@@ -126,12 +126,32 @@ private:
   const seadsa::AllocWrapInfo *m_awi;
   std::unique_ptr<SetFactory> m_fac;
   const llvm::DataLayout &m_dl;
-  /// map from Node to id
-  llvm::DenseMap<const seadsa::Node *, HeapAbstraction::RegionId> m_node_ids;
+
+  struct CellIdKey {
+    const seadsa::Node *node;
+    unsigned offset;
+
+    bool operator==(const CellIdKey &o) const {
+      return node == o.node && offset == o.offset;
+    }
+  };
+
+  struct CellIdKeyHash {
+    std::size_t operator()(const CellIdKey &k) const {
+      std::size_t seed = std::hash<const seadsa::Node *>{}(k.node);
+      seed ^= std::hash<unsigned>{}(k.offset) + 0x9e3779b9 + (seed << 6) +
+              (seed >> 2);
+      return seed;
+    }
+  };
+
+  /// Map each canonical SeaDsa cell to a unique region id.
+  std::unordered_map<CellIdKey, HeapAbstraction::RegionId, CellIdKeyHash>
+      m_cell_ids;
   /// reverse map
   std::unordered_map<HeapAbstraction::RegionId, const seadsa::Node *>
       m_rev_node_ids;
-  HeapAbstraction::RegionId m_max_id;
+  HeapAbstraction::RegionId m_next_id;
   SeaDsaHeapAbstractionParams m_params;
 
   // read or modified regions reachable from inputs or globals
@@ -165,13 +185,14 @@ HeapAbstraction::RegionId SeaDsaHeapAbstractionImpl::getId(const Cell &c) {
   const Node *n = c.getNode();
   unsigned offset = c.getOffset();
 
-  auto it = m_node_ids.find(n);
-  if (it != m_node_ids.end()) {
-    return it->second + offset;
+  CellIdKey key{n, offset};
+  auto it = m_cell_ids.find(key);
+  if (it != m_cell_ids.end()) {
+    return it->second;
   }
 
-  HeapAbstraction::RegionId id = m_max_id;
-  m_node_ids[n] = id;
+  HeapAbstraction::RegionId id = m_next_id++;
+  m_cell_ids.emplace(key, id);
 
   // XXX: we only have the reverse map for the offset 0.  That's
   // fine because we use this map only in getSingleton which can
@@ -180,15 +201,7 @@ HeapAbstraction::RegionId SeaDsaHeapAbstractionImpl::getId(const Cell &c) {
     m_rev_node_ids[id] = n;
   }
 
-  if (n->size() == 0) {
-    ++m_max_id;
-    return id;
-  }
-
-  // -- allocate enough ids for every byte of the object
-  assert(n->size() > 0);
-  m_max_id += n->size();
-  return id + offset;
+  return id;
 }
 
 static std::vector<unsigned> extractFields(const Node *n,
@@ -225,9 +238,23 @@ void SeaDsaHeapAbstractionImpl::computeReadModNewNodes(
   if (f.getName().starts_with("shadow.mem")) {
     return;
   }
+  CRAB_LOG("heap-abs-regions", llvm::errs()
+                                   << "======== Begin ========= \n Computing "
+                                      "read/mod/new regions for function "
+                                   << f.getName() << "\n";);
 
   seadsa_heap_abs_impl::NodeSet reach, retReach;
   seadsa_heap_abs_impl::argReachableNodes(f, G, reach, retReach);
+
+  CRAB_LOG(
+      "heap-abs-regions", llvm::errs() << "After argReachableNodes call:\n";
+      for (const Node *n
+           : reach) {
+        llvm::errs() << "Node reachable: " << n << "\n";
+      } for (const Node *n
+             : retReach) {
+        llvm::errs() << "Node reachable from return: " << n << "\n";
+      });
 
   HeapAbstraction::RegionVec reads, mods, news;
   std::vector<HeapAbstraction::RegionVec> equivClasses;
@@ -265,8 +292,8 @@ void SeaDsaHeapAbstractionImpl::computeReadModNewNodes(
     } // end for each field
   }   // end for each node
   CRAB_LOG(
-      "heap-abs-regions", llvm::errs()
-                              << "### HEAP_ABS: " << f.getName() << " ###\n";
+      "heap-abs-regions",
+      llvm::errs() << "### HEAP_ABS (declaration): " << f.getName() << " ###\n";
       llvm::errs() << "Read regions reachable from arguments and globals {";
       for (auto &r
            : reads) { llvm::errs() << r << ";"; } llvm::errs()
@@ -278,7 +305,8 @@ void SeaDsaHeapAbstractionImpl::computeReadModNewNodes(
       llvm::errs() << "New regions (only reachable from returns) {";
       for (auto &r
            : news) { llvm::errs() << r << ";"; } llvm::errs()
-      << "}\n";);
+      << "}\n";
+      llvm::errs() << "======== END ========\n";);
 
   m_func_accessed[&f] = std::move(reads);
   m_func_mods[&f] = std::move(mods);
@@ -446,7 +474,8 @@ void SeaDsaHeapAbstractionImpl::computeReadModNewNodesFromCallSite(
   news_map[&I] = news;
 
   CRAB_LOG(
-      "heap-abs-regions2", llvm::errs() << "### HEAP_ABS: " << I << " ###\n";
+      "heap-abs-regions2", llvm::errs()
+                               << "### HEAP_ABS (callsite): " << I << " ###\n";
       llvm::errs() << "Read regions at caller mapped to "
                    << "those reachable from callee's arguments and globals {";
       for (auto &r
@@ -677,7 +706,7 @@ SeaDsaHeapAbstractionImpl::SeaDsaHeapAbstractionImpl(
     const seadsa::DsaLibFuncInfo &spec_graph_info,
     SeaDsaHeapAbstractionParams params)
     : m_dsa(nullptr), m_awi(&alloc_info), m_fac(new SetFactory()),
-      m_dl(M.getDataLayout()), m_max_id(0), m_params(params) {
+      m_dl(M.getDataLayout()), m_next_id(1), m_params(params) {
 
   // -- Run sea-dsa
   // sea-dsa now takes a per-function TLI getter rather than the legacy wrapper
@@ -701,7 +730,7 @@ SeaDsaHeapAbstractionImpl::SeaDsaHeapAbstractionImpl(
     const llvm::Module &M, seadsa::GlobalAnalysis &dsa,
     SeaDsaHeapAbstractionParams params)
     : m_dsa(&dsa), m_awi(nullptr), m_fac(nullptr), m_dl(M.getDataLayout()),
-      m_max_id(0), m_params(params) {
+      m_next_id(1), m_params(params) {
   initialize(M);
 }
 

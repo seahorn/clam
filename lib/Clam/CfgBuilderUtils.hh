@@ -72,6 +72,8 @@ crab::cfg::debug_info getDebugLoc(const llvm::Instruction *inst);
 
 crab::cfg::debug_info getDebugLoc(const llvm::Instruction *inst, uint32_t assertion_id);
 
+crab::source_location getDebugSrcLoc(const llvm::Instruction *I, uint32_t Id);
+
 uint64_t storageSize(const llvm::Type *t, const llvm::DataLayout &dl);
 
 // Convert GT and GE integer comparisons to LE and LT
