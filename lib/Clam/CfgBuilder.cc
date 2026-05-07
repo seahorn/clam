@@ -40,7 +40,7 @@
  *
  * - Ignore floating point instructions.
  * - Ignore inttoptr/ptrtoint instructions.
- * - Ignore memset/memmove/memcpy.
+ * - Ignore memset/memmove.
  * - Partial translation of calloc/realloc/strdup
  **/
 
@@ -83,6 +83,7 @@
 
 #include <algorithm>
 #include <boost/functional/hash_fwd.hpp> // for hash_combine
+#include <limits>
 #include <unordered_map>
 
 using namespace llvm;
@@ -932,32 +933,47 @@ public:
                        elem_size, first /*strong update*/);
     } else if (m_params.trackMemory() && m_params.allocateGlobals()) {
       // If we don't allocate globals then we cannot add store_to_ref
-      // statements.      
+      // statements.
       if (!rgn.isUnknown()) {
-	Region baseRgn = m_mem.getRegion(m_fun, Base);       
-	crab_lit_ref_t baseRef = m_lfac.getLit(Base);
-	error_if_null(baseRef, Base);	
-	crab_lit_ref_t val = m_lfac.getLit(Val);
-	error_if_null(val, Val);
-	clam::storageSize(Val.getType(), m_dl);
+        Region baseRgn = m_mem.getRegion(m_fun, Base);
+        crab_lit_ref_t baseRef = m_lfac.getLit(Base);
+        error_if_null(baseRef, Base);
+        crab_lit_ref_t val = m_lfac.getLit(Val);
+        error_if_null(val, Val);
+        clam::storageSize(Val.getType(), m_dl);
 
-	if (!baseRef || !baseRef->isRef() || m_lfac.isRefNull(baseRef)) {
-	  CLAM_ERROR("unexpected global during global initialization");
-	}
+        if (!baseRef || !baseRef->isRef() || m_lfac.isRefNull(baseRef)) {
+          CLAM_ERROR("unexpected global during global initialization");
+        }
 
-	// Revisit: we do not call insertCrabIRWithEmitter.
-	var_t ref = m_lfac.mkRefVar();	
-	m_bb.gep_ref(ref, m_lfac.mkRegionVar(rgn),
-		     baseRef->getVar(), m_lfac.mkRegionVar(baseRgn),
-		     offset);	
-	if (val->isVar()) {
-	  m_bb.store_to_ref(ref, m_lfac.mkRegionVar(rgn), val->getVar());
-	} else {
-	  auto constant = m_lfac.getTypedConst(val);
-	  m_bb.store_to_ref(ref, m_lfac.mkRegionVar(rgn), constant);
-	}
+        // Revisit: we do not call insertCrabIRWithEmitter.
+        var_t ref = m_lfac.mkRefVar();
+        m_bb.gep_ref(ref, m_lfac.mkRegionVar(rgn), baseRef->getVar(),
+                     m_lfac.mkRegionVar(baseRgn), offset);
+        if (val->isVar()) {
+          m_bb.store_to_ref(ref, m_lfac.mkRegionVar(rgn), val->getVar());
+        } else {
+          var_t crab_rgn = m_lfac.mkRegionVar(rgn);
+          // based on rgn type, convert constant value to a Crab constant
+          // Special case: integer 0 stored into a pointer region => null_ref
+          var_or_cst_t constant =
+              (Val.getSExtValue() == 0 && rgn.getRegionInfo().containPointer())
+                  ? var_or_cst_t::make_reference_null()
+                  : m_lfac.getTypedConst(val);
+          m_bb.store_to_ref(ref, m_lfac.mkRegionVar(rgn), constant);
+        }
+      } else {
+        CRAB_LOG("cfg-initint", llvm::errs()
+                                    << "  -> skipped: rgn is unknown\n";);
       }
-    }      
+    } else {
+      CRAB_LOG("cfg-initint",
+               llvm::errs() << "  -> skipped: precision="
+                            << (m_params.trackOnlySingletonMemory()
+                                    ? "singleton(rgn unknown or non-scalar)"
+                                    : "mem but allocateGlobals=false")
+                            << "\n";);
+    }
   }
 };
 
@@ -2148,10 +2164,14 @@ void CrabIntraBlockBuilder::visitCastInst(CastInst &I) {
 
   // -- POINTER CAST
   if (isa<IntToPtrInst>(I) || isa<PtrToIntInst>(I) || isa<BitCastInst>(I)) {
-    if (isa<PtrToIntInst>(I)) {
-      // TODO(TRANSLATION): ptrtoint
+    if (isa<PtrToIntInst>(I) && isReference(*I.getOperand(0), m_params)) {
+      Value *ptr = I.getOperand(0);
+      Region rgn_ref = getRegion(m_mem, m_func_regions, m_params, I, *ptr);
+      m_bb.ref_to_int(m_lfac.mkRegionVar(rgn_ref), src->getVar(),
+                      dst->getVar());
+      return;
     } else if (isa<IntToPtrInst>(I)) {
-      // TODO(TRANSLATION): inttoptr      
+      // TODO(TRANSLATION): inttoptr
     } else if (isa<BitCastInst>(I) && isReference(*I.getOperand(0), m_params)) {
 
       if (src->isRef()) {
@@ -2670,6 +2690,155 @@ void CrabIntraBlockBuilder::doMemIntrinsic(MemIntrinsic &I) {
 	m_propertyEmitters[i]->visitBeforeMemTransfer(*MTI, s);
 	m_propertyEmitters[i]->visitAfterMemTransfer(*MTI, s);      
       }
+      Region src_rgn = getRegion(m_mem, m_func_regions, m_params, I, *src);
+      Region dst_rgn = getRegion(m_mem, m_func_regions, m_params, I, *dst);
+      if (getSingletonValue(src_rgn, m_params.lower_singleton_aliases) ||
+          getSingletonValue(dst_rgn, m_params.lower_singleton_aliases)) {
+        // the memory region is a non-sequence singleton so we bail out
+        // because it will translated somewhere else (e.g., next Load or
+        // Store)
+        CRAB_LOG("cfg-memcpy", llvm::errs() << "[memcpy]: " << I
+                                            << " -- skipped singleton\n");
+        return;
+      }
+      // Region len_rgn = getRegion(m_mem, m_func_regions, m_params, I, *len);
+      // DSA info tells the following, if src rgn and dst rgn both apear in the
+      // order, then we keep them into intrinsic and in order.
+      // memcpy functionally is several load/store pairs.
+      // memcpy assumes that src and dst do not overlap.
+      auto equivClassRegions = m_mem.getEquivClassRegions(*I.getFunction());
+      RegionVec src_rgns{src_rgn};
+      RegionVec dst_rgns{dst_rgn};
+      for (auto eqC : equivClassRegions) {
+        CRAB_LOG("cfg-memcpy", llvm::errs() << "equiv class: " << eqC << "\n";);
+        for (auto rgn : eqC) {
+          if (src_rgn == rgn) {
+            src_rgns = eqC;
+          }
+          if (dst_rgn == rgn) {
+            dst_rgns = eqC;
+          }
+        }
+      }
+      std::sort(src_rgns.begin(), src_rgns.end(),
+                [](const Region &a, const Region &b) {
+                  return a.getRegionInfo().getOffset() <
+                         b.getRegionInfo().getOffset();
+                });
+      std::sort(dst_rgns.begin(), dst_rgns.end(),
+                [](const Region &a, const Region &b) {
+                  return a.getRegionInfo().getOffset() <
+                         b.getRegionInfo().getOffset();
+                });
+      unsigned src_base_offset = src_rgn.getRegionInfo().getOffset();
+      unsigned dst_base_offset = dst_rgn.getRegionInfo().getOffset();
+      auto isBeforeSrcBase = [src_base_offset](const Region &rgn) {
+        return rgn.getRegionInfo().getOffset() < src_base_offset;
+      };
+      auto isBeforeDstBase = [dst_base_offset](const Region &rgn) {
+        return rgn.getRegionInfo().getOffset() < dst_base_offset;
+      };
+      src_rgns.erase(
+          std::remove_if(src_rgns.begin(), src_rgns.end(), isBeforeSrcBase),
+          src_rgns.end());
+      dst_rgns.erase(
+          std::remove_if(dst_rgns.begin(), dst_rgns.end(), isBeforeDstBase),
+          dst_rgns.end());
+      CRAB_LOG("cfg-memcpy", llvm::errs() << "[memcpy]: " << I << "\n"
+                                          << "src rgn: " << src_rgn << ",\t"
+                                          << "src rgns: " << src_rgns << "\n"
+                                          << "dst rgn: " << dst_rgn << ",\t"
+                                          << "dst rgns: " << dst_rgns << "\n";);
+      uint64_t max_len = isa<ConstantInt>(len)
+                             ? cast<ConstantInt>(len)->getZExtValue()
+                             : std::numeric_limits<uint64_t>::max();
+
+      struct RelativeRegion {
+        Region rgn;
+        unsigned start;
+        uint64_t end;
+      };
+
+      auto mkRelativeRegions = [](const RegionVec &rgns, unsigned minOffset) {
+        std::vector<RelativeRegion> res;
+        for (unsigned i = 0, sz = rgns.size(); i < sz; ++i) {
+          unsigned start = rgns[i].getRegionInfo().getOffset() - minOffset;
+          uint64_t end = std::numeric_limits<uint64_t>::max();
+          if (i + 1 < sz)
+            end = rgns[i + 1].getRegionInfo().getOffset() - minOffset;
+          res.push_back({rgns[i], start, end});
+        }
+        return res;
+      };
+
+      auto containsOffset = [](const RelativeRegion &rgn, unsigned offset) {
+        return static_cast<uint64_t>(rgn.start) <= offset && offset < rgn.end;
+      };
+
+      auto intervalsOverlap = [](const RelativeRegion &left,
+                                 const RelativeRegion &right) {
+        return static_cast<uint64_t>(left.start) < right.end &&
+               static_cast<uint64_t>(right.start) < left.end;
+      };
+
+      std::unordered_map<unsigned, std::vector<std::pair<Region, Region>>>
+          rgns_map;
+      auto rel_src_rgns = mkRelativeRegions(src_rgns, src_base_offset);
+      auto rel_dst_rgns = mkRelativeRegions(dst_rgns, dst_base_offset);
+      for (const auto &src_rel : rel_src_rgns) {
+        for (const auto &dst_rel : rel_dst_rgns) {
+          bool matches = false;
+          if (!src_rel.rgn.isUnknown() && !dst_rel.rgn.isUnknown()) {
+            matches = src_rel.start == dst_rel.start;
+          } else if (src_rel.rgn.isUnknown() && !dst_rel.rgn.isUnknown()) {
+            matches = containsOffset(src_rel, dst_rel.start);
+          } else if (!src_rel.rgn.isUnknown() && dst_rel.rgn.isUnknown()) {
+            matches = containsOffset(dst_rel, src_rel.start);
+          } else {
+            matches = intervalsOverlap(src_rel, dst_rel);
+          }
+
+          if (!matches)
+            continue;
+
+          unsigned copy_offset = std::max(src_rel.start, dst_rel.start);
+          if (copy_offset >= max_len)
+            continue;
+          rgns_map[copy_offset].push_back(
+              std::make_pair(src_rel.rgn, dst_rel.rgn));
+        }
+      }
+
+      // For memcpy/memmove, only propagate tags between matched regions.
+      // This is conservative tag analysis; it does not model the real memory
+      // copy field-by-field.
+      for (auto rgns_map_it : rgns_map) {
+        for (auto rgn_pair : rgns_map_it.second) {
+          var_t rgn1Var = m_lfac.mkRegionVar(rgn_pair.first);
+          var_t rgn2Var = m_lfac.mkRegionVar(rgn_pair.second);
+          std::vector<var_or_cst_t> inputs{rgn1Var, psrcV.first, rgn2Var,
+                                           pdestV.first};
+          std::vector<var_t> outputs;
+          CRAB_LOG("cfg-memcpy", crab::outs() << "MOVE_TAG: rgn1=" << rgn1Var
+                                              << "(" << rgn1Var.get_type()
+                                              << ") " << psrcV.first << " "
+                                              << "rgn2=" << rgn2Var << "("
+                                              << rgn2Var.get_type() << ") "
+                                              << pdestV.first << "\n";);
+          m_bb.intrinsic("move_tag", outputs, inputs,
+                         getDebugLoc(&I, 0 /*no id*/));
+        }
+      }
+      // if (lenV.is_variable()) {
+      //   var_t outParam = m_lfac.mkBoolVar();
+      //   std::vector<var_or_cst_t> inputs{
+      //       m_lfac.mkRegionVar(len_rgn), lenV,
+      //       var_or_cst_t(number_t(1), crab::variable_type(INT_TYPE, 32))};
+      //   std::vector<var_t> outputs{outParam};
+      //   m_bb.intrinsic("does_not_have_tag", outputs, inputs,
+      //                  getDebugLoc(&I, 0 /*no id*/));
+      //   m_bb.bool_assert(outParam, getDebugLoc(&I, m_dbg_id++));
+      // }
     }
   }
 }
@@ -3194,6 +3363,17 @@ void CrabIntraBlockBuilder::visitStoreInst(StoreInst &I) {
       }
     }
   }
+  CRAB_LOG(
+      "cfg-store", llvm::errs() << "Translating " << I << "\n";
+      if (val->isVar()) {
+        crab::outs() << "store " << val->getVar() << " into " << ptr->getVar()
+                     << "[" << m_lfac.mkRegionVar(rgn) << "("
+                     << m_lfac.mkRegionVar(rgn).get_type() << ")]\n";
+      } else {
+        crab::outs() << "store " << m_lfac.getTypedConst(val) << " into "
+                     << ptr->getVar() << "[" << m_lfac.mkRegionVar(rgn) << "("
+                     << m_lfac.mkRegionVar(rgn).get_type() << ")]\n";
+      });
 }
 
 /*
@@ -4719,7 +4899,11 @@ void CfgBuilderImpl::addFunctionDeclaration() {
       }
     }
 
-  
+    RegionVec funcRegions = m_mem.getNewRegions(m_func);
+    CRAB_LOG("cfg-mem", llvm::errs() << "Function " << m_func.getName()
+                                     << " has " << funcRegions.size()
+                                     << " regions: " << funcRegions << "\n");
+
     RegionVec inRegions = getInputRegions(m_mem, m_params, m_func);
     RegionVec inOutRegions = getInputOutputRegions(m_mem, m_params, m_func);
     RegionVec outRegions = getOutputRegions(m_mem, m_params, m_func);
@@ -5295,10 +5479,15 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
   CRAB_LOG("cfg-mem", llvm::errs()
                           << "Callsite " << I << "\n"
                           << "Callee " << calleeF->getName() << "\n"
+                          << "\tOnlyRead regions "
+                          << m_mem.getOnlyReadRegions(I) << "\n"
                           << "\tInput regions " << inRegions.size() << ": "
                           << inRegions << "\n"
+                          << "\tModified regions "
+                          << m_mem.getModifiedRegions(I) << "\n"
                           << "\tInput/Output regions " << inOutRegions.size()
                           << ": " << inOutRegions << "\n"
+                          << "\tNew regions " << m_mem.getNewRegions(I) << "\n"
                           << "\tOutput regions " << outRegions.size() << ": "
                           << outRegions << "\n");
 
@@ -5536,17 +5725,20 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
 #define UNFREED_OR_NULL "unfreed_or_null"
 #define ADD_TAG "add_tag"
 #define CHECK_DOES_NOT_HAVE_TAG "check_does_not_have_tag"
+#define CHECK_HAS_TAG "check_has_tag"
+#define PRINT_TAGS "print_tags"
+#define MOVE_TAG "move_tag"
+#define REMOVE_TAG "remove_tag"
 
 bool CrabIntraBlockBuilder::isSpecialCrabIntrinsic(const Function &calleeF) const {
   if (!isCrabIntrinsic(calleeF)) {
     return false;
   }
   std::string name = getCrabIntrinsicName(calleeF);
-  return (name == IS_DEREFERENCEABLE || 
-	  name == IS_UNFREED_OR_NULL ||
-	  name == UNFREED_OR_NULL ||
-	  name == ADD_TAG ||
-	  name == CHECK_DOES_NOT_HAVE_TAG);
+  return (name == IS_DEREFERENCEABLE || name == IS_UNFREED_OR_NULL ||
+          name == UNFREED_OR_NULL || name == ADD_TAG || name == CHECK_HAS_TAG ||
+          name == CHECK_DOES_NOT_HAVE_TAG || name == PRINT_TAGS ||
+          name == MOVE_TAG || name == REMOVE_TAG);
 }
   
 void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
@@ -5556,10 +5748,16 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
     %b = is_dereferenceable(%ptr, %sz)  --> b := CRAB_intrinsic(is_dereferenceable, rgn, ref, sz)
     unfreed_or_null(%ptr)               --> CRAB_intrinsic(unfreed_or_null, rgn, ref)              
     add_tag(%ptr, tag)                  --> CRAB_intrinsic(add_tag, rgn, ref, tag)
-    check_does_not_have_tag(%ptr, tag)  --> b := CRAB_intrinsic(does_not_have_tag, rgn, ref, tag)
+    check_does_not_have_tag(%ptr, tag)  --> b := CRAB_intrinsic(check_does_not_have_tag, rgn, ref, tag)
                                             bool_assert(b);
+    check_has_tag(%ptr, tag)            --> b := CRAB_intrinsic(check_does_not_have_tag, rgn, ref, tag)
+                                            bool_assert(!b);
+    remove_tag(%ptr, tag)               --> CRAB_intrinsic(remove_tag, rgn, ref, tag)
+    print_tags(%ptr)                    --> CRAB_intrinsic(print_tags, rgn, ref)
+    move_tag(%ptr1, %ptr2)              --> CRAB_intrinsic(move_tag, rgn1, ref1, rgn2, ref2)
    */
   // clang-format on
+  CRAB_LOG("cfg-intrinsic", llvm::errs() << "[intrinsic]: " << I << "\n");
   BUILDER_SCOPED_TIMER("CFG.Builder.visitCall.doCrabSpecialIntrinsic");    
   CallBase &CB(I);
   const Function *calleeF =
@@ -5671,7 +5869,7 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       std::vector<var_t> outputs;
       m_bb.intrinsic(name, outputs, inputs);
     }
-  } else if (name == ADD_TAG) {
+  } else if (name == ADD_TAG || name == REMOVE_TAG) {
     if (CB.arg_size() != 2) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
@@ -5693,13 +5891,14 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
     Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *Ptr);
     if (!getSingletonValue(rgn, m_params.lower_singleton_aliases)) {        
       var_t rgnVar = m_lfac.mkRegionVar(rgn);
+      rgnVar.set_debug_info(getDebugSrcLoc(&I, m_dbg_id++));
       std::vector<var_or_cst_t> inputs{rgnVar, refParamLit->getVar(),
 				       var_or_cst_t(m_lfac.getIntCst(tagParamLit),
 						    crab::variable_type(INT_TYPE, 32))};
       std::vector<var_t> outputs;
       m_bb.intrinsic(name, outputs, inputs);
     }
-  } else if (name == CHECK_DOES_NOT_HAVE_TAG) {
+  } else if (name == CHECK_DOES_NOT_HAVE_TAG || name == CHECK_HAS_TAG) {
     if (CB.arg_size() != 2) {
       CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
     }
@@ -5729,13 +5928,77 @@ void CrabIntraBlockBuilder::doCrabSpecialIntrinsic(CallInst &I) {
       m_bb.havoc(outParam, valueToStr(I));
     } else {
       var_t rgnVar = m_lfac.mkRegionVar(rgn);
+      rgnVar.set_debug_info(getDebugSrcLoc(&I, 0 /*no id*/));
       std::vector<var_or_cst_t> inputs{rgnVar, ptrParamLit->getVar(),
 				       var_or_cst_t(m_lfac.getIntCst(tagParamLit),
 						    crab::variable_type(INT_TYPE, 32))};
       std::vector<var_t> outputs{outParam};
-      m_bb.intrinsic("does_not_have_tag", outputs, inputs, getDebugLoc(&I, 0 /*no id*/));
+      // The CrabIR-level intrinsic keeps crab's name (does_not_have_tag);
+      // check_does_not_have_tag/check_has_tag are the C-level spellings.
+      m_bb.intrinsic("does_not_have_tag", outputs, inputs,
+                     getDebugLoc(&I, 0 /*no id*/));
     }
-    m_bb.bool_assert(outParam, getDebugLoc(&I, m_dbg_id++));
+    if (name == CHECK_HAS_TAG) {
+      var_t negOutParam = m_lfac.mkBoolVar();
+      m_bb.bool_not_assign(negOutParam, outParam);
+      m_bb.bool_assert(negOutParam, getDebugLoc(&I, m_dbg_id++));
+    } else if (name == CHECK_DOES_NOT_HAVE_TAG) {
+      m_bb.bool_assert(outParam, getDebugLoc(&I, m_dbg_id++));
+    }
+  } else if (name == PRINT_TAGS) {
+    if (CB.arg_size() != 1) {
+      CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+    }
+    if (!Ptr->getType()->isPointerTy()) {
+      CLAM_ERROR("unexpected parameters in special intrinsic " << I);
+    }
+    crab_lit_ref_t ptrParamLit = m_lfac.getLit(*Ptr);
+    if (!ptrParamLit || !ptrParamLit->isVar()) {
+      CLAM_ERROR("unexpected 1st input argument in special intrinsic " << I);
+    }
+    Region rgn = getRegion(m_mem, m_func_regions, m_params, I, *Ptr);
+    if (!getSingletonValue(rgn, m_params.lower_singleton_aliases)) {
+      var_t rgnVar = m_lfac.mkRegionVar(rgn);
+      std::vector<var_or_cst_t> inputs{rgnVar, ptrParamLit->getVar()};
+      std::vector<var_t> outputs;
+      m_bb.intrinsic(PRINT_TAGS, outputs, inputs, getDebugLoc(&I, 0 /*no id*/));
+    }
+  } else if (name == MOVE_TAG) {
+    if (CB.arg_size() != 2) {
+      CLAM_ERROR("unexpected number of parameters in special intrinsic " << I);
+    }
+    // Check both are pointers
+    Value *Ptr2 = CB.getArgOperand(1);
+    if (!Ptr->getType()->isPointerTy() || !Ptr2->getType()->isPointerTy()) {
+      CLAM_ERROR("unexpected parameters in special intrinsic " << I);
+    }
+    crab_lit_ref_t ptr1ParamLit = m_lfac.getLit(*Ptr);
+    crab_lit_ref_t ptr2ParamLit = m_lfac.getLit(*Ptr2);
+    if (!ptr1ParamLit || !ptr1ParamLit->isRef()) {
+      CLAM_ERROR("unexpected 1st input argument in special intrinsic " << I);
+    }
+    if (!ptr2ParamLit || !ptr2ParamLit->isRef()) {
+      CLAM_ERROR("unexpected 2nd input argument in special intrinsic " << I);
+    }
+    if (ptr1ParamLit->isVar() && ptr2ParamLit->isVar()) {
+      Region rgn1 = getRegion(m_mem, m_func_regions, m_params, I, *Ptr);
+      Region rgn2 = getRegion(m_mem, m_func_regions, m_params, I, *Ptr2);
+      if (!getSingletonValue(rgn1, m_params.lower_singleton_aliases) &&
+          !getSingletonValue(rgn2, m_params.lower_singleton_aliases)) {
+        var_t rgn1Var = m_lfac.mkRegionVar(rgn1);
+        var_t rgn2Var = m_lfac.mkRegionVar(rgn2);
+        CRAB_LOG("cfg-intrinsic",
+                 crab::outs() << "MOVE_TAG: rgn1=" << rgn1Var << "("
+                              << rgn1Var.get_type() << ") "
+                              << ptr1ParamLit->getVar() << " "
+                              << "rgn2=" << rgn2Var << "(" << rgn2Var.get_type()
+                              << ") " << ptr2ParamLit->getVar() << "\n";);
+        std::vector<var_or_cst_t> inputs{rgn1Var, ptr1ParamLit->getVar(),
+                                         rgn2Var, ptr2ParamLit->getVar()};
+        std::vector<var_t> outputs;
+        m_bb.intrinsic(MOVE_TAG, outputs, inputs, getDebugLoc(&I, 0 /*no id*/));
+      }
+    }
   } else {
     CLAM_ERROR("unsupported intrinsic " << I);
   }
