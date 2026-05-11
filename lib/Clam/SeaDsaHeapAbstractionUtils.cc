@@ -23,18 +23,26 @@ bool NodeOrdering::operator()(const seadsa::Node *n1,
   return n1->getId() < n2->getId();
 }
 
-void set_difference(NodeSet &s1, NodeSet &s2) {
-  NodeSet s3;
-  std::set_difference(s1.begin(), s1.end(), s2.begin(), s2.end(),
-                      std::inserter(s3, s3.end()));
-  std::swap(s3, s1);
+OrderedNodeVec orderedNodes(const NodeSet &set) {
+  OrderedNodeVec nodes;
+  nodes.reserve(set.size());
+  for (const seadsa::Node *n : set) {
+    nodes.push_back(n);
+  }
+  std::sort(nodes.begin(), nodes.end(), NodeOrdering{});
+  return nodes;
 }
 
-void set_union(NodeSet &s1, NodeSet &s2) {
-  NodeSet s3;
-  std::set_union(s1.begin(), s1.end(), s2.begin(), s2.end(),
-                 std::inserter(s3, s3.end()));
-  std::swap(s3, s1);
+void set_difference(NodeSet &s1, const NodeSet &s2) {
+  for (const seadsa::Node *n : s2) {
+    s1.erase(n);
+  }
+}
+
+void set_union(NodeSet &s1, const NodeSet &s2) {
+  for (const seadsa::Node *n : s2) {
+    s1.insert(n);
+  }
 }
 
 bool isInteger::operator()(const llvm::Type *t) {
