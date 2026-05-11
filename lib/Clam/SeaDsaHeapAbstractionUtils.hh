@@ -1,7 +1,8 @@
 #pragma once
 #include "clam/config.h"
 
-#include <set>
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace llvm {
 class Type;
@@ -20,11 +21,14 @@ struct NodeOrdering {
   bool operator()(const seadsa::Node *n1, const seadsa::Node *n2) const;
 };
 
-using NodeSet = std::set<const seadsa::Node *, NodeOrdering>;
+using NodeSet = llvm::DenseSet<const seadsa::Node *>;
+using OrderedNodeVec = llvm::SmallVector<const seadsa::Node *, 16>;
 
-void set_difference(NodeSet &s1, NodeSet &s2);
+OrderedNodeVec orderedNodes(const NodeSet &set);
 
-void set_union(NodeSet &s1, NodeSet &s2);
+void set_difference(NodeSet &s1, const NodeSet &s2);
+
+void set_union(NodeSet &s1, const NodeSet &s2);
 
 void markReachableNodes(const seadsa::Node *n, NodeSet &set);
 
