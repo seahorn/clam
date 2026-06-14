@@ -24,11 +24,7 @@ bool NodeOrdering::operator()(const seadsa::Node *n1,
 }
 
 OrderedNodeVec orderedNodes(const NodeSet &set) {
-  OrderedNodeVec nodes;
-  nodes.reserve(set.size());
-  for (const seadsa::Node *n : set) {
-    nodes.push_back(n);
-  }
+  OrderedNodeVec nodes(set.begin(), set.end());
   std::sort(nodes.begin(), nodes.end(), NodeOrdering{});
   return nodes;
 }
