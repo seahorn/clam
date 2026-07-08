@@ -280,6 +280,13 @@ if (TopLevel)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
+# Force-include <utility> for the whole build. Recent Boost headers
+# (boost/move/adl_move_swap.hpp) do `using std::swap;` without including
+# <utility> themselves, which fails to compile under libc++ unless the
+# translation unit has already pulled in <utility>. This applies before the
+# add_subdirectory() calls below so it also covers sea-dsa and Crab.
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include utility")
+
 ## ------ sea-dsa ------- ##
 if (TopLevel)
   if (IS_DIRECTORY "${SEADSA_ROOT}" AND EXISTS ${SEADSA_ROOT}/CMakeLists.txt)
