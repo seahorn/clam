@@ -1,4 +1,6 @@
-cmake_minimum_required(VERSION 3.3)
+# Range form: min is 3.3, but declare policies are current up to 4.0 so this
+# still configures under CMake 4.x (which rejects a bare min < 3.5).
+cmake_minimum_required(VERSION 3.3...4.0)
 
 project(Clam)
 set (Clam_VERSION_MAJOR 14)
