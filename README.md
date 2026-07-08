@@ -43,6 +43,28 @@ To run tests you need to install `lit` and `OutputCheck`:
      pip3 install lit
      pip3 install OutputCheck
 
+The tests also require an **LLVM 14 `clang`**. Each test compiles a C input to
+LLVM bitcode with `clang` and then feeds that bitcode to the Clam tools
+(`clam-pp`/`clam`), which are built against LLVM 14. A newer `clang` (for
+example Apple's system `clang`, or any `clang` >= 15) emits bitcode that uses
+[opaque pointers](https://llvm.org/docs/OpaquePointers.html) by default, and
+LLVM 14 cannot read it — so every test would fail with an error such as
+`Bitcode was not properly read; Opaque pointers are only supported in
+-opaque-pointers mode`.
+
+CMake automatically looks for a versioned LLVM-14 `clang` (e.g. `clang-14`) in
+the usual locations (Homebrew's keg-only `llvm@14`, the Debian/Ubuntu
+`llvm-14` packages, MacPorts, ...). If none is found it prints a warning and the
+tests fall back to whatever `clang` is on `PATH`. Install an LLVM 14 toolchain,
+for instance:
+
+     brew install llvm@14              # macOS (Homebrew)
+     apt-get install clang-14          # Debian/Ubuntu
+
+If the compiler lives somewhere non-standard, point CMake at it explicitly:
+
+     cmake -DCLAM_TEST_CLANG=/path/to/clang-14 ../
+
 # Compilation and installation # 
 
 The basic compilation steps are:
@@ -110,6 +132,9 @@ line 5 and 6 and add the following options at line 2.
 To run some regression tests:
 
      cmake --build . --target test-simple
+
+These tests need an LLVM 14 `clang` on the machine; see the
+[Tests](#tests) section above for why and how to provide one.
 
 # Usage #
 

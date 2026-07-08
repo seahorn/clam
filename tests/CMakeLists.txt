@@ -3,11 +3,45 @@ find_program(LIT_COMMAND lit REQUIRED)
 
 set(LLVM_EXTERNAL_LIT ${LIT_COMMAND})
 
+# The clam tools are built against LLVM 14. The lit tests compile their C inputs
+# to bitcode with clang and hand it to clam-pp/clam, so that clang must be an
+# LLVM-14 clang: a newer clang (e.g. Apple clang) emits opaque-pointer bitcode
+# that the LLVM-14-based clam tools cannot read, causing every test to fail.
+# Locate a compatible clang (a versioned name so we never grab the system
+# clang) and pass its directory to lit, which puts it first on PATH (lit.cfg).
+# Override with -DCLAM_TEST_CLANG=/path/to/clang-14 if auto-detection is wrong.
+find_program(CLAM_TEST_CLANG
+  NAMES clang-14 clang-mp-14.0 clang-14.0
+  HINTS
+    ${LLVM_TOOLS_BINARY_DIR}
+    /opt/homebrew/opt/llvm@14/bin      # Homebrew (Apple Silicon), keg-only
+    /usr/local/opt/llvm@14/bin         # Homebrew (Intel), keg-only
+    /usr/lib/llvm-14/bin               # Debian/Ubuntu llvm-14 packages
+    /opt/local/libexec/llvm-14.0/bin   # MacPorts
+  DOC "LLVM-14 clang used to compile the C inputs of the test suite")
+
+if (CLAM_TEST_CLANG)
+  get_filename_component(CLAM_TEST_CLANG_DIR "${CLAM_TEST_CLANG}" DIRECTORY)
+  message(STATUS "Clam tests: compiling test inputs with ${CLAM_TEST_CLANG}")
+else()
+  set(CLAM_TEST_CLANG_DIR "")
+  message(WARNING
+    "Clam tests: could not find an LLVM-14 clang (e.g. clang-14). The tests "
+    "will fall back to whatever 'clang' is on PATH, which may emit bitcode "
+    "incompatible with the LLVM-14 clam tools and make every test fail. "
+    "Install one (e.g. 'brew install llvm@14' or the llvm-14 system package) "
+    "or set -DCLAM_TEST_CLANG=/path/to/clang-14.")
+endif()
+
+# lit params shared by every test suite below.
+set(CLAM_LIT_PARAMS clang_dir=${CLAM_TEST_CLANG_DIR})
+
 add_lit_testsuite(test-simple "Run simple tests"
   -v
   ${CMAKE_CURRENT_SOURCE_DIR}/simple  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/simple
+  ${CLAM_LIT_PARAMS}
   DEPENDS clam)
 
 add_lit_testsuite(test-inter "Run inter-procedural tests"
@@ -15,6 +49,7 @@ add_lit_testsuite(test-inter "Run inter-procedural tests"
   ${CMAKE_CURRENT_SOURCE_DIR}/inter  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/inter
+  ${CLAM_LIT_PARAMS}
   DEPENDS clam)
 
 add_lit_testsuite(test-array-adapt "Run tests for the array adaptive domain"
@@ -22,6 +57,7 @@ add_lit_testsuite(test-array-adapt "Run tests for the array adaptive domain"
   ${CMAKE_CURRENT_SOURCE_DIR}/array-adapt  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/array-adapt
+  ${CLAM_LIT_PARAMS}
   DEPENDS clam)
 
 add_lit_testsuite(test-mem "Run tests for --crab-track=mem"
@@ -29,6 +65,7 @@ add_lit_testsuite(test-mem "Run tests for --crab-track=mem"
   ${CMAKE_CURRENT_SOURCE_DIR}/mem  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/mem
+  ${CLAM_LIT_PARAMS}
   DEPENDS clam)
 
 add_lit_testsuite(test-uaf "Run tests for use-after-free checker"
@@ -36,6 +73,7 @@ add_lit_testsuite(test-uaf "Run tests for use-after-free checker"
   ${CMAKE_CURRENT_SOURCE_DIR}/uaf  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/uaf
+  ${CLAM_LIT_PARAMS}
   DEPENDS clam)
 
 add_lit_testsuite(test-tag "Run tests for the tag analysis"
@@ -43,6 +81,7 @@ add_lit_testsuite(test-tag "Run tests for the tag analysis"
   ${CMAKE_CURRENT_SOURCE_DIR}/tag-analysis  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/tag-analysis
+  ${CLAM_LIT_PARAMS}
   DEPENDS clam)
 
 add_lit_testsuite(test-opt "Run Optimizer tests"
@@ -50,6 +89,7 @@ add_lit_testsuite(test-opt "Run Optimizer tests"
   ${CMAKE_CURRENT_SOURCE_DIR}/opt  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/opt
+  ${CLAM_LIT_PARAMS}
   DEPENDS clam)
 
 add_lit_testsuite(test-readme "Run README.md tests"
@@ -57,6 +97,7 @@ add_lit_testsuite(test-readme "Run README.md tests"
   ${CMAKE_CURRENT_SOURCE_DIR}/demo  ## where .cfg file is located
   PARAMS
   test_dir=${CMAKE_CURRENT_BINARY_DIR}/demo
+  ${CLAM_LIT_PARAMS}
   DEPENDS clam)
 
 if (CRAB_USE_LDD)
@@ -65,20 +106,23 @@ if (CRAB_USE_LDD)
     ${CMAKE_CURRENT_SOURCE_DIR}/ssh  ## where .cfg file is located
     PARAMS
     test_dir=${CMAKE_CURRENT_BINARY_DIR}/ssh
-    DEPENDS clam)
+    ${CLAM_LIT_PARAMS}
+  DEPENDS clam)
   
   add_lit_testsuite(test-ssh-simplified "Run SVCOMP ssh-simplified benchmarks"
     -v 
     ${CMAKE_CURRENT_SOURCE_DIR}/ssh-simplified  ## where .cfg file is located
     PARAMS
     test_dir=${CMAKE_CURRENT_BINARY_DIR}/ssh-simplified
-    DEPENDS clam)
+    ${CLAM_LIT_PARAMS}
+  DEPENDS clam)
 
   add_lit_testsuite(test-ntdrivers-simplified "Run SVCOMP ntdrivers-simplified benchmarks"
     -v 
     ${CMAKE_CURRENT_SOURCE_DIR}/ntdrivers-simplified  ## where .cfg file is located
     PARAMS
     test_dir=${CMAKE_CURRENT_BINARY_DIR}/ntdrivers-simplified
-    DEPENDS clam)
+    ${CLAM_LIT_PARAMS}
+  DEPENDS clam)
   
 endif()
