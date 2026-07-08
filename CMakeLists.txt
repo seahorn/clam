@@ -253,14 +253,14 @@ if (TopLevel)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
     
-    include_directories(${LLVM_INCLUDE_DIRS})
+    include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
     link_directories(${LLVM_LIBRARY_DIRS})
     add_definitions(${LLVM_DEFINITIONS})
     
     if (NOT LLVM_BUILD_TYPE STREQUAL CMAKE_BUILD_TYPE)
       message(WARNING
 	"LLVM_BUILD_TYPE and CMAKE_BUILD_TYPE differ:\n"
-	"\tLLMV_BUILD_TYPE=${LLVM_BUILD_TYPE}\n"
+	"\tLLVM_BUILD_TYPE=${LLVM_BUILD_TYPE}\n"
 	"\tCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}\n"
 	"Runtime errors might occur.")
       if (LLVM_BUILD_TYPE MATCHES "Release|RelWithDebInfo" AND 

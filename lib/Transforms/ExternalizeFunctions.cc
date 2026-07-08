@@ -33,7 +33,7 @@ namespace clam {
 
 class ExternalizeFunctions : public ModulePass {
 
-  struct MatchRegex : public std::unary_function<Function *, bool> {
+  struct MatchRegex {
     llvm::Optional<llvm::Regex> m_re;
     MatchRegex(std::string s) {
       if (s != "") {
