@@ -2451,7 +2451,8 @@ void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
 	// ptr  := calloc(num, size) allocates num*size bytes
 	// TODO(TRANSLATION): we ignore that the new allocated memory is zeroed
 	addMakeRefFromCalloc(retRef, rgn, *(I.getOperand(0)), *(I.getOperand(1)));
-      } else if (isReallocLikeFn(&I, m_tli)) {
+      } else if (I.getCalledFunction() &&
+		 isReallocLikeFn(I.getCalledFunction(), m_tli)) {
 	// ptr' := realloc(ptr, new_size)
 	// TODO(TRANSLATION): we ignore that the contents of the new allocated memory
 	addMakeRefFromMalloc(retRef, rgn, *(I.getOperand(1)));
@@ -3342,7 +3343,9 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
     return;
   }
 
-  if (isFreeCall(&I, m_tli)) {
+  // LLVM 15: isFreeCall was removed; getFreedOperand returns the freed
+  // pointer operand (non-null) iff the call frees memory.
+  if (getFreedOperand(&I, m_tli)) {
     doFreeFn(I);
     return;
   }
