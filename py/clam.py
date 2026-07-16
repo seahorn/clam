@@ -43,7 +43,7 @@ CRAB_MEMORY_OUT = 27
 CRAB_SEGFAULT = 28 ## unexpected segfaults
 #############################################################
 
-llvm_version = "14.0"
+llvm_version = "15.0"
 
 def isexec(fpath):
     if fpath is None:

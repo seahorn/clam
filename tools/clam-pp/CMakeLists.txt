@@ -8,8 +8,8 @@ set(LLVM_LINK_COMPONENTS
   scalaropts 
   instrumentation
   transformutils
-  core 
-  codegen 
+  core
+  codegen
   objcarcopts)
 
 add_llvm_executable(clam-pp DISABLE_LLVM_LINK_LLVM_DYLIB clam-pp.cc)
