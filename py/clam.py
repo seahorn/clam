@@ -552,6 +552,13 @@ def getClangVersion(clang_cmd):
 
 def getClang(is_plus_plus):
     cmd_name = None
+    # Allow overriding the clang binary via environment variables.
+    env_var = 'CLANGPP' if is_plus_plus else 'CLANG'
+    if env_var in os.environ:
+        cmd_name = os.environ[env_var]
+        if not isexec(cmd_name):
+            raise IOError('clang set via ' + env_var + ' is not executable: ' + str(cmd_name))
+        return cmd_name
     if is_plus_plus:
         cmd_name = which (['clang++-mp-' + llvm_version, 'clang++-' + llvm_version, 'clang++'])
     else:
