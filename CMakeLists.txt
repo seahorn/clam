@@ -3,7 +3,20 @@
 cmake_minimum_required(VERSION 3.3...4.0)
 
 project(Clam)
-set (Clam_VERSION_MAJOR 15)
+
+# Single source of truth for the LLVM release this branch targets. Everything
+# version-dependent below is derived from it: the find_package(LLVM) request,
+# the dev<N> branches of the sea-dsa/llvm-seahorn subprojects, and the versioned
+# clang the test suite compiles its inputs with. Migrating to a new LLVM should
+# start by bumping this one line.
+# Not derived from it (bump by hand, they live outside CMake's reach):
+# py/clam.py's llvm_version -- guarded below so a mismatch fails configure --
+# and README.md, docker/clam.Dockerfile and .github/workflows/.
+set (CLAM_LLVM_VERSION 15 CACHE STRING "Major version of LLVM to build against")
+
+# Clam's major version tracks the LLVM release it targets (clam14 -> LLVM 14,
+# clam15 -> LLVM 15, ...).
+set (Clam_VERSION_MAJOR ${CLAM_LLVM_VERSION})
 set (Clam_VERSION_MINOR 0)
 set (Clam_VERSION_PATCH 0)
 set (Clam_VERSION_TWEAK "rc0")
@@ -13,7 +26,7 @@ cmake_policy(SET CMP0074 NEW)
 cmake_policy(SET CMP0077 NEW)
 endif()
 
-## LLVM 15 requires c++14
+## LLVM 15 and later require at least c++14
 set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
@@ -233,16 +246,13 @@ endif ()
 
 
 if (TopLevel)
-  # LLVM 15 (Ubuntu package) exposes zstd::libzstd_shared in its export set.
-  # Pull in zstd's imported targets first so find_package(LLVM) can resolve it.
+  # LLVM 15 (Ubuntu package) and later expose zstd::libzstd_shared in their
+  # export set. Pull in zstd's imported targets first so find_package(LLVM) can
+  # resolve it.
   find_package (zstd QUIET)
-  find_package(LLVM 15 CONFIG)
+  find_package(LLVM ${CLAM_LLVM_VERSION} CONFIG)
   if (NOT LLVM_FOUND)
-    ExternalProject_Get_Property (llvm INSTALL_DIR)
-    set (LLVM_ROOT ${INSTALL_DIR})
-    set (LLVM_DIR ${LLVM_ROOT}/lib/cmake/llvm CACHE PATH
-      "Forced location of LLVM cmake config" FORCE)
-    message (WARNING "No llvm found. Install LLVM 15.")
+    message (WARNING "No LLVM ${CLAM_LLVM_VERSION} found. Install LLVM ${CLAM_LLVM_VERSION} or point cmake at it with -DLLVM_DIR=<prefix>/lib/cmake/llvm.")
     return()
   else()
     message(STATUS "Clam: found LLVM ${LLVM_PACKAGE_VERSION}")
@@ -362,6 +372,19 @@ if (CLAM_INCLUDE_TOOLS)
   add_subdirectory(tools)
 endif()
 if (CLAM_INCLUDE_PYTHON)
+  # clam.py must run standalone (it is invoked directly from the source tree and
+  # from the install prefix), so it carries its own copy of the LLVM version
+  # rather than being generated. Guard it: a stale llvm_version silently makes
+  # clam.py pick the wrong clang, which shows up as unreadable bitcode much
+  # later. Fail configure instead.
+  file(STRINGS ${Clam_SOURCE_DIR}/py/clam.py CLAM_PY_LLVM_VERSION_LINE
+    REGEX "^llvm_version[ \t]*=")
+  if (NOT CLAM_PY_LLVM_VERSION_LINE MATCHES "\"${CLAM_LLVM_VERSION}\\.")
+    message(FATAL_ERROR
+      "py/clam.py disagrees with CLAM_LLVM_VERSION=${CLAM_LLVM_VERSION}: it has "
+      "'${CLAM_PY_LLVM_VERSION_LINE}'. Update llvm_version in py/clam.py to "
+      "\"${CLAM_LLVM_VERSION}.0\".")
+  endif()
   add_subdirectory(py)
   add_subdirectory(scripts)
 endif()

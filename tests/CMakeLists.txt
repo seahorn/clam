@@ -3,22 +3,25 @@ find_program(LIT_COMMAND lit REQUIRED)
 
 set(LLVM_EXTERNAL_LIT ${LIT_COMMAND})
 
-# The clam tools are built against LLVM 14. The lit tests compile their C inputs
-# to bitcode with clang and hand it to clam-pp/clam, so that clang must be an
-# LLVM-14 clang: a newer clang (e.g. Apple clang) emits opaque-pointer bitcode
-# that the LLVM-14-based clam tools cannot read, causing every test to fail.
+# The clam tools are built against LLVM ${CLAM_LLVM_VERSION}. The lit tests
+# compile their C inputs to bitcode with clang and hand it to clam-pp/clam, so
+# that clang must be of the same LLVM release: a newer clang (e.g. Apple clang)
+# emits bitcode the clam tools cannot read, causing every test to fail.
 # Locate a compatible clang (a versioned name so we never grab the system
 # clang) and pass its directory to lit, which puts it first on PATH (lit.cfg).
-# Override with -DCLAM_TEST_CLANG=/path/to/clang-14 if auto-detection is wrong.
+# Every name and path below is derived from CLAM_LLVM_VERSION (see the top-level
+# CMakeLists.txt), so a new LLVM release needs no edit here. Override with
+# -DCLAM_TEST_CLANG=/path/to/clang if auto-detection is wrong.
+set(V ${CLAM_LLVM_VERSION})
 find_program(CLAM_TEST_CLANG
-  NAMES clang-14 clang-mp-14.0 clang-14.0
+  NAMES clang-${V} clang-mp-${V}.0 clang-${V}.0
   HINTS
     ${LLVM_TOOLS_BINARY_DIR}
-    /opt/homebrew/opt/llvm@14/bin      # Homebrew (Apple Silicon), keg-only
-    /usr/local/opt/llvm@14/bin         # Homebrew (Intel), keg-only
-    /usr/lib/llvm-14/bin               # Debian/Ubuntu llvm-14 packages
-    /opt/local/libexec/llvm-14.0/bin   # MacPorts
-  DOC "LLVM-14 clang used to compile the C inputs of the test suite")
+    /opt/homebrew/opt/llvm@${V}/bin      # Homebrew (Apple Silicon), keg-only
+    /usr/local/opt/llvm@${V}/bin         # Homebrew (Intel), keg-only
+    /usr/lib/llvm-${V}/bin               # Debian/Ubuntu llvm-${V} packages
+    /opt/local/libexec/llvm-${V}.0/bin   # MacPorts
+  DOC "LLVM-${V} clang used to compile the C inputs of the test suite")
 
 if (CLAM_TEST_CLANG)
   get_filename_component(CLAM_TEST_CLANG_DIR "${CLAM_TEST_CLANG}" DIRECTORY)
@@ -26,15 +29,20 @@ if (CLAM_TEST_CLANG)
 else()
   set(CLAM_TEST_CLANG_DIR "")
   message(WARNING
-    "Clam tests: could not find an LLVM-14 clang (e.g. clang-14). The tests "
+    "Clam tests: could not find an LLVM-${V} clang (e.g. clang-${V}). The tests "
     "will fall back to whatever 'clang' is on PATH, which may emit bitcode "
-    "incompatible with the LLVM-14 clam tools and make every test fail. "
-    "Install one (e.g. 'brew install llvm@14' or the llvm-14 system package) "
-    "or set -DCLAM_TEST_CLANG=/path/to/clang-14.")
+    "incompatible with the LLVM-${V} clam tools and make every test fail. "
+    "Install one (e.g. 'brew install llvm@${V}' or the llvm-${V} system package) "
+    "or set -DCLAM_TEST_CLANG=/path/to/clang-${V}.")
 endif()
 
-# lit params shared by every test suite below.
-set(CLAM_LIT_PARAMS clang_dir=${CLAM_TEST_CLANG_DIR})
+# lit params shared by every test suite below. clam_dir points lit at the
+# clam.py installed by this build (see getClam in lit.cfg) so it does not pick
+# up a clam from PATH that was built against a different LLVM; it means the
+# tests must be run after 'ninja install'.
+set(CLAM_LIT_PARAMS
+  clang_dir=${CLAM_TEST_CLANG_DIR}
+  clam_dir=${CMAKE_INSTALL_PREFIX}/bin)
 
 add_lit_testsuite(test-simple "Run simple tests"
   -v

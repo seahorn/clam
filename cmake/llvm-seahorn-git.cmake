@@ -2,5 +2,6 @@ set(SEAHORN_LLVM_SOURCE_DIR "${CMAKE_SOURCE_DIR}/llvm-seahorn" CACHE STRING "sea
 if (TopLevel)
   set(SEAHORN_LLVM_REPO "https://github.com/seahorn/llvm-seahorn" CACHE STRING "seahorn-llvm repo")
   add_custom_target(seahorn-llvm-git
-    ${GIT_EXECUTABLE} clone -b dev15 ${SEAHORN_LLVM_REPO} ${SEAHORN_LLVM_SOURCE_DIR})
+    # llvm-seahorn tracks the LLVM release on branches named dev<major>.
+    ${GIT_EXECUTABLE} clone -b dev${CLAM_LLVM_VERSION} ${SEAHORN_LLVM_REPO} ${SEAHORN_LLVM_SOURCE_DIR})
 endif()
