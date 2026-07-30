@@ -37,9 +37,12 @@ public:
 	  fn = dyn_cast<const Function>(CB.getCalledOperand()->stripPointerCasts());
 	
 	if (fn && fn->getName().equals("malloc")) {
-	  if (PointerType *pty = dyn_cast<PointerType>(I.getType())) {
+	  if (I.getType()->isPointerTy()) {
 	    unsigned addrSpace = 0;
-	    Value *nv = new AllocaInst(pty->getPointerElementType(), addrSpace,
+	    // malloc's return type is always i8* (an opaque `ptr` under LLVM 15), so
+	    // the buffer is n bytes: alloca i8, n -- exactly what
+	    // pty->getPointerElementType() yielded before opaque pointers.
+	    Value *nv = new AllocaInst(Type::getInt8Ty(I.getContext()), addrSpace,
 				       CB.getArgOperand(0), "malloc", &I);
 	    I.replaceAllUsesWith(nv);
 	    changed = true;

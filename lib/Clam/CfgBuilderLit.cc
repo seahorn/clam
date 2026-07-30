@@ -5,6 +5,7 @@
 #include "clam/crab/crab_lang.hh"
 
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalVariable.h"
 
 namespace clam {
 
@@ -217,7 +218,14 @@ var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
   
   unsigned bitwidth = 0;
   if (const Value *v = rgn.getSingleton()) {
-    Type *ty = cast<PointerType>(v->getType())->getPointerElementType();
+    // Under opaque pointers the pointee is no longer stored on v's pointer
+    // type. The singleton is always a GlobalVariable (see getSingleton),
+    // whose value type is exactly what getPointerElementType() returned.
+    const GlobalVariable *gv = dyn_cast<GlobalVariable>(v);
+    if (!gv) {
+      CLAM_ERROR("singleton memory region is not a global variable");
+    }
+    Type *ty = gv->getValueType();
     bitwidth = ty->getIntegerBitWidth();
     if (rgn.getRegionInfo().getType().first == region_type_t::INT_REGION &&
         bitwidth <= 1) {

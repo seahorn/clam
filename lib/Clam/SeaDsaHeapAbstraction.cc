@@ -766,7 +766,9 @@ const llvm::Value *SeaDsaHeapAbstractionImpl::getSingleton(
   if (const Value *v = n->getUniqueScalar()) {
     if (const GlobalVariable *gv = dyn_cast<const GlobalVariable>(v)) {
       seadsa_heap_abs_impl::isIntegerOrBool is_typed;
-      if (is_typed(gv->getType()->getPointerElementType()))
+      // gv is a GlobalVariable: recover its value type directly instead of
+      // reading the pointee off gv's (opaque under LLVM 15) pointer type.
+      if (is_typed(gv->getValueType()))
         return v;
     }
   }

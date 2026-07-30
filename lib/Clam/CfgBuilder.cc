@@ -51,6 +51,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
@@ -2478,7 +2479,9 @@ void CrabIntraBlockBuilder::visitAllocaInst(AllocaInst &I) {
 
   // note that it has side-effects (it might add a multiplication in the basic block)
   auto getAllocaSize = [this](AllocaInst &I) -> var_or_cst_t {
-    Type *ty = I.getType()->getPointerElementType();
+    // The allocated type lives on the AllocaInst, not on its (opaque under
+    // LLVM 15) result pointer type.
+    Type *ty = I.getAllocatedType();
     unsigned typeSz = (size_t)m_dl->getTypeAllocSize(ty);
     llvm::Optional<var_or_cst_t> size;
     if (const ConstantInt *cv = dyn_cast<const ConstantInt>(I.getOperand(0))) {
@@ -4706,7 +4709,13 @@ void CfgBuilderImpl::addFunctionDeclaration() {
         if (rgn.getRegionInfo().containScalar()) {
           // input version
           change = true;
-          Type *ty = cast<PointerType>(v->getType())->getPointerElementType();
+          // The singleton is always a GlobalVariable (see getSingleton);
+          // recover its value type instead of the (opaque) pointer's pointee.
+          const GlobalVariable *gv = dyn_cast<GlobalVariable>(v);
+          if (!gv) {
+            CLAM_ERROR("singleton memory region is not a global variable");
+          }
+          Type *ty = gv->getValueType();
           var_t s = m_lfac.mkScalarVar(rgn);
           if (isInteger(ty)) {
             var_t a_in = m_lfac.mkIntVar(ty->getIntegerBitWidth());
