@@ -2,7 +2,7 @@
 
 Clam is an [Abstract Interpretation](https://en.wikipedia.org/wiki/Abstract_interpretation)-based static analyzer that computes inductive invariants for
 LLVM bitcode based on
-the [Crab](https://github.com/seahorn/crab) library. This branch supports LLVM 14.
+the [Crab](https://github.com/seahorn/crab) library. This branch supports LLVM 15.
 
 The available documentation can be found in both
 Clam [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
@@ -14,7 +14,7 @@ Clam [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://g
 You can get Clam from [Docker Hub](https://hub.docker.com/) (nightly built) using the
 command:
 
-     docker pull seahorn/clam-llvm14:nightly
+     docker pull seahorn/clam-llvm15:nightly
 
 # Requirements #
 
@@ -43,27 +43,26 @@ To run tests you need to install `lit` and `OutputCheck`:
      pip3 install lit
      pip3 install OutputCheck
 
-The tests also require an **LLVM 14 `clang`**. Each test compiles a C input to
+The tests also require an **LLVM 15 `clang`**. Each test compiles a C input to
 LLVM bitcode with `clang` and then feeds that bitcode to the Clam tools
-(`clam-pp`/`clam`), which are built against LLVM 14. A newer `clang` (for
-example Apple's system `clang`, or any `clang` >= 15) emits bitcode that uses
-[opaque pointers](https://llvm.org/docs/OpaquePointers.html) by default, and
-LLVM 14 cannot read it — so every test would fail with an error such as
-`Bitcode was not properly read; Opaque pointers are only supported in
--opaque-pointers mode`.
+(`clam-pp`/`clam`), which are built against LLVM 15. LLVM bitcode is not
+compatible across major versions, so `clang` must be an LLVM 15 `clang`: a newer
+`clang` (for example Apple's system `clang`, or any `clang` >= 16) emits bitcode
+in a format the LLVM-15 tools cannot read, so every test would fail while
+reading the bitcode.
 
-CMake automatically looks for a versioned LLVM-14 `clang` (e.g. `clang-14`) in
-the usual locations (Homebrew's keg-only `llvm@14`, the Debian/Ubuntu
-`llvm-14` packages, MacPorts, ...). If none is found it prints a warning and the
-tests fall back to whatever `clang` is on `PATH`. Install an LLVM 14 toolchain,
+CMake automatically looks for a versioned LLVM-15 `clang` (e.g. `clang-15`) in
+the usual locations (Homebrew's keg-only `llvm@15`, the Debian/Ubuntu
+`llvm-15` packages, MacPorts, ...). If none is found it prints a warning and the
+tests fall back to whatever `clang` is on `PATH`. Install an LLVM 15 toolchain,
 for instance:
 
-     brew install llvm@14              # macOS (Homebrew)
-     apt-get install clang-14          # Debian/Ubuntu
+     brew install llvm@15              # macOS (Homebrew)
+     apt-get install clang-15          # Debian/Ubuntu
 
 If the compiler lives somewhere non-standard, point CMake at it explicitly:
 
-     cmake -DCLAM_TEST_CLANG=/path/to/clang-14 ../
+     cmake -DCLAM_TEST_CLANG=/path/to/clang-15 ../
 
 # Compilation and installation # 
 
@@ -75,9 +74,9 @@ The basic compilation steps are:
     4. cmake --build . --target extra && cmake ..                  
     5. cmake --build . --target install 
 
-The command at line 2 will try to find LLVM 14 from standard paths.
-If you installed LLVM 14 in a non-standard path, then add option
-`-DLLVM_DIR=$LLVM-14_INSTALL_DIR/lib/cmake/llvm` to line 2.  The
+The command at line 2 will try to find LLVM 15 from standard paths.
+If you installed LLVM 15 in a non-standard path, then add option
+`-DLLVM_DIR=$LLVM-15_INSTALL_DIR/lib/cmake/llvm` to line 2.  The
 command at line 3 will download Crab and compile it from sources.
 Clam uses two external components that are installed via the `extra`
 target at line 4. These components are:
@@ -133,7 +132,7 @@ To run some regression tests:
 
      cmake --build . --target test-simple
 
-These tests need an LLVM 14 `clang` on the machine; see the
+These tests need an LLVM 15 `clang` on the machine; see the
 [Tests](#tests) section above for why and how to provide one.
 
 # Usage #
