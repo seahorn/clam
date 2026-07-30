@@ -4,11 +4,15 @@
 # Arguments:
 #  - LLVM_VERSION: major LLVM release to build against (e.g. 15, 16, 17). Drives
 #    the base image, the clang/clang++/llvm-dis binaries and the tool symlinks.
-#  - BASE_IMAGE: seahorn buildpack tag (defaults to jammy-llvm${LLVM_VERSION})
+#  - BUILDPACK_IMAGE: buildpack-deps image repo. LLVM 15+ base images are
+#    published on GitHub Container Registry; the older Docker Hub
+#    seahorn/buildpack-deps-seahorn only goes up to jammy-llvm14.
+#  - BASE_IMAGE: buildpack tag (defaults to jammy-llvm${LLVM_VERSION})
 #  - BUILD_TYPE: Debug, RelWithDebInfo, Coverage
 ARG LLVM_VERSION=15
+ARG BUILDPACK_IMAGE=ghcr.io/seahorn/buildpack-deps-seahorn
 ARG BASE_IMAGE=jammy-llvm${LLVM_VERSION}
-FROM seahorn/buildpack-deps-seahorn:$BASE_IMAGE
+FROM ${BUILDPACK_IMAGE}:${BASE_IMAGE}
 
 # ARGs declared before FROM are only visible to FROM; re-declare to use below.
 ARG LLVM_VERSION
