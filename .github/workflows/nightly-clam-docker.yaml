@@ -1,20 +1,26 @@
-# Workflow to push clam image in dockerhub
+# Nightly: build every maintained dev<N> branch and push its image to DockerHub.
+#
+# One matrix entry per LLVM release. Each entry checks out branch dev<N> and
+# builds it with LLVM_VERSION=<N> (the Dockerfile derives base image, compilers
+# and symlinks from it), tagging seahorn/clam-llvm<N>:nightly. Add a new LLVM
+# release by appending its major version to the matrix below.
+#
+# NOTE: scheduled workflows only run from the repository's default branch, so
+# this file must be present there for the cron to fire.
 
 name: Nightly
 
 # Controls when the action will run.
 on:
-  # Triggers the workflow on push or pull request events but only for the dev14 branch
+  # Triggers the workflow nightly for every branch in the matrix.
   schedule:
     - cron: 0 0 * * *  # run every day at UTC 00:00
   workflow_dispatch:
-    branches: dev14
     inputs:
       Triggerer:
         description: 'Triggered by:'
         required: true
         default: ''
-
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -22,24 +28,33 @@ jobs:
   test:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
+    strategy:
+      # Keep building the other branches even if one LLVM version fails.
+      fail-fast: false
+      matrix:
+        llvm: [14, 15]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - name: Check out repo
-        uses: actions/checkout@v2
+      # Checks-out the dev<N> branch for this matrix entry
+      - name: Check out dev${{ matrix.llvm }}
+        uses: actions/checkout@v4
         with:
-          ref: dev14 
-      - name: Build clam and run tests
-        run: docker build -t seahorn/clam-llvm14:nightly -f docker/clam.Dockerfile .
+          ref: dev${{ matrix.llvm }}
+      - name: Build clam and run tests (LLVM ${{ matrix.llvm }})
+        run: |
+          docker build \
+            --build-arg LLVM_VERSION=${{ matrix.llvm }} \
+            -t seahorn/clam-llvm${{ matrix.llvm }}:nightly \
+            -f docker/clam.Dockerfile .
       # Logging in using this mechanism prints the following warning
       # WARNING! Your password will be stored unencrypted in /home/runner/.docker/config.json.
       # There does not seem to be an easy way around it though using docker actions may mitigate
       # it.
-      - name: Login to DockerHub Registry 
+      - name: Login to DockerHub Registry
         if: ${{ github.event_name == 'schedule' }}  # only push if nightly run
         run: echo ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }} | docker login -u ${{ secrets.DOCKER_HUB_USERNAME }} --password-stdin
       - name: Tag and push clam (nightly)
         if: ${{ github.event_name == 'schedule' }}  # only push if nightly run
         run: |
-          docker push seahorn/clam-llvm14:nightly 
+          docker push seahorn/clam-llvm${{ matrix.llvm }}:nightly
