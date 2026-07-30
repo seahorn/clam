@@ -1,0 +1,33 @@
+# Build and test clam on every push to a dev<version> branch (dev15 and up).
+#
+# The LLVM major version is taken from the branch name (dev15 -> 15), so this
+# one workflow serves dev15, dev16, dev17, ... with no edits: just branch a new
+# dev<N> that carries this file. It runs per commit only; nightly image
+# publishing stays in nightly-clam-docker.yaml.
+
+name: CI-dev
+
+on:
+  push:
+    branches:
+      - 'dev1[5-9]'      # dev15 .. dev19
+      - 'dev[2-9][0-9]'  # dev20 .. dev99
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # dev15 -> 15, dev16 -> 16, ...
+      - name: Derive LLVM version from branch name
+        id: llvm
+        run: echo "version=${GITHUB_REF_NAME#dev}" >> "$GITHUB_OUTPUT"
+
+      - name: Build clam and run tests (LLVM ${{ steps.llvm.outputs.version }})
+        run: |
+          docker build \
+            --build-arg LLVM_VERSION=${{ steps.llvm.outputs.version }} \
+            -t seahorn/clam-llvm${{ steps.llvm.outputs.version }}:ci \
+            -f docker/clam.Dockerfile .
