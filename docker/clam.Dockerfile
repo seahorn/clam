@@ -17,8 +17,9 @@ FROM ${BUILDPACK_IMAGE}:${BASE_IMAGE}
 # ARGs declared before FROM are only visible to FROM; re-declare to use below.
 ARG LLVM_VERSION
 
-# Needed to run clang with -m32
-RUN apt-get install -yqq libc6-dev-i386
+# libc6-dev-i386: needed to run clang with -m32.
+# python3-pip: to install OutputCheck below (the lit tests pipe into it).
+RUN apt-get install -yqq libc6-dev-i386 python3-pip
 
 # Assume that docker-build is ran in the top-level Clam directory
 COPY . /clam
@@ -49,6 +50,10 @@ RUN ln -s /usr/bin/clang-${LLVM_VERSION} /usr/bin/clang
 RUN ln -s /usr/bin/llvm-dis-${LLVM_VERSION} /usr/bin/llvm-dis
 ENV PATH "/usr/bin:$PATH"
 ENV PATH "/clam/build/run/bin:$PATH"
+
+# lit is provided by the base image, but OutputCheck (which the lit RUN
+# directives pipe into) is not; install it.
+RUN pip3 install --no-cache-dir OutputCheck
 
 # run tests
 RUN cmake --build . --target test-simple
