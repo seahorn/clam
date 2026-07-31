@@ -1058,6 +1058,20 @@ def main(argv):
     os.environ ['PATH'] =  os.path.dirname(os.path.realpath(__file__)) + \
                            os.pathsep + os.environ['PATH']
 
+    ## Prefer the LLVM toolchain Clam was built against. CMake records its
+    ## location in clam_config.llvm_tools_dir (installed next to this script);
+    ## putting it first on PATH makes getClang/getOptLlvm/... pick a matching
+    ## clang/opt/llvm-dis instead of whatever (possibly newer) clang is first on
+    ## PATH, whose bitcode the LLVM-<version> Clam tools may not be able to read.
+    ## Absent when running from the source tree, or overridden by CLANG/CLANGPP.
+    try:
+        import clam_config
+        llvm_tools_dir = getattr(clam_config, 'llvm_tools_dir', '')
+    except ImportError:
+        llvm_tools_dir = ''
+    if llvm_tools_dir and os.path.isdir(llvm_tools_dir):
+        os.environ['PATH'] = llvm_tools_dir + os.pathsep + os.environ['PATH']
+
     if '--llvm-version' in argv[1:] or '-llvm-version' in argv[1:]:
         print("LLVM version " + llvm_version)
         return 0
