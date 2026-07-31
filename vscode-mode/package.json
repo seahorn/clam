@@ -1,0 +1,107 @@
+{
+  "name": "crabir",
+  "displayName": "CrabIR (Clam --ocrab)",
+  "description": "Syntax highlighting and navigation for CrabIR analysis reports produced by Clam's --ocrab option.",
+  "version": "0.1.0",
+  "publisher": "clam",
+  "license": "Apache-2.0",
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "crab",
+    "crabir",
+    "clam",
+    "abstract interpretation",
+    "static analysis"
+  ],
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:crabir"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "crabir",
+        "aliases": [
+          "CrabIR",
+          "crabir"
+        ],
+        "extensions": [
+          ".crabir"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "crabir",
+        "scopeName": "source.crabir",
+        "path": "./syntaxes/crabir.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "crabir.nextCheck",
+        "title": "CrabIR: Next Check Result"
+      },
+      {
+        "command": "crabir.previousCheck",
+        "title": "CrabIR: Previous Check Result"
+      },
+      {
+        "command": "crabir.nextFailedCheck",
+        "title": "CrabIR: Next Failed Check"
+      },
+      {
+        "command": "crabir.previousFailedCheck",
+        "title": "CrabIR: Previous Failed Check"
+      },
+      {
+        "command": "crabir.toggleInvariants",
+        "title": "CrabIR: Toggle INVARIANTS Annotations"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "crabir.nextCheck",
+        "key": "ctrl+c ctrl+n",
+        "mac": "cmd+c cmd+n",
+        "when": "editorTextFocus && editorLangId == crabir"
+      },
+      {
+        "command": "crabir.previousCheck",
+        "key": "ctrl+c ctrl+p",
+        "mac": "cmd+c cmd+p",
+        "when": "editorTextFocus && editorLangId == crabir"
+      },
+      {
+        "command": "crabir.nextFailedCheck",
+        "key": "ctrl+c ctrl+f",
+        "mac": "cmd+c cmd+f",
+        "when": "editorTextFocus && editorLangId == crabir"
+      },
+      {
+        "command": "crabir.previousFailedCheck",
+        "key": "ctrl+c ctrl+b",
+        "mac": "cmd+c cmd+b",
+        "when": "editorTextFocus && editorLangId == crabir"
+      },
+      {
+        "command": "crabir.toggleInvariants",
+        "key": "ctrl+c ctrl+i",
+        "mac": "cmd+c cmd+i",
+        "when": "editorTextFocus && editorLangId == crabir"
+      }
+    ],
+    "configurationDefaults": {
+      "[crabir]": {
+        "editor.wordWrap": "off",
+        "editor.foldingStrategy": "auto"
+      }
+    }
+  }
+}
