@@ -6,12 +6,12 @@ project(Clam)
 
 # Single source of truth for the LLVM release this branch targets. Everything
 # version-dependent below is derived from it: the find_package(LLVM) request,
-# the dev<N> branches of the sea-dsa/llvm-seahorn subprojects, and the versioned
-# clang the test suite compiles its inputs with. Migrating to a new LLVM should
-# start by bumping this one line.
+# the dev<N> branches of the sea-dsa/llvm-seahorn subprojects, the versioned
+# clang the test suite compiles its inputs with, and py/clam.py's llvm_version
+# (emitted into clam_config.py; see py/CMakeLists.txt). Migrating to a new LLVM
+# should start by bumping this one line.
 # Not derived from it (bump by hand, they live outside CMake's reach):
-# py/clam.py's llvm_version -- guarded below so a mismatch fails configure --
-# and README.md, docker/clam.Dockerfile and .github/workflows/.
+# README.md, docker/clam.Dockerfile and .github/workflows/.
 set (CLAM_LLVM_VERSION 15 CACHE STRING "Major version of LLVM to build against")
 
 # Clam's major version tracks the LLVM release it targets (clam14 -> LLVM 14,
@@ -372,19 +372,9 @@ if (CLAM_INCLUDE_TOOLS)
   add_subdirectory(tools)
 endif()
 if (CLAM_INCLUDE_PYTHON)
-  # clam.py must run standalone (it is invoked directly from the source tree and
-  # from the install prefix), so it carries its own copy of the LLVM version
-  # rather than being generated. Guard it: a stale llvm_version silently makes
-  # clam.py pick the wrong clang, which shows up as unreadable bitcode much
-  # later. Fail configure instead.
-  file(STRINGS ${Clam_SOURCE_DIR}/py/clam.py CLAM_PY_LLVM_VERSION_LINE
-    REGEX "^llvm_version[ \t]*=")
-  if (NOT CLAM_PY_LLVM_VERSION_LINE MATCHES "\"${CLAM_LLVM_VERSION}\\.")
-    message(FATAL_ERROR
-      "py/clam.py disagrees with CLAM_LLVM_VERSION=${CLAM_LLVM_VERSION}: it has "
-      "'${CLAM_PY_LLVM_VERSION_LINE}'. Update llvm_version in py/clam.py to "
-      "\"${CLAM_LLVM_VERSION}.0\".")
-  endif()
+  # py/clam.py reads its LLVM version and tool directory from clam_config.py,
+  # which py/CMakeLists.txt generates from CLAM_LLVM_VERSION and
+  # LLVM_TOOLS_BINARY_DIR -- so there is no hardcoded copy to keep in sync here.
   add_subdirectory(py)
   add_subdirectory(scripts)
 endif()

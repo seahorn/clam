@@ -43,7 +43,18 @@ CRAB_MEMORY_OUT = 27
 CRAB_SEGFAULT = 28 ## unexpected segfaults
 #############################################################
 
-llvm_version = "15.0"
+# CMake records the LLVM release Clam was built against (and its tool
+# directory) in clam_config, installed next to this script. It is absent when
+# running from the source tree, where the fallbacks below apply. The single
+# source of truth is CLAM_LLVM_VERSION in CMake -- do not hardcode a second copy.
+try:
+    import clam_config
+except ImportError:
+    clam_config = None
+
+# LLVM major version Clam targets (e.g. "15"). The literal is only a source-tree
+# fallback; the installed clam.py gets the authoritative value from clam_config.
+llvm_version = getattr(clam_config, "llvm_version", "15")
 
 def isexec(fpath):
     if fpath is None:
@@ -1064,11 +1075,7 @@ def main(argv):
     ## clang/opt/llvm-dis instead of whatever (possibly newer) clang is first on
     ## PATH, whose bitcode the LLVM-<version> Clam tools may not be able to read.
     ## Absent when running from the source tree, or overridden by CLANG/CLANGPP.
-    try:
-        import clam_config
-        llvm_tools_dir = getattr(clam_config, 'llvm_tools_dir', '')
-    except ImportError:
-        llvm_tools_dir = ''
+    llvm_tools_dir = getattr(clam_config, 'llvm_tools_dir', '')
     if llvm_tools_dir and os.path.isdir(llvm_tools_dir):
         os.environ['PATH'] = llvm_tools_dir + os.pathsep + os.environ['PATH']
 
