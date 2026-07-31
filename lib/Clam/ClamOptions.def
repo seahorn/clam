@@ -534,8 +534,17 @@ llvm::cl::cat(ClamOptCat));
 
 
 static llvm::cl::opt<std::string>
-CrabResultsToJSON("ojson", 
+CrabResultsToJSON("ojson",
 llvm::cl::desc("Print analysis results and invariants to JSON format"),
+llvm::cl::value_desc("filename"),
+llvm::cl::init(""),
+llvm::cl::cat(ClamOptCat));
+
+
+static llvm::cl::opt<std::string>
+CrabResultsToLLMJSON("ojson-llm",
+llvm::cl::desc("Print per-assertion analysis results (LLM-friendly) to JSON format. "
+               "Implies per-assertion invariants and variables-of-influence."),
 llvm::cl::value_desc("filename"),
 llvm::cl::init(""),
 llvm::cl::cat(ClamOptCat));

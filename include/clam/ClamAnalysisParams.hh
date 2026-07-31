@@ -55,6 +55,8 @@ struct AnalysisParams {
   std::string output_crabir;
   /* Print invariants and checker results to JSON format */
   std::string output_json;
+  /* Print per-assertion results (LLM-friendly) to JSON format */
+  std::string output_json_llm;
   /* keep invariants for clients */
   bool store_invariants;
   /* run checker after analysis has finished */
@@ -73,7 +75,8 @@ struct AnalysisParams {
 	print_unjustified_assumptions(false), print_preconds(false),
         print_summaries(false), print_voi(false),
 	keep_shadow_vars(false),
-	output_crabir(""), output_json(""), store_invariants(true),
+	output_crabir(""), output_json(""), output_json_llm(""),
+        store_invariants(true),
         check(CheckerKind::NOCHECKS), check_verbose(0) {}
 
   void write(llvm::raw_ostream &o) const;  

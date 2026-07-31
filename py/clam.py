@@ -198,6 +198,9 @@ def parseArgs(argv):
                     help='Output analyzed CrabIR with (optionally) annotations')
     p.add_argument ('-ojson', '--ojson', dest='json_out_name', metavar='FILE',
                     help='Output invariants to JSON format')
+    p.add_argument ('-ojson-llm', '--ojson-llm', dest='json_llm_out_name', metavar='FILE',
+                    help='Output per-assertion results (LLM-friendly) to JSON format. '
+                         'Implies per-assertion invariants and variables-of-influence.')
     p.add_argument('--log', dest='log', default=None,
                     metavar='STR', help='Log level for clam')
     p.add_argument('-o', dest='out_name', metavar='FILE',
@@ -1020,6 +1023,8 @@ def clam(in_name, out_name, args, extra_opts, cpu = -1, mem = -1):
         clam_args.append('--ocrab={0}'.format(args.crabir_out_name))
     if args.json_out_name is not None:
         clam_args.append('--ojson={0}'.format(args.json_out_name))
+    if args.json_llm_out_name is not None:
+        clam_args.append('--ojson-llm={0}'.format(args.json_llm_out_name))
         
     # begin hidden options
     if args.crab_dsa_unknown: clam_args.append('--crab-dsa-disambiguate-unknown')

@@ -34,6 +34,7 @@
 #include "crab/path_analysis/path_analyzer.hpp"
 #include "crab/output/crabir/cfg_printer.hpp"
 #include "crab/output/json/write_json.hh"
+#include "crab/output/json/write_json_llm.hh"
 
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/CompleteCallGraph.hh"
@@ -374,7 +375,7 @@ private:
     bool processInvariants = (params.store_invariants ||
 			      params.print_invars != InvariantPrinterOptions::NONE);
 
-    if (!processInvariants && params.output_json == "" && params.output_crabir == "" ) {
+    if (!processInvariants && params.output_json == "" && params.output_crabir == "" && params.output_json_llm == "") {
       return;
     }
     
@@ -408,7 +409,8 @@ private:
 
     bool dumpCrabIR = (params.output_crabir != "");
     bool dumpJson   = (params.output_json != "");
-    bool dumpStdout = (!dumpCrabIR && !dumpJson && (params.print_invars != InvariantPrinterOptions::NONE));
+    bool dumpJsonLLM = (params.output_json_llm != "");
+    bool dumpStdout = (!dumpCrabIR && !dumpJson && !dumpJsonLLM && (params.print_invars != InvariantPrinterOptions::NONE));
     
     crab::crab_string_os crabir_os;
 
@@ -445,13 +447,27 @@ private:
     }
     
     if (dumpJson) {
-      std::string adjustedOutputJson = appendFunctionNameToFileName(params.output_json, m_fun.getName());      
+      std::string adjustedOutputJson = appendFunctionNameToFileName(params.output_json, m_fun.getName());
       std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputJson);
       json::json_report json_report;
       json_report.write(cfg, params, results.premap, results.checksdb);
       output->os() << json_report.generate();
       output->keep();
       llvm::errs() << "Created file " << adjustedOutputJson << " with analysis results\n";
+    }
+
+    if (dumpJsonLLM) {
+      // Intra-procedural: no call graph, so no variables-of-influence
+      // (voi requires --crab-inter). Emit per-assertion records with an empty
+      // voi set; run with --crab-inter for the full report.
+      std::string adjustedOutputJsonLLM = appendFunctionNameToFileName(params.output_json_llm, m_fun.getName());
+      std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputJsonLLM);
+      json::json_llm_report json_llm_report;
+      json::json_llm_report::voi_map_t empty_voi;
+      json_llm_report.write(cfg, params, results.premap, results.postmap, results.checksdb, empty_voi);
+      output->os() << json_llm_report.generate();
+      output->keep();
+      llvm::errs() << "Created file " << adjustedOutputJsonLLM << " with analysis results\n";
     }
 
     if (dumpStdout) {
@@ -1013,12 +1029,15 @@ private:
     bool processInvariants = (params.store_invariants ||
 			      params.print_invars != InvariantPrinterOptions::NONE);
 
-    if (!processInvariants && params.output_json == "" && params.output_crabir == "" ) {
+    if (!processInvariants && params.output_json == "" && params.output_crabir == "" && params.output_json_llm == "") {
       return;
     }
 
+    // The LLM-friendly JSON also carries variables-of-influence, so run the
+    // voi analysis when either the crabir printer or --ojson-llm needs it.
+    bool need_voi = params.print_voi || (params.output_json_llm != "");
     std::unique_ptr<voi_analysis_t> voi = nullptr;
-    if (params.print_voi) {
+    if (need_voi) {
       voi.reset(new voi_analysis_t(cg,
 				   true /*only data*/,
 				   true /*ignore region offsets*/));
@@ -1033,18 +1052,25 @@ private:
 
     std::unique_ptr<llvm::ToolOutputFile> json_output = nullptr;
     json::json_report json_report;
-    if (params.output_json != "") {      
+    if (params.output_json != "") {
       json_output = openOutputFile(params.output_json);
     }
 
-    std::vector<varname_t> shadow_varnames;	  
+    std::unique_ptr<llvm::ToolOutputFile> json_llm_output = nullptr;
+    json::json_llm_report json_llm_report;
+    if (params.output_json_llm != "") {
+      json_llm_output = openOutputFile(params.output_json_llm);
+    }
+
+    std::vector<varname_t> shadow_varnames;
     if (params.print_invars != InvariantPrinterOptions::NONE && !params.keep_shadow_vars) {
       shadow_varnames = m_crab_builder_man.getVarFactory().get_shadow_vars();
     }
 
     bool dumpCrabIR = crabir_output != nullptr ;
     bool dumpJson   = json_output != nullptr;
-    bool dumpStdout = (!dumpCrabIR && !dumpJson && (params.print_invars != InvariantPrinterOptions::NONE));
+    bool dumpJsonLLM = json_llm_output != nullptr;
+    bool dumpStdout = (!dumpCrabIR && !dumpJson && !dumpJsonLLM && (params.print_invars != InvariantPrinterOptions::NONE));
     
     
     for (auto &n : llvm::make_range(vertices(cg))) {
@@ -1109,6 +1135,45 @@ private:
 	    json_report.write(cfg, params, results.premap, empty);
 	  }
 	}
+
+	if (dumpJsonLLM) {
+	  // Build (block, assertion-id) -> variables-of-influence for this cfg
+	  // straight from the voi analysis. The voi set is a discrete_domain of
+	  // crab variables, so we iterate it and read each variable's name via
+	  // its API -- no parsing of any printed representation.
+	  json::json_llm_report::voi_map_t voi_map;
+	  if (voi) {
+	    for (basic_block_label_t bl :
+		   llvm::make_range(cfg.label_begin(), cfg.label_end())) {
+	      if (!bl.get_basic_block()) {
+		continue;
+	      }
+	      auto dom = voi->get_results(cfg, bl);
+	      if (dom.is_bottom() || dom.is_top()) {
+		continue;
+	      }
+	      std::string block = bl.get_name();
+	      for (auto it = dom.begin(), et = dom.end(); it != et; ++it) {
+		int64_t id = it->first.get().get_debug_info().get_id();
+		const auto &voi_set = it->second; // discrete_domain<variable_t>
+		std::vector<std::string> vars;
+		if (!voi_set.is_top() && !voi_set.is_bottom()) {
+		  for (auto const &v :
+			 llvm::make_range(voi_set.begin(), voi_set.end())) {
+		    crab::crab_string_os os;
+		    v.write(os);
+		    vars.push_back(os.str());
+		  }
+		}
+		voi_map[std::make_pair(block, id)] = std::move(vars);
+	      }
+	    }
+	  }
+	  // Per-assertion records look up their own debug-info in the
+	  // whole-program checks_db, so we pass the full db for every function
+	  // (no double counting, unlike the aggregate json above).
+	  json_llm_report.write(cfg, params, results.premap, results.postmap, results.checksdb, voi_map);
+	}
       }
     } // end for
     
@@ -1123,7 +1188,14 @@ private:
       assert(json_output != nullptr);
       json_output->os() << json_report.generate();
       json_output->keep();
-      llvm::errs() << "Created file " << params.output_json << " with analysis results\n";      
+      llvm::errs() << "Created file " << params.output_json << " with analysis results\n";
+    }
+
+    if (dumpJsonLLM) {
+      assert(json_llm_output != nullptr);
+      json_llm_output->os() << json_llm_report.generate();
+      json_llm_output->keep();
+      llvm::errs() << "Created file " << params.output_json_llm << " with analysis results\n";
     }
 
     if (dumpStdout) {
@@ -1422,7 +1494,8 @@ bool ClamPass::runOnModule(Module &M) {
   m_params.print_unjustified_assumptions = CrabPrintUnjustifiedAssumptions;
   m_params.print_voi = CrabPrintVoi;
   m_params.output_crabir = CrabIRToFile;
-  m_params.output_json = CrabResultsToJSON;    
+  m_params.output_json = CrabResultsToJSON;
+  m_params.output_json_llm = CrabResultsToLLMJSON;
   m_params.store_invariants = CrabStoreInvariants;
   m_params.keep_shadow_vars = CrabKeepShadows;
   m_params.check = (CrabCheck ?
