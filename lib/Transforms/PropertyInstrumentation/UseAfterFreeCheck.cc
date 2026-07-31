@@ -32,9 +32,10 @@ namespace clam {
 using namespace llvm;
 
 static Value *getCastedInt8PtrValue(IRBuilder<> &B, Value *Ptr) {
-  auto *PT = cast<PointerType>(Ptr->getType());
-  if (PT->getPointerElementType()->isIntegerTy(8))
-    return Ptr;
+  // Return an i8* view of Ptr for the is_unfreed_or_null intrinsic. We no
+  // longer inspect the pointee (opaque pointers under LLVM 15 don't store one);
+  // CreateBitCast returns Ptr unchanged when it already has this type, which is
+  // always the case under opaque pointers (ptr -> ptr).
   return B.CreateBitCast(Ptr, Type::getInt8PtrTy(B.getContext()));
 }
 
