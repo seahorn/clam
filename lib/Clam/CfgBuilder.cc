@@ -1661,69 +1661,64 @@ void CrabIntraBlockBuilder::doIntLogicOp(crab_lit_ref_t lit,
   }
 }
 
+/* Search for this pattern:
+     %f = icmp gt %ptr NULL
+     %x = zext i1 %f to i32
+     clam_assert(%x)
+*/
+static Value *extractPointerFromNullAssertion(Value *Cond) {
+  Value *Ptr = Cond;
+  if (CastInst *CI = dyn_cast<CastInst>(Ptr)) {
+    Ptr = CI->getOperand(0);
+  }
+  if (ICmpInst *CmpI = dyn_cast<ICmpInst>(Ptr)) {
+    if (isa<ConstantPointerNull>(CmpI->getOperand(1))) {
+      Ptr = CmpI->getOperand(0);
+    } else {
+      Ptr = CmpI->getOperand(1);
+    }
+  } else {
+    CLAM_ERROR("Cannot extract pointer operand from " << *Ptr);
+  }
+  return Ptr;
+}
+
+/* Search for this pattern:
+     %f = __CRAB_intrinsic_is_unfreed_or_null(%ptr)
+     %x = zext i1 %f to i32
+     clam_assert(%x)
+*/
+static Value *extractPointerFromDanglingAssertion(Value *Cond) {
+  Value *Ptr = Cond;
+  if (CastInst *CI = dyn_cast<CastInst>(Ptr)) {
+    Ptr = CI->getOperand(0);
+  }
+  if (CallBase *CB = dyn_cast<CallBase>(Ptr)) {
+    Function *callee = CB->getCalledFunction();
+    if (callee && callee->getName() == "__CRAB_intrinsic_is_unfreed_or_null") {
+      return CB->getArgOperand(0);
+    }
+  }
+  return nullptr;
+}
+
 // Deprecated: this code is for null and uaf checks added by LLVM
 // instrumentations.
 bool skipAssertionIfUntypedOrCyclic(CallInst &I, Value *cond, HeapAbstraction &mem,
 				    RegionSet &func_regions,
 				    const CrabBuilderParams &params) {
 
-  
+
   if (!params.check_only_typed_regions && !params.check_only_noncyclic_regions) {
     return false;
   }
-  
-  auto startsWith = [](const std::string &s, const std::string &prefix) {
-		      return s.rfind(prefix, 0) == 0;
-		    };
-  
-  auto extractPointerFromNullAssertion = [](Value *Cond) {
-      /* Search for this pattern:
-  	   %f = icmp gt %ptr NULL
-           %x = zext i1 %f to i32
-           clam_assert(%x)
-      */
-    Value *Ptr = Cond;
-    if (CastInst *CI = dyn_cast<CastInst>(Ptr)) {
-      Ptr = CI->getOperand(0);
-    }
-    if (ICmpInst *CmpI = dyn_cast<ICmpInst>(Ptr)) {
-      if (isa<ConstantPointerNull>(CmpI->getOperand(1))) {
-	Ptr = CmpI->getOperand(0);
-      } else {
-	Ptr = CmpI->getOperand(1);
-      }
-    } else {
-      CLAM_ERROR("Cannot extract pointer operand from " << *Ptr);
-    }
-    return Ptr;
- };
-					   
- auto extractPointerFromDanglingAssertion = [](Value *Cond) {
-      /* Search for this pattern:
-  	   %f = __CRAB_intrinsic_is_unfreed_or_null(%ptr)
-           %x = zext i1 %f to i32
-           clam_assert(%x)
-      */
-    Value *Ptr = Cond;
-    if (CastInst *CI = dyn_cast<CastInst>(Ptr)) {
-      Ptr = CI->getOperand(0);
-    }
-    if (CallBase *CB = dyn_cast<CallBase>(Ptr)) {
-      Function *callee = CB->getCalledFunction();
-      if (callee &&
-	  callee->getName() == "__CRAB_intrinsic_is_unfreed_or_null") {
-	return CB->getArgOperand(0);
-      }
-    }
-    return (Value*) nullptr;
-  };
-					   
-    
+
  Value *Ptr = nullptr;
- std::string assertKind = getAssertKindFromMetadata(I.getMetadata("clam-assertion"));  
- if (startsWith(assertKind, "nullity")) {
+ // getAssertKindFromMetadata returns by value: keep the string alive.
+ std::string assertKind = getAssertKindFromMetadata(I.getMetadata("clam-assertion"));
+ if (StringRef(assertKind).startswith("nullity")) {
    Ptr = extractPointerFromNullAssertion(cond);
- } else if (startsWith(assertKind, "not_dangling")) {
+ } else if (StringRef(assertKind).startswith("not_dangling")) {
    Ptr = extractPointerFromDanglingAssertion(cond);
  } else {
    //CLAM_WARNING("Unsupported assertion " << I);
@@ -2352,31 +2347,8 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
   BUILDER_SCOPED_TIMER("CFG.Builder.visitCall.AllocFn");
 
-  // Note: clam's isMallocOrCallocLikeFn, not llvm's. See "Allocation
+  // Note: clam's isMallocLikeFn/isCallocLikeFn, not llvm's. See "Allocation
   // functions" in CfgBuilderUtils.hh.
-  auto isMallocLikeFn = [this] (const CallInst &CI, const TargetLibraryInfo *TLI) {
-    if (!isMallocOrCallocLikeFn(CI, m_mem, TLI)) {
-      return false;
-    }
-    // Neither LLVM (since LLVM14) nor sea-dsa distinguish between malloc and
-    // calloc-like functions, so we discriminate by name to know where the
-    // size operand lives.
-    if (const Function *Callee = CI.getCalledFunction()) {
-      return (Callee->getName() != "calloc" && Callee->getName() != "vec_calloc");
-    }
-    return false;
-  };
-
-  auto isCallocLikeFn = [this] (const CallInst &CI, const TargetLibraryInfo *TLI) {
-    if (!isMallocOrCallocLikeFn(CI, m_mem, TLI)) {
-      return false;
-    }
-    if (const Function *Callee = CI.getCalledFunction()) {
-      return (Callee->getName() == "calloc");
-    }
-    return false;
-  };
-  
   auto addMakeRefFromMalloc = [this, &I]
     (crab_lit_ref_t retRef, Region rgn, const Value &size) {
        crab_lit_ref_t litS = m_lfac.getLit(size);
@@ -2443,10 +2415,10 @@ void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
     if (isReference(I, m_params)) {
       Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
       // malloc/new/calloc/align alloc
-      if (isMallocLikeFn(I, m_tli)) {
+      if (isMallocLikeFn(I, m_mem, m_tli)) {
 	// ptr  := malloc(size) or new(size) allocates size bytes
 	addMakeRefFromMalloc(retRef, rgn, *(I.getOperand(0)));
-      } else if (isCallocLikeFn(I, m_tli)) {
+      } else if (isCallocLikeFn(I, m_mem, m_tli)) {
 	// ptr  := calloc(num, size) allocates num*size bytes
 	// TODO(TRANSLATION): we ignore that the new allocated memory is zeroed
 	addMakeRefFromCalloc(retRef, rgn, *(I.getOperand(0)), *(I.getOperand(1)));
@@ -3816,20 +3788,20 @@ llvm::Optional<var_t> CfgBuilderImpl::getCrabRegionVariable(const Function &f,
   return m_lfac.mkRegionVar(rgn);
 }
 
+static bool isCString(const GlobalVariable &gv) {
+  if (gv.hasInitializer()) {
+    if (const ConstantDataSequential *CDS =
+            dyn_cast<ConstantDataSequential>(gv.getInitializer())) {
+      return (CDS->isString() || CDS->isCString());
+    }
+  }
+  return false;
+}
+
 void CfgBuilderImpl::initializeGlobalsAtMain(void) {
   if (!m_func.getName().equals("main")) {
     return;
   }
-
-  auto IsCString = [](const GlobalVariable &gv) {
-    if (gv.hasInitializer()) {
-      if (const ConstantDataSequential *CDS =
-              dyn_cast<ConstantDataSequential>(gv.getInitializer())) {
-        return (CDS->isString() || CDS->isCString());
-      }
-    }
-    return false;
-  };
 
   basic_block_t &entry = m_cfg->get_node(m_cfg->entry());
   Module &M = *(m_func.getParent());
@@ -3848,7 +3820,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
           entry.havoc(gv_lit->getVar(), "singleton global variable");
         }
       } else {
-        if (IsCString(gv)) {
+        if (isCString(gv)) {
           // Ignore C strings
           // TODO: make this user optional
           entry.havoc(gv_lit->getVar(), "C string global variable");
@@ -3872,7 +3844,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
       }
       if (m_params.addPointerAssumptions()) {
         // global variables are not null
-        if (!IsCString(gv)) {
+        if (!isCString(gv)) {
           // Ignore C strings
           // TODO: make this user optional
           //
@@ -5134,6 +5106,22 @@ CrabIREmitterVec &CrabBuilderManagerImpl::getPropertyEmitters() {
   return m_property_emitters;
 }
 
+// A region whose contents have a known type, as opposed to an unknown region.
+static bool isTypedRegionTy(const var_t::type_t &t) {
+  return t.is_region() && !t.is_unknown_region();
+}
+
+// A callsite argument and the corresponding formal parameter need not have
+// syntactically equal types: an unknown region may be passed where a typed one
+// is expected, and vice versa. A region_cast bridges the two (see
+// unifyRgnType in doCallInst).
+static bool hasCompatibleTypes(const var_t::type_t &t1,
+			       const var_t::type_t &t2) {
+  return ((t1 == t2) ||
+	  (t1.is_unknown_region() && isTypedRegionTy(t2)) ||
+	  (t2.is_unknown_region() && isTypedRegionTy(t1)));
+}
+
 // === Begin must be located after CrabBuilderManagerImpl is defined  === //
 /**
  * Translate a LLVM callsite
@@ -5292,13 +5280,6 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
   if (true /*crab::CrabSanityCheckFlag*/) {
     // -- Sanity checks: callsites and function declarations are
     // -- consistent
-    auto hasCompatibleTypes = [](const typename var_t::type_t &t1,
-				 const typename var_t::type_t &t2) {
-      return ((t1 == t2) ||
-	      (t1.is_unknown_region() && (t2.is_region() && !t2.is_unknown_region())) ||
-	      (t2.is_unknown_region() && (t1.is_region() && !t1.is_unknown_region())));
-    };
-    
     if (calleeF_decl) {
       if (calleeF_decl->get_inputs().size() != inputs.size()) {
 	crab::outs() << *calleeF_decl << "\n";
@@ -5405,13 +5386,10 @@ void CrabIntraBlockBuilder::doCallInst(CallInst &I) {
     auto unifyRgnType =
       [this](var_t &cparam, const var_t &fparam,
 	     std::vector<std::pair<var_t, var_t>> &pendingRgnCasts) {
-	auto is_typed_region = [](const var_t &v) {
-        return v.get_type().is_region() && !v.get_type().is_unknown_region();};
-	
 	if (cparam.get_type() == fparam.get_type()) {
 	  return; // do nothing
-	} else if ((cparam.get_type().is_unknown_region() && is_typed_region(fparam)) ||
-		   (fparam.get_type().is_unknown_region() && is_typed_region(cparam))) {
+	} else if ((cparam.get_type().is_unknown_region() && isTypedRegionTy(fparam.get_type())) ||
+		   (fparam.get_type().is_unknown_region() && isTypedRegionTy(cparam.get_type()))) {
 	  var_t aux_rgn(m_lfac.getVFac().get(), fparam.get_type());
 	  var_t old_cparam(cparam);
 	  pendingRgnCasts.push_back({old_cparam, aux_rgn});

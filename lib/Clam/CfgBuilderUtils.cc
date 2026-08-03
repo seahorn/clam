@@ -311,6 +311,34 @@ bool isMallocOrCallocLikeFn(const CallInst &I, HeapAbstraction &mem,
   return seaDsaSaysAllocates(I, mem) || llvm::isMallocOrCallocLikeFn(&I, tli);
 }
 
+bool isMallocLikeFn(const CallInst &I, HeapAbstraction &mem,
+                    const TargetLibraryInfo *tli) {
+  if (!isMallocOrCallocLikeFn(I, mem, tli)) {
+    return false;
+  }
+  // Neither LLVM (since LLVM14) nor sea-dsa distinguish between malloc and
+  // calloc-like functions, so we discriminate by name to know where the
+  // size operand lives.
+  if (const Function *callee = I.getCalledFunction()) {
+    return callee->getName() != "calloc" && callee->getName() != "vec_calloc";
+  }
+  return false;
+}
+
+bool isCallocLikeFn(const CallInst &I, HeapAbstraction &mem,
+                    const TargetLibraryInfo *tli) {
+  if (!isMallocOrCallocLikeFn(I, mem, tli)) {
+    return false;
+  }
+  // FIXME: "vec_calloc" is excluded by isMallocLikeFn but not matched here, so
+  // it currently falls through to "unsupported allocation function". Kept as-is
+  // to preserve behaviour; see doAllocFn.
+  if (const Function *callee = I.getCalledFunction()) {
+    return callee->getName() == "calloc";
+  }
+  return false;
+}
+
 // True if sea-dsa considers I's callee a deallocation function. Restricted to
 // declarations for the same reason as seaDsaSaysAllocates.
 static bool seaDsaSaysFrees(const CallInst &I, HeapAbstraction &mem) {

@@ -147,10 +147,20 @@ bool isAllocationFn(const llvm::CallInst &I, HeapAbstraction &mem,
                     const llvm::TargetLibraryInfo *tli);
 
 // Replaces llvm::isMallocOrCallocLikeFn(&I, tli). sea-dsa does not distinguish
-// malloc from calloc, which is fine: callers discriminate by name to find out
-// where the size operand lives.
+// malloc from calloc, which is fine: isMallocLikeFn/isCallocLikeFn below
+// discriminate by name to find out where the size operand lives.
 bool isMallocOrCallocLikeFn(const llvm::CallInst &I, HeapAbstraction &mem,
                             const llvm::TargetLibraryInfo *tli);
+
+// True if I allocates a single block whose size is its first operand
+// (malloc, new, aligned_alloc, ...).
+bool isMallocLikeFn(const llvm::CallInst &I, HeapAbstraction &mem,
+                    const llvm::TargetLibraryInfo *tli);
+
+// True if I allocates nmemb*size bytes, given as its first two operands
+// (calloc).
+bool isCallocLikeFn(const llvm::CallInst &I, HeapAbstraction &mem,
+                    const llvm::TargetLibraryInfo *tli);
 
 // Replaces llvm::getFreedOperand(&I, tli): returns the freed pointer, or null
 // if I does not free memory. Deallocation has exactly the same LLVM 15
