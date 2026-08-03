@@ -1,6 +1,12 @@
 #include "CfgBuilderUtils.hh"
 
+#include "clam/HeapAbstraction.hh"
+#include "clam/SeaDsaHeapAbstraction.hh"
+#include "seadsa/AllocWrapInfo.hh"
+
 #include "llvm/ADT/APInt.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/IR/CFG.h"
@@ -269,6 +275,40 @@ bool isIntInitializer(const CallInst &CI) {
     return isIntInitializer(*callee);
   }
   return false;
+}
+
+/** Allocation functions. See the comment in CfgBuilderUtils.hh **/
+
+const seadsa::AllocWrapInfo *getAllocWrapInfo(HeapAbstraction &mem) {
+  if (mem.getClassId() == HeapAbstraction::ClassId::SEA_DSA) {
+    return static_cast<SeaDsaHeapAbstraction &>(mem).getAllocWrapInfo();
+  }
+  return nullptr;
+}
+
+// True if sea-dsa considers I's callee an allocation function. Restricted to
+// declarations: AllocWrapInfo also collects user-defined *wrappers* around
+// malloc, but clam cannot know where a wrapper keeps its size argument, and a
+// wrapper has a body so it is better handled by the inter-procedural analysis.
+static bool seaDsaSaysAllocates(const CallInst &I, HeapAbstraction &mem) {
+  const Function *callee = I.getCalledFunction();
+  if (!callee || !callee->isDeclaration()) {
+    return false;
+  }
+  if (const seadsa::AllocWrapInfo *awi = getAllocWrapInfo(mem)) {
+    return awi->isAllocWrapper(*const_cast<Function *>(callee));
+  }
+  return false;
+}
+
+bool isAllocationFn(const CallInst &I, HeapAbstraction &mem,
+                    const TargetLibraryInfo *tli) {
+  return seaDsaSaysAllocates(I, mem) || llvm::isAllocationFn(&I, tli);
+}
+
+bool isMallocOrCallocLikeFn(const CallInst &I, HeapAbstraction &mem,
+                            const TargetLibraryInfo *tli) {
+  return seaDsaSaysAllocates(I, mem) || llvm::isMallocOrCallocLikeFn(&I, tli);
 }
 
 std::string getAssertKindFromMetadata(MDNode *MDN) {

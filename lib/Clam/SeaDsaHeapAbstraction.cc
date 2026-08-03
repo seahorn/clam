@@ -92,6 +92,11 @@ public:
 
   const seadsa::GlobalAnalysis *getSeaDsa() const { return m_dsa; }
 
+  // sea-dsa's notion of which functions allocate memory. Null if this
+  // abstraction was built from an already-running GlobalAnalysis (we are not
+  // told which AllocWrapInfo it used).
+  const seadsa::AllocWrapInfo *getAllocWrapInfo() const { return m_awi; }
+
   // Use F and V to get sea-dsa cell associated to it.
   Region getRegion(const llvm::Function &F, const llvm::Value &V);
 
@@ -117,6 +122,7 @@ public:
 
 private:
   seadsa::GlobalAnalysis *m_dsa;
+  const seadsa::AllocWrapInfo *m_awi;
   std::unique_ptr<SetFactory> m_fac;
   const llvm::DataLayout &m_dl;
   /// map from Node to id
@@ -669,8 +675,8 @@ SeaDsaHeapAbstractionImpl::SeaDsaHeapAbstractionImpl(
     const seadsa::AllocWrapInfo &alloc_info,
     const seadsa::DsaLibFuncInfo &spec_graph_info,
     SeaDsaHeapAbstractionParams params)
-    : m_dsa(nullptr), m_fac(new SetFactory()), m_dl(M.getDataLayout()),
-      m_max_id(0), m_params(params) {
+    : m_dsa(nullptr), m_awi(&alloc_info), m_fac(new SetFactory()),
+      m_dl(M.getDataLayout()), m_max_id(0), m_params(params) {
 
   // -- Run sea-dsa
   if (!m_params.is_context_sensitive) {
@@ -690,8 +696,8 @@ SeaDsaHeapAbstractionImpl::SeaDsaHeapAbstractionImpl(
 SeaDsaHeapAbstractionImpl::SeaDsaHeapAbstractionImpl(
     const llvm::Module &M, seadsa::GlobalAnalysis &dsa,
     SeaDsaHeapAbstractionParams params)
-    : m_dsa(&dsa), m_fac(nullptr), m_dl(M.getDataLayout()), m_max_id(0),
-      m_params(params) {
+    : m_dsa(&dsa), m_awi(nullptr), m_fac(nullptr), m_dl(M.getDataLayout()),
+      m_max_id(0), m_params(params) {
   initialize(M);
 }
 
@@ -882,6 +888,10 @@ seadsa::GlobalAnalysis *SeaDsaHeapAbstraction::getSeaDsa() {
 
 const seadsa::GlobalAnalysis *SeaDsaHeapAbstraction::getSeaDsa() const {
   return m_impl->getSeaDsa();
+}
+
+const seadsa::AllocWrapInfo *SeaDsaHeapAbstraction::getAllocWrapInfo() const {
+  return m_impl->getAllocWrapInfo();
 }
 
 Region SeaDsaHeapAbstraction::getRegion(const llvm::Function &F,

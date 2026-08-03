@@ -16,9 +16,16 @@ class DataLayout;
 class CastInt;
 class CmpInst;
 class MDNode;
+class TargetLibraryInfo;
 } // namespace llvm
 
+namespace seadsa {
+class AllocWrapInfo;
+} // namespace seadsa
+
 namespace clam {
+
+class HeapAbstraction;
 
 // Any integer that cannot be represented by 64 bits is considered a bignum.
 bool isSignedBigNum(const llvm::APInt &v);
@@ -101,6 +108,49 @@ bool isZeroInitializer(const llvm::CallInst &CI);
 bool isIntInitializer(const llvm::Function &F);
 
 bool isIntInitializer(const llvm::CallInst &CI);
+
+/**
+ * Allocation functions
+ * ====================
+ *
+ * These predicates mirror the LLVM MemoryBuiltins ones they replace
+ * (llvm::isAllocationFn, llvm::isMallocOrCallocLikeFn, ...), but the question
+ * "does this call allocate memory?" is answered by sea-dsa's AllocWrapInfo
+ * rather than by LLVM.
+ *
+ * Why: sea-dsa decides what allocates *by name*
+ * (AllocWrapInfo::isAllocWrapper, whose set is seeded with malloc/calloc) and
+ * marks the resulting DSA node as heap. Clam then asks that very same sea-dsa
+ * graph for the region of the allocated pointer. If clam used a different
+ * criterion the two would disagree: sea-dsa would build a heap region while
+ * clam refused to emit the corresponding make_ref, and every later access to
+ * that pointer would fail to find it in the reference map. Asking sea-dsa
+ * keeps both sides in sync by construction.
+ *
+ * That disagreement is not hypothetical. LLVM 15 moved MemoryBuiltins to
+ * attribute-based detection (allockind / "alloc-family") and clang does not
+ * emit those attributes at -O0, so llvm::isAllocationFn returns false for a
+ * plain call to malloc. Worse, llvm::isMallocOrCallocLikeFn returns false even
+ * when the attributes *are* present. sea-dsa, being name-based, was unaffected.
+ *
+ * The signatures below are kept deliberately close to the MemoryBuiltins ones
+ * so that if MemoryBuiltins becomes usable again each body can go back to the
+ * corresponding llvm:: call without touching any callsite. When AllocWrapInfo
+ * is unavailable (--crab-heap-analysis=none) we already fall back to LLVM.
+ **/
+
+// sea-dsa's allocation info, or null if the heap analysis is not sea-dsa.
+const seadsa::AllocWrapInfo *getAllocWrapInfo(HeapAbstraction &mem);
+
+// Replaces llvm::isAllocationFn(&I, tli).
+bool isAllocationFn(const llvm::CallInst &I, HeapAbstraction &mem,
+                    const llvm::TargetLibraryInfo *tli);
+
+// Replaces llvm::isMallocOrCallocLikeFn(&I, tli). sea-dsa does not distinguish
+// malloc from calloc, which is fine: callers discriminate by name to find out
+// where the size operand lives.
+bool isMallocOrCallocLikeFn(const llvm::CallInst &I, HeapAbstraction &mem,
+                            const llvm::TargetLibraryInfo *tli);
 
 // deprecated
 std::string getAssertKindFromMetadata(llvm::MDNode *MDN);

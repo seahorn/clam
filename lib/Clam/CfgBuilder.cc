@@ -65,6 +65,7 @@
 #include "Properties/NullCheck.hh"
 #include "Properties/UafCheck.hh"
 
+#include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/Global.hh"
 #include "seadsa/Graph.hh"
 
@@ -2351,30 +2352,27 @@ void CrabIntraBlockBuilder::visitSelectInst(SelectInst &I) {
 void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
   BUILDER_SCOPED_TIMER("CFG.Builder.visitCall.AllocFn");
 
-  auto isMallocLikeFn = [] (const Value *V, const TargetLibraryInfo *TLI) {
-    if (!isMallocOrCallocLikeFn(V, TLI)) {
+  // Note: clam's isMallocOrCallocLikeFn, not llvm's. See "Allocation
+  // functions" in CfgBuilderUtils.hh.
+  auto isMallocLikeFn = [this] (const CallInst &CI, const TargetLibraryInfo *TLI) {
+    if (!isMallocOrCallocLikeFn(CI, m_mem, TLI)) {
       return false;
     }
-    // Starting in LLVM14, we cannot distinghish between malloc and
-    // calloc-like functions
-    if (const CallBase *CB = dyn_cast<CallBase>(V)) {
-      if (const Function *Callee = CB->getCalledFunction()) {
-	return (Callee->getName() != "calloc" && Callee->getName() != "vec_calloc");
-      }
+    // Neither LLVM (since LLVM14) nor sea-dsa distinguish between malloc and
+    // calloc-like functions, so we discriminate by name to know where the
+    // size operand lives.
+    if (const Function *Callee = CI.getCalledFunction()) {
+      return (Callee->getName() != "calloc" && Callee->getName() != "vec_calloc");
     }
     return false;
   };
 
-  auto isCallocLikeFn = [] (const Value *V, const TargetLibraryInfo *TLI) {
-    if (!isMallocOrCallocLikeFn(V, TLI)) {
+  auto isCallocLikeFn = [this] (const CallInst &CI, const TargetLibraryInfo *TLI) {
+    if (!isMallocOrCallocLikeFn(CI, m_mem, TLI)) {
       return false;
     }
-    // Starting in LLVM14, we cannot distinghish between malloc and
-    // calloc-like functions    
-    if (const CallBase *CB = dyn_cast<CallBase>(V)) {
-      if (const Function *Callee = CB->getCalledFunction()) {
-	return (Callee->getName() == "calloc");
-      }
+    if (const Function *Callee = CI.getCalledFunction()) {
+      return (Callee->getName() == "calloc");
     }
     return false;
   };
@@ -2445,10 +2443,10 @@ void CrabIntraBlockBuilder::doAllocFn(CallInst &I) {
     if (isReference(I, m_params)) {
       Region rgn = getRegion(m_mem, m_func_regions, m_params, I, I);
       // malloc/new/calloc/align alloc
-      if (isMallocLikeFn(&I, m_tli)) {
+      if (isMallocLikeFn(I, m_tli)) {
 	// ptr  := malloc(size) or new(size) allocates size bytes
 	addMakeRefFromMalloc(retRef, rgn, *(I.getOperand(0)));
-      } else if (isCallocLikeFn(&I, m_tli)) {
+      } else if (isCallocLikeFn(I, m_tli)) {
 	// ptr  := calloc(num, size) allocates num*size bytes
 	// TODO(TRANSLATION): we ignore that the new allocated memory is zeroed
 	addMakeRefFromCalloc(retRef, rgn, *(I.getOperand(0)), *(I.getOperand(1)));
@@ -3341,7 +3339,9 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
     return;
   }
 
-  if (isAllocationFn(&I, m_tli)) {
+  // Note: clam's isAllocationFn, not llvm's -- it asks sea-dsa so that both
+  // agree on what allocates. See "Allocation functions" in CfgBuilderUtils.hh.
+  if (isAllocationFn(I, m_mem, m_tli)) {
     doAllocFn(I);
     return;
   }

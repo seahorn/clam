@@ -68,8 +68,14 @@ public:
   }
 
   seadsa::GlobalAnalysis *getSeaDsa();
-  
+
   const seadsa::GlobalAnalysis *getSeaDsa() const;
+
+  // sea-dsa's notion of which functions allocate memory. Clam asks this
+  // instead of LLVM's MemoryBuiltins so that both agree on what an allocation
+  // is (see "Allocation functions" in CfgBuilder.cc). Null if this abstraction
+  // was built from an already-running GlobalAnalysis.
+  const seadsa::AllocWrapInfo *getAllocWrapInfo() const;
   
   virtual Region getRegion(const llvm::Function &F, const llvm::Value &V) override;
 
