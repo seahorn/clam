@@ -441,19 +441,25 @@ private:
     if (dumpCrabIR) {
       std::string adjustedOutputCrabIr = appendFunctionNameToFileName(params.output_crabir, m_fun.getName());
       std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputCrabIr);
-      output->os() << crabir_os.str();
-      output->keep();
-      llvm::errs() << "Created file " << adjustedOutputCrabIr << " with analysis results\n";	
+      // openOutputFile returns null (and reports why) if the file cannot be
+      // created. Skip this dump rather than dereferencing it.
+      if (output) {
+        output->os() << crabir_os.str();
+        output->keep();
+        llvm::errs() << "Created file " << adjustedOutputCrabIr << " with analysis results\n";
+      }
     }
     
     if (dumpJson) {
       std::string adjustedOutputJson = appendFunctionNameToFileName(params.output_json, m_fun.getName());
       std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputJson);
-      json::json_report json_report;
-      json_report.write(cfg, params, results.premap, results.checksdb);
-      output->os() << json_report.generate();
-      output->keep();
-      llvm::errs() << "Created file " << adjustedOutputJson << " with analysis results\n";
+      if (output) {
+        json::json_report json_report;
+        json_report.write(cfg, params, results.premap, results.checksdb);
+        output->os() << json_report.generate();
+        output->keep();
+        llvm::errs() << "Created file " << adjustedOutputJson << " with analysis results\n";
+      }
     }
 
     if (dumpJsonLLM) {
@@ -462,12 +468,14 @@ private:
       // voi set; run with --crab-inter for the full report.
       std::string adjustedOutputJsonLLM = appendFunctionNameToFileName(params.output_json_llm, m_fun.getName());
       std::unique_ptr<llvm::ToolOutputFile> output = openOutputFile(adjustedOutputJsonLLM);
-      json::json_llm_report json_llm_report;
-      json::json_llm_report::voi_map_t empty_voi;
-      json_llm_report.write(cfg, params, results.premap, results.postmap, results.checksdb, empty_voi);
-      output->os() << json_llm_report.generate();
-      output->keep();
-      llvm::errs() << "Created file " << adjustedOutputJsonLLM << " with analysis results\n";
+      if (output) {
+        json::json_llm_report json_llm_report;
+        json::json_llm_report::voi_map_t empty_voi;
+        json_llm_report.write(cfg, params, results.premap, results.postmap, results.checksdb, empty_voi);
+        output->os() << json_llm_report.generate();
+        output->keep();
+        llvm::errs() << "Created file " << adjustedOutputJsonLLM << " with analysis results\n";
+      }
     }
 
     if (dumpStdout) {
