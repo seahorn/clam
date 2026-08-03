@@ -311,6 +311,33 @@ bool isMallocOrCallocLikeFn(const CallInst &I, HeapAbstraction &mem,
   return seaDsaSaysAllocates(I, mem) || llvm::isMallocOrCallocLikeFn(&I, tli);
 }
 
+// True if sea-dsa considers I's callee a deallocation function. Restricted to
+// declarations for the same reason as seaDsaSaysAllocates.
+static bool seaDsaSaysFrees(const CallInst &I, HeapAbstraction &mem) {
+  const Function *callee = I.getCalledFunction();
+  if (!callee || !callee->isDeclaration()) {
+    return false;
+  }
+  if (const seadsa::AllocWrapInfo *awi = getAllocWrapInfo(mem)) {
+    return awi->isDeallocWrapper(*const_cast<Function *>(callee));
+  }
+  return false;
+}
+
+llvm::Value *getFreedOperand(const CallInst &I, HeapAbstraction &mem,
+                             const TargetLibraryInfo *tli) {
+  if (seaDsaSaysFrees(I, mem)) {
+    // sea-dsa tells us that the callee deallocates but not which argument is
+    // freed. Every deallocator it knows about (free, cfree, operator delete
+    // and friends) takes the freed pointer first.
+    const CallBase &CB = I;
+    if (CB.arg_size() > 0 && CB.getArgOperand(0)->getType()->isPointerTy()) {
+      return CB.getArgOperand(0);
+    }
+  }
+  return llvm::getFreedOperand(&llvm::cast<const CallBase>(I), tli);
+}
+
 std::string getAssertKindFromMetadata(MDNode *MDN) {
   // assume MDN is the metadata associate to getMetadata("clam-assertion")
   if (MDN) {

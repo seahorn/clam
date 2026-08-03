@@ -3347,8 +3347,10 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
   }
 
   // LLVM 15: isFreeCall was removed; getFreedOperand returns the freed
-  // pointer operand (non-null) iff the call frees memory.
-  if (getFreedOperand(&I, m_tli)) {
+  // pointer operand (non-null) iff the call frees memory. Note: clam's
+  // getFreedOperand, not llvm's -- it asks sea-dsa so that both agree on what
+  // frees. See "Allocation functions" in CfgBuilderUtils.hh.
+  if (getFreedOperand(I, m_mem, m_tli)) {
     doFreeFn(I);
     return;
   }

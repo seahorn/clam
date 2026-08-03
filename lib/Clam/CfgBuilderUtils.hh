@@ -152,6 +152,14 @@ bool isAllocationFn(const llvm::CallInst &I, HeapAbstraction &mem,
 bool isMallocOrCallocLikeFn(const llvm::CallInst &I, HeapAbstraction &mem,
                             const llvm::TargetLibraryInfo *tli);
 
+// Replaces llvm::getFreedOperand(&I, tli): returns the freed pointer, or null
+// if I does not free memory. Deallocation has exactly the same LLVM 15
+// problem as allocation -- llvm::getFreedOperand is driven by the allockind
+// attribute, so it returns null for a plain call to free at -O0 -- and
+// sea-dsa knows the answer via AllocWrapInfo::isDeallocWrapper.
+llvm::Value *getFreedOperand(const llvm::CallInst &I, HeapAbstraction &mem,
+                             const llvm::TargetLibraryInfo *tli);
+
 // deprecated
 std::string getAssertKindFromMetadata(llvm::MDNode *MDN);
 
