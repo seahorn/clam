@@ -14,6 +14,7 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   CrabDomainParser.cc
   crab/path_analysis/path_analyzer.cc
   crab/output/crabir/cfg_printer.cc
+  crab/output/json/boost_json_src.cc
   crab/output/json/write_json.cc
   crab/output/json/write_json_llm.cc
   crab/output/json/read_json.cc

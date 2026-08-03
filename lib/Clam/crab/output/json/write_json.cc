@@ -29,7 +29,7 @@ public:
 #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
 
 
-#include <boost/json/src.hpp>
+#include <boost/json.hpp>
 #include <clam/Support/Debug.hh>
 #include <crab/fixpoint/wto.hpp>
 #include <ctime>

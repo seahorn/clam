@@ -28,7 +28,7 @@ public:
 #pragma GCC diagnostic ignored "-Wnon-virtual-dtor"
 #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
 
-#include <boost/json/src.hpp>
+#include <boost/json.hpp>
 #include <clam/Support/Debug.hh>
 #include <crab/checkers/base_property.hpp>
 
