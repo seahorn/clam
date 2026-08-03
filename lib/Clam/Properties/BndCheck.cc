@@ -88,12 +88,17 @@ class EmitBndChecksImpl {
     // about the HeapAbstraction Region such as whether
     // isSequence(), IsCyclic(), etc.
 
-    llvm::Value *vptr;
-    if (LoadInst *loadI = dyn_cast<LoadInst>(&I))
+    llvm::Value *vptr = nullptr;
+    // The accessed type must come from the load/store itself: under LLVM 15
+    // opaque pointers vptr's type is just `ptr` and carries no element type.
+    llvm::Type *elemTy = nullptr;
+    if (LoadInst *loadI = dyn_cast<LoadInst>(&I)) {
       vptr = loadI->getPointerOperand();
-    else if (StoreInst *storeI = dyn_cast<StoreInst>(&I))
+      elemTy = loadI->getType();
+    } else if (StoreInst *storeI = dyn_cast<StoreInst>(&I)) {
       vptr = storeI->getPointerOperand();
-    else
+      elemTy = storeI->getValueOperand()->getType();
+    } else
       CLAM_ERROR(
           "Expect adding bound check assertions at load/store instrucitons");
     auto it = m_ref_bnd_map.find(vptr);
@@ -111,7 +116,6 @@ class EmitBndChecksImpl {
                          << "\n");
       var_t size = it->second.first;
       var_t offset = it->second.second;
-      Type *elemTy = vptr->getType()->getPointerElementType();
       const llvm::DataLayout *dl = getInsDatalayout(I);
       unsigned size_of = dl->getTypeSizeInBits(elemTy) / 8;
       bb.assertion(offset >= number_t(0), getDebugLoc(&I, m_assertionId++));
