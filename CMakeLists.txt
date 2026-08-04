@@ -269,7 +269,12 @@ if (TopLevel)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LDFLAGS}")
     
     include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
-    link_directories(${LLVM_LIBRARY_DIRS})
+    # No link_directories(${LLVM_LIBRARY_DIRS}): LLVMConfig.cmake hands us the
+    # LLVM libraries as absolute paths, so the -L is redundant. On macOS it is
+    # also harmful: it puts LLVM's lib dir ahead of the SDK, so ld resolves the
+    # libunwind that libc++abi re-exports to Homebrew's libunwind.1.dylib
+    # instead of the system one, which warns at link time and leaves the
+    # binaries depending on a keg-only dylib.
     add_definitions(${LLVM_DEFINITIONS})
     
     if (NOT LLVM_BUILD_TYPE STREQUAL CMAKE_BUILD_TYPE)
