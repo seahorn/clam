@@ -100,6 +100,14 @@ add_lit_testsuite(test-opt "Run Optimizer tests"
   ${CLAM_LIT_PARAMS}
   DEPENDS clam)
 
+add_lit_testsuite(test-devirt "Run devirtualization tests"
+  -v
+  ${CMAKE_CURRENT_SOURCE_DIR}/devirt  ## where .cfg file is located
+  PARAMS
+  test_dir=${CMAKE_CURRENT_BINARY_DIR}/devirt
+  ${CLAM_LIT_PARAMS}
+  DEPENDS clam)
+
 add_lit_testsuite(test-readme "Run README.md tests"
   -v
   ${CMAKE_CURRENT_SOURCE_DIR}/demo  ## where .cfg file is located

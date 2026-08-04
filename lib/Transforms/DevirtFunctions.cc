@@ -140,51 +140,17 @@ static void promoteIndirectCall(CallBase &CB,
 }
 
 namespace devirt_impl {
-AliasSetId typeAliasId(CallBase &CB, bool LookThroughCast) {
+AliasSetId typeAliasId(CallBase &CB) {
   assert(isIndirectCall(CB) && "Not an indirect call");
-  PointerType *pTy = nullptr;
-
-  if (LookThroughCast) {
-    /*
-        %390 = load void (i8*, i32*, i32*, i64, i32)*,
-                          void (i8*, i32*, i32*, i64, i32)**
-                          bitcast (i64 (i8*, i32*, i32*, i64, i32)** @listdir to
-                                   void (i8*, i32*, i32*, i64, i32)**)
-        call void %390(i8* %385, i32* %1, i32* %2, i64 %139, i32 %26)
-    */
-    if (LoadInst *LI = dyn_cast<LoadInst>(CB.getCalledOperand())) {
-      if (Constant *C = dyn_cast<Constant>(LI->getPointerOperand())) {
-        if (ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
-          if (CE->getOpcode() == Instruction::BitCast) {
-            if (PointerType *ppTy =
-                    dyn_cast<PointerType>(CE->getOperand(0)->getType())) {
-              pTy = dyn_cast<PointerType>(ppTy->getPointerElementType());
-              if (pTy) {
-                assert(
-                    isa<FunctionType>(pTy->getPointerElementType()) &&
-                    "The type of called value is not a pointer to a function");
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  if (pTy) {
-    return pTy;
-  }
-
-  pTy = dyn_cast<PointerType>(CB.getCalledOperand()->getType());
-  assert(pTy && "Unexpected call not through a pointer");
-  assert(isa<FunctionType>(pTy->getPointerElementType()) &&
-         "The type of called value is not a pointer to a function");
-  return pTy;
+  // Under opaque pointers the called operand's type is just `ptr`, so the
+  // signature has to come from the call itself. This is also what used to be
+  // recovered by peeking through a bitcast of the loaded function pointer:
+  // opaque pointers cannot be bitcast to each other, so that pattern no longer
+  // appears in the IR.
+  return CB.getFunctionType();
 }
 
-AliasSetId typeAliasId(const Function &F) {
-  return F.getFunctionType()->getPointerTo();
-}
+AliasSetId typeAliasId(const Function &F) { return F.getFunctionType(); }
 } // namespace devirt_impl
 
 /***
@@ -236,7 +202,7 @@ void CallSiteResolverByTypes::populateTypeAliasSets() {
 
 const CallSiteResolverByTypes::AliasSet *
 CallSiteResolverByTypes::getTargets(CallBase &CB) {
-  AliasSetId id = devirt_impl::typeAliasId(CB, true);
+  AliasSetId id = devirt_impl::typeAliasId(CB);
   auto it = m_targets_map.find(id);
   if (it != m_targets_map.end()) {
     return &(it->second);
@@ -246,7 +212,7 @@ CallSiteResolverByTypes::getTargets(CallBase &CB) {
 
 #ifdef USE_BOUNCE_FUNCTIONS
 Function *CallSiteResolverByTypes::getBounceFunction(CallBase &CB) {
-  AliasSetId id = devirt_impl::typeAliasId(CB, false);
+  AliasSetId id = devirt_impl::typeAliasId(CB);
   auto it = m_bounce_map.find(id);
   if (it != m_bounce_map.end()) {
     return it->second;
@@ -257,7 +223,7 @@ Function *CallSiteResolverByTypes::getBounceFunction(CallBase &CB) {
 
 void CallSiteResolverByTypes::cacheBounceFunction(CallBase &CB,
                                                   Function *bounce) {
-  AliasSetId id = devirt_impl::typeAliasId(CB, false);
+  AliasSetId id = devirt_impl::typeAliasId(CB);
   m_bounce_map.insert({id, bounce});
 }
 #endif
@@ -363,7 +329,7 @@ CallSiteResolverByDsa<Dsa>::getTargets(CallBase &CB) {
 #ifdef USE_BOUNCE_FUNCTIONS
 template <typename Dsa>
 Function *CallSiteResolverByDsa<Dsa>::getBounceFunction(CallBase &CB) {
-  AliasSetId id = devirt_impl::typeAliasId(CB, false);
+  AliasSetId id = devirt_impl::typeAliasId(CB);
   auto it = m_bounce_map.find(id);
   if (it != m_bounce_map.end()) {
     const AliasSet *cachedTargets = it->second.first;
@@ -382,7 +348,7 @@ template <typename Dsa>
 void CallSiteResolverByDsa<Dsa>::cacheBounceFunction(CallBase &CB,
                                                      Function *bounce) {
   if (const AliasSet *targets = getTargets(CB)) {
-    AliasSetId id = devirt_impl::typeAliasId(CB, false);
+    AliasSetId id = devirt_impl::typeAliasId(CB);
     m_bounce_map.insert({id, {targets, bounce}});
   }
 }

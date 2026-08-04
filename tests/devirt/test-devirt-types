@@ -1,0 +1,24 @@
+; Devirtualization with the "types" resolver: the alias set of an indirect
+; call is keyed on the callee signature, so the call in test-devirt-types.c is
+; promoted to the two callees that share its signature and to nothing else.
+;
+; With an alias set keyed on the type of the called operand instead -- `ptr`
+; for every indirect call under opaque pointers -- the call is also promoted
+; to @two_args, and passing one argument to a two-parameter callee makes the
+; first RUN below fail outright with "Callee is not a pointer type".
+;
+; RUN: %clam -O0 --crab-dom=int --devirt-functions=types --crab-print-invariants=false --crab-disable-warnings "%s".c -o %t.bc
+; RUN: %llvm_dis < %t.bc | OutputCheck %s --comment=";"
+; RUN: %llvm_dis < %t.bc | OutputCheck %s --check-prefix=NEG --comment=";"
+
+; Both same-signature callees are called directly. The alias set is ordered by
+; pointer address, so do not assume which one comes first.
+; CHECK: define i32 @main
+; CHECK: call i32 @add_(one|two)\(i32 noundef %call\)
+; CHECK: call i32 @add_(one|two)\(i32 noundef %call\)
+
+; And no other callee is. The volatile store of @two_args is the last mention
+; of it that belongs in main, and it precedes the promoted call, so anything
+; naming @two_args after it comes from an alias set that ignored signatures.
+; NEG: store volatile ptr @two_args
+; NEG-NOT: @two_args

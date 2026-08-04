@@ -1,0 +1,16 @@
+; Devirtualization with the "sea-dsa" resolver: the candidates come from the
+; points-to graph rather than from the signature, so the call in
+; test-devirt-sea-dsa.c is promoted to @chosen alone. Running the same input
+; through --devirt-functions=types promotes it to @not_chosen as well.
+;
+; RUN: %clam -O0 --crab-dom=int --devirt-functions=sea-dsa --crab-print-invariants=false --crab-disable-warnings "%s".c -o %t.bc
+; RUN: %llvm_dis < %t.bc | OutputCheck %s --comment=";"
+; RUN: %llvm_dis < %t.bc | OutputCheck %s --check-prefix=NEG --comment=";"
+
+; CHECK: define i32 @main
+; CHECK: call i32 @chosen\(i32 noundef %call\)
+
+; The store into @fn is the last thing in main that precedes the promoted
+; call, and @not_chosen never reaches @fn, so no mention of it may follow.
+; NEG: store volatile ptr @chosen, ptr @fn
+; NEG-NOT: @not_chosen
