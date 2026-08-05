@@ -746,7 +746,11 @@ Region SeaDsaHeapAbstractionImpl::getRegion(const llvm::Function &fn,
     return Region();
   }
 
-  if (Node *n = G.getCell(V).getNode()) {
+  const Cell &baseC = G.getCell(V);
+  if (Node *n = baseC.getNode()) {
+    // offset is relative to V, but a cell offset is relative to the
+    // node V belongs to, which is not necessarily V's base.
+    offset += baseC.getOffset();
     if (n->hasAccessedType(offset)) {
       Cell c(n, offset);
       RegionInfo r_info =
