@@ -5,6 +5,15 @@
 // RUN: %clam -O0 --lower-select --crab-inter --crab-dom=zones --crab-track=mem --crab-heap-analysis=cs-sea-dsa --crab-check=assert --crab-sanity-checks --inline "%s" 2>&1 | OutputCheck %s
 // CHECK: ^1  Number of total safe checks$
 // CHECK: ^0  Number of total warning checks$
+// XFAIL: *
+
+// XFAIL since the LLVM 15 port: https://github.com/seahorn/clam/issues/106
+//
+// Under opaque pointers, sea-instcombine's transformToIndexedCompare rewrites
+// this loop's pointer induction variable into an integer index IV plus a scaled
+// GEP, and hoists that GEP into the loop header. Zones cannot represent
+// `p = pathbuf + 4*i`, so the guard `i <= 1` no longer bounds `p` by `bound`,
+// and `p <= tmp` becomes a warning. The issue has the full diagnosis.
 
 void __VERIFIER_assert(int cond) {
   if (!(cond)) {

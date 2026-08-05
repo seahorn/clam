@@ -59,11 +59,9 @@ RUN pip3 install --no-cache-dir OutputCheck
 RUN cmake --build . --target test-simple
 RUN cmake --build . --target test-readme
 RUN cmake --build . --target test-inter
-# TODO(llvm15): re-enable once the failures tracked in
-# tests/LLVM15-FAILING-TESTS.md are fixed. On dev15 test-array-adapt (2 tests)
-# and test-mem (6 tests) still fail, which would make every CI build red.
-#RUN cmake --build . --target test-array-adapt
-#RUN cmake --build . --target test-mem
+RUN cmake --build . --target test-array-adapt
+RUN cmake --build . --target test-mem
+RUN cmake --build . --target test-devirt
 RUN cmake --build . --target test-opt
 #RUN cmake --build . --target test-ssh-simplified
 #RUN cmake --build . --target test-ntdrivers-simplified
