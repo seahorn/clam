@@ -1,0 +1,33 @@
+# Everything here is either recreated inside the image or irrelevant to it.
+#
+# Excluding it matters for two reasons. The obvious one is that the whole
+# context is tarred and sent to the daemon on every build. The bigger one is
+# cache stability: docker/clam.Dockerfile does `COPY . /clam`, and that layer's
+# hash covers every file in the context, so a host-side `ninja` run that touches
+# build-release/ invalidates the COPY and with it every layer below -- including
+# the expensive crab, ldd and apron steps.
+
+# Host build trees. clam.Dockerfile deletes /clam/build, /clam/debug and
+# /clam/release immediately after the COPY, and these change constantly.
+build
+build-*
+install-*
+debug
+release
+
+# Third-party sources. clam.Dockerfile removes these too; the crab and extra
+# targets re-clone them inside the image.
+crab
+sea-dsa
+llvm-seahorn
+
+# Nothing in the build reads clam's own history: find_package(Git) in
+# CMakeLists.txt only locates the git executable, to clone the dependencies
+# above.
+.git
+.github
+
+**/__pycache__
+*.pyc
+
+.DS_Store
