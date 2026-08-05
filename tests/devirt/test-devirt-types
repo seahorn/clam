@@ -12,8 +12,10 @@
 ; RUN: %llvm_dis < %t.bc | OutputCheck %s --check-prefix=NEG --comment=";"
 
 ; Both same-signature callees are called directly. The alias set is ordered by
-; pointer address, so do not assume which one comes first.
-; CHECK: define i32 @main
+; pointer address, so do not assume which one comes first. The attributes
+; between "define" and the return type vary by host (dso_local on Linux, none
+; on macOS), so do not spell them out.
+; CHECK: define .*i32 @main
 ; CHECK: call i32 @add_(one|two)\(i32 noundef %call\)
 ; CHECK: call i32 @add_(one|two)\(i32 noundef %call\)
 

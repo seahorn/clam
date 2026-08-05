@@ -7,7 +7,9 @@
 ; RUN: %llvm_dis < %t.bc | OutputCheck %s --comment=";"
 ; RUN: %llvm_dis < %t.bc | OutputCheck %s --check-prefix=NEG --comment=";"
 
-; CHECK: define i32 @main
+; The attributes between "define" and the return type vary by host (dso_local
+; on Linux, none on macOS), so do not spell them out.
+; CHECK: define .*i32 @main
 ; CHECK: call i32 @chosen\(i32 noundef %call\)
 
 ; The store into @fn is the last thing in main that precedes the promoted
