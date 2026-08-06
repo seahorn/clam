@@ -2935,17 +2935,17 @@ void CrabIntraBlockBuilder::StoreIntoSingletonMem(StoreInst &I, var_t v,
 
     /// Crab array store
     crab_stmt = m_bb.array_store(v, idx, ext_or_trunc_val,
-                                 m_dl->getTypeAllocSize(ty).getFixedSize(),
+                                 m_dl->getTypeAllocSize(ty).getFixedValue(),
                                  is_strong_update);
   } else {
     if (val->isInt()) {
       crab_stmt = m_bb.array_store(v, idx, m_lfac.getIntCst(val),
-                                   m_dl->getTypeAllocSize(ty).getFixedSize(),
+                                   m_dl->getTypeAllocSize(ty).getFixedValue(),
                                    is_strong_update);
     } else if (val->isBool()) {
       crab_stmt = m_bb.array_store(
           v, idx, m_lfac.isBoolTrue(val) ? number_t(1) : number_t(0),
-          m_dl->getTypeAllocSize(ty).getFixedSize(), is_strong_update);
+          m_dl->getTypeAllocSize(ty).getFixedValue(), is_strong_update);
     } else { /* unreachable */
     }
   }
@@ -3143,7 +3143,7 @@ void CrabIntraBlockBuilder::LoadFromSingletonMem(LoadInst &I, var_t lhs_v,
   /// Crab array load
   lin_exp_t idx = inferArrayIndex(I.getPointerOperand(), I.getContext(), rgn);
   auto const *crab_stmt = m_bb.array_load(
-      lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()).getFixedSize());
+      lhs_v, rhs_v, idx, m_dl->getTypeAllocSize(I.getType()).getFixedValue());
   insertRevMap(crab_stmt, I);
 
   if (rgn.getRegionInfo().getType().second < lhs_v_bitwidth) {
@@ -3835,7 +3835,7 @@ void CfgBuilderImpl::initializeGlobalsAtMain(void) {
 	  } else {
 	    // Revisit: we do not call insertCrabIRWithEmitter
 	    entry.make_ref(gv_lit->getVar(), m_lfac.mkRegionVar(rgn),
-			   var_or_cst_t(tSize.getFixedSize(),
+			   var_or_cst_t(tSize.getFixedValue(),
 					crab::variable_type(INT_TYPE,
 							    m_dl->getPointerSizeInBits())),
 			   m_as_man.mk_tag());
