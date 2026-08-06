@@ -9,7 +9,7 @@ Clam [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://g
 
 # LLVM version #
 
-**This branch targets LLVM 15.**
+**This branch targets LLVM 16.**
 
 LLVM bitcode is not compatible across major releases, so the `clang` that
 compiles your input and the Clam tools that read the resulting bitcode must both
@@ -20,9 +20,9 @@ fails while reading it.
 The commands below are the only ones in this file that name a version. The rest
 of the file refers to them as *the LLVM release this branch targets*:
 
-     docker pull seahorn/clam-llvm15:nightly   # prebuilt nightly image
-     brew install llvm@15                      # macOS (Homebrew), keg-only
-     apt-get install clang-15                  # Debian/Ubuntu
+     docker pull seahorn/clam-llvm16:nightly   # prebuilt nightly image
+     brew install llvm@16                      # macOS (Homebrew), keg-only
+     apt-get install clang-16                  # Debian/Ubuntu
 
 > **Migrating to a newer LLVM release.** Bump `CLAM_LLVM_VERSION` in
 > `CMakeLists.txt` — it is the single source of truth for the build and drives
@@ -40,7 +40,7 @@ see [LLVM version](#llvm-version) for the `docker pull` command.
 Clam is written in C++ and uses heavily the Boost library. The
 main requirements are:
 
-- Modern C++ compiler (c++14 or newer; the exact standard is set by
+- Modern C++ compiler (c++17 or newer; the exact standard is set by
   `CMAKE_CXX_STANDARD` in `CMakeLists.txt` and tracks the targeted LLVM release)
 - Boost >= 1.65
 - GMP 
