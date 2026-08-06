@@ -12,10 +12,10 @@ project(Clam)
 # should start by bumping this one line.
 # Not derived from it (bump by hand, they live outside CMake's reach):
 # README.md, docker/clam.Dockerfile and .github/workflows/.
-set (CLAM_LLVM_VERSION 15 CACHE STRING "Major version of LLVM to build against")
+set (CLAM_LLVM_VERSION 16 CACHE STRING "Major version of LLVM to build against")
 
-# Clam's major version tracks the LLVM release it targets (clam14 -> LLVM 14,
-# clam15 -> LLVM 15, ...).
+# Clam's major version tracks the LLVM release it targets (clam15 -> LLVM 15,
+# clam16 -> LLVM 16, ...).
 set (Clam_VERSION_MAJOR ${CLAM_LLVM_VERSION})
 set (Clam_VERSION_MINOR 0)
 set (Clam_VERSION_PATCH 0)
@@ -26,8 +26,8 @@ cmake_policy(SET CMP0074 NEW)
 cmake_policy(SET CMP0077 NEW)
 endif()
 
-## LLVM 15 and later require at least c++14
-set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
+## LLVM 16 and later require at least c++17
+set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 
@@ -260,6 +260,23 @@ if (TopLevel)
     
     # We incorporate the CMake features provided by LLVM:
     list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+    # A zstd-enabled LLVM (the apt.llvm.org and Homebrew packages both are)
+    # references zstd::libzstd_shared from its export set, but the Findzstd
+    # module defining that target lives in LLVM_CMAKE_DIR, which only just
+    # joined the module path -- the early find_package(zstd) above cannot see
+    # it. Resolve the imported target now, before any target links LLVM.
+    # NB: the global ".a"-first CMAKE_FIND_LIBRARY_SUFFIXES makes Findzstd take
+    # its static-only branch and skip the shared target, so prefer the shared
+    # library for the duration of the re-find.
+    if (LLVM_ENABLE_ZSTD AND NOT TARGET zstd::libzstd_shared)
+      unset(zstd_LIBRARY CACHE)
+      set(_clam_find_suffixes ${CMAKE_FIND_LIBRARY_SUFFIXES})
+      set(CMAKE_FIND_LIBRARY_SUFFIXES
+          ${CMAKE_SHARED_LIBRARY_SUFFIX} ${_clam_find_suffixes})
+      find_package(zstd REQUIRED)
+      set(CMAKE_FIND_LIBRARY_SUFFIXES ${_clam_find_suffixes})
+      unset(_clam_find_suffixes)
+    endif()
     include(AddLLVM)
     include(HandleLLVMOptions)
     set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin)
@@ -306,6 +323,14 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 # translation unit has already pulled in <utility>. This applies before the
 # add_subdirectory() calls below so it also covers sea-dsa and Crab.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include utility")
+
+# C++17 removed std::unary_function, which sea-dsa's Info.hh still derives from
+# for the typedefs boost::transform_iterator needs. libstdc++ keeps it as a
+# deprecated extension, so this only bites under libc++ (macOS); re-enable it
+# there rather than patching the dependency. Set before add_subdirectory() so
+# it covers sea-dsa itself.
+set(CMAKE_CXX_FLAGS
+    "${CMAKE_CXX_FLAGS} -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION")
 
 ## ------ sea-dsa ------- ##
 if (TopLevel)
