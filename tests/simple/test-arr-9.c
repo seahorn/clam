@@ -4,6 +4,10 @@
 // CHECK: ^0  Number of total safe checks
 // CHECK: ^1  Number of total warning checks$
 #include "clam/clam.h"
+#include <stdlib.h>
+
+// clang-16 rejects implicit declarations, so declare the verifier builtin.
+extern void __VERIFIER_assume(int);
 
 /** 
     Current array domain cannot handle this case but we at least check

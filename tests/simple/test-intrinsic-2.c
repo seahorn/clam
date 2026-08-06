@@ -1,6 +1,7 @@
 // RUN: %clam -O0 --crab-track=mem --crab-inter --crab-print-invariants=false --crab-disable-warnings  "%s" 2>&1 | OutputCheck %s
 // XFAIL: *
 #include "clam/clam.h"
+#include <stdlib.h>
 
 
 int* mk_int_ptr_and_init(int val) {
