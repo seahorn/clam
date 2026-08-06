@@ -13,6 +13,8 @@
 
 #include <vector>
 
+#include "clam/NewPmPasses.hh"
+
 #define DEBUG_TYPE "lower-unsigned-icmp"
 
 namespace clam {
@@ -56,7 +58,7 @@ static void normalizeCmpInst(CmpInst *I) {
 STATISTIC(totalUnsignedICmpLowered,
           "Number of Lowered ULT and ULE Instructions");
 
-class LowerUnsignedICmp : public FunctionPass {
+class LowerUnsignedICmpImpl {
 
   void processUnsignedICmp(ICmpInst *CI) {
     BasicBlock *cur = CI->getParent();
@@ -220,11 +222,7 @@ class LowerUnsignedICmp : public FunctionPass {
   }
 
 public:
-  static char ID;
-
-  LowerUnsignedICmp() : FunctionPass(ID) {}
-
-  virtual bool runOnFunction(Function &F) override {
+  bool run(Function &F) {
     std::vector<ICmpInst *> worklist;
     for (inst_iterator It = inst_begin(F), E = inst_end(F); It != E; ++It) {
       Instruction *I = &*It;
@@ -256,6 +254,18 @@ public:
     return change;
   }
 
+};
+
+class LowerUnsignedICmp : public FunctionPass {
+public:
+  static char ID;
+
+  LowerUnsignedICmp() : FunctionPass(ID) {}
+
+  virtual bool runOnFunction(Function &F) override {
+    return LowerUnsignedICmpImpl().run(F);
+  }
+
   virtual StringRef getPassName() const override {
     return "Clam: Lower ULT and ULE instructions";
   }
@@ -268,5 +278,14 @@ public:
 char LowerUnsignedICmp::ID = 0;
 
 Pass *createLowerUnsignedICmpPass() { return new LowerUnsignedICmp(); }
+
+PreservedAnalyses LowerUnsignedICmpPass::run(Function &F,
+                                             FunctionAnalysisManager &) {
+  if (!LowerUnsignedICmpImpl().run(F)) {
+    return PreservedAnalyses::all();
+  }
+  // Each lowered comparison splits blocks and adds branches.
+  return PreservedAnalyses::none();
+}
 
 } // namespace clam

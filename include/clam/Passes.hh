@@ -34,32 +34,8 @@ llvm::Pass *createUseAfterFreeCheckPass();
 llvm::Pass *createOptimizerPass(ClamGlobalAnalysis *clam = nullptr);  
 } // namespace clam
 
-#ifdef HAVE_LLVM_SEAHORN
-#include "llvm_seahorn/Transforms/InstCombine/SeaInstCombine.h"
-#include "llvm/Transforms/InstCombine/InstCombine.h"
-
-llvm::FunctionPass *
-createSeaInstructionCombiningPass(unsigned MaxIterations, bool AvoidBv,
-                                  bool AvoidUnsignedICmp, bool AvoidIntToPtr,
-                                  bool AvoidAliasing, bool AvoidDisequalities);
-
-namespace clam {
-inline llvm::FunctionPass *createInstCombine() {
-  const unsigned MaxIterations = 1000; /*same value used by LLVM*/
-  const bool AvoidBv = true;
-  const bool AvoidUnsignedICmp = true;
-  const bool AvoidIntToPtr = true;
-  const bool AvoidAliasing = true;
-  const bool AvoidDisequalities = true;
-  return createSeaInstructionCombiningPass(
-      MaxIterations, AvoidBv, AvoidUnsignedICmp,
-      AvoidIntToPtr, AvoidAliasing, AvoidDisequalities);
-}
-} // namespace clam
-#else
-namespace clam {
-inline llvm::FunctionPass *createInstCombine() {
-  return llvm::createInstructionCombiningPass();
-}
-} // namespace clam
-#endif
+// No createInstCombine() here anymore: llvm-seahorn ships SeaInstCombine as a
+// new-PM pass only, so the pipelines build it directly (see the drivers in
+// tools/). NB llvm-seahorn's SeaInstCombine.h reuses LLVM's own
+// LLVM_TRANSFORMS_INSTCOMBINE_INSTCOMBINE_H include guard, so including it
+// after llvm/Transforms/InstCombine/InstCombine.h silently yields nothing.

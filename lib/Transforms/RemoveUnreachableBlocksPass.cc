@@ -7,12 +7,14 @@
 #include "seadsa/DsaAnalysis.hh"
 #include "seadsa/ShadowMem.hh"
 
+#include "clam/NewPmPasses.hh"
+
 using namespace llvm;
 
 namespace clam {
-struct RemoveUnreachableBlocksPass : public FunctionPass {
+struct RemoveUnreachableBlocks : public FunctionPass {
   static char ID;
-  RemoveUnreachableBlocksPass() : FunctionPass(ID) {}
+  RemoveUnreachableBlocks() : FunctionPass(ID) {}
 
   virtual bool runOnFunction(Function &F) override {
     return removeUnreachableBlocks(F);
@@ -29,8 +31,16 @@ struct RemoveUnreachableBlocksPass : public FunctionPass {
   }
 };
 
-char RemoveUnreachableBlocksPass::ID = 0;
+char RemoveUnreachableBlocks::ID = 0;
 Pass *createRemoveUnreachableBlocksPass() {
-  return new RemoveUnreachableBlocksPass();
+  return new RemoveUnreachableBlocks();
+}
+
+PreservedAnalyses RemoveUnreachableBlocksPass::run(Function &F,
+                                                   FunctionAnalysisManager &) {
+  if (!removeUnreachableBlocks(F)) {
+    return PreservedAnalyses::all();
+  }
+  return PreservedAnalyses::none();
 }
 } // namespace clam

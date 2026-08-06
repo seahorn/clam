@@ -284,11 +284,11 @@ public:
     var_t size_op1 = m_lfac.mkIntVar(width);
     var_t offset_op2 = m_lfac.mkIntVar(width);
     var_t size_op2 = m_lfac.mkIntVar(width);
-    if (!s.getOp1().hasValue()) { // op1 is nullptr
+    if (!s.getOp1().has_value()) { // op1 is nullptr
       bb.assign(offset_op1, number_t(0));
       bb.assign(size_op1, number_t(0));
     } else {
-      assert(s.getOp1().hasValue());
+      assert(s.getOp1().has_value());
       auto it = m_ref_bnd_map.find(&vtrue);
       if (it == m_ref_bnd_map.end()) {
         CLAM_WARNING("Could not find from select ptr "
@@ -299,11 +299,11 @@ public:
         offset_op1 = it->second.second;
       }
     }
-    if (!s.getOp2().hasValue()) { // op2 is nullptr
+    if (!s.getOp2().has_value()) { // op2 is nullptr
       bb.assign(offset_op2, number_t(0));
       bb.assign(size_op2, number_t(0));
     } else {
-      assert(s.getOp2().hasValue());
+      assert(s.getOp2().has_value());
       auto it = m_ref_bnd_map.find(&vfalse);
       if (it == m_ref_bnd_map.end()) {
         CLAM_WARNING("Could not find from select ptr "

@@ -72,10 +72,10 @@ static void removeBlock(BasicBlock *BB, LLVMContext &ctx) {
     if (!I.use_empty()) {
       I.replaceAllUsesWith(UndefValue::get(I.getType()));
     }
-    BB->getInstList().pop_back();
+    BB->back().eraseFromParent();
   }
   // Add unreachable terminator
-  BB->getInstList().push_back(new UnreachableInst(ctx));
+  new UnreachableInst(ctx, BB);
 }   
 ///
 /// Create a sequence of if-then-else statements at the location of
@@ -650,5 +650,9 @@ void DevirtStats::dump() const {
 // sea-dsa
 #include "seadsa/CompleteCallGraph.hh"
 namespace clam {
+// The legacy pass resolves against the CompleteCallGraph pass; the new-PM pass
+// owns a CompleteCallGraphAnalysis directly. Both expose the isComplete/begin/
+// end trio the resolver needs.
 template class CallSiteResolverByDsa<seadsa::CompleteCallGraph>;
+template class CallSiteResolverByDsa<seadsa::CompleteCallGraphAnalysis>;
 } // namespace clam

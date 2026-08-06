@@ -9,7 +9,7 @@
 #include "clam/crab/crab_lang.hh"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/Optional.h"
+#include <optional>
 
 #include <memory>
 
@@ -63,9 +63,9 @@ public:
 
   // compute live symbols per block by running liveness analysis
   void computeLiveSymbols();
-  // return live symbols at the end of block bb. Return None if
+  // return live symbols at the end of block bb. Return std::nullopt if
   // compute_live_symbols has not been called.
-  llvm::Optional<varset_t> getLiveSymbols(const llvm::BasicBlock *bb) const;
+  std::optional<varset_t> getLiveSymbols(const llvm::BasicBlock *bb) const;
   // return live LLVM symbols at the end of block bb. The returned
   // value will be empty whether no live symbols found or
   // compute_live_symbols has not been called. Note also that not all
@@ -90,10 +90,10 @@ public:
   getCrabBasicBlock(const llvm::BasicBlock *src,
                     const llvm::BasicBlock *dst) const;
   // map a llvm Value to a Crab variable if possible
-  llvm::Optional<var_t> getCrabVariable(const llvm::Value &v);
+  std::optional<var_t> getCrabVariable(const llvm::Value &v);
   // map the memory region to which v points to into a Crab region
   // variable if possible.
-  llvm::Optional<var_t> getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v);  
+  std::optional<var_t> getCrabRegionVariable(const llvm::Function &f, const llvm::Value &v);  
   /***** End API to translate LLVM entities to Crab ones *****/
 
   /***** Begin API to translate Crab entities to LLVM ones *****/    

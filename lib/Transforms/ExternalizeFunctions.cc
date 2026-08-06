@@ -1,4 +1,4 @@
-#include "llvm/ADT/Optional.h"
+#include <optional>
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/BasicBlock.h"
@@ -16,6 +16,8 @@
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "clam/NewPmPasses.hh"
+
 using namespace llvm;
 
 static llvm::cl::list<std::string>
@@ -31,16 +33,16 @@ RemoveBodies("clam-externalize-functions-delete",
 
 namespace clam {
 
-class ExternalizeFunctions : public ModulePass {
+class ExternalizeFunctionsImpl {
 
   struct MatchRegex {
-    llvm::Optional<llvm::Regex> m_re;
+    std::optional<llvm::Regex> m_re;
     MatchRegex(std::string s) {
       if (s != "") {
         m_re = llvm::Regex(s);
         std::string Error;
         if (!m_re->isValid(Error)) {
-          m_re = llvm::None;
+          m_re = std::nullopt;
         }
       }
     }
@@ -50,11 +52,7 @@ class ExternalizeFunctions : public ModulePass {
   };
 
 public:
-  static char ID;
-
-  ExternalizeFunctions() : ModulePass(ID) {}
-
-  virtual bool runOnModule(Module &M) override {
+  bool run(Module &M) {
     if (ExternalizeFunctionNames.begin() == ExternalizeFunctionNames.end())
       return false;
 
@@ -143,6 +141,18 @@ public:
     return Change;
   }
 
+};
+
+class ExternalizeFunctions : public ModulePass {
+public:
+  static char ID;
+
+  ExternalizeFunctions() : ModulePass(ID) {}
+
+  virtual bool runOnModule(Module &M) override {
+    return ExternalizeFunctionsImpl().run(M);
+  }
+
   virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesAll();
   }
@@ -155,5 +165,14 @@ public:
 char ExternalizeFunctions::ID = 0;
 
 Pass *createExternalizeFunctionsPass() { return new ExternalizeFunctions(); }
+
+PreservedAnalyses ExternalizeFunctionsPass::run(Module &M,
+                                                ModuleAnalysisManager &) {
+  if (!ExternalizeFunctionsImpl().run(M)) {
+    return PreservedAnalyses::all();
+  }
+  // Function bodies are dropped wholesale.
+  return PreservedAnalyses::none();
+}
 
 } // namespace clam

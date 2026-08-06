@@ -22,7 +22,7 @@
 #include "crab/domains/generic_abstract_domain.hpp"
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
+#include <optional>
 #include "llvm/Pass.h"
 
 #include <memory>
@@ -70,13 +70,13 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  virtual llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
+  virtual std::optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
 						      bool keep_shadows) const = 0;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  virtual llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
+  virtual std::optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
 						       bool keep_shadows) const = 0;
   
   /**
@@ -109,9 +109,9 @@ public:
  *    ga.analyze(aparams, assumptions);
  *    for (auto &f: m) {
  *       for (auto &b: f) {
- *         llvm::Optional<clam_abstract_domain> dom = ga.getPre(&b);
- *         if (dom.hasValue()) {
- *            crab::outs << dom.getValue() << "\n";
+ *         std::optional<clam_abstract_domain> dom = ga.getPre(&b);
+ *         if (dom.has_value()) {
+ *            crab::outs << dom.value() << "\n";
  *         }
  *      }
  *    }
@@ -149,13 +149,13 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
+  std::optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
                                               bool keep_shadows = false) const override;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
+  std::optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
                                                bool keep_shadows = false) const override;
 
   /**
@@ -179,8 +179,8 @@ public:
   llvm::ConstantRange range(const llvm::BasicBlock &B,
 			    const llvm::Value &V) const override;
 
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) const override;
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
+  std::optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) const override;
+  std::optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
 					       const llvm::Value &V) const override;
   
 };
@@ -224,13 +224,13 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
+  std::optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
                                               bool keep_shadows = false) const override;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
+  std::optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
                                                bool keep_shadows = false) const override;
 
   /**
@@ -254,8 +254,8 @@ public:
   llvm::ConstantRange range(const llvm::BasicBlock &B,
 			    const llvm::Value &V) const override;
 
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) const override;
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
+  std::optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) const override;
+  std::optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
 					       const llvm::Value &V) const override;
 };
 
@@ -307,13 +307,13 @@ public:
   /**
    * return invariants that hold at the entry of BB
    **/
-  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *BB,
+  std::optional<clam_abstract_domain> getPre(const llvm::BasicBlock *BB,
                                               bool KeepShadows = false) const;
 
   /**
    * return invariants that hold at the exit of BB
    **/
-  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *BB,
+  std::optional<clam_abstract_domain> getPost(const llvm::BasicBlock *BB,
                                                bool KeepShadows = false) const;
 
   /**
@@ -364,9 +364,9 @@ public:
  *    AnalysisParams aparams;
  *    ic.analyze(aparams);
  *    for (auto &b: fun) {
- *      llvm::Optional<clam_abstract_domain> dom = ic.getPre(&b);
- *      if (dom.hasValue()) {
- *         crab::outs << dom.getValue() << "\n";
+ *      std::optional<clam_abstract_domain> dom = ic.getPre(&b);
+ *      if (dom.has_value()) {
+ *         crab::outs << dom.value() << "\n";
  *      }
  *    }
  **/
@@ -442,13 +442,13 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
+  std::optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
                                               bool keep_shadows = false) const;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
+  std::optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
                                                bool keep_shadows = false) const;
 
   /**

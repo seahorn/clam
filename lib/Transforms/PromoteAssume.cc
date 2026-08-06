@@ -10,6 +10,8 @@
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "clam/NewPmPasses.hh"
+
 using namespace llvm;
 using namespace llvm::PatternMatch;
 
@@ -25,13 +27,9 @@ static bool hasAssumeUsers(Value &v) {
   return false;
 }
 
-class PromoteAssume : public FunctionPass {
+class PromoteAssumeImpl {
 public:
-  static char ID;
-
-  PromoteAssume() : FunctionPass(ID) {}
-
-  virtual bool runOnFunction(Function &F) override {
+  bool run(Function &F) {
     if (F.empty())
       return false;
 
@@ -75,7 +73,7 @@ public:
 	    use c->getMetadata(crallvm) to test.
 	  */
 	  c->setMetadata(F.getParent()->getMDKindID("clam"),
-			 MDNode::get(ctx, None));
+			 MDNode::get(ctx, std::nullopt));
 	  
 	  /*
 	    enqueue verifier.assume to be removed
@@ -94,6 +92,18 @@ public:
     return Changed;
   }
   
+};
+
+class PromoteAssume : public FunctionPass {
+public:
+  static char ID;
+
+  PromoteAssume() : FunctionPass(ID) {}
+
+  virtual bool runOnFunction(Function &F) override {
+    return PromoteAssumeImpl().run(F);
+  }
+
   virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     // AU.setPreservesAll();
   }
@@ -106,6 +116,17 @@ public:
 char PromoteAssume::ID = 0;
 
 FunctionPass *createPromoteAssumePass() { return new PromoteAssume(); }
+
+PreservedAnalyses PromoteAssumePass::run(Function &F,
+                                         FunctionAnalysisManager &) {
+  if (!PromoteAssumeImpl().run(F)) {
+    return PreservedAnalyses::all();
+  }
+  // Calls are rewritten in place; the CFG is untouched.
+  PreservedAnalyses PA;
+  PA.preserveSet<CFGAnalyses>();
+  return PA;
+}
 
 } // namespace clam
 

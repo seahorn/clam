@@ -10,7 +10,13 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "seadsa/CompleteCallGraph.hh"
+#include "seadsa/SeaDsaAnalysis.hh"
+#include "seadsa/TargetLibraryInfoGetter.hh"
 #include "seadsa/support/RemovePtrToInt.hh"
+
+#include "clam/NewPmPasses.hh"
+
+#include "llvm/Analysis/CallGraph.h"
 
 llvm::cl::opt<clam::CallSiteResolverKind> DevirtResolver(
     "devirt-resolver",
@@ -48,11 +54,11 @@ using namespace llvm;
 
 namespace clam {
 
-class DevirtualizeFunctionsPass : public ModulePass {
+class DevirtualizeFunctionsLegacyPass : public ModulePass {
 public:
   static char ID;
 
-  DevirtualizeFunctionsPass() : ModulePass(ID) {}
+  DevirtualizeFunctionsLegacyPass() : ModulePass(ID) {}
 
   virtual bool runOnModule(Module &M) override {
     // -- Get the call graph: unused for now
@@ -94,10 +100,47 @@ public:
   }
 };
 
-char DevirtualizeFunctionsPass::ID = 0;
+char DevirtualizeFunctionsLegacyPass::ID = 0;
+
+PreservedAnalyses DevirtualizeFunctionsPass::run(Module &M,
+                                                 ModuleAnalysisManager &MAM) {
+  DevirtualizeFunctions DF(/*CG*/ nullptr, AllowIndirectCalls);
+  std::unique_ptr<CallSiteResolver> CSR;
+
+  // Built here rather than pulled from the MAM: the resolver below is the only
+  // consumer, and CompleteCallGraphAnalysis is not one of the analyses sea-dsa
+  // exposes through SeaDsaAnalysis.hh. Its inputs are cached, though, so the
+  // AllocWrapInfo/DsaLibFuncInfo work is shared with any other sea-dsa
+  // consumer in the pipeline.
+  std::unique_ptr<seadsa::CompleteCallGraphAnalysis> CCGA;
+  switch (DevirtResolver) {
+  case RESOLVER_SEA_DSA: {
+    auto &AWI = MAM.getResult<seadsa::AllocWrapInfoAnalysis>(M);
+    auto &DLFI = MAM.getResult<seadsa::DsaLibFuncInfoAnalysis>(M);
+    auto &CG = MAM.getResult<CallGraphAnalysis>(M);
+    CCGA = std::make_unique<seadsa::CompleteCallGraphAnalysis>(
+        M.getDataLayout(), seadsa::mkTLIGetter(M, MAM), AWI.getAllocWrapInfo(),
+        DLFI.getDsaLibFuncInfo(), CG);
+    CCGA->runOnModule(M);
+    CSR.reset(new CallSiteResolverByDsa<seadsa::CompleteCallGraphAnalysis>(
+        M, *CCGA, ResolveIncompleteCalls, MaxNumTargets, DF.getStats()));
+    break;
+  }
+  case RESOLVER_TYPES:
+    CSR.reset(new CallSiteResolverByTypes(M, DF.getStats()));
+    break;
+  }
+
+  if (!DF.resolveCallSites(M, &*CSR)) {
+    return PreservedAnalyses::all();
+  }
+  // Indirect calls become branches over direct calls, and bounce functions are
+  // added; DevirtualizeFunctions does not update the call graph.
+  return PreservedAnalyses::none();
+}
 
 Pass *createDevirtualizeFunctionsPass() {
-  return new DevirtualizeFunctionsPass();
+  return new DevirtualizeFunctionsLegacyPass();
 }
 
 } // namespace clam

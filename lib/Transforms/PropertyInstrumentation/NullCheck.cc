@@ -112,7 +112,7 @@ void NullCheck::insertNullCheck(Value *Ptr, IRBuilder<> &B, Instruction *I) {
         new ICmpInst(ICmpInst::ICMP_NE /*SGT*/, Ptr,
                      Constant::getNullValue(Ptr->getType()), "null_check");
     auto InsertPt = B.GetInsertPoint();
-    B.GetInsertBlock()->getInstList().insert(InsertPt, Cond);
+    Cond->insertInto(B.GetInsertBlock(), InsertPt);
     GtNull = Cond;
   }
 

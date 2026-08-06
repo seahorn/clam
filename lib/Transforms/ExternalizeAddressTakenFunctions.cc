@@ -11,11 +11,13 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 
+#include "clam/NewPmPasses.hh"
+
 using namespace llvm;
 
 namespace clam {
 
-class ExternalizeAddressTakenFunctions : public ModulePass {
+class ExternalizeAddressTakenFunctionsImpl {
 
   static bool hasAddressTaken(Function &F) {
     for (const Use &U : F.uses()) {
@@ -42,11 +44,7 @@ class ExternalizeAddressTakenFunctions : public ModulePass {
   }
   
 public:
-  static char ID;
-
-  ExternalizeAddressTakenFunctions() : ModulePass(ID) {}
-
-  virtual bool runOnModule(Module &M) override {
+  bool run(Module &M) {
     bool Changed = false;
     for (auto &F : M) {
 
@@ -150,6 +148,18 @@ public:
     }
     return Changed;
   }
+};
+
+class ExternalizeAddressTakenFunctions : public ModulePass {
+public:
+  static char ID;
+
+  ExternalizeAddressTakenFunctions() : ModulePass(ID) {}
+
+  virtual bool runOnModule(Module &M) override {
+    return ExternalizeAddressTakenFunctionsImpl().run(M);
+  }
+
   virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     // AU.setPreservesAll ();
   }
@@ -163,6 +173,14 @@ char ExternalizeAddressTakenFunctions::ID = 0;
 
 Pass *createExternalizeAddressTakenFunctionsPass() {
   return new ExternalizeAddressTakenFunctions();
+}
+
+PreservedAnalyses
+ExternalizeAddressTakenFunctionsPass::run(Module &M, ModuleAnalysisManager &) {
+  if (!ExternalizeAddressTakenFunctionsImpl().run(M)) {
+    return PreservedAnalyses::all();
+  }
+  return PreservedAnalyses::none();
 }
 
 } // namespace clam

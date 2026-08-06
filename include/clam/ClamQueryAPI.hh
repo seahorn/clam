@@ -1,6 +1,6 @@
 #pragma once
 
-#include "llvm/ADT/Optional.h"
+#include <optional>
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/IR/ConstantRange.h"
 #include <limits>
@@ -47,12 +47,12 @@ public:
 
   // Return the tags associated to the left-hand side of I before the
   // execution of I.  If the type of I is not a pointer then it
-  // returns None.
-  virtual llvm::Optional<TagVector> tags(const llvm::Instruction &I) const = 0;
+  // returns std::nullopt.
+  virtual std::optional<TagVector> tags(const llvm::Instruction &I) const = 0;
 
   // Return the tags associated to V that hold at the entry of B. If
-  // the type of V is not a pointer than it returns None.
-  virtual llvm::Optional<TagVector> tags(const llvm::BasicBlock &B,
+  // the type of V is not a pointer than it returns std::nullopt.
+  virtual std::optional<TagVector> tags(const llvm::BasicBlock &B,
 					 const llvm::Value &V) const = 0;
   
 };

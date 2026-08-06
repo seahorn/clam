@@ -9,7 +9,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ImmutableSet.h"
-#include "llvm/ADT/Optional.h"
+#include <optional>
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstIterator.h"
@@ -19,6 +19,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "seadsa/AllocWrapInfo.hh"
+#include "seadsa/TargetLibraryInfoGetter.hh"
 #include "seadsa/CallSite.hh"
 #include "seadsa/DsaLibFuncInfo.hh"
 #include "seadsa/Global.hh"
@@ -679,14 +680,17 @@ SeaDsaHeapAbstractionImpl::SeaDsaHeapAbstractionImpl(
       m_dl(M.getDataLayout()), m_max_id(0), m_params(params) {
 
   // -- Run sea-dsa
+  // sea-dsa now takes a per-function TLI getter rather than the legacy wrapper
+  // pass itself. We still hold the wrapper, so adapt it; it outlives the
+  // analyses, which is what the getter requires.
+  seadsa::TargetLibraryInfoGetter getTLI = seadsa::mkTLIGetter(
+      *(const_cast<llvm::TargetLibraryInfoWrapperPass *>(&tli)));
   if (!m_params.is_context_sensitive) {
     m_dsa = new seadsa::ContextInsensitiveGlobalAnalysis(
-        m_dl, *(const_cast<llvm::TargetLibraryInfoWrapperPass *>(&tli)),
-        alloc_info, spec_graph_info, cg, *m_fac, false);
+        m_dl, getTLI, alloc_info, spec_graph_info, cg, *m_fac, false);
   } else {
     m_dsa = new seadsa::ContextSensitiveGlobalAnalysis(
-        m_dl, *(const_cast<llvm::TargetLibraryInfoWrapperPass *>(&tli)),
-        alloc_info, spec_graph_info, cg, *m_fac);
+        m_dl, getTLI, alloc_info, spec_graph_info, cg, *m_fac);
   }
   m_dsa->runOnModule(const_cast<Module &>(M));
 

@@ -5,13 +5,16 @@
 #include "clam/config.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
+#include "llvm/IR/IRPrintingPasses.h" // legacy createPrintModulePass
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/IRPrinter/IRPrintingPasses.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/InitializePasses.h"
-#include "llvm/LinkAllPasses.h"
+#include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
@@ -23,11 +26,26 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO.h"
 
+#include "llvm/Transforms/IPO/GlobalDCE.h"
+#include "llvm/Transforms/Scalar/DCE.h"
+#include "llvm/Transforms/Scalar/SimplifyCFG.h"
+#include "llvm/Transforms/Utils/LowerInvoke.h"
+#include "llvm/Transforms/Utils/LowerSwitch.h"
+#include "llvm/Transforms/Utils/Mem2Reg.h"
+#include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
+
 #include "clam/Clam.hh"
+#include "clam/NewPmPasses.hh"
 #include "clam/Passes.hh"
 
 #include "seadsa/InitializePasses.hh"
 #include "seadsa/support/RemovePtrToInt.hh"
+
+#ifdef HAVE_LLVM_SEAHORN
+#include "llvm_seahorn/Transforms/InstCombine/SeaInstCombine.h"
+#else
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#endif
 
 extern llvm::cl::OptionCategory ClamOptCat;
 
@@ -203,6 +221,27 @@ int main(int argc, char **argv) {
   // initialise and run passes //
   ///////////////////////////////
 
+  // The pipeline runs in three segments. Preprocessing and the post-Crab
+  // cleanup are new-PM pipelines; ClamPass and the invariant-based Optimizer
+  // are still legacy passes, so they run in a legacy PassManager in between.
+  // LLVM offers no adaptor to mix the two in one pipeline, and all three
+  // segments run over the same module in the original order.
+  llvm::PassBuilder PB;
+  llvm::LoopAnalysisManager LAM;
+  llvm::FunctionAnalysisManager FAM;
+  llvm::CGSCCAnalysisManager CGAM;
+  llvm::ModuleAnalysisManager MAM;
+  PB.registerModuleAnalyses(MAM);
+  PB.registerCGSCCAnalyses(CGAM);
+  PB.registerFunctionAnalyses(FAM);
+  PB.registerLoopAnalyses(LAM);
+  PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+  auto addFunctionPass = [](llvm::ModulePassManager &MPM, auto &&P) {
+    MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
+        std::forward<decltype(P)>(P)));
+  };
+
   llvm::legacy::PassManager pass_manager;
   llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
   llvm::initializeCore(Registry);
@@ -241,62 +280,71 @@ int main(int argc, char **argv) {
    * should be run in clam-pp.
    **/
 
+  llvm::ModulePassManager preprocess;
+
   // kill unused internal global
-  pass_manager.add(llvm::createGlobalDCEPass());
-  pass_manager.add(clam::createRemoveUnreachableBlocksPass());
+  preprocess.addPass(llvm::GlobalDCEPass());
+  addFunctionPass(preprocess, clam::RemoveUnreachableBlocksPass());
 
   // -- promote alloca's to registers
-  pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
+  addFunctionPass(preprocess, llvm::PromotePass());
   if (TurnUndefNondet) {
     // -- Turn undef into nondet
-    pass_manager.add(clam::createNondetInitPass());
+    preprocess.addPass(clam::NondetInitPass());
   }
   if (LowerInvoke) {
     // -- lower invoke's
-    pass_manager.add(llvm::createLowerInvokePass());
+    addFunctionPass(preprocess, llvm::LowerInvokePass());
     // cleanup after lowering invoke's
-    pass_manager.add(llvm::createCFGSimplificationPass());
+    addFunctionPass(preprocess, llvm::SimplifyCFGPass());
   }
   // -- ensure one single exit point per function
-  pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+  addFunctionPass(preprocess, llvm::UnifyFunctionExitNodesPass());
   // -- remove unreachable blocks
-  pass_manager.add(clam::createRemoveUnreachableBlocksPass());
+  addFunctionPass(preprocess, clam::RemoveUnreachableBlocksPass());
   if (LowerSwitch) {
     // -- remove switch constructions
-    pass_manager.add(llvm::createLowerSwitchPass());
+    addFunctionPass(preprocess, llvm::LowerSwitchPass());
     // cleanup after lowering switches
-    pass_manager.add(llvm::createCFGSimplificationPass());
+    addFunctionPass(preprocess, llvm::SimplifyCFGPass());
   }
   // -- lower constant expressions to instructions
   if (LowerCstExpr) {
-    pass_manager.add(clam::createLowerCstExprPass());
+    preprocess.addPass(clam::LowerCstExprPass());
     // cleanup after lowering constant expressions
-    pass_manager.add(llvm::createDeadCodeEliminationPass());
+    addFunctionPass(preprocess, llvm::DCEPass());
   }
   if (TurnUndefNondet) {
-    pass_manager.add(clam::createDeadNondetElimPass());
+    addFunctionPass(preprocess, clam::DeadNondetElimPass());
   }
 
   // -- lower ULT and ULE instructions
   if (LowerUnsignedICmp) {
-    pass_manager.add(clam::createLowerUnsignedICmpPass());
+    addFunctionPass(preprocess, clam::LowerUnsignedICmpPass());
     // cleanup unnecessary and unreachable blocks
-    pass_manager.add(llvm::createCFGSimplificationPass());
-    pass_manager.add(clam::createRemoveUnreachableBlocksPass());
+    addFunctionPass(preprocess, llvm::SimplifyCFGPass());
+    addFunctionPass(preprocess, clam::RemoveUnreachableBlocksPass());
   }
 
   // -- remove ptrtoint and inttoptr instructions
-  pass_manager.add(seadsa::createRemovePtrToIntPass());
+  addFunctionPass(preprocess, seadsa::RemovePtrToIntPass());
 
   // -- must be the last ones before running crab.
   if (LowerSelect) {
-    pass_manager.add(clam::createLowerSelectPass());
+    addFunctionPass(preprocess, clam::LowerSelectPass());
   }
 
   // -- ensure one single exit point per function
   //    LowerUnsignedICmpPass and LowerSelect can add multiple
   //    returns.
-  pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+  addFunctionPass(preprocess, llvm::UnifyFunctionExitNodesPass());
+
+  preprocess.run(*module.get(), MAM);
+
+  // The analysis itself. ClamPass, the property-instrumentation checks around
+  // it and the invariant-based Optimizer have not been ported to the new PM
+  // yet, so this middle segment stays on the legacy manager.
+  bool has_legacy_passes = false;
 
   if (!DisableCrab) {
     /// -- Add some properties to check
@@ -308,38 +356,69 @@ int main(int argc, char **argv) {
     pass_manager.add(new clam::ClamPass());
     if (DotLLVMCFG)
       pass_manager.add(createAnnotatedCFGPrinterPass());
+    has_legacy_passes = true;
   }
 
   if (!AsmOutputFilename.empty()) {
     pass_manager.add(createPrintModulePass(asmOutput->os()));
+    has_legacy_passes = true;
   }
 
   if (!DisableCrab && CrabOpt) {
     // post-processing of the bitcode using Crab invariants
     pass_manager.add(clam::createOptimizerPass());
+    has_legacy_passes = true;
+  }
 
+  if (has_legacy_passes) {
+    pass_manager.run(*module.get());
+  }
+
+  // Cleanup after the Optimizer, plus the output writers.
+  llvm::ModulePassManager postprocess;
+  bool has_postprocess_passes = false;
+
+  if (!DisableCrab && CrabOpt) {
     //// Cleanup
     // -- simplify invariants added in the bitecode.
-    pass_manager.add(clam::createInstCombine());
+#ifdef HAVE_LLVM_SEAHORN
+    const unsigned MaxIterations = 1000; /*same value used by LLVM*/
+    const bool AvoidBv = true;
+    const bool AvoidUnsignedICmp = true;
+    const bool AvoidIntToPtr = true;
+    const bool AvoidAliasing = true;
+    const bool AvoidDisequalities = true;
+    addFunctionPass(postprocess, llvm_seahorn::SeaInstCombinePass(
+                                     MaxIterations, AvoidBv, AvoidUnsignedICmp,
+                                     AvoidIntToPtr, AvoidAliasing,
+                                     AvoidDisequalities));
+#else
+    addFunctionPass(postprocess, llvm::InstCombinePass());
+#endif
     // -- remove dead edges and blocks
-    pass_manager.add(llvm::createCFGSimplificationPass());
+    addFunctionPass(postprocess, llvm::SimplifyCFGPass());
     // -- remove global strings and values
-    pass_manager.add(llvm::createGlobalDCEPass());
-    
+    postprocess.addPass(llvm::GlobalDCEPass());
+
     if (PromoteAssume) {
       // -- promote verifier.assume to llvm.assume intrinsics
-      pass_manager.add(clam::createPromoteAssumePass());
+      addFunctionPass(postprocess, clam::PromoteAssumePass());
     }
+    has_postprocess_passes = true;
   }
 
   if (!OutputFilename.empty()) {
     if (OutputAssembly)
-      pass_manager.add(createPrintModulePass(output->os()));
+      postprocess.addPass(llvm::PrintModulePass(output->os()));
     else
-      pass_manager.add(createBitcodeWriterPass(output->os()));
+      postprocess.addPass(llvm::BitcodeWriterPass(output->os()));
+    has_postprocess_passes = true;
   }
 
-  pass_manager.run(*module.get());
+  if (has_postprocess_passes) {
+    postprocess.run(*module.get(), MAM);
+  }
+
 
   if (!AsmOutputFilename.empty())
     asmOutput->keep();

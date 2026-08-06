@@ -4,6 +4,8 @@
 
 #include "llvm/ADT/SmallVector.h"
 
+#include <optional>
+
 namespace llvm {
 class TargetLibraryInfo;
 class Function;
@@ -307,7 +309,7 @@ public:
  **/
 class CrabSelectRefOps {
 public:
-  using opt_pair_var_t = llvm::Optional<std::pair<var_t, var_t>>;
+  using opt_pair_var_t = std::optional<std::pair<var_t, var_t>>;
 
   CrabSelectRefOps(var_t ref_lhs, var_t region_lhs, var_t cond,
                    opt_pair_var_t op1, opt_pair_var_t op2, basic_block_t &bb)

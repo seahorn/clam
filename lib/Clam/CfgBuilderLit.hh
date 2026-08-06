@@ -2,7 +2,7 @@
 
 /* A wrapper object for a LLVM variable or constant */
 
-#include "llvm/ADT/Optional.h"
+#include <optional>
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -52,19 +52,19 @@ inline crab::crab_os &operator<<(crab::crab_os &out, const crabLit &l) {
 class crabBoolLit : public crabLit {
   friend class crabLitFactoryImpl;
 
-  bool m_cst; // only considered if !m_var.hasValue()
-  llvm::Optional<var_t> m_var;
+  bool m_cst; // only considered if !m_var.has_value()
+  std::optional<var_t> m_var;
 
   crabBoolLit(bool cst) : crabLit(CRAB_LITERAL_BOOL), m_cst(cst) {}
 
   crabBoolLit(var_t var) : crabLit(CRAB_LITERAL_BOOL), m_cst(false), m_var(var) {}
 
 public:
-  bool isVar() const override { return (m_var.hasValue()); }
+  bool isVar() const override { return (m_var.has_value()); }
 
   var_t getVar() const override {
     assert(isVar());
-    return m_var.getValue();
+    return m_var.value();
   }
 
   bool isConst() const { return !isVar(); }
@@ -106,18 +106,18 @@ public:
 class crabRefLit : public crabLit {
   friend class crabLitFactoryImpl;
 
-  // if !m_lit.hasValue() then the literal represents null
-  llvm::Optional<var_t> m_lit;
+  // if !m_lit.has_value() then the literal represents null
+  std::optional<var_t> m_lit;
 
   crabRefLit() : crabLit(CRAB_LITERAL_REF) {} // null
   crabRefLit(var_t v) : crabLit(CRAB_LITERAL_REF), m_lit(v) {}
 
 public:
-  bool isVar() const override { return m_lit.hasValue(); }
+  bool isVar() const override { return m_lit.has_value(); }
 
   var_t getVar() const override {
     assert(isVar());
-    return m_lit.getValue();
+    return m_lit.value();
   }
 
   bool isNull() const { return !isVar(); }
@@ -140,8 +140,8 @@ public:
 class crabIntLit : public crabLit {
   friend class crabLitFactoryImpl;
 
-  number_t m_num; // only considered if !m_var.hasValue()
-  llvm::Optional<var_t> m_var;
+  number_t m_num; // only considered if !m_var.has_value()
+  std::optional<var_t> m_var;
   unsigned m_bitwidth;
 
   // If z_number != number_t we assume that number_t has a
@@ -154,11 +154,11 @@ class crabIntLit : public crabLit {
         m_bitwidth(v.get_type().get_integer_bitwidth()) {}
 
 public:
-  bool isVar() const override { return m_var.hasValue(); }
+  bool isVar() const override { return m_var.has_value(); }
 
   var_t getVar() const override {
     assert(isVar());
-    return m_var.getValue();
+    return m_var.value();
   }
 
   bool isInt() const { return !isVar(); }
@@ -224,7 +224,7 @@ public:
   var_t mkIntVar(unsigned bitwidth);
   var_t mkBoolVar();
   var_t mkRefVar();
-  llvm::Optional<var_t> mkVar(const llvm::Value &v);
+  std::optional<var_t> mkVar(const llvm::Value &v);
   var_t mkArrayVar(RegionInfo rgnInfo);
   var_t mkRegionVar(RegionInfo rgnInfo);
 

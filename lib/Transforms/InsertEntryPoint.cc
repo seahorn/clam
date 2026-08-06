@@ -13,6 +13,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "clam/NewPmPasses.hh"
+
 using namespace llvm;
 
 static llvm::cl::opt<std::string>
@@ -22,7 +24,7 @@ static llvm::cl::opt<std::string>
 
 namespace clam {
 
-class InsertEntryPoint : public ModulePass {
+class InsertEntryPointImpl {
   DenseMap<const Type *, FunctionCallee> m_ndfn;
 
   FunctionCallee getNondetFn(Type *type, Module &M) {
@@ -30,26 +32,22 @@ class InsertEntryPoint : public ModulePass {
     if (it != m_ndfn.end()) {
       return it->second;
     }
-    
-    FunctionCallee res =
-      M.getOrInsertFunction("verifier.nondet." + std::to_string(m_ndfn.size()), type);
+
+    FunctionCallee res = M.getOrInsertFunction(
+        "verifier.nondet." + std::to_string(m_ndfn.size()), type);
     // -- say that f does not access memory will make llvm
     // -- assume that all calls to it return the same value
     // if (Function *f = dyn_cast<Function>(res))
     // {
     //   // f->setDoesNotAccessMemory (true);
     //   // f->setDoesNotAlias (0);
-    // }    
+    // }
     m_ndfn[type] = res;
     return res;
   }
 
 public:
-  static char ID;
-
-  InsertEntryPoint() : ModulePass(ID) {}
-
-  virtual bool runOnModule(Module &M) override {
+  bool run(Module &M) {
 
     if (M.getFunction("main")) {
       return false;
@@ -90,6 +88,17 @@ public:
     B.CreateRet(ConstantInt::get(intTy, 42));
     return true;
   }
+};
+
+class InsertEntryPoint : public ModulePass {
+public:
+  static char ID;
+
+  InsertEntryPoint() : ModulePass(ID) {}
+
+  virtual bool runOnModule(Module &M) override {
+    return InsertEntryPointImpl().run(M);
+  }
 
   virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     // AU.setPreservesAll ();
@@ -102,4 +111,12 @@ public:
 
 char InsertEntryPoint::ID = 0;
 Pass *createInsertEntryPointPass() { return new InsertEntryPoint(); }
+
+PreservedAnalyses InsertEntryPointPass::run(Module &M,
+                                            ModuleAnalysisManager &) {
+  if (!InsertEntryPointImpl().run(M)) {
+    return PreservedAnalyses::all();
+  }
+  return PreservedAnalyses::none();
+}
 } // end namespace clam

@@ -3,6 +3,7 @@
 #include "crab/checkers/checker.hpp"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,7 +34,7 @@ public:
 /** Invariant annotations **/
 class invariant_annotation : public block_annotation {
 public:
-  using lookup_function = std::function<llvm::Optional<clam_abstract_domain>(
+  using lookup_function = std::function<std::optional<clam_abstract_domain>(
       const abs_dom_map_t, const llvm::BasicBlock &,
       const std::vector<varname_t> &)>;
 

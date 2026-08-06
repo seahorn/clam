@@ -11,15 +11,17 @@
 #include "llvm/Transforms/Utils/LoopPeel.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
 
+#include "clam/NewPmPasses.hh"
+
 namespace clam {
 
 using namespace llvm;
-class LoopPeelerPass : public LoopPass {
+class LoopPeelerLegacyPass : public LoopPass {
 public:
   static char ID;
   // -- number of iterations to peel
   unsigned m_Num;
-  LoopPeelerPass(unsigned Num = 0) : LoopPass(ID) { m_Num = Num; }
+  LoopPeelerLegacyPass(unsigned Num = 0) : LoopPass(ID) { m_Num = Num; }
 
   bool runOnLoop(Loop *L, LPPassManager &LPM) override;
 
@@ -29,6 +31,26 @@ public:
     getLoopAnalysisUsage(AU);
   }
 };
+
+/** Peel Num iterations off L. Shared by the legacy and new-PM passes, which
+    differ only in where they source the analyses from. */
+static bool peelLoopBy(Loop *L, unsigned Num, LoopInfo &LI,
+                       ScalarEvolution &SE, DominatorTree &DT,
+                       AssumptionCache &AC) {
+  if (Num == 0)
+    return false;
+
+  if (!L->getHeader())
+    return false;
+
+  if (!canPeel(L)) {
+    return false;
+  }
+  // LLVM 16 requires the value map out-parameter (original instructions to the
+  // last peeled-off iteration). We have no use for it.
+  ValueToValueMapTy VMap;
+  return peelLoop(L, Num, &LI, &SE, DT, &AC, true /* PreserveLCSSA */, VMap);
+}
 
 /**
    llvm::peeLoop() requires loops to be rotated. Here is an explanation from
@@ -77,10 +99,7 @@ public:
                                Exit:
  */
 
-bool LoopPeelerPass::runOnLoop(Loop *L, LPPassManager &LPM) {
-  if (m_Num == 0)
-    return false;
-
+bool LoopPeelerLegacyPass::runOnLoop(Loop *L, LPPassManager &LPM) {
   auto *Header = L->getHeader();
   if (!Header)
     return false;
@@ -91,16 +110,21 @@ bool LoopPeelerPass::runOnLoop(Loop *L, LPPassManager &LPM) {
   auto &LI = getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
   auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(*F);
 
-  if (!canPeel(L)) {
-    return false;
-  }
-  auto res = peelLoop(L, m_Num, &LI, &SE, DT, &AC, true /* PreserveLCSSA */);
-  return res;
+  return peelLoopBy(L, m_Num, LI, SE, DT, AC);
 }
 
-char LoopPeelerPass::ID = 0;
+char LoopPeelerLegacyPass::ID = 0;
 llvm::Pass *createLoopPeelerPass(unsigned Num) {
-  return new LoopPeelerPass(Num);
+  return new LoopPeelerLegacyPass(Num);
+}
+
+PreservedAnalyses LoopPeelerPass::run(Loop &L, LoopAnalysisManager &,
+                                      LoopStandardAnalysisResults &AR,
+                                      LPMUpdater &) {
+  if (!peelLoopBy(&L, m_Num, AR.LI, AR.SE, AR.DT, AR.AC)) {
+    return PreservedAnalyses::all();
+  }
+  return getLoopPassPreservedAnalyses();
 }
 
 } // end namespace clam

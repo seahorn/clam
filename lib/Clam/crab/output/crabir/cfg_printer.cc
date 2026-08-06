@@ -19,8 +19,8 @@ void invariant_annotation::print_begin(const basic_block_label_t &bbl,
     auto pre = m_lookup(m_premap, *bb, m_shadow_vars);
     
     o << name() << ": ";
-    if (pre.hasValue()) {
-      o << pre.getValue();
+    if (pre.has_value()) {
+      o << pre.value();
     } else {
       o << "null";
     }
@@ -32,8 +32,8 @@ void invariant_annotation::print_end(const basic_block_label_t &bbl,
   if (const llvm::BasicBlock *bb = bbl.get_basic_block()) {
     auto post = m_lookup(m_postmap, *bb, m_shadow_vars);
     o << name() << ": ";
-    if (post.hasValue()) {
-      o << post.getValue();
+    if (post.has_value()) {
+      o << post.value();
     } else {
       o << "null";
     }

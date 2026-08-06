@@ -8,6 +8,8 @@
 
 #include "seadsa/Graph.hh"
 
+#include <optional>
+
 namespace {
 
 using namespace llvm;
@@ -66,7 +68,7 @@ static uint64_t storageSize(const Type *t, const DataLayout &dl) {
   return dl.getTypeStoreSize(const_cast<Type *>(t));
 }
 
-static Optional<uint64_t> sizeOf(const Graph::Set &types,
+static std::optional<uint64_t> sizeOf(const Graph::Set &types,
                                  const DataLayout &dl) {
   if (types.isEmpty()) {
     return 0;
@@ -82,7 +84,7 @@ static Optional<uint64_t> sizeOf(const Graph::Set &types,
           })) {
         return sz;
       } else {
-        return None;
+        return std::nullopt;
       }
     }
   }
@@ -99,15 +101,15 @@ static bool isOverlappingCell(const Cell &c, const DataLayout &dl) {
   }
 
   auto c1_sz = sizeOf(n1->getAccessedType(o1), dl);
-  if (c1_sz.hasValue()) {
-    uint64_t s1 = c1_sz.getValue();
+  if (c1_sz.has_value()) {
+    uint64_t s1 = c1_sz.value();
     for (auto &kv : n1->types()) {
       unsigned o2 = kv.first;
       if (o1 == o2)
         continue;
       auto c2_sz = sizeOf(kv.second, dl);
-      if (c2_sz.hasValue()) {
-        uint64_t s2 = c2_sz.getValue();
+      if (c2_sz.has_value()) {
+        uint64_t s2 = c2_sz.value();
         if (intersectInterval({o1, o1 + s1}, {o2, o2 + s2})) {
           return true;
         }

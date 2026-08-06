@@ -10,6 +10,8 @@
 
 #include <vector>
 
+#include "clam/NewPmPasses.hh"
+
 //#define DEBUG_TYPE "lower-selects"
 
 namespace clam {
@@ -17,7 +19,7 @@ using namespace llvm;
 
 // STATISTIC(totalLowered, "Number of Lowered Select Instructions");
 
-class LowerSelect : public FunctionPass {
+class LowerSelectImpl {
   // Lower the select instruction into three new blocks.
   void processSelectInst(SelectInst *SI) {
 
@@ -71,11 +73,7 @@ class LowerSelect : public FunctionPass {
   }
 
 public:
-  static char ID;
-
-  LowerSelect() : FunctionPass(ID) {}
-
-  virtual bool runOnFunction(Function &F) override {
+  bool run(Function &F) {
     bool modified = false;
 
     std::vector<SelectInst *> worklist;
@@ -101,6 +99,18 @@ public:
     return modified;
   }
 
+};
+
+class LowerSelect : public FunctionPass {
+public:
+  static char ID;
+
+  LowerSelect() : FunctionPass(ID) {}
+
+  virtual bool runOnFunction(Function &F) override {
+    return LowerSelectImpl().run(F);
+  }
+
   virtual StringRef getPassName() const override  {
     return "Clam: Lower select instructions";
   }
@@ -112,5 +122,13 @@ public:
 
 char LowerSelect::ID = 0;
 Pass *createLowerSelectPass() { return new LowerSelect(); }
+
+PreservedAnalyses LowerSelectPass::run(Function &F, FunctionAnalysisManager &) {
+  if (!LowerSelectImpl().run(F)) {
+    return PreservedAnalyses::all();
+  }
+  // Each lowered select splits its block into three.
+  return PreservedAnalyses::none();
+}
 
 } // namespace clam

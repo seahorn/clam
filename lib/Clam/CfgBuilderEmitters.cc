@@ -91,21 +91,21 @@ const statement_t *insertCrabIRWithEmitter::select_ref(
     propertyEmitters[i]->visitBeforeRefSelect(I, s);
   }
   const statement_t *res = nullptr;
-  if (op1.hasValue() && !op2.hasValue()) {
-    var_t op1_ref = op1.getValue().first;
-    var_t op1_region = op1.getValue().second;
+  if (op1.has_value() && !op2.has_value()) {
+    var_t op1_ref = op1.value().first;
+    var_t op1_region = op1.value().second;
     res = bb.select_ref_null_false_value(lhs_ref, lhs_region, cond, op1_ref,
                                          op1_region);
-  } else if (!op1.hasValue() && op2.hasValue()) {
-    var_t op2_ref = op2.getValue().first;
-    var_t op2_region = op2.getValue().second;
+  } else if (!op1.has_value() && op2.has_value()) {
+    var_t op2_ref = op2.value().first;
+    var_t op2_region = op2.value().second;
     res = bb.select_ref_null_true_value(lhs_ref, lhs_region, cond, op2_ref,
                                         op2_region);
-  } else if (op1.hasValue() && op2.hasValue()) {
-    var_t op1_ref = op1.getValue().first;
-    var_t op1_region = op1.getValue().second;
-    var_t op2_ref = op2.getValue().first;
-    var_t op2_region = op2.getValue().second;
+  } else if (op1.has_value() && op2.has_value()) {
+    var_t op1_ref = op1.value().first;
+    var_t op1_region = op1.value().second;
+    var_t op2_ref = op2.value().first;
+    var_t op2_region = op2.value().second;
     res = bb.select_ref(lhs_ref, lhs_region, cond, op1_ref, op1_region, op2_ref,
                         op2_region);
   } else { // unreachable

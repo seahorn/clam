@@ -1,6 +1,6 @@
 #include "llvm/Analysis/CFGPrinter.h"
 #include "llvm/ADT/GraphTraits.h"
-#include "llvm/ADT/Optional.h"
+#include <optional>
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
@@ -63,9 +63,9 @@ struct DOTGraphTraits<const clam::ClamFunction *>
     if (FW->m_LI.isLoopHeader(const_cast<BasicBlock *>(Node)))
       return "color=blue";
     else {
-      llvm::Optional<clam::clam_abstract_domain> domOpt =
+      std::optional<clam::clam_abstract_domain> domOpt =
           FW->m_Clam.getPre(Node);
-      if (domOpt.hasValue() && !domOpt.getValue().is_bottom()) {
+      if (domOpt.has_value() && !domOpt.value().is_bottom()) {
         return "";
       } else {
         return "color=red";
@@ -83,8 +83,8 @@ struct DOTGraphTraits<const clam::ClamFunction *>
       return Node->getName().str();
 
     std::string Str;
-    llvm::Optional<clam::clam_abstract_domain> domOpt = FW->m_Clam.getPre(Node);
-    if (domOpt.hasValue() && domOpt.getValue().is_bottom()) {
+    std::optional<clam::clam_abstract_domain> domOpt = FW->m_Clam.getPre(Node);
+    if (domOpt.has_value() && domOpt.value().is_bottom()) {
       Str += "UNREACHABLE\n";
     }
     raw_string_ostream OS(Str);

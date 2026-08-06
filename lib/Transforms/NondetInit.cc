@@ -30,12 +30,14 @@ DM-0002198
 #include <forward_list>
 #include <map>
 
+#include "clam/NewPmPasses.hh"
+
 using namespace llvm;
 STATISTIC(NumReplaced, "Number of undef made nondet");
 STATISTIC(NumKilled, "Number of nondet calls killed");
 
 namespace clam {
-class NondetInit : public ModulePass {
+class NondetInitImpl {
 
 private:
   /** map for nondet functions */
@@ -55,10 +57,9 @@ private:
   }
 
 public:
-  static char ID;
-  NondetInit() : ModulePass(ID), m(NULL) {}
+  NondetInitImpl() : m(NULL) {}
 
-  virtual bool runOnModule(Module &M) override {
+  bool run(Module &M) {
 
     m = &M;
     bool Changed = false;
@@ -70,7 +71,8 @@ public:
     return Changed;
   }
 
-  virtual void releaseMemory() override { m_ndfn.clear(); }
+  // No releaseMemory() counterpart: both wrappers build a fresh impl per run,
+  // so m_ndfn never carries over between modules.
 
   bool runOnFunction(Function &F) {
     bool Changed = false;
@@ -110,6 +112,17 @@ public:
     return Changed;
   }
 
+};
+
+class NondetInit : public ModulePass {
+public:
+  static char ID;
+  NondetInit() : ModulePass(ID) {}
+
+  virtual bool runOnModule(Module &M) override {
+    return NondetInitImpl().run(M);
+  }
+
   virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesAll();
   }
@@ -119,13 +132,10 @@ char NondetInit::ID = 0;
 } // namespace clam
 
 namespace clam {
-class KillUnusedNondet : public FunctionPass {
+class KillUnusedNondetImpl {
 
 public:
-  static char ID;
-  KillUnusedNondet() : FunctionPass(ID) {}
-
-  bool runOnFunction(Function &F) override {
+  bool run(Function &F) {
     std::forward_list<CallInst *> toerase;
 
     for (Function::iterator b = F.begin(), be = F.end(); b != be; ++b)
@@ -153,6 +163,17 @@ public:
     return !toerase.empty();
   }
 
+};
+
+class KillUnusedNondet : public FunctionPass {
+public:
+  static char ID;
+  KillUnusedNondet() : FunctionPass(ID) {}
+
+  bool runOnFunction(Function &F) override {
+    return KillUnusedNondetImpl().run(F);
+  }
+
   virtual void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesAll();
   }
@@ -162,6 +183,27 @@ char KillUnusedNondet::ID = 0;
 
 llvm::Pass *createNondetInitPass() { return new NondetInit(); }
 llvm::Pass *createDeadNondetElimPass() { return new KillUnusedNondet(); }
+
+PreservedAnalyses NondetInitPass::run(Module &M, ModuleAnalysisManager &) {
+  if (!NondetInitImpl().run(M)) {
+    return PreservedAnalyses::all();
+  }
+  // Undef operands become calls to fresh verifier.nondet functions; the CFG
+  // is untouched.
+  PreservedAnalyses PA;
+  PA.preserveSet<CFGAnalyses>();
+  return PA;
+}
+
+PreservedAnalyses DeadNondetElimPass::run(Function &F,
+                                          FunctionAnalysisManager &) {
+  if (!KillUnusedNondetImpl().run(F)) {
+    return PreservedAnalyses::all();
+  }
+  PreservedAnalyses PA;
+  PA.preserveSet<CFGAnalyses>();
+  return PA;
+}
 } // namespace clam
 
 static RegisterPass<clam::NondetInit>

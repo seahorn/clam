@@ -1,16 +1,21 @@
 add_definitions(-D__STDC_CONSTANT_MACROS)
 add_definitions(-D__STDC_LIMIT_MACROS)
 
-set(LLVM_LINK_COMPONENTS 
-  irreader 
-  bitwriter 
-  ipo 
-  scalaropts 
+set(LLVM_LINK_COMPONENTS
+  irreader
+  bitwriter
+  ipo
+  scalaropts
   instrumentation
   transformutils
   core
   codegen
-  objcarcopts)
+  objcarcopts
+  # The pipeline is built with PassBuilder (passes) and ends in a
+  # PrintModulePass (irprinter); both arrived with the new pass manager.
+  passes
+  irprinter
+  analysis)
 
 add_llvm_executable(clam-pp DISABLE_LLVM_LINK_LLVM_DYLIB clam-pp.cc)
 target_link_libraries(clam-pp PRIVATE
