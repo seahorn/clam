@@ -1,0 +1,65 @@
+# Build and test clam on every push and pull request, for master and for every
+# maintained dev<N> branch (N >= 14).
+#
+# The branch patterns match a bare dev<N> exactly -- there is no leading or
+# trailing wildcard, so dev14-decoupling, dev10-dyn-link and friends never
+# trigger this workflow. They already cover dev14 through dev99, so branching a
+# new dev16/dev17/... needs no edit here: the LLVM major version is read off the
+# branch name and handed to the Dockerfile.
+#
+# Images are built and tested but never pushed; nightly publishing lives in
+# nightly-clam-docker.yaml.
+
+name: Per-Commit
+
+on:
+  push:
+    branches:
+      - master
+      - 'dev1[4-9]'     # dev14 .. dev19
+      - 'dev[2-9][0-9]' # dev20 .. dev99
+  pull_request:
+    branches:
+      - master
+      - 'dev1[4-9]'
+      - 'dev[2-9][0-9]'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # The branch the code lives on: the pushed branch, or the branch a pull
+      # request will land on. dev15 -> 15, dev16 -> 16, ...; master yields an
+      # empty version so that its Dockerfile keeps pinning its own LLVM release.
+      - name: Derive LLVM version from branch name
+        id: llvm
+        env:
+          BRANCH: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$BRANCH" in
+            dev[0-9]*) version="${BRANCH#dev}" ;;
+            *)         version="" ;;
+          esac
+          echo "Branch '$BRANCH' -> LLVM ${version:-Dockerfile default}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build clam and run tests (LLVM ${{ steps.llvm.outputs.version || 'default' }})
+        env:
+          VERSION: ${{ steps.llvm.outputs.version }}
+        run: |
+          set -euo pipefail
+          args=()
+          tag=clam:ci
+          if [ -n "$VERSION" ]; then
+            # dev15+ derives the base image from LLVM_VERSION; dev14 predates
+            # that arg and only understands BASE_IMAGE. Passing both keeps this
+            # workflow working across the old and the new Dockerfile.
+            args+=(--build-arg "LLVM_VERSION=$VERSION")
+            args+=(--build-arg "BASE_IMAGE=jammy-llvm$VERSION")
+            tag="seahorn/clam-llvm$VERSION:ci"
+          fi
+          docker build "${args[@]}" -t "$tag" -f docker/clam.Dockerfile .

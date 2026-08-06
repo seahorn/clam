@@ -1,9 +1,16 @@
-# Nightly: build every maintained dev<N> branch and push its image to DockerHub.
+# Nightly: build master and every maintained dev<N> branch, and push the dev
+# images to DockerHub.
 #
-# One matrix entry per LLVM release. Each entry checks out branch dev<N> and
-# builds it with LLVM_VERSION=<N> (the Dockerfile derives base image, compilers
-# and symlinks from it), tagging seahorn/clam-llvm<N>:nightly. Add a new LLVM
-# release by appending its major version to the matrix below.
+# The branch list is discovered at run time from the repository itself:
+#   - master, and
+#   - every branch whose name is *exactly* dev<N> (nothing before, nothing
+#     after) with N >= 14.
+# So dev15 and dev16 are built, while dev13, dev14-decoupling, dev10-dyn-link
+# and anything else are not. Cutting a new dev16/dev17/... branch is therefore
+# enough -- this file never needs an edit.
+#
+# master is built but never pushed; it only guards against master rotting.
+# dev<N> is built with LLVM_VERSION=<N> and pushed as seahorn/clam-llvm<N>:nightly.
 #
 # NOTE: scheduled workflows only run from the repository's default branch, so
 # this file must be present there for the cron to fire.
@@ -12,7 +19,7 @@ name: Nightly
 
 # Controls when the action will run.
 on:
-  # Triggers the workflow nightly for every branch in the matrix.
+  # Triggers the workflow nightly for every branch discovered below.
   schedule:
     - cron: 0 0 * * *  # run every day at UTC 00:00
   workflow_dispatch:
@@ -22,39 +29,82 @@ on:
         required: true
         default: ''
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "test"
-  test:
-    # The type of runner that the job will run on
+  # Discover which branches to build and turn them into a matrix.
+  branches:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - name: List master and every dev<N> branch (N >= 14)
+        id: list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # '^dev[0-9]+$' is anchored at both ends, so only a bare dev<N> matches:
+          # dev14, dev15, dev16, ... are kept, while dev14-decoupling,
+          # dev10-dyn-link, devfoo, mydev15 and the like are all rejected.
+          # awk then keeps N >= 14 and sort -n orders oldest release first.
+          devs=$(gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate --jq '.[].name' \
+                 | grep -E '^dev[0-9]+$' \
+                 | sed 's/^dev//' \
+                 | awk '$1 >= 14' \
+                 | sort -n)
+          # master carries no llvm field: its Dockerfile pins its own LLVM
+          # release, so we pass no build args and let those defaults win.
+          matrix=$(jq -nc --arg devs "$devs" '
+            [{ref: "master", llvm: "", image: "clam:master", push: false}]
+            + ($devs | split("\n") | map(select(length > 0)) | map({
+                ref:   ("dev" + .),
+                llvm:  .,
+                image: ("seahorn/clam-llvm" + . + ":nightly"),
+                push:  true
+              }))')
+          echo "$matrix" | jq .
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: branches
+    name: ${{ matrix.ref }}
     runs-on: ubuntu-latest
     strategy:
-      # Keep building the other branches even if one LLVM version fails.
+      # Keep building the other branches even if one of them fails.
       fail-fast: false
       matrix:
-        llvm: [14, 15]
+        include: ${{ fromJSON(needs.branches.outputs.matrix) }}
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out the dev<N> branch for this matrix entry
-      - name: Check out dev${{ matrix.llvm }}
+      - name: Check out ${{ matrix.ref }}
         uses: actions/checkout@v4
         with:
-          ref: dev${{ matrix.llvm }}
-      - name: Build clam and run tests (LLVM ${{ matrix.llvm }})
+          ref: ${{ matrix.ref }}
+
+      - name: Build clam and run tests (${{ matrix.ref }})
         run: |
-          docker build \
-            --build-arg LLVM_VERSION=${{ matrix.llvm }} \
-            -t seahorn/clam-llvm${{ matrix.llvm }}:nightly \
+          set -euo pipefail
+          args=()
+          if [ -n "${{ matrix.llvm }}" ]; then
+            # dev15+ derives the base image from LLVM_VERSION; dev14 predates
+            # that arg and only understands BASE_IMAGE. Passing both keeps this
+            # workflow working across the old and the new Dockerfile.
+            args+=(--build-arg "LLVM_VERSION=${{ matrix.llvm }}")
+            args+=(--build-arg "BASE_IMAGE=jammy-llvm${{ matrix.llvm }}")
+          fi
+          docker build "${args[@]}" \
+            -t ${{ matrix.image }} \
             -f docker/clam.Dockerfile .
+
       # Logging in using this mechanism prints the following warning
       # WARNING! Your password will be stored unencrypted in /home/runner/.docker/config.json.
       # There does not seem to be an easy way around it though using docker actions may mitigate
       # it.
       - name: Login to DockerHub Registry
-        if: ${{ github.event_name == 'schedule' }}  # only push if nightly run
+        # only push dev<N> images, and only on the nightly run
+        if: ${{ matrix.push && github.event_name == 'schedule' }}
         run: echo ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }} | docker login -u ${{ secrets.DOCKER_HUB_USERNAME }} --password-stdin
+
       - name: Tag and push clam (nightly)
-        if: ${{ github.event_name == 'schedule' }}  # only push if nightly run
+        if: ${{ matrix.push && github.event_name == 'schedule' }}
         run: |
-          docker push seahorn/clam-llvm${{ matrix.llvm }}:nightly
+          docker push ${{ matrix.image }}
