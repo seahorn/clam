@@ -2,26 +2,46 @@
 
 Clam is an [Abstract Interpretation](https://en.wikipedia.org/wiki/Abstract_interpretation)-based static analyzer that computes inductive invariants for
 LLVM bitcode based on
-the [Crab](https://github.com/seahorn/crab) library. This branch supports LLVM 15.
+the [Crab](https://github.com/seahorn/crab) library.
 
 The available documentation can be found in both
 Clam [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://github.com/seahorn/crab/wiki).
 
-<a href="https://github.com/seahorn/clam/actions"><img src="https://github.com/seahorn/clam/workflows/CI/badge.svg" title="Ubuntu 22.04 LTS 64bit, clang++"/></a>
+# LLVM version #
+
+**This branch targets LLVM 15.**
+
+LLVM bitcode is not compatible across major releases, so the `clang` that
+compiles your input and the Clam tools that read the resulting bitcode must both
+come from that release: a newer `clang` (Apple's system `clang`, or any `clang`
+from a later LLVM) emits bitcode the Clam tools cannot read, and every analysis
+fails while reading it.
+
+The commands below are the only ones in this file that name a version. The rest
+of the file refers to them as *the LLVM release this branch targets*:
+
+     docker pull seahorn/clam-llvm15:nightly   # prebuilt nightly image
+     brew install llvm@15                      # macOS (Homebrew), keg-only
+     apt-get install clang-15                  # Debian/Ubuntu
+
+> **Migrating to a newer LLVM release.** Bump `CLAM_LLVM_VERSION` in
+> `CMakeLists.txt` — it is the single source of truth for the build and drives
+> `find_package(LLVM)`, the `dev<N>` branches of sea-dsa and llvm-seahorn, the
+> versioned `clang` the test suite looks for, and `clam.py` — then update this
+> section. Nothing else in this file needs an edit.
 
 # Docker #
 
-You can get Clam from [Docker Hub](https://hub.docker.com/) (nightly built) using the
-command:
-
-     docker pull seahorn/clam-llvm15:nightly
+Nightly images are built and pushed to [Docker Hub](https://hub.docker.com/);
+see [LLVM version](#llvm-version) for the `docker pull` command.
 
 # Requirements #
 
 Clam is written in C++ and uses heavily the Boost library. The
 main requirements are:
 
-- Modern C++ compiler supporting c++14 
+- Modern C++ compiler (c++14 or newer; the exact standard is set by
+  `CMAKE_CXX_STANDARD` in `CMakeLists.txt` and tracks the targeted LLVM release)
 - Boost >= 1.65
 - GMP 
 - MPFR (only if `-DCRAB_USE_APRON=ON` or `-DCRAB_USE_ELINA=ON`)
@@ -43,26 +63,20 @@ To run tests you need to install `lit` and `OutputCheck`:
      pip3 install lit
      pip3 install OutputCheck
 
-The tests also require an **LLVM 15 `clang`**. Each test compiles a C input to
-LLVM bitcode with `clang` and then feeds that bitcode to the Clam tools
-(`clam-pp`/`clam`), which are built against LLVM 15. LLVM bitcode is not
-compatible across major versions, so `clang` must be an LLVM 15 `clang`: a newer
-`clang` (for example Apple's system `clang`, or any `clang` >= 16) emits bitcode
-in a format the LLVM-15 tools cannot read, so every test would fail while
-reading the bitcode.
+The tests also require a `clang` from
+[the LLVM release this branch targets](#llvm-version). Each test compiles a C
+input to LLVM bitcode with `clang` and then feeds that bitcode to the Clam tools
+(`clam-pp`/`clam`), so a mismatched `clang` makes every test fail while reading
+the bitcode.
 
-CMake automatically looks for a versioned LLVM-15 `clang` (e.g. `clang-15`) in
-the usual locations (Homebrew's keg-only `llvm@15`, the Debian/Ubuntu
-`llvm-15` packages, MacPorts, ...). If none is found it prints a warning and the
-tests fall back to whatever `clang` is on `PATH`. Install an LLVM 15 toolchain,
-for instance:
+CMake automatically looks for a suitably versioned `clang` in the usual
+locations (Homebrew's keg-only `llvm@` formula, the Debian/Ubuntu `clang`
+packages, MacPorts, ...). If none is found it prints a warning and the tests
+fall back to whatever `clang` is on `PATH`. Install a matching toolchain with
+one of the commands in [LLVM version](#llvm-version), or, if the compiler lives
+somewhere non-standard, point CMake at it explicitly:
 
-     brew install llvm@15              # macOS (Homebrew)
-     apt-get install clang-15          # Debian/Ubuntu
-
-If the compiler lives somewhere non-standard, point CMake at it explicitly:
-
-     cmake -DCLAM_TEST_CLANG=/path/to/clang-15 ../
+     cmake -DCLAM_TEST_CLANG=/path/to/clang ../
 
 # Compilation and installation # 
 
@@ -74,9 +88,10 @@ The basic compilation steps are:
     4. cmake --build . --target extra && cmake ..                  
     5. cmake --build . --target install 
 
-The command at line 2 will try to find LLVM 15 from standard paths.
-If you installed LLVM 15 in a non-standard path, then add option
-`-DLLVM_DIR=$LLVM-15_INSTALL_DIR/lib/cmake/llvm` to line 2.  The
+The command at line 2 will try to find
+[the required LLVM](#llvm-version) from standard paths.
+If you installed it in a non-standard path, then add option
+`-DLLVM_DIR=$LLVM_INSTALL_DIR/lib/cmake/llvm` to line 2.  The
 command at line 3 will download Crab and compile it from sources.
 Clam uses two external components that are installed via the `extra`
 target at line 4. These components are:
@@ -132,7 +147,7 @@ To run some regression tests:
 
      cmake --build . --target test-simple
 
-These tests need an LLVM 15 `clang` on the machine; see the
+These tests need a matching `clang` on the machine; see the
 [Tests](#tests) section above for why and how to provide one.
 
 # Usage #
