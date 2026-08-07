@@ -123,6 +123,11 @@ static llvm::cl::opt<bool>
                       llvm::cl::desc("Lower ULT and ULE instructions"),
                       llvm::cl::init(false));
 
+static llvm::cl::opt<bool> LowerMinMaxIntrinsics(
+    "clam-lower-minmax-intrinsics",
+    llvm::cl::desc("Lower umax/umin/smax/smin intrinsics to icmp and select"),
+    llvm::cl::init(true));
+
 static llvm::cl::opt<bool>
     OptimizeLoops("clam-pp-loops", llvm::cl::desc("Perform loop optimizations"),
                   llvm::cl::init(false));
@@ -444,6 +449,13 @@ int main(int argc, char **argv) {
     // cleanup unnecessary and unreachable blocks
     addFunctionPass(pass_manager, llvm::SimplifyCFGPass());
     addFunctionPass(pass_manager, clam::RemoveUnreachableBlocksPass());
+  }
+
+  // -- undo InstCombine's folding of min/max selects into intrinsics, which
+  //    CfgBuilder cannot translate. Like the select lowering below it has to
+  //    come after the last InstCombine of the pipeline, or it is folded back.
+  if (LowerMinMaxIntrinsics) {
+    addFunctionPass(pass_manager, clam::LowerMinMaxIntrinsicsPass());
   }
 
   // -- must be the last one to avoid llvm undoing it

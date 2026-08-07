@@ -11,6 +11,7 @@ namespace clam {
 // Preprocessor passes
 llvm::Pass *createInsertEntryPointPass();  
 llvm::Pass *createLowerCstExprPass();
+llvm::Pass *createLowerMinMaxIntrinsicsPass();
 llvm::Pass *createLowerSelectPass();
 llvm::Pass *createLowerUnsignedICmpPass();
 llvm::Pass *createMarkInternalInlinePass();

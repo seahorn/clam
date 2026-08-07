@@ -114,6 +114,14 @@ public:
                               llvm::FunctionAnalysisManager &FAM);
 };
 
+/** Lower umax/umin/smax/smin intrinsics to icmp + select. */
+class LowerMinMaxIntrinsicsPass
+    : public llvm::PassInfoMixin<LowerMinMaxIntrinsicsPass> {
+public:
+  llvm::PreservedAnalyses run(llvm::Function &F,
+                              llvm::FunctionAnalysisManager &FAM);
+};
+
 /** Lower ULT and ULE instructions. */
 class LowerUnsignedICmpPass
     : public llvm::PassInfoMixin<LowerUnsignedICmpPass> {
