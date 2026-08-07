@@ -50,6 +50,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InstVisitor.h"
@@ -1453,6 +1454,67 @@ void CrabIntraBlockBuilder::doBinOp(unsigned op, var_t lhs, lin_exp_t op1,
   CLAM_ERROR("unsupported LLVM binary operator");
 }
 
+/**
+ * If i is a shift by a constant k such that 0 <= k < bitwidth then
+ * return the equivalent arithmetic operation as a pair made of the
+ * LLVM opcode that replaces the shift and 2^k:
+ *
+ *    x << k  ==>  x * 2^k
+ *    x >> k  ==>  x / 2^k    (arithmetic shift right)
+ *
+ * Otherwise, return none.
+ *
+ * A shift amount greater or equal than the bitwidth is undefined
+ * behavior in LLVM so we don't try to model it.
+ *
+ * The replacement of "x << k" is exact modulo the assumption that the
+ * operation does not overflow. This is the same assumption that the
+ * translation already makes for any other arithmetic operation
+ * (Crab's mul does not wrap around).
+ *
+ * The replacement of "x >> k" is only exact if x is non-negative:
+ * ashr rounds towards minus infinity while LLVM's sdiv and Crab's div
+ * truncate towards zero, so for instance "-3 >> 1" is -2 but "-3 / 2"
+ * is -1. Thus, we ask LLVM to prove that x is non-negative and we
+ * bail out otherwise.
+ **/
+static std::optional<std::pair<unsigned, number_t>>
+getShiftAsArithmeticOp(const BinaryOperator &i,
+                       const CrabBuilderParams &params,
+                       const DataLayout &dl) {
+  unsigned opcode;
+  switch (i.getOpcode()) {
+  case BinaryOperator::Shl:
+    opcode = BinaryOperator::Mul;
+    break;
+  case BinaryOperator::AShr:
+    if (!isKnownNonNegative(i.getOperand(0), dl, 0 /*depth*/,
+                            nullptr /*assumption cache*/, &i /*context*/)) {
+      return std::nullopt;
+    }
+    opcode = BinaryOperator::SDiv;
+    break;
+  default:
+    return std::nullopt;
+  }
+  const ConstantInt *shift = dyn_cast<const ConstantInt>(i.getOperand(1));
+  if (!shift) {
+    return std::nullopt;
+  }
+  unsigned bitwidth = i.getType()->getIntegerBitWidth();
+  if (shift->getValue().uge(bitwidth)) {
+    return std::nullopt;
+  }
+  // 2^k is always representable with bitwidth bits because k < bitwidth
+  APInt factor = APInt(bitwidth, 1) << shift->getValue();
+  bool isTooBig;
+  number_t res = toZNumber(factor, params, false /*interpretAsSigned*/, isTooBig);
+  if (isTooBig) {
+    return std::nullopt;
+  }
+  return std::make_pair(opcode, res);
+}
+
 void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit,
                                          BinaryOperator &i) {
   if (!lit || !lit->isVar() || !(lit->isInt())) {
@@ -1477,11 +1539,22 @@ void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit,
 
   lin_exp_t op1 = m_lfac.getExp(lit1);
   lin_exp_t op2 = m_lfac.getExp(lit2);
+  unsigned opcode = i.getOpcode();
+
+  // Replace "x << k" with "x * 2^k" and "x >> k" with "x / 2^k" if k
+  // is a constant. Numerical domains model multiplication and
+  // division by a constant as linear operations while shifts are
+  // modeled as bitwise operations which are much less precise (e.g.,
+  // most domains return top).
+  if (auto arithOp = getShiftAsArithmeticOp(i, m_params, *m_dl)) {
+    opcode = arithOp->first;
+    op2 = lin_exp_t(arithOp->second);
+  }
 
   if (op1.is_constant() && op2.is_constant()) {
     number_t n1 = op1.constant();
     number_t n2 = op2.constant();
-    switch (i.getOpcode()) {
+    switch (opcode) {
     case BinaryOperator::Add: // m_bb.assign(lhs, n1+n2); break;
     case BinaryOperator::Sub: // m_bb.assign(lhs, n1-n2); break;
     case BinaryOperator::Mul: // m_bb.assign(lhs, n1*n2); break;
@@ -1496,7 +1569,7 @@ void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit,
       var_t t2 = m_lfac.mkIntVar(i.getType()->getIntegerBitWidth());
       m_bb.assign(t1, n1);
       m_bb.assign(t2, n2);
-      doBinOp(i.getOpcode(), lhs, t1, t2);
+      doBinOp(opcode, lhs, t1, t2);
     } break;
     default:
       // this should not happen
@@ -1505,7 +1578,7 @@ void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit,
     return;
   }
 
-  switch (i.getOpcode()) {
+  switch (opcode) {
   case BinaryOperator::Add:
   case BinaryOperator::Sub:
   case BinaryOperator::Mul:
@@ -1521,9 +1594,9 @@ void CrabIntraBlockBuilder::doArithmetic(crab_lit_ref_t lit,
       // constant and variable.
       var_t t = m_lfac.mkIntVar(i.getType()->getIntegerBitWidth());
       m_bb.assign(t, op1.constant());
-      doBinOp(i.getOpcode(), lhs, t, op2);
+      doBinOp(opcode, lhs, t, op2);
     } else {
-      doBinOp(i.getOpcode(), lhs, op1, op2);
+      doBinOp(opcode, lhs, op1, op2);
     }
     break;
   default:
