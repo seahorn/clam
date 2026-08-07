@@ -68,6 +68,41 @@ int ssl3_connect(int initial_state )
   s__s3__tmp__next_state___0 = __VERIFIER_nondet_int();
   s__s3__tmp__new_cipher__algorithms = __VERIFIER_nondet_int();
   s__hit = __VERIFIER_nondet_int();
+  /* CIL left these locals read-before-written. That is undefined behaviour,
+     and from LLVM 17 on instcombine propagates the resulting undef through
+     every icmp that uses them: the branch conditions all fold to undef/poison,
+     simplifycfg is then free to pick any successor, and the whole state
+     machine -- __VERIFIER_error() included -- is deleted before Clam sees it.
+     Clam would report 0 checks instead of the 1 safe check below. Giving them
+     a nondeterministic value keeps the program's meaning (they stand for
+     unconstrained inputs) while removing the undefined behaviour. */
+  s__info_callback = __VERIFIER_nondet_int();
+  s__in_handshake = __VERIFIER_nondet_int();
+  s__version = __VERIFIER_nondet_int();
+  s__bbio = __VERIFIER_nondet_int();
+  s__wbio = __VERIFIER_nondet_int();
+  s__init_buf___0 = __VERIFIER_nondet_int();
+  s__debug = __VERIFIER_nondet_int();
+  s__ctx__info_callback = __VERIFIER_nondet_int();
+  s__ctx__stats__sess_connect_renegotiate = __VERIFIER_nondet_int();
+  s__ctx__stats__sess_connect = __VERIFIER_nondet_int();
+  s__ctx__stats__sess_hit = __VERIFIER_nondet_int();
+  s__ctx__stats__sess_connect_good = __VERIFIER_nondet_int();
+  s__s3__tmp__cert_req = __VERIFIER_nondet_int();
+  s__s3__tmp__new_compression = __VERIFIER_nondet_int();
+  s__s3__tmp__reuse_message = __VERIFIER_nondet_int();
+  s__s3__tmp__new_cipher = __VERIFIER_nondet_int();
+  s__s3__tmp__new_compression__id = __VERIFIER_nondet_int();
+  num1 = __VERIFIER_nondet_int();
+  tmp___1 = __VERIFIER_nondet_int();
+  tmp___2 = __VERIFIER_nondet_int();
+  tmp___3 = __VERIFIER_nondet_int();
+  tmp___4 = __VERIFIER_nondet_int();
+  tmp___5 = __VERIFIER_nondet_int();
+  tmp___6 = __VERIFIER_nondet_int();
+  tmp___7 = __VERIFIER_nondet_int();
+  tmp___8 = __VERIFIER_nondet_int();
+  tmp___9 = __VERIFIER_nondet_int();
   blastFlag = 0;
   cb = 0;
   ret = -1;
