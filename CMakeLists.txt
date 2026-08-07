@@ -12,10 +12,10 @@ project(Clam)
 # should start by bumping this one line.
 # Not derived from it (bump by hand, they live outside CMake's reach):
 # README.md, docker/clam.Dockerfile and .github/workflows/.
-set (CLAM_LLVM_VERSION 16 CACHE STRING "Major version of LLVM to build against")
+set (CLAM_LLVM_VERSION 17 CACHE STRING "Major version of LLVM to build against")
 
-# Clam's major version tracks the LLVM release it targets (clam15 -> LLVM 15,
-# clam16 -> LLVM 16, ...).
+# Clam's major version tracks the LLVM release it targets (clam16 -> LLVM 16,
+# clam17 -> LLVM 17, ...).
 set (Clam_VERSION_MAJOR ${CLAM_LLVM_VERSION})
 set (Clam_VERSION_MINOR 0)
 set (Clam_VERSION_PATCH 0)
