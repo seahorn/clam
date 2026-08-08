@@ -12,10 +12,17 @@ project(Clam)
 # should start by bumping this one line.
 # Not derived from it (bump by hand, they live outside CMake's reach):
 # README.md, docker/clam.Dockerfile and .github/workflows/.
-set (CLAM_LLVM_VERSION 17 CACHE STRING "Major version of LLVM to build against")
+set (CLAM_LLVM_VERSION 18 CACHE STRING "Major version of LLVM to build against")
 
-# Clam's major version tracks the LLVM release it targets (clam16 -> LLVM 16,
-# clam17 -> LLVM 17, ...).
+# Minor of the release series, needed only by find_package(LLVM). LLVMConfig's
+# version file declares itself compatible only with a request whose major AND
+# minor match, so a bare major works only for a series numbered <major>.0.x:
+# LLVM 15/16/17 were, but LLVM 18 ships only as 18.1.x and requesting "18"
+# means "18.0", which no installed LLVM 18 matches.
+set (CLAM_LLVM_VERSION_MINOR 1 CACHE STRING "Minor version of the LLVM release series")
+
+# Clam's major version tracks the LLVM release it targets (clam17 -> LLVM 17,
+# clam18 -> LLVM 18, ...).
 set (Clam_VERSION_MAJOR ${CLAM_LLVM_VERSION})
 set (Clam_VERSION_MINOR 0)
 set (Clam_VERSION_PATCH 0)
@@ -250,7 +257,7 @@ if (TopLevel)
   # export set. Pull in zstd's imported targets first so find_package(LLVM) can
   # resolve it.
   find_package (zstd QUIET)
-  find_package(LLVM ${CLAM_LLVM_VERSION} CONFIG)
+  find_package(LLVM ${CLAM_LLVM_VERSION}.${CLAM_LLVM_VERSION_MINOR} CONFIG)
   if (NOT LLVM_FOUND)
     message (WARNING "No LLVM ${CLAM_LLVM_VERSION} found. Install LLVM ${CLAM_LLVM_VERSION} or point cmake at it with -DLLVM_DIR=<prefix>/lib/cmake/llvm.")
     return()
