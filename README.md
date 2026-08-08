@@ -9,7 +9,7 @@ Clam [wiki](https://github.com/seahorn/clam/wiki/Home) and Crab [wiki](https://g
 
 # LLVM version #
 
-**This branch targets LLVM 17.**
+**This branch targets LLVM 18.**
 
 LLVM bitcode is not compatible across major releases, so the `clang` that
 compiles your input and the Clam tools that read the resulting bitcode must both
@@ -20,15 +20,18 @@ fails while reading it.
 The commands below are the only ones in this file that name a version. The rest
 of the file refers to them as *the LLVM release this branch targets*:
 
-     docker pull seahorn/clam-llvm17:nightly   # prebuilt nightly image
-     brew install llvm@17                      # macOS (Homebrew), keg-only
-     apt-get install clang-17                  # Debian/Ubuntu
+     docker pull seahorn/clam-llvm18:nightly   # prebuilt nightly image
+     brew install llvm@18                      # macOS (Homebrew), keg-only
+     apt-get install clang-18                  # Debian/Ubuntu
 
 > **Migrating to a newer LLVM release.** Bump `CLAM_LLVM_VERSION` in
 > `CMakeLists.txt` — it is the single source of truth for the build and drives
 > `find_package(LLVM)`, the `dev<N>` branches of sea-dsa and llvm-seahorn, the
 > versioned `clang` the test suite looks for, and `clam.py` — then update this
-> section. Nothing else in this file needs an edit.
+> section. Set `CLAM_LLVM_VERSION_MINOR` too if the new release series is not
+> numbered `<major>.0.x`: LLVM's package version file only accepts a request
+> whose major *and* minor match, and LLVM 18 ships as 18.1.x. Nothing else in
+> this file needs an edit.
 
 # Docker #
 
