@@ -151,7 +151,7 @@ public:
           if (f == NULL)
             continue;
 
-          if (f->getName().startswith("verifier.nondet")) {
+          if (f->getName().starts_with("verifier.nondet")) {
             toerase.push_front(ci);
             ++NumKilled;
           }

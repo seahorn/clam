@@ -100,7 +100,7 @@ bool isTrackedType(const Type &ty, const CrabBuilderParams &params) {
 
 bool isTracked(const Value &v, const CrabBuilderParams &params) {
   // -- ignore any shadow variable created by seahorn
-  // if (v.getName().startswith("shadow.mem"))
+  // if (v.getName().starts_with("shadow.mem"))
   // return false;
 
   return isTrackedType(*v.getType(), params);
@@ -229,7 +229,7 @@ static bool isSeaHornIntrinsic(const Function &F) {
 
 bool isCrabIntrinsic(const Function &F) {
   return (F.isDeclaration() &&
-	  (F.getName().startswith("__CRAB_intrinsic_") ||
+	  (F.getName().starts_with("__CRAB_intrinsic_") ||
 	   isSeaHornIntrinsic(F)));
 }
 
@@ -251,7 +251,7 @@ std::string getCrabIntrinsicName(const Function &F) {
 }
 
 bool isZeroInitializer(const Function &F) {
-  return F.getName().startswith("verifier.zero_initializer");
+  return F.getName().starts_with("verifier.zero_initializer");
 }
 
 bool isZeroInitializer(const CallInst &CI) {
@@ -265,7 +265,7 @@ bool isZeroInitializer(const CallInst &CI) {
 }
 
 bool isIntInitializer(const Function &F) {
-  return F.getName().startswith("verifier.int_initializer");
+  return F.getName().starts_with("verifier.int_initializer");
 }
 
 bool isIntInitializer(const CallInst &CI) {
@@ -506,8 +506,8 @@ bool AllUsesAreIgnoredInst(llvm::Value &V) {
   for (auto &U : V.uses()) {
     if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
       if (Function *CalledF = dyn_cast<Function>(CI->getCalledOperand())) {
-        if (CalledF->getName().startswith("llvm.dbg.value") ||
-            CalledF->getName().startswith("llvm.lifetime")) {
+        if (CalledF->getName().starts_with("llvm.dbg.value") ||
+            CalledF->getName().starts_with("llvm.lifetime")) {
           continue;
         }
       }

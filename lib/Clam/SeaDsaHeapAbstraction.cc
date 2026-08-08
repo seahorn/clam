@@ -222,7 +222,7 @@ void SeaDsaHeapAbstractionImpl::computeReadModNewNodes(
   Graph &G = m_dsa->getGraph(f);
   // hook: skip shadow mem functions created by SeaHorn
   // We treat them as readnone functions
-  if (f.getName().startswith("shadow.mem")) {
+  if (f.getName().starts_with("shadow.mem")) {
     return;
   }
 
@@ -298,7 +298,7 @@ void SeaDsaHeapAbstractionImpl::computeEquivClasses(const llvm::Function &f) {
   }
 
   Graph &G = m_dsa->getGraph(f);
-  if (f.getName().startswith("shadow.mem")) {
+  if (f.getName().starts_with("shadow.mem")) {
     return;
   }
 
@@ -373,7 +373,7 @@ void SeaDsaHeapAbstractionImpl::computeReadModNewNodesFromCallSite(
 
   // hook: skip shadow mem functions created by SeaHorn
   // We treat them as readnone functions
-  if (CS.getCallee()->getName().startswith("shadow.mem")) {
+  if (CS.getCallee()->getName().starts_with("shadow.mem")) {
     return;
   }
 

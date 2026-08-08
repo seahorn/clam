@@ -18,7 +18,6 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 
 #include "clam/config.h"
 #include "clam/CfgBuilder.hh"
@@ -30,6 +29,7 @@
 #include "clam/SeaDsaHeapAbstraction.hh"
 #include "clam/Support/Debug.hh"
 #include "clam/Support/NameValues.hh"
+#include "clam/Support/UnifyFunctionExitNodes.hh"
 #include "ClamQueryCache.hh"
 #include "crab/path_analysis/path_analyzer.hpp"
 #include "crab/output/crabir/cfg_printer.hpp"
@@ -1607,7 +1607,7 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.addRequired<seadsa::CompleteCallGraph>();
   }
 
-  AU.addRequired<UnifyFunctionExitNodesLegacyPass>();
+  AU.addRequired<clam::UnifyFunctionExitNodesLegacyPass>();
   AU.addRequired<clam::NameValues>();
 }
 

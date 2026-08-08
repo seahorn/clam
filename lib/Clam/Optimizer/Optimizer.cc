@@ -15,11 +15,11 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include "llvm/Transforms/Utils/UnifyFunctionExitNodes.h"
 
 #include "clam/config.h"
 #include "clam/CfgBuilder.hh"
 #include "clam/Clam.hh"
+#include "clam/Support/UnifyFunctionExitNodes.hh"
 #include "clam/Transforms/Optimizer.hh"
 
 #include "crab/analysis/abs_transformer.hpp"
@@ -835,7 +835,7 @@ void OptimizerPass::getAnalysisUsage(AnalysisUsage &AU) const {
   if (!m_clam) {
     AU.addRequired<clam::ClamPass>();
   }
-  AU.addRequired<UnifyFunctionExitNodesLegacyPass>();
+  AU.addRequired<clam::UnifyFunctionExitNodesLegacyPass>();
   AU.addRequired<CallGraphWrapperPass>();
   AU.addPreserved<CallGraphWrapperPass>();
   if (requireDominatorTree(InvLoc)) {

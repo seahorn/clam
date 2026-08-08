@@ -11,6 +11,7 @@ add_llvm_library(ClamAnalysis ${CLAM_LIBS_TYPE} DISABLE_LLVM_LINK_LLVM_DYLIB
   SeaDsaHeapAbstraction.cc
   SeaDsaHeapAbstractionUtils.cc
   SeaDsaToRegion.cc
+  UnifyFunctionExitNodes.cc
   CrabDomainParser.cc
   crab/path_analysis/path_analyzer.cc
   crab/output/crabir/cfg_printer.cc

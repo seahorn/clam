@@ -35,8 +35,9 @@ static Value *getCastedInt8PtrValue(IRBuilder<> &B, Value *Ptr) {
   // Return an i8* view of Ptr for the is_unfreed_or_null intrinsic. We no
   // longer inspect the pointee (opaque pointers under LLVM 15 don't store one);
   // CreateBitCast returns Ptr unchanged when it already has this type, which is
-  // always the case under opaque pointers (ptr -> ptr).
-  return B.CreateBitCast(Ptr, Type::getInt8PtrTy(B.getContext()));
+  // always the case under opaque pointers (ptr -> ptr). LLVM 18 removed
+  // Type::getInt8PtrTy along with typed pointers; getPtrTy() is the same type.
+  return B.CreateBitCast(Ptr, B.getPtrTy());
 }
 
 class UseAfterFreeCheck : public llvm::ModulePass {
@@ -201,9 +202,13 @@ bool UseAfterFreeCheck::runOnModule(llvm::Module &M) {
     // Function does not access memory
     B.addAttribute(Attribute::ReadNone);
     AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
+    // LLVM 18 removed Type::getInt8PtrTy along with typed pointers. getPtrTy()
+    // is the same (opaque) type; it lives on IRBuilder, and a builder with no
+    // insertion point is enough since it only reads the context.
     NotDanglingFn = dyn_cast<Function>(
         M.getOrInsertFunction("__CRAB_intrinsic_is_unfreed_or_null", as,
-                              Type::getInt1Ty(ctx), Type::getInt8PtrTy(ctx))
+                              Type::getInt1Ty(ctx),
+                              IRBuilder<>(ctx).getPtrTy())
             .getCallee());
   }
 

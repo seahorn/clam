@@ -687,7 +687,7 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
           if (crab_lit_ref_t phi_val_lit = m_lfac.getLit(v)) {
             // non-shadow mem phi node: bool, integer, or pointer
 
-            if (phi->getName().startswith("shadow.mem")) {
+            if (phi->getName().starts_with("shadow.mem")) {
               // XXX: Ignore PHI shadow mem instructions.
               continue;
             }
@@ -738,7 +738,7 @@ struct CrabInterBlockBuilder : public InstVisitor<CrabInterBlockBuilder> {
         continue;
       }
       const Value &v = *phi.getIncomingValueForBlock(&m_inc_BB);
-      if (phi.getName().startswith("shadow.mem")) {
+      if (phi.getName().starts_with("shadow.mem")) {
         // XXX: ignore PHI shadow mem instructions.
         continue;
       }
@@ -1307,9 +1307,11 @@ std::optional<z_number> CrabIntraBlockBuilder::evalOffset(Value &v,
   Opts.RoundToAlign = true;
   Opts.EvalMode = llvm::ObjectSizeOpts::Mode::Max;
   ObjectSizeOffsetVisitor OSOV(*m_dl, m_tli, ctx, Opts);
+  // LLVM 18 replaced the std::pair<APInt,APInt> result and the visitor's
+  // knownOffset() predicate with SizeOffsetAPInt, which carries both.
   auto sizeOffset = OSOV.compute(&v);
-  if (OSOV.knownOffset(sizeOffset)) {
-    const int64_t offset = sizeOffset.second.getSExtValue();
+  if (sizeOffset.knownOffset()) {
+    const int64_t offset = sizeOffset.Offset.getSExtValue();
     return z_number(offset);
   }
   return std::nullopt;
@@ -1388,8 +1390,8 @@ bool CrabIntraBlockBuilder::AllUsesAreNonTrackMem(Value *V) const {
     } else if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
       CallBase &CB(*CI);
       Function *callee = CB.getCalledFunction();
-      if (callee && (callee->getName().startswith("llvm.dbg") ||
-                     callee->getName().startswith("shadow.mem")))
+      if (callee && (callee->getName().starts_with("llvm.dbg") ||
+                     callee->getName().starts_with("shadow.mem")))
         continue;
       else // conservatively return false
         return false;
@@ -1488,8 +1490,11 @@ getShiftAsArithmeticOp(const BinaryOperator &i,
     opcode = BinaryOperator::Mul;
     break;
   case BinaryOperator::AShr:
-    if (!isKnownNonNegative(i.getOperand(0), dl, 0 /*depth*/,
-                            nullptr /*assumption cache*/, &i /*context*/)) {
+    // LLVM 18 collapsed the DataLayout/AssumptionCache/context-instruction
+    // parameters of the ValueTracking queries into a SimplifyQuery.
+    if (!isKnownNonNegative(i.getOperand(0),
+                            SimplifyQuery(dl, &i /*context*/),
+                            0 /*depth*/)) {
       return std::nullopt;
     }
     opcode = BinaryOperator::SDiv;
@@ -1789,9 +1794,9 @@ bool skipAssertionIfUntypedOrCyclic(CallInst &I, Value *cond, HeapAbstraction &m
  Value *Ptr = nullptr;
  // getAssertKindFromMetadata returns by value: keep the string alive.
  std::string assertKind = getAssertKindFromMetadata(I.getMetadata("clam-assertion"));
- if (StringRef(assertKind).startswith("nullity")) {
+ if (StringRef(assertKind).starts_with("nullity")) {
    Ptr = extractPointerFromNullAssertion(cond);
- } else if (StringRef(assertKind).startswith("not_dangling")) {
+ } else if (StringRef(assertKind).starts_with("not_dangling")) {
    Ptr = extractPointerFromDanglingAssertion(cond);
  } else {
    //CLAM_WARNING("Unsupported assertion " << I);
@@ -3373,9 +3378,9 @@ void CrabIntraBlockBuilder::visitCallInst(CallInst &I) {
     return;
   }
 
-  if (callee->getName().startswith("shadow.mem") ||
+  if (callee->getName().starts_with("shadow.mem") ||
       callee->getName().equals("seahorn.fn.enter") ||
-      callee->getName().startswith("sea_dsa_")) {
+      callee->getName().starts_with("sea_dsa_")) {
     return;
   }
 
