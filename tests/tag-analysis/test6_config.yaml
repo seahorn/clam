@@ -1,0 +1,11 @@
+Propagations:
+  - Name: ext_read
+    DstArgs: [0]
+
+Filters:
+  - Name: ext_sanitize
+    Args: [0]
+
+Sinks:
+  - Name: ext_write
+    Args: [0]

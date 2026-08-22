@@ -49,6 +49,7 @@ static cl::opt<bool> PrintTaintInfo("clam-print-taint-info",
 #define CHECK_DOES_NOT_HAVE_TAINT_INTRINSIC "check_does_not_have_tag"
 #define SINK_INTRINSIC CHECK_DOES_NOT_HAVE_TAINT_INTRINSIC
 #define PROPAGATE_TAINT_INTRINSIC "move_tag"
+#define REMOVE_TAINT_INTRINSIC "remove_tag"
 #define DEBUG_TAINT_INTRINSIC "print_tags"
 
 #define SEA_DSA_SET_MODIFIED "sea_dsa_set_modified"
@@ -283,6 +284,9 @@ struct InsertTaintIntrinsic : public ModulePass {
     findFunctionDeclaration(CHECK_HAS_TAINT_INTRINSIC);
     findFunctionDeclaration(PROPAGATE_TAINT_INTRINSIC);
     findFunctionDeclaration(DEBUG_TAINT_INTRINSIC);
+    if (!m_config.Filters.empty()) {
+      findFunctionDeclaration(REMOVE_TAINT_INTRINSIC);
+    }
 
     // Process each function in the module
     for (Function &F : *m_M) {
@@ -333,7 +337,18 @@ struct InsertTaintIntrinsic : public ModulePass {
               }
             }
 
-            // TODO: process Filters
+            // process Filters
+            for (const auto &Filter : m_config.Filters) {
+              if (isFunctionNameMatched(Callee->getName(), Filter.Name) &&
+                  (Filter.FilterArgs.size() > 0 || Filter.VarIndex.hasValue()) &&
+                  m_functionDecls.count(REMOVE_TAINT_INTRINSIC)) {
+                // Found matching filter (sanitizer)
+                IsTaintedUse = insertFilterIntrinsics(
+                    *CI, Filter, m_functionDecls[REMOVE_TAINT_INTRINSIC]);
+                Changed |= IsTaintedUse;
+              }
+            }
+
             // delete its function body if it has one
             // Like propagation and sink functions are treated as no-ops
             if (Callee && !Callee->isDeclaration() && IsTaintedUse) {
@@ -477,6 +492,63 @@ struct InsertTaintIntrinsic : public ModulePass {
       if (ArgIdx >= VariadicIndex) {
         Value *Arg = CI.getArgOperand(ArgIdx);
         Changed |= checkSinkArg(Arg, ArgIdx);
+      }
+    }
+
+    return Changed;
+  }
+
+  /// @brief Insert remove taint intrinsics after a sanitizer call
+  /// @param CI The call instruction
+  /// @param rules The taint filter rules
+  /// @param removeTaintIntrinsic The remove taint intrinsic function
+  /// @return True if any changes were made
+  bool insertFilterIntrinsics(CallInst &CI, const TaintConfig::Filter &rules,
+                              FunctionCallee &removeTaintIntrinsic) {
+    // The conversion is like this:
+    // Before:
+    //  sanitize(arg1, arg2, ...)
+    // - Name: sanitize
+    //  Args: [0]
+    // After:
+    //  sanitize(arg1, arg2, ...)
+    //  REMOVE_TAINT_INTRINSIC(arg1)   // for 0 index
+    bool Changed = false;
+    Instruction *InsertPoint = CI.getNextNonDebugInstruction();
+    IRBuilder<> Builder(InsertPoint);
+    int VariadicIndex =
+        safe_unsigned_to_int(rules.VarIndex.getValueOr(UINT_MAX));
+    int NumArgs = safe_unsigned_to_int(CI.arg_size());
+    CRAB_LOG("taint-intrinsic",
+             errs() << "[Filter] visit CallInst " << CI << "\n");
+    auto removeTaintArg = [&](Value *arg, int argIdx) -> bool {
+      if (!arg || !arg->getType()->isPointerTy()) {
+        // skip, only pointed-to memory can be sanitized
+        return false;
+      }
+      Value *argPtr = (arg->getType() == Builder.getInt8PtrTy())
+                          ? arg
+                          : Builder.CreateBitCast(arg, Builder.getInt8PtrTy(),
+                                                  "taint.cast");
+      Value *Tag = Builder.getInt64(DEFAULT_TAINT_TAG);
+      CallInst *removeCall =
+          Builder.CreateCall(removeTaintIntrinsic, {argPtr, Tag});
+      removeCall->setDebugLoc(CI.getDebugLoc());
+      CRAB_LOG("taint-intrinsic", errs() << "[Filter] Inserted "
+                                         << REMOVE_TAINT_INTRINSIC
+                                         << " for arg " << argIdx << "\n");
+      return true;
+    };
+
+    for (int ArgIdx : rules.FilterArgs) {
+      if (ArgIdx >= 0 && ArgIdx < NumArgs && ArgIdx < VariadicIndex) {
+        Changed |= removeTaintArg(CI.getArgOperand(ArgIdx), ArgIdx);
+      }
+    }
+
+    for (int ArgIdx = 0; ArgIdx < NumArgs; ArgIdx++) {
+      if (ArgIdx >= VariadicIndex) {
+        Changed |= removeTaintArg(CI.getArgOperand(ArgIdx), ArgIdx);
       }
     }
 
