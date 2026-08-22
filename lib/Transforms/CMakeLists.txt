@@ -29,7 +29,7 @@ target_link_libraries(LlvmPasses
   ${SEA_DSA_LIBS}
   ## Needed if dynamic linking
   ${LLVM_LIBS}
-  CrabSupport
+  Crab
   )
 
 install(TARGETS LlvmPasses 
