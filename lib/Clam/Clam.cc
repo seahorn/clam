@@ -1417,7 +1417,9 @@ ClamPass::ClamPass():
 }
 
 void ClamPass::releaseMemory() {
-  m_ga->clear();
+  if (m_ga) {
+    m_ga->clear();
+  }
 }
 
 bool ClamPass::runOnModule(Module &M) {
@@ -1479,6 +1481,13 @@ bool ClamPass::runOnModule(Module &M) {
   }
   case heap_analysis_t::NONE:
     CLAM_WARNING("running clam without heap analysis");
+  }
+
+  if (CrabOnlySeaDsa) {
+    if (CrabHeapAnalysis == heap_analysis_t::NONE) {
+      CLAM_WARNING("crab-only-seadsa enabled but crab-heap-analysis=none");
+    }
+    return false;
   }
   m_cfg_builder_man.reset(
       new CrabBuilderManager(builder_params, tli, std::move(mem)));
