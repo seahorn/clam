@@ -582,6 +582,23 @@ struct InsertTaintIntrinsic : public ModulePass {
     // Check if already processed
     if (Value *Processed = getCallRetProcessed(CI)) {
       RetValPtr = Processed;
+      // A previous rule already boxed this return value, and this rule's
+      // builder starts right after the call, which is BEFORE the cached
+      // definition; using it there would break dominance. Move the
+      // insertion point past the cached definition, but only FORWARD:
+      // moving back would jump over values this rule inserted meanwhile
+      // (e.g. boxed source arguments) and break their uses instead.
+      if (auto *ProcessedI = dyn_cast<Instruction>(Processed)) {
+        auto InsertPt = Builder.GetInsertPoint();
+        bool insertPtAfterDef =
+            InsertPt != ProcessedI->getParent()->end() &&
+            InsertPt->getParent() == ProcessedI->getParent() &&
+            ProcessedI->comesBefore(&*InsertPt);
+        if (!insertPtAfterDef) {
+          Builder.SetInsertPoint(ProcessedI->getParent(),
+                                 std::next(ProcessedI->getIterator()));
+        }
+      }
     } else {
       if (RetType->isPointerTy()) {
         // Pointer return type: just cast if needed
