@@ -22,7 +22,7 @@ llvm::Pass *createExternalizeAddressTakenFunctionsPass();
 llvm::Pass *createExternalizeFunctionsPass();
 llvm::Pass *createPromoteMallocPass();
 llvm::Pass *createPromoteAssumePass();
-llvm::Pass *createPromoteMemcpyPass();
+llvm::FunctionPass *createPromoteMemcpyPass();
 llvm::Pass *createLazyValueConstPass();
 llvm::Pass *createInsertTaintIntrinsicPass();
 llvm::Pass *createRenameNondetPass();
