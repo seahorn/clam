@@ -96,7 +96,7 @@ buildHiddenFunctionMap(const Module &M) {
 
 struct TaintConfig { // now just for C
   using ArgsVecTy = llvm::SmallVector<int, 2>;
-  using VariadicIndexTy = llvm::Optional<unsigned>;
+  using VariadicIndexTy = std::optional<unsigned>;
   enum class VariadicType { None, Src, Dst };
 
   struct Common {
@@ -152,7 +152,7 @@ template <> struct MappingTraits<TaintConfig::Sink> {
   static void mapping(IO &IO, TaintConfig::Sink &Sink) {
     IO.mapRequired("Name", Sink.Name);
     IO.mapRequired("Args", Sink.SinkArgs);
-    IO.mapOptional("VariadicIndex", Sink.VarIndex, llvm::None);
+    IO.mapOptional("VariadicIndex", Sink.VarIndex, std::nullopt);
   }
 };
 
@@ -160,7 +160,7 @@ template <> struct MappingTraits<TaintConfig::Filter> {
   static void mapping(IO &IO, TaintConfig::Filter &Filter) {
     IO.mapRequired("Name", Filter.Name);
     IO.mapRequired("Args", Filter.FilterArgs);
-    IO.mapOptional("VariadicIndex", Filter.VarIndex, llvm::None);
+    IO.mapOptional("VariadicIndex", Filter.VarIndex, std::nullopt);
   }
 };
 
@@ -170,7 +170,7 @@ template <> struct MappingTraits<TaintConfig::Propagation> {
     IO.mapOptional("SrcArgs", Propagation.SrcArgs);
     IO.mapOptional("DstArgs", Propagation.DstArgs);
     IO.mapOptional("VariadicType", Propagation.VarType);
-    IO.mapOptional("VariadicIndex", Propagation.VarIndex, llvm::None);
+    IO.mapOptional("VariadicIndex", Propagation.VarIndex, std::nullopt);
   }
 };
 
@@ -328,7 +328,7 @@ struct InsertTaintIntrinsic : public ModulePass {
             // process Sinks
             for (const auto &Sink : m_config.Sinks) {
               if (isFunctionNameMatched(Callee->getName(), Sink.Name) &&
-                  (Sink.SinkArgs.size() > 0 || Sink.VarIndex.hasValue())) {
+                  (Sink.SinkArgs.size() > 0 || Sink.VarIndex.has_value())) {
                 // Found matching sink
                 IsTaintedUse = insertSinkIntrinsics(
                     *CI, Sink, m_functionDecls[SINK_INTRINSIC],
@@ -340,7 +340,7 @@ struct InsertTaintIntrinsic : public ModulePass {
             // process Filters
             for (const auto &Filter : m_config.Filters) {
               if (isFunctionNameMatched(Callee->getName(), Filter.Name) &&
-                  (Filter.FilterArgs.size() > 0 || Filter.VarIndex.hasValue()) &&
+                  (Filter.FilterArgs.size() > 0 || Filter.VarIndex.has_value()) &&
                   m_functionDecls.count(REMOVE_TAINT_INTRINSIC)) {
                 // Found matching filter (sanitizer)
                 IsTaintedUse = insertFilterIntrinsics(
@@ -431,7 +431,7 @@ struct InsertTaintIntrinsic : public ModulePass {
     CRAB_LOG("taint-intrinsic", errs()
                                     << "[Sink] visit CallInst " << CI << "\n");
     int VariadicIndex =
-        safe_unsigned_to_int(rules.VarIndex.getValueOr(UINT_MAX));
+        safe_unsigned_to_int(rules.VarIndex.value_or(UINT_MAX));
     int NumArgs = safe_unsigned_to_int(CI.arg_size());
 
     // Lambda to handle sink checking with complete operation
@@ -439,9 +439,9 @@ struct InsertTaintIntrinsic : public ModulePass {
       Value *argPtr = nullptr;
 
       if (arg->getType()->isPointerTy()) {
-        argPtr = (arg->getType() == Builder.getInt8PtrTy())
+        argPtr = (arg->getType() == Builder.getPtrTy())
                      ? arg
-                     : Builder.CreateBitCast(arg, Builder.getInt8PtrTy(),
+                     : Builder.CreateBitCast(arg, Builder.getPtrTy(),
                                              "taint.cast");
       } else {
         // Create alloca for non-pointer value
@@ -451,7 +451,7 @@ struct InsertTaintIntrinsic : public ModulePass {
             AllocaBuilder.CreateAlloca(arg->getType(), nullptr, "tmp");
         Builder.CreateStore(arg, Alloca);
         argPtr =
-            Builder.CreateBitCast(Alloca, Builder.getInt8PtrTy(), "taint.cast");
+            Builder.CreateBitCast(Alloca, Builder.getPtrTy(), "taint.cast");
       }
 
       // Create the intrinsic call
@@ -517,7 +517,7 @@ struct InsertTaintIntrinsic : public ModulePass {
     Instruction *InsertPoint = CI.getNextNonDebugInstruction();
     IRBuilder<> Builder(InsertPoint);
     int VariadicIndex =
-        safe_unsigned_to_int(rules.VarIndex.getValueOr(UINT_MAX));
+        safe_unsigned_to_int(rules.VarIndex.value_or(UINT_MAX));
     int NumArgs = safe_unsigned_to_int(CI.arg_size());
     CRAB_LOG("taint-intrinsic",
              errs() << "[Filter] visit CallInst " << CI << "\n");
@@ -526,9 +526,9 @@ struct InsertTaintIntrinsic : public ModulePass {
         // skip, only pointed-to memory can be sanitized
         return false;
       }
-      Value *argPtr = (arg->getType() == Builder.getInt8PtrTy())
+      Value *argPtr = (arg->getType() == Builder.getPtrTy())
                           ? arg
-                          : Builder.CreateBitCast(arg, Builder.getInt8PtrTy(),
+                          : Builder.CreateBitCast(arg, Builder.getPtrTy(),
                                                   "taint.cast");
       Value *Tag = Builder.getInt64(DEFAULT_TAINT_TAG);
       CallInst *removeCall =
@@ -603,8 +603,8 @@ struct InsertTaintIntrinsic : public ModulePass {
       if (RetType->isPointerTy()) {
         // Pointer return type: just cast if needed
         RetValPtr = &CI;
-        if (RetValPtr->getType() != Builder.getInt8PtrTy()) {
-          RetValPtr = Builder.CreateBitCast(RetValPtr, Builder.getInt8PtrTy(),
+        if (RetValPtr->getType() != Builder.getPtrTy()) {
+          RetValPtr = Builder.CreateBitCast(RetValPtr, Builder.getPtrTy(),
                                             "taint.cast");
         }
       } else {
@@ -631,8 +631,8 @@ struct InsertTaintIntrinsic : public ModulePass {
         Store = Builder.CreateStore(&CI, Alloca);
         // Cast alloca to i8*
         RetValPtr = Alloca;
-        if (RetValPtr->getType() != Builder.getInt8PtrTy()) {
-          RetValPtr = Builder.CreateBitCast(RetValPtr, Builder.getInt8PtrTy(),
+        if (RetValPtr->getType() != Builder.getPtrTy()) {
+          RetValPtr = Builder.CreateBitCast(RetValPtr, Builder.getPtrTy(),
                                             "taint.cast");
         }
         NeedsLoadReplacement = true;
@@ -704,7 +704,7 @@ struct InsertTaintIntrinsic : public ModulePass {
     bool isDstVariadic = (rules.VarType == TaintConfig::VariadicType::Dst);
     int VariadicIndex =
         (isSrcVariadic || isDstVariadic)
-            ? safe_unsigned_to_int(rules.VarIndex.getValueOr(UINT_MAX))
+            ? safe_unsigned_to_int(rules.VarIndex.value_or(UINT_MAX))
             : INT_MAX;
     int NumArgs = safe_unsigned_to_int(CI.arg_size());
     CRAB_LOG("taint-intrinsic", errs()
@@ -722,9 +722,9 @@ struct InsertTaintIntrinsic : public ModulePass {
       Value *ret = nullptr;
       if (val->getType()->isPointerTy()) {
         // Cast to i8* if needed
-        if (val->getType() != builder.getInt8PtrTy()) {
+        if (val->getType() != builder.getPtrTy()) {
           ret =
-              builder.CreateBitCast(val, builder.getInt8PtrTy(), "taint.cast");
+              builder.CreateBitCast(val, builder.getPtrTy(), "taint.cast");
         } else {
           ret = val;
         }
@@ -737,7 +737,7 @@ struct InsertTaintIntrinsic : public ModulePass {
         // Store the value
         builder.CreateStore(val, a);
         // Return the alloca pointer (cast to i8*)
-        ret = builder.CreateBitCast(a, builder.getInt8PtrTy(), "taint.cast");
+        ret = builder.CreateBitCast(a, builder.getPtrTy(), "taint.cast");
       }
       processedSrc[val] = {ret, true};
       return ret;
@@ -751,8 +751,8 @@ struct InsertTaintIntrinsic : public ModulePass {
         assert(dst);
         if (dst->getType()->isPointerTy()) {
           // Cast to i8* if needed
-          if (dst->getType() != Builder.getInt8PtrTy()) {
-            dst = Builder.CreateBitCast(dst, Builder.getInt8PtrTy(),
+          if (dst->getType() != Builder.getPtrTy()) {
+            dst = Builder.CreateBitCast(dst, Builder.getPtrTy(),
                                         "taint.cast");
           }
         } else {
@@ -862,7 +862,7 @@ struct InsertTaintIntrinsic : public ModulePass {
     bool isDstVariadic = (rules.VarType == TaintConfig::VariadicType::Dst);
     int VariadicIndex =
         isDstVariadic
-            ? safe_unsigned_to_int(rules.VarIndex.getValueOr(UINT_MAX))
+            ? safe_unsigned_to_int(rules.VarIndex.value_or(UINT_MAX))
             : INT_MAX;
     int NumArgs = safe_unsigned_to_int(CI.arg_size());
     CRAB_LOG("taint-intrinsic", errs()
@@ -874,9 +874,9 @@ struct InsertTaintIntrinsic : public ModulePass {
         // temp registers don't need tainting since their values are immutable
         return false;
       }
-      argPtr = (arg->getType() == Builder.getInt8PtrTy())
+      argPtr = (arg->getType() == Builder.getPtrTy())
                    ? arg
-                   : Builder.CreateBitCast(arg, Builder.getInt8PtrTy(),
+                   : Builder.CreateBitCast(arg, Builder.getPtrTy(),
                                            "taint.cast");
       // make a constant 1 as second argument
       Value *Tag = Builder.getInt64(DEFAULT_TAINT_TAG);
