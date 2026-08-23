@@ -388,9 +388,10 @@ def parseArgs(argv):
     p.add_argument('--crab-heap-dot-outdir',
                     help='Output directory for seadsa memory graphs',
                     dest='crab_heap_dot_outdir', default=None, metavar='STR')
-    add_bool_argument(p, 'crab-singleton-aliases', default=False,
-                      help='Translate singleton alias sets (mostly globals) as scalar values',
-                      dest='crab_singleton_aliases')
+    p.add_argument('--crab-singleton-aliases',
+                    help='Translate singleton alias sets (mostly globals) as scalar values',
+                    dest='crab_singleton_aliases', default=False,
+                    action='store_true')
     p.add_argument('--crab-inter',
                     help='Run summary-based, inter-procedural analysis',
                     dest='crab_inter', default=False, action='store_true')
