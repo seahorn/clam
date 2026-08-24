@@ -39,6 +39,28 @@ public:
                               llvm::FunctionAnalysisManager &FAM);
 };
 
+/** Insert tag-analysis (taint) intrinsics per the user taint policy. */
+class InsertTaintIntrinsicPass
+    : public llvm::PassInfoMixin<InsertTaintIntrinsicPass> {
+public:
+  llvm::PreservedAnalyses run(llvm::Module &M,
+                              llvm::ModuleAnalysisManager &MAM);
+};
+
+/** Replace integer operands that LazyValueInfo proves constant. */
+class LazyValueConstPass : public llvm::PassInfoMixin<LazyValueConstPass> {
+public:
+  llvm::PreservedAnalyses run(llvm::Function &F,
+                              llvm::FunctionAnalysisManager &FAM);
+};
+
+/** Promote whole-object memcpys to aggregate loads and stores. */
+class PromoteMemcpyPass : public llvm::PassInfoMixin<PromoteMemcpyPass> {
+public:
+  llvm::PreservedAnalyses run(llvm::Function &F,
+                              llvm::FunctionAnalysisManager &FAM);
+};
+
 /**
  * Resolve indirect calls.
  *

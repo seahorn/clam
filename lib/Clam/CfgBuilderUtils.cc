@@ -143,6 +143,12 @@ crab::cfg::debug_info getDebugLoc(const Instruction *I, uint32_t Id) {
   } 
 }
 
+crab::source_location getDebugSrcLoc(const Instruction *I, uint32_t Id) {
+  auto debugInfo = getDebugLoc(I, Id);
+  return crab::source_location(debugInfo.get_file(), debugInfo.get_line(),
+                               debugInfo.get_column(), debugInfo.get_id());
+}
+
 uint64_t storageSize(const Type *t, const DataLayout &dl) {
   return dl.getTypeStoreSize(const_cast<Type *>(t));
 }

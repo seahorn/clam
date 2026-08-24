@@ -1,3 +1,4 @@
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 
@@ -6,10 +7,23 @@
 using namespace llvm;
 
 namespace {
-/// marks all internal functions with AlwaysInline attribute
+bool hasRecursiveCall(Function &F) {
+  for (BasicBlock &BB : F) {
+    for (Instruction &I : BB) {
+      if (auto *CI = dyn_cast<CallInst>(&I)) {
+        if (CI->getCalledFunction() == &F) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/// marks all internal non-recursive functions with AlwaysInline attribute
 bool markInternalInline(Module &M) {
   for (Function &F : M)
-    if (!F.isDeclaration() && F.hasLocalLinkage()) {
+    if (!F.isDeclaration() && F.hasLocalLinkage() && !hasRecursiveCall(F)) {
       F.setLinkage(GlobalValue::PrivateLinkage);
       F.removeFnAttr(Attribute::NoInline);
       F.removeFnAttr(Attribute::OptimizeNone);

@@ -43,6 +43,7 @@ bool CrabInterRecursiveFunctions;
 bool CrabInterExactSummaryReuse;
 bool CrabInterStartFromMain;
 heap_analysis_t CrabHeapAnalysis;
+bool CrabOnlySeaDsa;
 bool CrabDsaDot;
 bool CrabDsaDisambiguateUnknown;
 bool CrabDsaDisambiguatePtrCast;
@@ -364,6 +365,14 @@ XCrabHeapAnalysis("crab-heap-analysis",
    llvm::cl::location(clam::CrabHeapAnalysis),
    llvm::cl::init(clam::heap_analysis_t::CI_SEA_DSA),
    llvm::cl::cat(ClamOptCat));
+
+llvm::cl::opt<bool, true>
+XCrabOnlySeaDsa("crab-only-seadsa",
+     llvm::cl::desc("Run only SeaDsa and skip Crab CFG construction and analysis"),
+     llvm::cl::location(clam::CrabOnlySeaDsa),
+     llvm::cl::init(false),
+     llvm::cl::Hidden,
+     llvm::cl::cat(ClamOptCat));
    
 llvm::cl::opt<bool, true>
 XCrabDsaDot("crab-dsa-dot",

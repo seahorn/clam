@@ -57,15 +57,19 @@ def processLog(f, verbosity):
                 curr_ok_assert_lines, curr_fail_assert_lines = "", ""
                 
             curr_func = func
-        elif re.search("Result:  OK", line):
+        elif re.search(r"Result:\s+OK", line):
             curr_num_of_ok_asserts += 1
             curr_num_of_asserts += 1
             curr_ok_assert_lines += line 
-        elif re.search("Result:  FAIL", line):
+        elif re.search(r"Result:\s+FAIL", line):
             curr_num_of_fail_asserts += 1
             curr_num_of_asserts += 1
             curr_fail_assert_lines += line
-            
+
+    if curr_func is not None:
+        funmap[curr_func] = (curr_num_of_asserts, curr_num_of_ok_asserts, curr_num_of_fail_asserts,
+                             curr_ok_assert_lines, curr_fail_assert_lines)
+
     total_asserts, total_ok_asserts, total_fail_asserts, total_skipped_asserts = 0,0,0,0
     for key, value in funmap.items():
         (total, ok, fail, ok_lines, fail_lines) = value
@@ -88,18 +92,26 @@ def processLog(f, verbosity):
             print("Fail assertions:")            
             print(fail_lines)
         
-    print("-- Checked assertions  : " + str(total_asserts))
-    print("-- Unchecked assertions: " + str(total_skipped_asserts) + \
-          " (These assertions are in functions that have not been analyzed)")
-    print("-- Proven assertions   : " + str(total_ok_asserts))    
-    print("-- Failed assertions   : " + str(total_fail_asserts))
-    warning_ratio = 0
+    assertion_results = [
+        (str(total_ok_asserts), "Number of total proven assertions"),
+        (str(total_fail_asserts), "Number of total warning assertions"),
+        (str(total_asserts), "Number of total checked assertions"),
+        (str(total_skipped_asserts),
+         "Number of total unchecked assertions (These assertions are in functions that have not been analyzed)")
+    ]
     if total_asserts > 0:
         ok_ratio = ((total_ok_asserts / total_asserts) * 100.0)
-        print("   Ratio of proven assertions: " + str(ok_ratio) + "%")
+        assertion_results.append(("{:.1f}%".format(ok_ratio), "Ratio of proven assertions"))
     if total_fail_asserts + total_ok_asserts < total_asserts:
-        print("-- Missed assertions   : " + str(total_asserts - (total_ok_asserts + total_fail_asserts)) + \
-              "   <-- This should be 0")
+        assertion_results.append(
+            (str(total_asserts - (total_ok_asserts + total_fail_asserts)),
+             "Number of missed assertions <-- This should be 0"))
+
+    value_width = max(len(value) for value, _ in assertion_results)
+    print("************** ASSERTION RESULTS ****************")
+    for value, description in assertion_results:
+        print("{:>{}}  {}".format(value, value_width, description))
+    print("************** ASSERTION RESULTS END*************")
         
 def parseOpt (argv):
     import argparse as a

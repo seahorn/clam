@@ -47,6 +47,7 @@ class RegionInfo {
   // if INT_REGION or BOOL_REGION then bitwidth is the integer's
   //    bitwidth or 1.
   unsigned m_bitwidth; // number of bits
+  unsigned m_offset;   // offset in bytes
 
   //--------------------------------------//
   /// Auxiliary bits about the region
@@ -59,8 +60,9 @@ class RegionInfo {
   bool m_is_cyclic;
 
 public:
-  RegionInfo(region_type_t t, unsigned b, bool is_seq, bool is_heap, bool is_cyclic)
-      : m_region_type(t), m_bitwidth(b), m_is_sequence(is_seq),
+  RegionInfo(region_type_t t, unsigned b, unsigned o, bool is_seq, bool is_heap,
+             bool is_cyclic)
+      : m_region_type(t), m_bitwidth(b), m_offset(o), m_is_sequence(is_seq),
         m_is_heap(is_heap), m_is_cyclic(is_cyclic) {}
 
   RegionInfo(const RegionInfo &other) = default;
@@ -112,7 +114,9 @@ public:
   std::pair<region_type_t, unsigned> getType() const {
     return std::make_pair(m_region_type, m_bitwidth);
   }
-  
+
+  unsigned getOffset() const { return m_offset; }
+
   // Whether the region corresponds to a "sequence" node
   bool isSequence() const { return m_is_sequence; }
   
@@ -178,8 +182,8 @@ public:
       : m_id(id), m_info(info), m_singleton(singleton) {}
 
   Region()
-      : m_id(0),
-        m_info(RegionInfo(region_type_t::UNTYPED_REGION, 0, false, false, false)),
+      : m_id(0), m_info(RegionInfo(region_type_t::UNTYPED_REGION, 0, 0, false,
+                                   false, false)),
         m_singleton(nullptr) {}
 
   Region(const Region &other) = default;
