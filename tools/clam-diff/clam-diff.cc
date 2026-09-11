@@ -16,6 +16,7 @@
 #include <crab/config.h>
 #include <crab/domains/apron_domains.hpp>
 #include <crab/domains/elina_domains.hpp>
+#include <crab/domains/generic_abstract_domain.hpp>
 #include <crab/domains/intervals.hpp>
 #include <crab/domains/split_dbm.hpp>
 #include <crab/domains/split_oct.hpp>
