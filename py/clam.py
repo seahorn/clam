@@ -328,7 +328,7 @@ def parseArgs(argv):
                           "- term-dis-int: dis-int with uninterpreted functions\n"
                           "- boxes: disjunctive intervals based on LDDs\n"
                           "- zones: zones domain using DBMs in Split Normal Form\n"
-                          "- non-unit-zones: zones domain with a small set of non-unit coefficients\n"                   
+                          "- tvpi-dbm: template DBM: extend difference constraints with non-unit coefficients from a fixed set provided by the user\n"
                           "- soct: octagons domain using DBMs in Split Normal Form\n"
                           "- oct: octagons domain from Apron or Elina\n"
                           "- pk: polyhedra domain from Apron or Elina\n"
@@ -337,7 +337,7 @@ def parseArgs(argv):
                           "- w-int: wrapped intervals\n",
                     choices=['int', 'sign-const', 'ric', 'term-int',
                              'dis-int', 'term-dis-int', 'boxes',
-                             'zones', 'non-unit-zones', 'soct', 'oct', 'pk', 'pk-pplite', 'rtz',
+                             'zones', 'tvpi-dbm', 'soct', 'oct', 'pk', 'pk-pplite', 'rtz',
                              'w-int'],
                     dest='crab_dom', default='zones')
     p.add_argument('--crab-dom-params', dest='crab_dom_params', default=None,
